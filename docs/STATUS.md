@@ -256,7 +256,7 @@ Verification evidence:
 - Full bridge suite: `cargo test -p needlbar-bridge` — 11 passed.
 - `cargo fmt -p needlbar-bridge -- --check`, `cargo check -p needlbar-bridge`, and `cargo clippy -p needlbar-bridge --all-targets -- -D warnings` passed.
 - Full project gate: `make test` passed; Rust workspace including pinned `tokscale-core` had 1372 passed, 0 failed, 1 ignored, and Swift tests passed.
-- Remote CI remains green through Task 7 at [run 31845316146](https://github.com/taejunoh/needlbar/actions/runs/31845316146); Task 8 commit `8fd1e21` is local and its CI push is pending.
+- Task 8/documented head `dc9f6d1` is pushed and green in [run 31846072025](https://github.com/taejunoh/needlbar/actions/runs/31846072025).
 - No approved-design deviation was made; all prior v0.1 constraints and the pinned `tokscale-core` revision remain unchanged.
 
 ## Required Next Action
