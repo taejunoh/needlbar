@@ -8,6 +8,12 @@ use std::{
     thread,
 };
 
+#[cfg(test)]
+use std::{
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, MutexGuard},
+};
+
 use chrono::{SecondsFormat, Utc};
 use envelope::{BridgeError, Envelope, SCHEMA_VERSION};
 use needlbar_quota::{CursorQuotaProvider, QuotaError, QuotaErrorCode};
@@ -151,7 +157,7 @@ fn cursor_import_envelope(session_token: *const c_char) -> Envelope<CursorImport
         Ok(token) => token,
         Err(error) => return Envelope::failure(error),
     };
-    let store = match CursorSessionStore::new() {
+    let store = match cursor_import_store() {
         Ok(store) => store,
         Err(_) => return Envelope::failure(cursor_connect_error()),
     };
@@ -159,6 +165,19 @@ fn cursor_import_envelope(session_token: *const c_char) -> Envelope<CursorImport
         Ok(payload) => Envelope::success(payload),
         Err(error) => Envelope::failure(error),
     }
+}
+
+fn cursor_import_store() -> Result<CursorSessionStore, needlbar_source_sync::SourceSyncError> {
+    #[cfg(test)]
+    if let Some(store) = TEST_CURSOR_IMPORT_RUNTIME
+        .lock()
+        .expect("test Cursor import runtime lock")
+        .as_ref()
+        .map(|runtime| CursorSessionStore::in_home(&runtime.home))
+    {
+        return Ok(store);
+    }
+    CursorSessionStore::new()
 }
 
 /// The C caller must provide either null or a valid NUL-terminated UTF-8
@@ -195,6 +214,16 @@ fn import_cursor_session_with_verifier(
 }
 
 fn verify_cursor_session_token(session_token: &str) -> Result<(), BridgeError> {
+    #[cfg(test)]
+    if let Some(verifier) = TEST_CURSOR_IMPORT_RUNTIME
+        .lock()
+        .expect("test Cursor import runtime lock")
+        .as_ref()
+        .map(|runtime| Arc::clone(&runtime.verifier))
+    {
+        return verifier(session_token);
+    }
+
     let session_token = session_token.to_owned();
     let verification = thread::Builder::new()
         .name("needlbar-cursor-verify".to_owned())
@@ -234,8 +263,66 @@ fn cursor_connect_error() -> BridgeError {
     BridgeError {
         provider: Some("cursor".to_owned()),
         code: "requiresAuthentication".to_owned(),
-        message: "Cursor authentication was not available. Use connectCursor to add a session."
-            .to_owned(),
+        message: "Cursor authentication was not available.".to_owned(),
+    }
+}
+
+#[cfg(test)]
+type TestCursorImportVerifier = Arc<dyn Fn(&str) -> Result<(), BridgeError> + Send + Sync>;
+
+#[cfg(test)]
+struct TestCursorImportRuntime {
+    home: PathBuf,
+    verifier: TestCursorImportVerifier,
+}
+
+#[cfg(test)]
+static TEST_CURSOR_IMPORT_RUNTIME: Mutex<Option<TestCursorImportRuntime>> = Mutex::new(None);
+#[cfg(test)]
+static TEST_CURSOR_IMPORT_SERIAL: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+struct TestCursorImportRuntimeGuard {
+    _serial: MutexGuard<'static, ()>,
+    captured_logs: Arc<Mutex<Vec<String>>>,
+}
+
+#[cfg(test)]
+impl TestCursorImportRuntimeGuard {
+    fn install(
+        home: &Path,
+        verifier: impl Fn(&str) -> Result<(), BridgeError> + Send + Sync + 'static,
+    ) -> Self {
+        let serial = TEST_CURSOR_IMPORT_SERIAL
+            .lock()
+            .expect("test Cursor import serial lock");
+        let captured_logs = Arc::new(Mutex::new(Vec::new()));
+        *TEST_CURSOR_IMPORT_RUNTIME
+            .lock()
+            .expect("test Cursor import runtime lock") = Some(TestCursorImportRuntime {
+            home: home.to_path_buf(),
+            verifier: Arc::new(verifier),
+        });
+        Self {
+            _serial: serial,
+            captured_logs,
+        }
+    }
+
+    fn captured_logs(&self) -> Vec<String> {
+        self.captured_logs
+            .lock()
+            .expect("test Cursor import log lock")
+            .clone()
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestCursorImportRuntimeGuard {
+    fn drop(&mut self) {
+        *TEST_CURSOR_IMPORT_RUNTIME
+            .lock()
+            .expect("test Cursor import runtime lock") = None;
     }
 }
 
@@ -277,20 +364,22 @@ mod tests {
     }
 
     #[test]
-    fn cursor_import_verifies_before_storing_and_never_echoes_the_session_token() {
+    fn exported_cursor_import_verifies_and_redacts_the_successful_session_canary() {
         let home = tempfile::TempDir::new().unwrap();
         let token = "cursor-secret-test-token";
-        let payload = import_cursor_session_with_verifier(
-            token,
-            CursorSessionStore::in_home(home.path()),
-            |_| Ok(()),
-        )
-        .unwrap();
-
-        let json = serde_json::to_string(&Envelope::success(payload)).unwrap();
+        let runtime = TestCursorImportRuntimeGuard::install(home.path(), |_| Ok(()));
+        let input = CString::new(token).unwrap();
+        let pointer = unsafe { needlbar_cursor_import_session_json(input.as_ptr()) };
+        let json = unsafe { CStr::from_ptr(pointer) }
+            .to_string_lossy()
+            .into_owned();
+        unsafe { needlbar_free_string(pointer) };
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["data"], serde_json::json!({ "connected": true }));
+        assert_eq!(value["errors"], serde_json::json!([]));
         assert!(!json.contains(token));
+        assert!(!format!("{value:?}").contains(token));
+        assert!(runtime.captured_logs().is_empty());
         assert_eq!(
             CursorSessionStore::in_home(home.path())
                 .load()
@@ -301,17 +390,23 @@ mod tests {
     }
 
     #[test]
-    fn cursor_import_does_not_persist_a_session_when_verification_fails() {
+    fn exported_cursor_import_does_not_persist_a_session_when_verification_fails() {
         let home = tempfile::TempDir::new().unwrap();
-        let store = CursorSessionStore::in_home(home.path());
-        let result = import_cursor_session_with_verifier("cursor-secret-test-token", store, |_| {
-            Err(cursor_connect_error())
-        });
-        let Err(error) = result else {
-            panic!("failed verification must not import a session");
-        };
+        let token = "cursor-secret-test-token";
+        let runtime =
+            TestCursorImportRuntimeGuard::install(home.path(), |_| Err(cursor_connect_error()));
+        let input = CString::new(token).unwrap();
+        let pointer = unsafe { needlbar_cursor_import_session_json(input.as_ptr()) };
+        let json = unsafe { CStr::from_ptr(pointer) }
+            .to_string_lossy()
+            .into_owned();
+        unsafe { needlbar_free_string(pointer) };
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(error.code, "requiresAuthentication");
+        assert_eq!(value["errors"][0]["code"], "requiresAuthentication");
+        assert!(!json.contains(token));
+        assert!(!format!("{value:?}").contains(token));
+        assert!(runtime.captured_logs().is_empty());
         assert!(!home
             .path()
             .join("Library/Application Support/Needlbar/cursor-session.json")

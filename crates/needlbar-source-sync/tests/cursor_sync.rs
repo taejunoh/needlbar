@@ -89,6 +89,24 @@ fn shared_session_store_rejects_non_cookie_safe_session_tokens() {
     }
 }
 
+#[test]
+fn shared_session_store_rejects_an_oversized_session_file_without_exposing_its_contents() {
+    let home = TempDir::new().expect("fixture home");
+    let store = CursorSessionStore::in_home(home.path());
+    let path = home
+        .path()
+        .join("Library/Application Support/Needlbar/cursor-session.json");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, vec![b'x'; 128 * 1024]).unwrap();
+
+    let Err(error) = store.load() else {
+        panic!("oversized session file must not load");
+    };
+
+    assert!(matches!(error, SourceSyncError::SessionTooLarge));
+    assert!(!format!("{error:?}").contains("xxxxxxxx"));
+}
+
 #[cfg(unix)]
 #[test]
 fn shared_session_store_restricts_a_preexisting_session_file_on_load() {
@@ -176,6 +194,34 @@ fn malformed_export_does_not_replace_a_previous_tokscale_compatible_cache() {
         .expect("malformed sync outcome");
     assert!(!malformed.synced);
     assert!(matches!(malformed.error, Some(SourceSyncError::InvalidCsv)));
+    assert_eq!(fs::read(cache).expect("preserved cache"), previous);
+}
+
+#[test]
+fn oversized_cursor_export_preserves_the_last_complete_cache() {
+    let home = TempDir::new().expect("fixture home");
+    write_cursor_session_in_home(home.path(), "test-session-token").expect("write session");
+    let transport = FakeTransport::new([
+        Ok(TWO_ROW_CSV.to_owned()),
+        Err(SourceSyncError::ResponseTooLarge),
+    ]);
+
+    assert!(
+        sync_cursor_cache_with_transport_in_home(home.path(), true, &transport)
+            .expect("initial sync")
+            .synced
+    );
+    let cache = cache_path(home.path());
+    let previous = fs::read(&cache).expect("previous cache");
+
+    let outcome = sync_cursor_cache_with_transport_in_home(home.path(), true, &transport)
+        .expect("oversized outcome");
+
+    assert!(!outcome.synced);
+    assert!(matches!(
+        outcome.error,
+        Some(SourceSyncError::ResponseTooLarge)
+    ));
     assert_eq!(fs::read(cache).expect("preserved cache"), previous);
 }
 

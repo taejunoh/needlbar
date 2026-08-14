@@ -29,6 +29,12 @@ use thiserror::Error;
 
 const CURSOR_HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 const CURSOR_CACHE_FRESHNESS: Duration = Duration::from_secs(5 * 60);
+/// Cursor exports can contain many rows, but source hydration must not buffer
+/// an unbounded provider response before validating it.
+const MAX_CURSOR_EXPORT_BYTES: usize = 8 * 1024 * 1024;
+/// Session material is a small JSON document. A tight bound avoids treating a
+/// corrupt or adversarial local file as credential evidence.
+const MAX_CURSOR_SESSION_BYTES: usize = 64 * 1024;
 const USAGE_CSV_ENDPOINT: &str =
     "https://cursor.com/api/dashboard/export-usage-events-csv?strategy=tokens";
 const SESSION_FILE_NAME: &str = "cursor-session.json";
@@ -48,6 +54,10 @@ pub enum SourceSyncError {
     HttpStatus(u16),
     #[error("Cursor usage export was not CSV")]
     InvalidCsv,
+    #[error("Cursor usage export exceeded the expected size")]
+    ResponseTooLarge,
+    #[error("Cursor session file exceeded the expected size")]
+    SessionTooLarge,
     #[error("Cursor sync refused an unsafe path: {0}")]
     UnsafePath(String),
     #[error("Cursor sync I/O failed: {0}")]
@@ -172,15 +182,36 @@ struct PrivateDirectory {
 
 struct ReqwestCursorUsageTransport {
     client: reqwest::Client,
+    endpoint: String,
+    max_response_bytes: usize,
 }
 
 impl ReqwestCursorUsageTransport {
     fn new() -> Result<Self, SourceSyncError> {
         let client = reqwest::Client::builder()
             .timeout(CURSOR_HTTP_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|error| SourceSyncError::Transport(error.to_string()))?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            endpoint: USAGE_CSV_ENDPOINT.to_owned(),
+            max_response_bytes: MAX_CURSOR_EXPORT_BYTES,
+        })
+    }
+
+    #[cfg(test)]
+    fn for_test(endpoint: String, max_response_bytes: usize) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(CURSOR_HTTP_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("test Cursor HTTP client configuration is valid");
+        Self {
+            client,
+            endpoint,
+            max_response_bytes,
+        }
     }
 }
 
@@ -194,7 +225,7 @@ impl CursorUsageTransport for ReqwestCursorUsageTransport {
 
         let response = self
             .client
-            .get(USAGE_CSV_ENDPOINT)
+            .get(&self.endpoint)
             .headers(headers)
             .send()
             .await
@@ -203,15 +234,42 @@ impl CursorUsageTransport for ReqwestCursorUsageTransport {
             return Err(SourceSyncError::HttpStatus(response.status().as_u16()));
         }
 
-        let csv = response
-            .text()
-            .await
-            .map_err(|error| SourceSyncError::Transport(error.to_string()))?;
+        let bytes = read_limited_response(response, self.max_response_bytes).await?;
+        let csv = String::from_utf8(bytes).map_err(|_| SourceSyncError::InvalidCsv)?;
         if validate_cursor_csv(&csv).is_err() {
             return Err(SourceSyncError::InvalidCsv);
         }
         Ok(csv)
     }
+}
+
+async fn read_limited_response(
+    mut response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<Vec<u8>, SourceSyncError> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > max_bytes as u64)
+    {
+        return Err(SourceSyncError::ResponseTooLarge);
+    }
+    let mut body = Vec::with_capacity(
+        response
+            .content_length()
+            .unwrap_or_default()
+            .min(max_bytes as u64) as usize,
+    );
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| SourceSyncError::Transport(error.to_string()))?
+    {
+        if body.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(SourceSyncError::ResponseTooLarge);
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
 }
 
 pub fn sync_cursor_cache(force: bool) -> Result<CursorSyncOutcome, SourceSyncError> {
@@ -508,9 +566,11 @@ fn read_regular_file_no_follow(
     }
     let mut file = options.open(path).map_err(io_error)?;
     ensure_regular_file_metadata(path, &file.metadata().map_err(io_error)?)?;
-    let mut contents = Vec::new();
-    file.read_to_end(&mut contents).map_err(io_error)?;
-    Ok(contents)
+    read_limited_file(
+        &mut file,
+        MAX_CURSOR_SESSION_BYTES,
+        SourceSyncError::SessionTooLarge,
+    )
 }
 
 #[cfg(not(unix))]
@@ -625,9 +685,33 @@ fn read_regular_file_at(
     let mut file = open_regular_at(directory, &name_c, libc::O_RDONLY, 0)?;
     file.set_permissions(fs::Permissions::from_mode(0o600))
         .map_err(io_error)?;
+    read_limited_file(
+        &mut file,
+        MAX_CURSOR_SESSION_BYTES,
+        SourceSyncError::SessionTooLarge,
+    )
+}
+
+fn read_limited_file(
+    file: &mut File,
+    max_bytes: usize,
+    too_large: SourceSyncError,
+) -> Result<Vec<u8>, SourceSyncError> {
+    if file.metadata().map_err(io_error)?.len() > max_bytes as u64 {
+        return Err(too_large);
+    }
     let mut contents = Vec::new();
-    file.read_to_end(&mut contents).map_err(io_error)?;
-    Ok(contents)
+    let mut chunk = [0_u8; 8192];
+    loop {
+        let count = file.read(&mut chunk).map_err(io_error)?;
+        if count == 0 {
+            return Ok(contents);
+        }
+        if contents.len().saturating_add(count) > max_bytes {
+            return Err(too_large);
+        }
+        contents.extend_from_slice(&chunk[..count]);
+    }
 }
 
 #[cfg(unix)]
@@ -944,4 +1028,99 @@ fn valid_cursor_date(value: &str) -> bool {
 
 fn io_error(error: std::io::Error) -> SourceSyncError {
     SourceSyncError::Io(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        sync::mpsc,
+        thread,
+        time::Duration,
+    };
+
+    use super::{CursorUsageTransport, ReqwestCursorUsageTransport, SourceSyncError};
+
+    #[tokio::test]
+    async fn cursor_export_redirect_is_not_followed_or_sent_the_session_cookie() {
+        let redirected = TcpListener::bind("127.0.0.1:0").unwrap();
+        let redirected_endpoint = format!("http://{}", redirected.local_addr().unwrap());
+        let (redirected_tx, redirected_rx) = mpsc::channel();
+        thread::spawn(move || {
+            redirected.set_nonblocking(true).unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_millis(250);
+            while std::time::Instant::now() < deadline {
+                match redirected.accept() {
+                    Ok((mut stream, _)) => {
+                        let mut request = String::new();
+                        stream.read_to_string(&mut request).unwrap();
+                        let _ = redirected_tx.send(Some(request));
+                        return;
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(error) => panic!("redirect listener failed: {error}"),
+                }
+            }
+            let _ = redirected_tx.send(None);
+        });
+
+        let origin = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", origin.local_addr().unwrap());
+        let (origin_tx, origin_rx) = mpsc::channel();
+        thread::spawn(move || {
+            let (mut stream, _) = origin.accept().unwrap();
+            let mut request = [0_u8; 2048];
+            let count = stream.read(&mut request).unwrap();
+            origin_tx
+                .send(String::from_utf8_lossy(&request[..count]).into_owned())
+                .unwrap();
+            write!(
+                stream,
+                "HTTP/1.1 302 Found\r\nLocation: {redirected_endpoint}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+        });
+
+        let transport = ReqwestCursorUsageTransport::for_test(endpoint, 1024);
+        let error = transport
+            .export_usage_csv("cursor-secret-test-token")
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, SourceSyncError::HttpStatus(302)));
+        assert!(origin_rx
+            .recv()
+            .unwrap()
+            .contains("WorkosCursorSessionToken=cursor-secret-test-token"));
+        assert_eq!(redirected_rx.recv().unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn cursor_export_rejects_declared_and_chunked_oversized_responses() {
+        for response in [
+            b"HTTP/1.1 200 OK\r\nContent-Length: 33\r\nConnection: close\r\n\r\n".to_vec(),
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n21\r\n123456789012345678901234567890123\r\n0\r\n\r\n".to_vec(),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let endpoint = format!("http://{}", listener.local_addr().unwrap());
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0_u8; 1024];
+                let _ = stream.read(&mut request).unwrap();
+                stream.write_all(&response).unwrap();
+            });
+
+            let transport = ReqwestCursorUsageTransport::for_test(endpoint, 32);
+            let error = transport
+                .export_usage_csv("cursor-secret-test-token")
+                .await
+                .unwrap_err();
+
+            assert!(matches!(error, SourceSyncError::ResponseTooLarge));
+            server.join().unwrap();
+        }
+    }
 }

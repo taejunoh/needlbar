@@ -114,6 +114,7 @@ fn auth_error() -> QuotaError {
         code: QuotaErrorCode::RequiresAuthentication,
         message: "Codex authentication was not available.",
         retry_after: None,
+        action: None,
     }
 }
 
@@ -123,6 +124,7 @@ fn rate_limited_error() -> QuotaError {
         code: QuotaErrorCode::RateLimited,
         message: "The quota service asked us to retry later.",
         retry_after: None,
+        action: None,
     }
 }
 

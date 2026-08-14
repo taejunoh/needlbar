@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use needlbar_source_sync::CursorSessionStore;
+use needlbar_source_sync::{CursorSessionStore, SourceSyncError};
 use serde::Deserialize;
 
 use crate::{
-    ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaProvider, QuotaWindow,
-    RedactingHttpClient,
+    ProviderId, ProviderQuotaSnapshot, QuotaAction, QuotaError, QuotaErrorCode, QuotaProvider,
+    QuotaWindow, RedactingHttpClient,
 };
 
 const USAGE_SUMMARY_ENDPOINT: &str = "https://cursor.com/api/usage-summary";
@@ -24,8 +24,6 @@ pub struct CursorQuotaProvider {
 }
 
 impl CursorQuotaProvider {
-    pub const CONNECT_ACTION_CODE: &'static str = "connectCursor";
-
     pub fn new() -> Self {
         let store = CursorSessionStore::new()
             .unwrap_or_else(|_| CursorSessionStore::in_home(std::path::Path::new("/nonexistent")));
@@ -86,7 +84,7 @@ impl Default for CursorQuotaProvider {
 #[async_trait]
 impl QuotaProvider for CursorQuotaProvider {
     async fn fetch(&self) -> Result<ProviderQuotaSnapshot, QuotaError> {
-        let session = self.store.load().map_err(|_| requires_authentication())?;
+        let session = self.store.load().map_err(cursor_session_error)?;
         let payload = self
             .source
             .fetch_usage_summary(session.session_token())
@@ -191,8 +189,9 @@ fn requires_authentication() -> QuotaError {
     QuotaError::new(
         Some(ProviderId::Cursor),
         QuotaErrorCode::RequiresAuthentication,
-        "Cursor authentication was not available. Use connectCursor to add a session.",
+        "Cursor authentication was not available.",
     )
+    .with_action(QuotaAction::ConnectCursor)
 }
 
 fn cursor_http_error(error: QuotaError) -> QuotaError {
@@ -203,5 +202,24 @@ fn cursor_http_error(error: QuotaError) -> QuotaError {
         requires_authentication()
     } else {
         error.for_provider(ProviderId::Cursor)
+    }
+}
+
+fn cursor_session_error(error: SourceSyncError) -> QuotaError {
+    match error {
+        SourceSyncError::MissingSession
+        | SourceSyncError::InvalidSession
+        | SourceSyncError::SessionTooLarge => requires_authentication(),
+        SourceSyncError::Transport(_)
+        | SourceSyncError::HttpStatus(_)
+        | SourceSyncError::InvalidCsv
+        | SourceSyncError::ResponseTooLarge
+        | SourceSyncError::UnsafePath(_)
+        | SourceSyncError::Io(_)
+        | SourceSyncError::Runtime(_) => QuotaError::new(
+            Some(ProviderId::Cursor),
+            QuotaErrorCode::ProviderUnavailable,
+            "Cursor session storage was unavailable.",
+        ),
     }
 }

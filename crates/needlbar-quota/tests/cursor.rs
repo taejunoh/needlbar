@@ -3,7 +3,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use needlbar_quota::{
-    CursorQuotaProvider, CursorQuotaSource, ProviderId, QuotaError, QuotaErrorCode, QuotaProvider,
+    CursorQuotaProvider, CursorQuotaSource, ProviderId, QuotaAction, QuotaError, QuotaErrorCode,
+    QuotaProvider,
 };
 use needlbar_source_sync::{CursorSession, CursorSessionStore};
 use tempfile::TempDir;
@@ -49,6 +50,7 @@ fn rejects_cursor_usage_summary_with_invalid_percentages() {
     let error = CursorQuotaProvider::parse_usage_payload(INVALID_FIXTURE).unwrap_err();
 
     assert_eq!(error.code, QuotaErrorCode::SchemaChanged);
+    assert!(serde_json::to_value(error).unwrap().get("action").is_none());
 }
 
 #[tokio::test]
@@ -80,7 +82,9 @@ async fn missing_cursor_session_requires_explicit_connect_action() {
     let error = provider.fetch().await.unwrap_err();
 
     assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
-    assert_eq!(CursorQuotaProvider::CONNECT_ACTION_CODE, "connectCursor");
+    assert_eq!(error.action, Some(QuotaAction::ConnectCursor));
+    let value = serde_json::to_value(error).unwrap();
+    assert_eq!(value["action"], "connectCursor");
 }
 
 #[tokio::test]
@@ -97,13 +101,35 @@ async fn expired_cursor_transport_session_requires_explicit_reconnection() {
             code: QuotaErrorCode::AuthenticationExpired,
             message: "The quota service rejected the session.",
             retry_after: None,
+            action: None,
         }))),
     );
 
     let error = provider.fetch().await.unwrap_err();
 
     assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
-    assert_eq!(CursorQuotaProvider::CONNECT_ACTION_CODE, "connectCursor");
+    assert_eq!(error.action, Some(QuotaAction::ConnectCursor));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn unsafe_cursor_session_storage_does_not_offer_a_connect_action() {
+    use std::{fs, os::unix::fs::symlink};
+
+    let home = TempDir::new().unwrap();
+    let outside = TempDir::new().unwrap();
+    let parent = home.path().join("Library/Application Support");
+    fs::create_dir_all(&parent).unwrap();
+    symlink(outside.path(), parent.join("Needlbar")).unwrap();
+    let provider = CursorQuotaProvider::with_source(
+        CursorSessionStore::in_home(home.path()),
+        Arc::new(FixtureSource(Ok(SUCCESS_FIXTURE.to_owned()))),
+    );
+
+    let error = provider.fetch().await.unwrap_err();
+
+    assert_eq!(error.code, QuotaErrorCode::ProviderUnavailable);
+    assert_eq!(error.action, None);
 }
 
 struct FixtureSource(Result<String, QuotaError>);
