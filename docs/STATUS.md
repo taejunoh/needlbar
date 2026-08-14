@@ -204,7 +204,7 @@ Verification evidence:
 - Quota package: `cargo test -p needlbar-quota` — 30 passed.
 - `cargo check -p needlbar-quota` and `cargo clippy -p needlbar-quota --all-targets -- -D warnings` passed.
 - Full project gate: `make test` passed; Rust workspace including pinned `tokscale-core` had 1372 passed, 0 failed, 1 ignored, and Swift tests passed.
-- Remote CI remains green through Task 5 at [run 31841873719](https://github.com/taejunoh/needlbar/actions/runs/31841873719); Task 6 commits are local and their CI push is pending.
+- Task 6/documented head `7aada1a` is pushed and green in [run 31843385394](https://github.com/taejunoh/needlbar/actions/runs/31843385394).
 - No approved-design deviation was made; all prior v0.1 constraints and the pinned `tokscale-core` revision remain unchanged.
 
 ## Required Next Action
