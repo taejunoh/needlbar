@@ -2,11 +2,12 @@ use std::{env, fs, path::PathBuf};
 
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
+use reqwest::header::HeaderValue;
 use serde::Deserialize;
 
 use crate::{
-    normalize_percent, ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode,
-    QuotaProvider, QuotaWindow, RedactingHttpClient,
+    ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaProvider, QuotaWindow,
+    RedactingHttpClient,
 };
 
 const USAGE_ENDPOINT: &str = "https://api.anthropic.com/api/oauth/usage";
@@ -36,7 +37,7 @@ impl ClaudeQuotaProvider {
         http: RedactingHttpClient,
     ) -> Self {
         Self {
-            config_dir,
+            config_dir: config_dir.filter(|path| !path.as_os_str().is_empty()),
             home_dir,
             http,
         }
@@ -65,10 +66,13 @@ impl ClaudeQuotaProvider {
         let credentials: CredentialsFile =
             serde_json::from_str(&contents).map_err(|_| auth_required())?;
         let oauth = credentials.claude_ai_oauth.ok_or_else(auth_required)?;
-        if oauth.access_token.as_deref().is_none_or(str::is_empty) {
-            return Err(auth_required());
-        }
-        if let Some(expires_at) = oauth.expires_at.as_ref().and_then(parse_expiry) {
+        let access_token = oauth
+            .access_token
+            .as_deref()
+            .and_then(normalize_access_token)
+            .ok_or_else(auth_required)?;
+        if let Some(value) = oauth.expires_at.as_ref() {
+            let expires_at = parse_expiry(value).ok_or_else(auth_required)?;
             if expires_at <= Utc::now() {
                 // A refresh token alone is not enough to safely guess an
                 // undocumented token-refresh exchange in a passive refresh.
@@ -76,9 +80,7 @@ impl ClaudeQuotaProvider {
             }
         }
 
-        Ok(ClaudeOauthEvidence {
-            access_token: oauth.access_token.expect("checked above"),
-        })
+        Ok(ClaudeOauthEvidence { access_token })
     }
 }
 
@@ -105,11 +107,16 @@ impl QuotaProvider for ClaudeQuotaProvider {
             .send(request)
             .await
             .map_err(|error| error.for_provider(ProviderId::Claude))?;
-        let payload = response.text().await.map_err(|_| {
+        let bytes = self
+            .http
+            .read_limited_body(response)
+            .await
+            .map_err(|error| error.for_provider(ProviderId::Claude))?;
+        let payload = String::from_utf8(bytes).map_err(|_| {
             QuotaError::new(
                 Some(ProviderId::Claude),
-                QuotaErrorCode::NetworkUnavailable,
-                "The quota service could not be read.",
+                QuotaErrorCode::SchemaChanged,
+                "Claude quota data was not in the expected format.",
             )
         })?;
 
@@ -146,17 +153,24 @@ struct UsageResponse {
 #[derive(Deserialize)]
 struct UsageWindow {
     utilization: f64,
-    #[serde(default)]
-    resets_at: Option<DateTime<Utc>>,
+    resets_at: DateTime<Utc>,
 }
 
 fn parse_window(source: UsageWindow, id: &str, title: &str) -> Result<QuotaWindow, QuotaError> {
-    Ok(QuotaWindow {
-        id: id.to_owned(),
-        title: title.to_owned(),
-        used_percent: normalize_percent(source.utilization).map_err(|_| schema_error())?,
-        resets_at: source.resets_at,
-    })
+    QuotaWindow::new(id, title, source.utilization, Some(source.resets_at))
+        .map_err(|_| schema_error())
+}
+
+fn normalize_access_token(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || trimmed.chars().any(char::is_whitespace)
+        || HeaderValue::from_str(trimmed).is_err()
+    {
+        None
+    } else {
+        Some(trimmed.to_owned())
+    }
 }
 
 fn parse_expiry(value: &serde_json::Value) -> Option<DateTime<Utc>> {
@@ -203,4 +217,57 @@ fn schema_error() -> QuotaError {
         QuotaErrorCode::SchemaChanged,
         "Claude quota data was not in the expected format.",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+
+    use super::*;
+
+    #[test]
+    fn malformed_expiry_is_unusable_oauth_evidence() {
+        let temp = TempDir::new().unwrap();
+        let config_dir = temp.path().join("claude-config");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(
+            config_dir.join(".credentials.json"),
+            r#"{"claudeAiOauth":{"accessToken":"token","expiresAt":"not-an-expiry"}}"#,
+        )
+        .unwrap();
+        let provider = ClaudeQuotaProvider::from_paths(
+            Some(config_dir),
+            temp.path().to_path_buf(),
+            RedactingHttpClient::new(),
+        );
+
+        let error = provider.load_credentials().err().unwrap();
+
+        assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
+    }
+
+    #[test]
+    fn whitespace_or_header_invalid_access_tokens_are_unusable() {
+        for token in ["   ", "valid\\ninvalid"] {
+            let temp = TempDir::new().unwrap();
+            let config_dir = temp.path().join("claude-config");
+            fs::create_dir_all(&config_dir).unwrap();
+            fs::write(
+                config_dir.join(".credentials.json"),
+                format!(r#"{{"claudeAiOauth":{{"accessToken":"{token}"}}}}"#),
+            )
+            .unwrap();
+            let provider = ClaudeQuotaProvider::from_paths(
+                Some(config_dir),
+                temp.path().to_path_buf(),
+                RedactingHttpClient::new(),
+            );
+
+            let error = provider.load_credentials().err().unwrap();
+
+            assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
+        }
+    }
 }

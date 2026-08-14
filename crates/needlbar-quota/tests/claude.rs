@@ -2,7 +2,7 @@ use std::fs;
 
 use chrono::{TimeZone, Utc};
 use needlbar_quota::{
-    normalize_percent, ClaudeQuotaProvider, ProviderId, QuotaErrorCode, QuotaProvider,
+    normalize_percent, ClaudeQuotaProvider, ProviderId, QuotaErrorCode, QuotaProvider, QuotaWindow,
     RedactingHttpClient,
 };
 use tempfile::TempDir;
@@ -28,24 +28,60 @@ fn normalizes_only_finite_percentages_in_range() {
 }
 
 #[test]
+fn quota_window_constructor_preserves_the_percent_invariant() {
+    let error = QuotaWindow::new("test", "Test", 100.1, None).unwrap_err();
+    assert_eq!(error.code, QuotaErrorCode::SchemaChanged);
+
+    let window = QuotaWindow::new("test", "Test", 42.5, None).unwrap();
+    assert_eq!(window.used_percent(), 42.5);
+    assert_eq!(window.id(), "test");
+}
+
+#[test]
 fn parses_claude_session_and_weekly_windows_from_fixture() {
     let snapshot = ClaudeQuotaProvider::parse_usage_payload(SUCCESS_FIXTURE).unwrap();
 
     assert_eq!(snapshot.provider, ProviderId::Claude);
     assert_eq!(snapshot.windows.len(), 2);
-    assert_eq!(snapshot.windows[0].id, "claude.session");
-    assert_eq!(snapshot.windows[0].used_percent, 42.5);
+    assert_eq!(snapshot.windows[0].id(), "claude.session");
+    assert_eq!(snapshot.windows[0].used_percent(), 42.5);
     assert_eq!(
-        snapshot.windows[0].resets_at,
+        snapshot.windows[0].resets_at(),
         Some(Utc.with_ymd_and_hms(2026, 8, 14, 18, 0, 0).unwrap())
     );
-    assert_eq!(snapshot.windows[1].id, "claude.weekly");
-    assert_eq!(snapshot.windows[1].used_percent, 80.0);
+    assert_eq!(snapshot.windows[1].id(), "claude.weekly");
+    assert_eq!(snapshot.windows[1].used_percent(), 80.0);
 }
 
 #[test]
 fn rejects_malformed_or_out_of_range_claude_payloads() {
     let error = ClaudeQuotaProvider::parse_usage_payload(MALFORMED_FIXTURE).unwrap_err();
+
+    assert_eq!(error.code, QuotaErrorCode::SchemaChanged);
+}
+
+#[test]
+fn rejects_claude_payloads_without_provider_reset_evidence() {
+    let error = ClaudeQuotaProvider::parse_usage_payload(
+        r#"{
+          "five_hour": { "utilization": 42.5 },
+          "seven_day": { "utilization": 80.0, "resets_at": "2026-08-18T00:00:00Z" }
+        }"#,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, QuotaErrorCode::SchemaChanged);
+}
+
+#[test]
+fn rejects_claude_payloads_with_malformed_provider_reset_evidence() {
+    let error = ClaudeQuotaProvider::parse_usage_payload(
+        r#"{
+          "five_hour": { "utilization": 42.5, "resets_at": "not-a-timestamp" },
+          "seven_day": { "utilization": 80.0, "resets_at": "2026-08-18T00:00:00Z" }
+        }"#,
+    )
+    .unwrap_err();
 
     assert_eq!(error.code, QuotaErrorCode::SchemaChanged);
 }
@@ -104,6 +140,27 @@ async fn configured_credentials_take_precedence_over_home_credentials() {
     .unwrap();
     let provider = ClaudeQuotaProvider::from_paths(
         Some(config_dir),
+        temp.path().to_path_buf(),
+        RedactingHttpClient::new(),
+    );
+
+    let error = provider.fetch().await.unwrap_err();
+
+    assert_eq!(error.code, QuotaErrorCode::AuthenticationExpired);
+}
+
+#[tokio::test]
+async fn empty_config_directory_is_treated_as_absent_not_a_relative_path() {
+    let temp = TempDir::new().unwrap();
+    let home_credentials = temp.path().join(".claude/.credentials.json");
+    fs::create_dir_all(home_credentials.parent().unwrap()).unwrap();
+    fs::write(
+        home_credentials,
+        r#"{"claudeAiOauth":{"accessToken":"home-token","expiresAt":0}}"#,
+    )
+    .unwrap();
+    let provider = ClaudeQuotaProvider::from_paths(
+        Some(std::path::PathBuf::new()),
         temp.path().to_path_buf(),
         RedactingHttpClient::new(),
     );

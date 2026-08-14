@@ -14,10 +14,42 @@ pub enum ProviderId {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuotaWindow {
-    pub id: String,
-    pub title: String,
-    pub used_percent: f64,
-    pub resets_at: Option<DateTime<Utc>>,
+    id: String,
+    title: String,
+    used_percent: f64,
+    resets_at: Option<DateTime<Utc>>,
+}
+
+impl QuotaWindow {
+    pub fn new(
+        id: impl Into<String>,
+        title: impl Into<String>,
+        used_percent: f64,
+        resets_at: Option<DateTime<Utc>>,
+    ) -> Result<Self, QuotaError> {
+        Ok(Self {
+            id: id.into(),
+            title: title.into(),
+            used_percent: normalize_percent(used_percent)?,
+            resets_at,
+        })
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn used_percent(&self) -> f64 {
+        self.used_percent
+    }
+
+    pub fn resets_at(&self) -> Option<DateTime<Utc>> {
+        self.resets_at
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
