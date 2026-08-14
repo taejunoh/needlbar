@@ -55,19 +55,25 @@ pub fn collect_usage() -> Result<Vec<UsageProviderSnapshot>, BridgeError> {
 }
 
 pub fn collect_usage_with_cursor_sync() -> Result<UsageCollection, BridgeError> {
-    let warnings = match sync_cursor_cache(false) {
-        Ok(outcome) => outcome
-            .error
-            .map(|_| cursor_sync_warning())
-            .into_iter()
-            .collect(),
-        Err(_) => vec![cursor_sync_warning()],
-    };
+    collect_usage_with_cursor_sync_force(false)
+}
+
+pub fn collect_usage_with_cursor_sync_force(force: bool) -> Result<UsageCollection, BridgeError> {
+    let warnings = (!cursor_sync_succeeds(force, |force| {
+        sync_cursor_cache(force).is_ok_and(|outcome| outcome.error.is_none())
+    }))
+    .then(cursor_sync_warning)
+    .into_iter()
+    .collect();
     let providers = collect_usage()?;
     Ok(UsageCollection {
         providers,
         warnings,
     })
+}
+
+fn cursor_sync_succeeds(force: bool, sync: impl FnOnce(bool) -> bool) -> bool {
+    sync(force)
 }
 
 pub fn collect_usage_from_home(home: &Path) -> Result<Vec<UsageProviderSnapshot>, BridgeError> {
@@ -267,4 +273,20 @@ fn cursor_sync_warning() -> BridgeError {
         "cursorSyncFailed",
         "Cursor usage synchronization failed; cached usage may still be available",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cursor_sync_succeeds;
+
+    #[test]
+    fn forced_cursor_sync_passes_true_to_the_source_sync_seam() {
+        let mut observed = None;
+        let succeeded = cursor_sync_succeeds(true, |force| {
+            observed = Some(force);
+            true
+        });
+        assert!(succeeded);
+        assert_eq!(observed, Some(true));
+    }
 }

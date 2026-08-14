@@ -7,24 +7,27 @@ public typealias BridgeStringFree = @Sendable (UnsafePointer<CChar>?) -> Void
 
 public struct RustBridge: Sendable {
     private let usageCall: BridgeJSONCall
+    private let forcedUsageCall: BridgeJSONCall
     private let quotaCall: BridgeJSONCall
     private let free: BridgeStringFree
     private let decoder: BridgeDecoder
 
     public init(
         usageCall: @escaping BridgeJSONCall = { needlbar_usage_snapshot_json() },
+        forcedUsageCall: @escaping BridgeJSONCall = { needlbar_forced_usage_snapshot_json() },
         quotaCall: @escaping BridgeJSONCall = { needlbar_quota_snapshot_json() },
         free: @escaping BridgeStringFree = { pointer in needlbar_free_string(pointer) },
         decoder: BridgeDecoder = BridgeDecoder()
     ) {
         self.usageCall = usageCall
+        self.forcedUsageCall = forcedUsageCall
         self.quotaCall = quotaCall
         self.free = free
         self.decoder = decoder
     }
 
-    public func usageEnvelope() throws -> BridgeEnvelope<BridgeUsagePayload> {
-        try decodeCString(usageCall, decode: decoder.decodeUsageEnvelope)
+    public func usageEnvelope(forceCursorSync: Bool = false) throws -> BridgeEnvelope<BridgeUsagePayload> {
+        try decodeCString(forceCursorSync ? forcedUsageCall : usageCall, decode: decoder.decodeUsageEnvelope)
     }
 
     public func quotaEnvelope() throws -> BridgeEnvelope<BridgeQuotaPayload> {

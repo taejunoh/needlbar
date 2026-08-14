@@ -98,7 +98,10 @@ public actor UsageFileWatcher {
         ]
         return candidates.filter { path in
             var isDirectory: ObjCBool = false
-            return fileManager.fileExists(atPath: path.path, isDirectory: &isDirectory) && isDirectory.boolValue
+            guard fileManager.fileExists(atPath: path.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+                return false
+            }
+            return (try? path.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true
         }
     }
 
@@ -131,14 +134,14 @@ public actor UsageFileWatcher {
 private final class DirectoryFileEventSource: UsageFileEventSource, @unchecked Sendable {
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "com.needlbar.usage-file-watcher")
-    private var descriptor: Int32?
+    private let descriptorLease: DescriptorLease
     private var source: DispatchSourceFileSystemObject?
-    private var hasStartedSource = false
+    private var cancellationScheduled = false
 
     init?(directory: URL) {
         let descriptor = open(directory.path, O_EVTONLY)
         guard descriptor >= 0 else { return nil }
-        self.descriptor = descriptor
+        self.descriptorLease = DescriptorLease(descriptor: descriptor)
     }
 
     deinit {
@@ -147,18 +150,18 @@ private final class DirectoryFileEventSource: UsageFileEventSource, @unchecked S
 
     func start(onEvent: @escaping @Sendable () -> Void) {
         let source: DispatchSourceFileSystemObject? = lock.withLock {
-            guard self.source == nil, let descriptor else { return nil }
+            guard self.source == nil, let descriptor = descriptorLease.descriptor else { return nil }
             let source = DispatchSource.makeFileSystemObjectSource(
                 fileDescriptor: descriptor,
                 eventMask: [.write, .delete, .rename, .extend, .attrib, .link, .revoke],
                 queue: queue
             )
             source.setEventHandler(handler: onEvent)
-            source.setCancelHandler { [weak self] in
-                self?.closeDescriptorOnce()
+            source.setCancelHandler { [descriptorLease] in
+                descriptorLease.closeOnce()
             }
             self.source = source
-            self.hasStartedSource = true
+            self.cancellationScheduled = true
             return source
         }
         source?.resume()
@@ -168,22 +171,35 @@ private final class DirectoryFileEventSource: UsageFileEventSource, @unchecked S
         let (source, closeImmediately): (DispatchSourceFileSystemObject?, Bool) = lock.withLock {
             let source = self.source
             self.source = nil
-            return (source, source == nil && !hasStartedSource)
+            return (source, source == nil && !cancellationScheduled)
         }
         if let source {
             source.cancel()
         } else if closeImmediately {
-            closeDescriptorOnce()
+            descriptorLease.closeOnce()
         }
     }
 
-    private func closeDescriptorOnce() {
-        let descriptor = lock.withLock { () -> Int32? in
-            defer { self.descriptor = nil }
-            return self.descriptor
+    private final class DescriptorLease: @unchecked Sendable {
+        private let lock = NSLock()
+        private var fileDescriptor: Int32?
+
+        init(descriptor: Int32) {
+            fileDescriptor = descriptor
         }
-        if let descriptor {
-            Darwin.close(descriptor)
+
+        var descriptor: Int32? {
+            lock.withLock { fileDescriptor }
+        }
+
+        func closeOnce() {
+            let descriptor = lock.withLock { () -> Int32? in
+                defer { fileDescriptor = nil }
+                return fileDescriptor
+            }
+            if let descriptor {
+                Darwin.close(descriptor)
+            }
         }
     }
 }

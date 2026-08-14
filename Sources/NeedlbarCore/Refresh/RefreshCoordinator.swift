@@ -23,7 +23,6 @@ public actor RefreshCoordinator {
     private let quotaRepository: any QuotaRepository
     private let store: ProviderSnapshotStore
     private let clock: any ClockLike
-    private let forceCursorSync: (@Sendable () async -> Void)?
 
     private var usageTask: Task<Void, Never>?
     private var quotaTask: Task<Void, Never>?
@@ -34,21 +33,22 @@ public actor RefreshCoordinator {
     private var usageRefreshRequestedWhileInFlight = false
     private var forceCursorSyncRequestedWhileInFlight = false
     private var quotaRefreshRequestedWhileInFlight = false
+    private var usageQueuedGeneration: UInt64?
+    private var quotaQueuedGeneration: UInt64?
+    private var runGeneration: UInt64 = 0
 
     public init(
         usageRepository: any UsageRepository,
         quotaRepository: any QuotaRepository,
         store: ProviderSnapshotStore,
         clock: any ClockLike = SystemClock(),
-        lastQuotaSuccessfulAt: Date? = nil,
-        forceCursorSync: (@Sendable () async -> Void)? = nil
+        lastQuotaSuccessfulAt: Date? = nil
     ) {
         self.usageRepository = usageRepository
         self.quotaRepository = quotaRepository
         self.store = store
         self.clock = clock
         self.lastQuotaSuccessfulAt = lastQuotaSuccessfulAt
-        self.forceCursorSync = forceCursorSync
     }
 
     deinit {
@@ -60,6 +60,7 @@ public actor RefreshCoordinator {
 
     public func start() {
         guard !isRunning else { return }
+        runGeneration &+= 1
         isRunning = true
         requestUsageRefresh()
         requestQuotaRefresh()
@@ -69,6 +70,7 @@ public actor RefreshCoordinator {
     public func requestUsageRefresh() {
         guard usageTask == nil else {
             usageRefreshRequestedWhileInFlight = true
+            usageQueuedGeneration = runGeneration
             return
         }
         beginUsageRefresh(forceCursorSync: false)
@@ -88,6 +90,7 @@ public actor RefreshCoordinator {
     public func manualRefresh() async {
         if let usageTask {
             forceCursorSyncRequestedWhileInFlight = true
+            usageQueuedGeneration = runGeneration
             await usageTask.value
             if !isRunning {
                 beginUsageRefresh(forceCursorSync: true)
@@ -104,6 +107,7 @@ public actor RefreshCoordinator {
     }
 
     public func stop() {
+        runGeneration &+= 1
         isRunning = false
         usageTask?.cancel()
         quotaTask?.cancel()
@@ -114,6 +118,8 @@ public actor RefreshCoordinator {
         usageRefreshRequestedWhileInFlight = false
         forceCursorSyncRequestedWhileInFlight = false
         quotaRefreshRequestedWhileInFlight = false
+        usageQueuedGeneration = nil
+        quotaQueuedGeneration = nil
     }
 
     private func scheduleSafetyRefreshes() {
@@ -150,6 +156,7 @@ public actor RefreshCoordinator {
     private func requestQuotaRefresh() {
         guard quotaTask == nil else {
             quotaRefreshRequestedWhileInFlight = true
+            quotaQueuedGeneration = runGeneration
             return
         }
         beginQuotaRefresh()
@@ -158,41 +165,41 @@ public actor RefreshCoordinator {
     private func beginUsageRefresh(forceCursorSync: Bool) {
         guard usageTask == nil else { return }
         let repository = usageRepository
-        let forceSync = self.forceCursorSync
-        usageTask = Task { [weak self, repository, forceSync] in
-            if forceCursorSync {
-                await forceSync?()
-            }
-            let result = Result { try repository.refresh() }
-            await self?.finishUsageRefresh(result, applyResult: !Task.isCancelled)
+        let generation = runGeneration
+        usageTask = Task { [weak self, repository] in
+            let result = Result { try repository.refresh(forceCursorSync: forceCursorSync) }
+            await self?.finishUsageRefresh(result, applyResult: !Task.isCancelled, generation: generation)
         }
     }
 
     private func beginQuotaRefresh() {
         guard quotaTask == nil else { return }
         let repository = quotaRepository
+        let generation = runGeneration
         quotaTask = Task { [weak self, repository] in
-            guard !Task.isCancelled else { return }
             let result = Result { try repository.refresh() }
-            await self?.finishQuotaRefresh(result, applyResult: !Task.isCancelled)
+            await self?.finishQuotaRefresh(result, applyResult: !Task.isCancelled, generation: generation)
         }
     }
 
     private func finishUsageRefresh(
         _ result: Result<UsageRefreshResult, Error>,
-        applyResult: Bool
+        applyResult: Bool,
+        generation: UInt64
     ) async {
         defer {
             usageTask = nil
             let requested = usageRefreshRequestedWhileInFlight
             let forceCursorSync = forceCursorSyncRequestedWhileInFlight
+            let queuedGeneration = usageQueuedGeneration
             usageRefreshRequestedWhileInFlight = false
             forceCursorSyncRequestedWhileInFlight = false
-            if isRunning && (requested || forceCursorSync) {
+            usageQueuedGeneration = nil
+            if isRunning, queuedGeneration == runGeneration, (requested || forceCursorSync) {
                 beginUsageRefresh(forceCursorSync: forceCursorSync)
             }
         }
-        guard applyResult else { return }
+        guard applyResult, generation == runGeneration else { return }
         switch result {
         case .success(let refresh):
             for (provider, usage) in refresh.snapshots {
@@ -211,21 +218,26 @@ public actor RefreshCoordinator {
 
     private func finishQuotaRefresh(
         _ result: Result<QuotaRefreshResult, Error>,
-        applyResult: Bool
+        applyResult: Bool,
+        generation: UInt64
     ) async {
         defer {
             quotaTask = nil
             let requested = quotaRefreshRequestedWhileInFlight
+            let queuedGeneration = quotaQueuedGeneration
             quotaRefreshRequestedWhileInFlight = false
-            if isRunning && requested {
+            quotaQueuedGeneration = nil
+            if isRunning, queuedGeneration == runGeneration, requested {
                 beginQuotaRefresh()
             }
         }
-        guard applyResult else { return }
+        guard applyResult, generation == runGeneration else { return }
         switch result {
         case .success(let refresh):
             let refreshedAt = clock.now
-            lastQuotaSuccessfulAt = refreshedAt
+            if !refresh.snapshots.isEmpty {
+                lastQuotaSuccessfulAt = refreshedAt
+            }
             for (provider, quota) in refresh.snapshots {
                 await store.applyQuota(quota, for: provider, at: refreshedAt)
             }

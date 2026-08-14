@@ -58,8 +58,8 @@ fn ffi_json<T: Serialize + UnwindSafe>(f: impl FnOnce() -> T + UnwindSafe) -> *c
     ffi_envelope(|| Envelope::success(f()))
 }
 
-fn usage_envelope() -> Envelope<usage::UsagePayload> {
-    match usage::collect_usage_with_cursor_sync() {
+fn usage_envelope(force_cursor_sync: bool) -> Envelope<usage::UsagePayload> {
+    match usage::collect_usage_with_cursor_sync_force(force_cursor_sync) {
         Ok(collection) => {
             let mut envelope = usage_envelope_from_providers(collection.providers);
             envelope.errors.extend(collection.warnings);
@@ -102,7 +102,16 @@ fn usage_envelope_from_providers(
 /// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_usage_snapshot_json() -> *const c_char {
-    ffi_envelope(usage_envelope)
+    ffi_envelope(|| usage_envelope(false))
+}
+
+/// # Safety
+///
+/// The returned non-null pointer is Rust-owned and must be passed exactly once
+/// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
+#[no_mangle]
+pub unsafe extern "C" fn needlbar_forced_usage_snapshot_json() -> *const c_char {
+    ffi_envelope(|| usage_envelope(true))
 }
 
 /// # Safety

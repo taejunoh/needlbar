@@ -42,18 +42,38 @@ import Testing
     await coordinator.stop()
 }
 
+@Test func quotaErrorsWithoutAnyValuesDoNotSuppressTheNextPopoverRetry() async throws {
+    let now = try #require(BridgeDecoder.date("2026-08-14T10:01:01Z"))
+    let quota = QuotaRefreshSpy(result: .init(
+        snapshots: [:],
+        errors: [.claude: BridgeError(provider: "claude", code: "requiresAuthentication", message: "sign in", action: nil)]
+    ))
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota,
+        store: ProviderSnapshotStore(),
+        clock: ManualClock(now: now)
+    )
+
+    await coordinator.popoverOpened()
+    await eventually { quota.callCount == 1 }
+    await coordinator.popoverOpened()
+    await eventually { quota.callCount == 2 }
+
+    #expect(quota.callCount == 2)
+    await coordinator.stop()
+}
+
 @Test func manualRefreshMergesAnInflightUsageRequestBeforeForcedNextCycle() async throws {
     let now = try #require(BridgeDecoder.date("2026-08-14T10:00:00Z"))
     let clock = ManualClock(now: now)
     let usage = BlockingUsageRepository()
     let quota = QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:]))
-    let cursorSync = AsyncCallSpy()
     let coordinator = RefreshCoordinator(
         usageRepository: usage,
         quotaRepository: quota,
         store: ProviderSnapshotStore(),
-        clock: clock,
-        forceCursorSync: { cursorSync.recordCall() }
+        clock: clock
     )
 
     await coordinator.requestUsageRefresh()
@@ -65,9 +85,10 @@ import Testing
 
     usage.releaseFirstCall()
     await manual.value
+    await eventually { usage.callCount == 2 }
 
     #expect(usage.callCount == 2)
-    #expect(cursorSync.callCount == 1)
+    #expect(usage.forcedCallCount == 1)
     #expect(quota.callCount == 1)
     await coordinator.stop()
 }
@@ -160,14 +181,24 @@ private final class BlockingUsageRepository: UsageRepository, @unchecked Sendabl
     private let lock = NSLock()
     private let released = DispatchSemaphore(value: 0)
     private var calls = 0
+    private var forcedCalls = 0
 
     var callCount: Int {
         lock.withLock { calls }
     }
 
+    var forcedCallCount: Int {
+        lock.withLock { forcedCalls }
+    }
+
     func refresh() throws -> UsageRefreshResult {
+        try refresh(forceCursorSync: false)
+    }
+
+    func refresh(forceCursorSync: Bool) throws -> UsageRefreshResult {
         let count = lock.withLock { () -> Int in
             calls += 1
+            if forceCursorSync { forcedCalls += 1 }
             return calls
         }
         if count == 1 {
@@ -178,19 +209,6 @@ private final class BlockingUsageRepository: UsageRepository, @unchecked Sendabl
 
     func releaseFirstCall() {
         released.signal()
-    }
-}
-
-private final class AsyncCallSpy: @unchecked Sendable {
-    private let lock = NSLock()
-    private var calls = 0
-
-    var callCount: Int {
-        lock.withLock { calls }
-    }
-
-    func recordCall() {
-        lock.withLock { calls += 1 }
     }
 }
 
