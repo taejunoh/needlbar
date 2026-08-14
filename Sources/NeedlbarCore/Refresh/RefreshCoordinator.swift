@@ -69,6 +69,7 @@ public actor RefreshCoordinator {
     }
 
     public func requestUsageRefresh(generation: UInt64? = nil) {
+        guard isRunning else { return }
         if let generation, (!isRunning || generation != runGeneration) { return }
         guard usageTask == nil else {
             usageRefreshRequestedWhileInFlight = true
@@ -76,6 +77,13 @@ public actor RefreshCoordinator {
             return
         }
         beginUsageRefresh(forceCursorSync: false)
+    }
+
+    public func usageRefreshRequestHandler() -> @Sendable () async -> Void {
+        let generation = runGeneration
+        return { [weak self] in
+            await self?.requestUsageRefresh(generation: generation)
+        }
     }
 
     public func popoverOpened() {
@@ -92,13 +100,14 @@ public actor RefreshCoordinator {
     public func manualRefresh() async {
         let generation = runGeneration
         if let usageTask {
-            if !usageTaskIsForced {
+            let existingTaskIsForced = usageTaskIsForced
+            if !existingTaskIsForced {
                 forceCursorSyncRequestedWhileInFlight = true
                 usageQueuedGeneration = generation
             }
             await usageTask.value
             guard generation == runGeneration, isRunning else { return }
-            if usageTask == nil {
+            if !existingTaskIsForced, usageTask == nil {
                 beginUsageRefresh(forceCursorSync: true)
             }
         } else {
