@@ -75,7 +75,9 @@ mod tests {
     #[test]
     fn ffi_json_contains_panics_in_an_error_envelope() {
         let ptr = ffi_json(|| -> serde_json::Value { panic!("boom") });
-        let text = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+        let text = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
 
         assert_eq!(value["ok"], false);
