@@ -13,6 +13,7 @@ use needlbar_source_sync::{
 use tempfile::TempDir;
 
 const TWO_ROW_CSV: &str = "Date,Kind,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Total Tokens,Cost\n\"2026-08-01T12:00:00.000Z\",\"Included\",\"composer-2\",\"No\",\"100\",\"75\",\"25\",\"50\",\"150\",\"0.00\"\n\"2026-08-02T12:00:00.000Z\",\"On-Demand\",\"gpt-5-codex\",\"No\",\"20\",\"20\",\"5\",\"15\",\"40\",\"0.10\"\n";
+const V1_CSV: &str = "Date,Model,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Total Tokens,Cost,Cost to you\n2026-08-01,gpt-4o,100,75,25,50,150,$0.10,$0.10\n";
 
 #[derive(Clone)]
 struct FakeTransport {
@@ -108,6 +109,22 @@ fn malformed_export_does_not_replace_a_previous_tokscale_compatible_cache() {
     assert!(!malformed.synced);
     assert!(matches!(malformed.error, Some(SourceSyncError::InvalidCsv)));
     assert_eq!(fs::read(cache).expect("preserved cache"), previous);
+}
+
+#[test]
+fn pinned_parser_supported_v1_export_syncs_with_an_accurate_row_count() {
+    let home = TempDir::new().expect("fixture home");
+    write_cursor_session_in_home(home.path(), "test-session-token").expect("write session");
+    let transport = FakeTransport::new([Ok(V1_CSV.to_owned())]);
+
+    let outcome = sync_cursor_cache_with_transport_in_home(home.path(), true, &transport)
+        .expect("v1 sync outcome");
+    assert!(outcome.synced);
+    assert_eq!(outcome.rows, 1);
+    assert_eq!(
+        fs::read(cache_path(home.path())).expect("v1 cache"),
+        V1_CSV.as_bytes()
+    );
 }
 
 #[cfg(unix)]
