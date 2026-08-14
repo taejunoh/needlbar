@@ -8,9 +8,30 @@ public protocol UsageFileEventSource: AnyObject, Sendable {
 }
 
 public typealias UsageFileEventSourceFactory = @Sendable (URL) -> (any UsageFileEventSource)?
-public typealias UsageRefreshRequestCallback = @Sendable () async -> Void
 
-public actor UsageFileWatcher {
+/// A generation-bound request created by `RefreshCoordinator` for one run.
+/// `UsageFileWatcher` can submit it but cannot create an unbound refresh request.
+public struct UsageRefreshRequestToken: Sendable {
+    private let submitRequest: @Sendable () async -> Void
+
+    init(submitRequest: @escaping @Sendable () async -> Void) {
+        self.submitRequest = submitRequest
+    }
+
+    func submit() async {
+        await submitRequest()
+    }
+}
+
+/// An independently testable watcher lifecycle owned by `RefreshCoordinator`.
+public protocol UsageFileWatching: Sendable {
+    /// Installs the generation-bound receiver for this watcher run.
+    func start(using refreshRequest: UsageRefreshRequestToken) async
+    /// Invalidates all sources and pending debounce work for the current run.
+    func stop() async
+}
+
+public actor UsageFileWatcher: UsageFileWatching {
     public static let debounceInterval: Duration = .seconds(1)
 
     private let homeDirectory: URL
@@ -18,10 +39,11 @@ public actor UsageFileWatcher {
     private let cursorCacheDirectory: URL
     private let clock: any ClockLike
     private let sourceFactory: UsageFileEventSourceFactory
-    private let onUsageRefreshRequested: UsageRefreshRequestCallback
+    private let beforeRefreshDelivery: @Sendable () async -> Void
 
     private var sources: [any UsageFileEventSource] = []
     private var debounceTask: Task<Void, Never>?
+    private var refreshRequest: UsageRefreshRequestToken?
     private var debounceGeneration: UInt64 = 0
     private var runGeneration: UInt64 = 0
     private var isRunning = false
@@ -32,7 +54,7 @@ public actor UsageFileWatcher {
         cursorCacheDirectory: URL? = nil,
         clock: any ClockLike = SystemClock(),
         sourceFactory: UsageFileEventSourceFactory? = nil,
-        onUsageRefreshRequested: @escaping UsageRefreshRequestCallback
+        beforeRefreshDelivery: @escaping @Sendable () async -> Void = {}
     ) {
         self.homeDirectory = homeDirectory.standardizedFileURL
         self.environment = environment
@@ -41,7 +63,7 @@ public actor UsageFileWatcher {
             .standardizedFileURL
         self.clock = clock
         self.sourceFactory = sourceFactory ?? { DirectoryFileEventSource(directory: $0) }
-        self.onUsageRefreshRequested = onUsageRefreshRequested
+        self.beforeRefreshDelivery = beforeRefreshDelivery
     }
 
     deinit {
@@ -49,10 +71,12 @@ public actor UsageFileWatcher {
         sources.forEach { $0.stop() }
     }
 
-    public func start() {
+    /// Starts sources with a receiver token bound to the coordinator run that owns them.
+    public func start(using refreshRequest: UsageRefreshRequestToken) {
         guard !isRunning else { return }
         runGeneration &+= 1
         isRunning = true
+        self.refreshRequest = refreshRequest
         sources = Self.discoverExistingRoots(
             homeDirectory: homeDirectory,
             environment: environment,
@@ -75,6 +99,7 @@ public actor UsageFileWatcher {
         debounceTask = nil
         sources.forEach { $0.stop() }
         sources.removeAll()
+        refreshRequest = nil
     }
 
     public static func discoverExistingRoots(
@@ -131,7 +156,11 @@ public actor UsageFileWatcher {
     private func requestDebouncedRefresh(generation: UInt64, runGeneration: UInt64) async {
         guard isRunning, self.runGeneration == runGeneration, debounceGeneration == generation else { return }
         debounceTask = nil
-        await onUsageRefreshRequested()
+        guard let refreshRequest else { return }
+        await beforeRefreshDelivery()
+        // The token performs the final generation check in the coordinator. This
+        // remains necessary when a stop/restart happens while delivery is suspended.
+        await refreshRequest.submit()
     }
 }
 

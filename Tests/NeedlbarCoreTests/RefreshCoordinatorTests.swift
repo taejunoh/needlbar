@@ -93,6 +93,40 @@ import Testing
     await coordinator.stop()
 }
 
+@Test func manualRefreshBurstDoesNotStartAnotherForcedCycleAfterItsQueuedCycleCompletes() async throws {
+    let now = try #require(BridgeDecoder.date("2026-08-14T10:00:00Z"))
+    let usage = ForceRecordingUsageRepository()
+    let coordinator = RefreshCoordinator(
+        usageRepository: usage,
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        store: ProviderSnapshotStore(),
+        clock: ManualClock(now: now)
+    )
+
+    await coordinator.start()
+    await eventually { usage.callCount == 1 }
+
+    var manualRequests: [Task<Void, Never>] = []
+    for _ in 0 ..< 3 {
+        manualRequests.append(Task { await coordinator.manualRefresh() })
+        for _ in 0 ..< 10 {
+            await Task.yield()
+        }
+    }
+
+    usage.releaseFirstCall()
+    await eventually { usage.callCount == 2 }
+    await eventually { usage.completedCallCount == 2 }
+    for request in manualRequests {
+        await request.value
+    }
+    await Task.yield()
+
+    #expect(usage.callCount == 2)
+    #expect(usage.forceFlags == [false, true])
+    await coordinator.stop()
+}
+
 @Test func safetyCadenceRefreshesUsageAndQuotaEveryFiveMinutes() async throws {
     let now = try #require(BridgeDecoder.date("2026-08-14T10:00:00Z"))
     let clock = ManualClock(now: now)
@@ -108,7 +142,13 @@ import Testing
     await coordinator.start()
     await eventually { usage.callCount == 1 && quota.callCount == 1 && clock.sleeperCount == 2 }
 
-    clock.advance(by: 5 * 60)
+    clock.advance(by: 5 * 60 - 1)
+    await Task.yield()
+
+    #expect(usage.callCount == 1)
+    #expect(quota.callCount == 1)
+
+    clock.advance(by: 1)
     await eventually { usage.callCount == 2 && quota.callCount == 2 }
 
     #expect(usage.callCount == 2)
@@ -212,10 +252,54 @@ private final class BlockingUsageRepository: UsageRepository, @unchecked Sendabl
     }
 }
 
+private final class ForceRecordingUsageRepository: UsageRepository, @unchecked Sendable {
+    private let lock = NSLock()
+    private let released = DispatchSemaphore(value: 0)
+    private var calls: [Bool] = []
+    private var completedCalls = 0
+
+    var callCount: Int {
+        lock.withLock { calls.count }
+    }
+
+    var completedCallCount: Int {
+        lock.withLock { completedCalls }
+    }
+
+    var forceFlags: [Bool] {
+        lock.withLock { calls }
+    }
+
+    func refresh() throws -> UsageRefreshResult {
+        try refresh(forceCursorSync: false)
+    }
+
+    func refresh(forceCursorSync: Bool) throws -> UsageRefreshResult {
+        let count = lock.withLock { () -> Int in
+            calls.append(forceCursorSync)
+            return calls.count
+        }
+        if count == 1 {
+            released.wait()
+        }
+        lock.withLock { completedCalls += 1 }
+        return .init(snapshots: [:], errors: [:])
+    }
+
+    func releaseFirstCall() {
+        released.signal()
+    }
+}
+
 private final class ManualClock: ClockLike, @unchecked Sendable {
+    private struct Sleeper {
+        let deadline: Date
+        let continuation: CheckedContinuation<Void, Error>
+    }
+
     private let lock = NSLock()
     private var date: Date
-    private var continuations: [UUID: CheckedContinuation<Void, Error>] = [:]
+    private var continuations: [UUID: Sleeper] = [:]
 
     init(now: Date) {
         date = now
@@ -236,7 +320,10 @@ private final class ManualClock: ClockLike, @unchecked Sendable {
             try await withCheckedThrowingContinuation { continuation in
                 let cancelled = lock.withLock { () -> Bool in
                     if Task.isCancelled { return true }
-                    continuations[id] = continuation
+                    continuations[id] = .init(
+                        deadline: date.addingTimeInterval(timeInterval(for: duration)),
+                        continuation: continuation
+                    )
                     return false
                 }
                 if cancelled {
@@ -244,18 +331,24 @@ private final class ManualClock: ClockLike, @unchecked Sendable {
                 }
             }
         }, onCancel: {
-            let continuation = self.lock.withLock { self.continuations.removeValue(forKey: id) }
-            continuation?.resume(throwing: CancellationError())
+            let sleeper = self.lock.withLock { self.continuations.removeValue(forKey: id) }
+            sleeper?.continuation.resume(throwing: CancellationError())
         })
     }
 
     func advance(by interval: TimeInterval) {
         let sleepers = lock.withLock { () -> [CheckedContinuation<Void, Error>] in
             date = date.addingTimeInterval(interval)
-            defer { continuations.removeAll() }
-            return Array(continuations.values)
+            let due = continuations.filter { $0.value.deadline <= date }
+            due.keys.forEach { continuations.removeValue(forKey: $0) }
+            return due.values.map(\.continuation)
         }
         sleepers.forEach { $0.resume() }
+    }
+
+    private func timeInterval(for duration: Duration) -> TimeInterval {
+        let components = duration.components
+        return TimeInterval(components.seconds) + TimeInterval(components.attoseconds) / 1_000_000_000_000_000_000
     }
 }
 

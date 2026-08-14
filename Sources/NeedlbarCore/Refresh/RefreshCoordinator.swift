@@ -23,6 +23,7 @@ public actor RefreshCoordinator {
     private let quotaRepository: any QuotaRepository
     private let store: ProviderSnapshotStore
     private let clock: any ClockLike
+    private let usageFileWatcher: (any UsageFileWatching)?
 
     private var usageTask: Task<Void, Never>?
     private var quotaTask: Task<Void, Never>?
@@ -43,13 +44,15 @@ public actor RefreshCoordinator {
         quotaRepository: any QuotaRepository,
         store: ProviderSnapshotStore,
         clock: any ClockLike = SystemClock(),
-        lastQuotaSuccessfulAt: Date? = nil
+        lastQuotaSuccessfulAt: Date? = nil,
+        usageFileWatcher: (any UsageFileWatching)? = nil
     ) {
         self.usageRepository = usageRepository
         self.quotaRepository = quotaRepository
         self.store = store
         self.clock = clock
         self.lastQuotaSuccessfulAt = lastQuotaSuccessfulAt
+        self.usageFileWatcher = usageFileWatcher
     }
 
     deinit {
@@ -59,10 +62,19 @@ public actor RefreshCoordinator {
         quotaSafetyTask?.cancel()
     }
 
-    public func start() {
+    /// Starts refresh scheduling and installs a fresh generation-bound watcher receiver.
+    public func start() async {
         guard !isRunning else { return }
         runGeneration &+= 1
         isRunning = true
+        let generation = runGeneration
+        if let usageFileWatcher {
+            await usageFileWatcher.start(using: usageRefreshRequestToken(generation: generation))
+            guard isRunning, generation == runGeneration else {
+                await usageFileWatcher.stop()
+                return
+            }
+        }
         requestUsageRefresh()
         requestQuotaRefresh()
         scheduleSafetyRefreshes()
@@ -79,13 +91,6 @@ public actor RefreshCoordinator {
         beginUsageRefresh(forceCursorSync: false)
     }
 
-    public func usageRefreshRequestHandler() -> @Sendable () async -> Void {
-        let generation = runGeneration
-        return { [weak self] in
-            await self?.requestUsageRefresh(generation: generation)
-        }
-    }
-
     public func popoverOpened() {
         guard let lastQuotaSuccessfulAt else {
             beginQuotaRefresh()
@@ -100,14 +105,18 @@ public actor RefreshCoordinator {
     public func manualRefresh() async {
         let generation = runGeneration
         if let usageTask {
-            let existingTaskIsForced = usageTaskIsForced
-            if !existingTaskIsForced {
+            var forceRequirementIsSatisfiedOrQueued = usageTaskIsForced || forceCursorSyncRequestedWhileInFlight
+            if !forceRequirementIsSatisfiedOrQueued {
                 forceCursorSyncRequestedWhileInFlight = true
                 usageQueuedGeneration = generation
+                forceRequirementIsSatisfiedOrQueued = true
             }
             await usageTask.value
             guard generation == runGeneration, isRunning else { return }
-            if !existingTaskIsForced, usageTask == nil {
+            // A manual caller that observed or queued the shared forced cycle has
+            // met its usage requirement. The shared cycle may have completed while
+            // this caller awaited the normal refresh, so it must not start another.
+            if !forceRequirementIsSatisfiedOrQueued {
                 beginUsageRefresh(forceCursorSync: true)
             }
         } else {
@@ -122,7 +131,8 @@ public actor RefreshCoordinator {
         }
     }
 
-    public func stop() {
+    /// Stops timers and invalidates the installed watcher receiver before a later restart.
+    public func stop() async {
         runGeneration &+= 1
         isRunning = false
         usageTask?.cancel()
@@ -136,6 +146,9 @@ public actor RefreshCoordinator {
         quotaRefreshRequestedWhileInFlight = false
         usageQueuedGeneration = nil
         quotaQueuedGeneration = nil
+        if let usageFileWatcher {
+            await usageFileWatcher.stop()
+        }
     }
 
     private func scheduleSafetyRefreshes() {
@@ -167,6 +180,12 @@ public actor RefreshCoordinator {
                 guard !Task.isCancelled else { break }
                 await self?.requestQuotaRefresh(generation: generation)
             }
+        }
+    }
+
+    private func usageRefreshRequestToken(generation: UInt64) -> UsageRefreshRequestToken {
+        UsageRefreshRequestToken { [weak self] in
+            await self?.requestUsageRefresh(generation: generation)
         }
     }
 
