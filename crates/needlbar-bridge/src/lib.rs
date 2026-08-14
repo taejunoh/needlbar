@@ -48,8 +48,12 @@ fn ffi_json<T: Serialize + UnwindSafe>(f: impl FnOnce() -> T + UnwindSafe) -> *c
 }
 
 fn usage_envelope() -> Envelope<usage::UsagePayload> {
-    match usage::collect_usage() {
-        Ok(providers) => usage_envelope_from_providers(providers),
+    match usage::collect_usage_with_cursor_sync() {
+        Ok(collection) => {
+            let mut envelope = usage_envelope_from_providers(collection.providers);
+            envelope.errors.extend(collection.warnings);
+            envelope
+        }
         Err(error) => Envelope::failure(error),
     }
 }
@@ -57,7 +61,7 @@ fn usage_envelope() -> Envelope<usage::UsagePayload> {
 fn usage_envelope_from_providers(
     providers: Vec<usage::UsageProviderSnapshot>,
 ) -> Envelope<usage::UsagePayload> {
-    let errors: Vec<BridgeError> = ["claude", "codex"]
+    let errors: Vec<BridgeError> = ["claude", "codex", "cursor"]
         .into_iter()
         .filter(|provider| {
             !providers
@@ -138,7 +142,7 @@ mod tests {
 
         assert!(envelope.ok);
         assert_eq!(envelope.data.expect("partial data").providers.len(), 1);
-        assert_eq!(envelope.errors.len(), 1);
+        assert_eq!(envelope.errors.len(), 2);
         assert_eq!(envelope.errors[0].provider.as_deref(), Some("codex"));
         assert_eq!(envelope.errors[0].code, "noUsageData");
     }

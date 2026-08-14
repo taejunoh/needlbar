@@ -1,12 +1,13 @@
 use std::{collections::BTreeMap, path::Path};
 
 use chrono::{Days, Local, NaiveDate};
+use needlbar_source_sync::sync_cursor_cache;
 use serde::Serialize;
 use tokscale_core::{DailyContribution, ReportOptions};
 
 use crate::envelope::BridgeError;
 
-const PROVIDERS: [&str; 2] = ["claude", "codex"];
+const PROVIDERS: [&str; 3] = ["claude", "codex", "cursor"];
 
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +36,11 @@ pub struct UsagePayload {
     pub providers: Vec<UsageProviderSnapshot>,
 }
 
+pub struct UsageCollection {
+    pub providers: Vec<UsageProviderSnapshot>,
+    pub warnings: Vec<BridgeError>,
+}
+
 #[derive(Default)]
 struct ProviderPeriods {
     seen: bool,
@@ -46,6 +52,22 @@ struct ProviderPeriods {
 
 pub fn collect_usage() -> Result<Vec<UsageProviderSnapshot>, BridgeError> {
     collect_usage_for_home(None, true)
+}
+
+pub fn collect_usage_with_cursor_sync() -> Result<UsageCollection, BridgeError> {
+    let warnings = match sync_cursor_cache(false) {
+        Ok(outcome) => outcome
+            .error
+            .map(|_| cursor_sync_warning())
+            .into_iter()
+            .collect(),
+        Err(_) => vec![cursor_sync_warning()],
+    };
+    let providers = collect_usage()?;
+    Ok(UsageCollection {
+        providers,
+        warnings,
+    })
 }
 
 pub fn collect_usage_from_home(home: &Path) -> Result<Vec<UsageProviderSnapshot>, BridgeError> {
@@ -236,4 +258,12 @@ fn bridge_error(
         code: code.into(),
         message: message.into(),
     }
+}
+
+fn cursor_sync_warning() -> BridgeError {
+    bridge_error(
+        Some("cursor"),
+        "cursorSyncFailed",
+        "Cursor usage synchronization failed; cached usage may still be available",
+    )
 }
