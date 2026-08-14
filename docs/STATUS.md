@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 3 Claude and Codex usage integration complete
-**Next implementation task:** Task 4 — Add Cursor Usage Source Synchronization
+**Current phase:** Task 4 Cursor usage source synchronization complete
+**Next implementation task:** Task 5 — Build the Quota Domain and Claude Adapter
 
 ## Source of Truth
 
@@ -38,6 +38,12 @@ Task 2 implementation commits on `main`:
 Task 3 implementation commit on `main`:
 
 - `37846c3` — aggregate Claude and Codex usage with `tokscale-core`.
+
+Task 4 implementation commits on `main`:
+
+- `066e985` — hydrate Cursor usage before aggregation.
+- `96e49e7` — harden Cursor cache synchronization and validate exports.
+- `e8f0953` — close Cursor cache path races and support v1 CSV compatibility.
 
 ## Current CI State
 
@@ -123,9 +129,32 @@ Verification evidence:
 - Task 2 CI run [31838440815](https://github.com/openai/needlbar/actions/runs/31838440815) is green.
 - No approved-baseline deviation was made; no vendor revision was changed.
 
+## Task 4 Verification
+
+Task 4 is complete. Needlbar now hydrates the pinned Tokscale-compatible Cursor usage cache before usage aggregation without adding a Cursor transcript/parser source or changing the pinned core revision.
+
+Implementation and contract evidence:
+
+- Credentials are resolved only from `~/Library/Application Support/Needlbar/cursor-session.json`, with private `0700` session directory and `0600` session/cache/marker/temp files on Unix. The session token is never logged or copied into bridge errors.
+- The fixed request target is Cursor's proven Tokscale export endpoint, `https://cursor.com/api/dashboard/export-usage-events-csv?strategy=tokens`, with a bounded 15-second HTTP timeout and the `WorkosCursorSessionToken` cookie only.
+- The five-minute freshness gate skips transport calls for fresh cache/attempt markers; `force=true` bypasses it. Every attempt touches `usage.last-sync-attempt`.
+- Cache writes are same-directory temporary-file `write_all`/`sync_all` followed by rename and parent-directory `sync_all`, preserving the previous cache on transport, malformed-response, or durability failure.
+- CSV validation accepts the pinned parser's v1, v2, and v3 layouts, requires parser-valid rows, and rejects malformed or unsupported responses before replacement.
+- Unix path handling is descriptor-relative and no-follow: intermediate directories use `openat`/`mkdirat` with `O_DIRECTORY | O_NOFOLLOW`, leaves reject symlinks/non-regular files, and rename/cleanup/fsync remain descriptor-relative.
+- The bridge places `usage.csv` at `<fixture-home>/.config/tokscale/cursor-cache/usage.csv` and relies on the pinned core's normal `ReportOptions.home_dir` discovery; no custom cache-root fork was added.
+- Production refresh calls `sync_cursor_cache(false)` before scanning Claude, Codex, and Cursor. A sync failure becomes a provider-scoped `cursorSyncFailed` warning while valid prior Cursor cache data remains usable.
+
+Verification evidence:
+
+- Original RED: `source /Users/taejunoh/.cargo/env && cargo test -p needlbar-source-sync --test cursor_sync` and `cargo test -p needlbar-bridge --test cursor_usage_contract` exited 101 with the expected missing source-sync API/imports and missing Cursor snapshot assertion.
+- Original GREEN: `cargo fmt -p needlbar-source-sync -p needlbar-bridge -- --check`, `cargo test -p needlbar-source-sync`, `cargo test -p needlbar-bridge --test cursor_usage_contract`, `cargo test -p needlbar-bridge`, `cargo test --manifest-path vendor/tokscale-core/Cargo.toml`, and `source /Users/taejunoh/.cargo/env && make test` exited 0; the pinned engine reported 1372 passed, 0 failed, 1 ignored, and Swift passed 2 tests.
+- Hardening GREEN: source-sync tests passed 4 tests after malformed-response/no-follow validation and 5 tests after descriptor-relative traversal/v1 compatibility; bridge cursor contract passed 1 test; scoped rustfmt and `make test` passed with the pinned engine at 1372 passed, 0 failed, 1 ignored and Swift at 2 passed.
+- Task 3 CI run [31839252018](https://github.com/openai/needlbar/actions/runs/31839252018) is green.
+- No approved-baseline deviation was made and the `tokscale-core` vendor revision was not changed.
+
 ## Required Next Action
 
-Task 3 verification is complete. Begin Task 4 exactly at **Task 4: Add Cursor Usage Source Synchronization**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
+Task 4 verification is complete. Begin Task 5 exactly at **Task 5: Build the Quota Domain and Claude Adapter**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## v0.1 Constraints to Preserve
 
