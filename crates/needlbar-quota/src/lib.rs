@@ -11,4 +11,5 @@ pub use domain::{
 pub use http::RedactingHttpClient;
 pub use providers::claude::ClaudeQuotaProvider;
 pub use providers::codex::{CodexQuotaProvider, CodexQuotaSource};
+pub use providers::cursor::{CursorQuotaProvider, CursorQuotaSource};
 pub use providers::QuotaProvider;

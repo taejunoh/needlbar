@@ -7,6 +7,7 @@ use crate::{QuotaError, QuotaErrorCode};
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const ANTHROPIC_USAGE_HOST: &str = "api.anthropic.com";
 const CODEX_USAGE_HOST: &str = "chatgpt.com";
+const CURSOR_USAGE_HOST: &str = "cursor.com";
 /// Quota retry waits longer than one hour are ignored so provider input cannot
 /// suppress Needlbar's normal refresh schedule for an unbounded interval.
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(60 * 60);
@@ -36,6 +37,10 @@ impl RedactingHttpClient {
         Self::for_host(CODEX_USAGE_HOST)
     }
 
+    pub(crate) fn for_cursor_usage() -> Self {
+        Self::for_host(CURSOR_USAGE_HOST)
+    }
+
     fn for_host(allowed_host: &str) -> Self {
         let client = Client::builder()
             .timeout(REQUEST_TIMEOUT)
@@ -63,6 +68,28 @@ impl RedactingHttpClient {
         }
 
         let mut request = self.client.get(url).bearer_auth(bearer_token);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        Ok(request)
+    }
+
+    pub fn get_cookie(
+        &self,
+        endpoint: &str,
+        cookie_name: &str,
+        cookie_value: &str,
+        headers: &[(&str, &str)],
+    ) -> Result<reqwest::RequestBuilder, QuotaError> {
+        let url = Url::parse(endpoint).map_err(|_| unsafe_endpoint_error())?;
+        if (self.require_https && url.scheme() != "https")
+            || url.host_str() != Some(self.allowed_host.as_str())
+        {
+            return Err(unsafe_endpoint_error());
+        }
+        let cookie = header::HeaderValue::from_str(&format!("{cookie_name}={cookie_value}"))
+            .map_err(|_| unsafe_endpoint_error())?;
+        let mut request = self.client.get(url).header(header::COOKIE, cookie);
         for (name, value) in headers {
             request = request.header(*name, *value);
         }

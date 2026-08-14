@@ -2,7 +2,10 @@ use std::{
     fs::{self, File},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
     time::{Duration, SystemTime},
 };
 
@@ -31,6 +34,7 @@ const USAGE_CSV_ENDPOINT: &str =
 const SESSION_FILE_NAME: &str = "cursor-session.json";
 const SYNC_ATTEMPT_MARKER: &str = "usage.last-sync-attempt";
 static TEMP_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+static SESSION_STORE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, Error)]
 pub enum SourceSyncError {
@@ -65,12 +69,99 @@ pub trait CursorUsageTransport: Send + Sync {
     async fn export_usage_csv(&self, session_token: &str) -> Result<String, SourceSyncError>;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CursorSession {
+pub struct CursorSession {
     version: u8,
     session_token: String,
     created_at: String,
+}
+
+impl CursorSession {
+    pub fn new(session_token: impl Into<String>) -> Result<Self, SourceSyncError> {
+        let session_token = session_token.into();
+        if !valid_session_token(&session_token) {
+            return Err(SourceSyncError::InvalidSession);
+        }
+        Ok(Self {
+            version: 1,
+            session_token,
+            created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+        })
+    }
+
+    pub fn session_token(&self) -> &str {
+        &self.session_token
+    }
+
+    fn validate(&self) -> Result<(), SourceSyncError> {
+        if self.version != 1
+            || !valid_session_token(&self.session_token)
+            || self.created_at.is_empty()
+        {
+            return Err(SourceSyncError::InvalidSession);
+        }
+        Ok(())
+    }
+}
+
+/// Rust-owned storage shared by Cursor usage hydration and quota retrieval.
+/// It never exposes the session token through the C or Swift boundaries.
+pub struct CursorSessionStore {
+    home: PathBuf,
+}
+
+impl CursorSessionStore {
+    pub fn new() -> Result<Self, SourceSyncError> {
+        Ok(Self { home: home_dir()? })
+    }
+
+    pub fn in_home(home: &Path) -> Self {
+        Self {
+            home: home.to_path_buf(),
+        }
+    }
+
+    pub fn load(&self) -> Result<CursorSession, SourceSyncError> {
+        let _guard = SESSION_STORE_LOCK.lock().map_err(|_| {
+            SourceSyncError::Runtime("Cursor session store lock is unavailable".to_owned())
+        })?;
+        self.load_unlocked()
+    }
+
+    pub fn save(&self, session: &CursorSession) -> Result<(), SourceSyncError> {
+        session.validate()?;
+        let serialized =
+            serde_json::to_vec_pretty(session).map_err(|_| SourceSyncError::InvalidSession)?;
+        let _guard = SESSION_STORE_LOCK.lock().map_err(|_| {
+            SourceSyncError::Runtime("Cursor session store lock is unavailable".to_owned())
+        })?;
+        let directory = ensure_session_dir(&self.home)?;
+        atomic_write(&directory, SESSION_FILE_NAME, &serialized)
+    }
+
+    pub fn clear(&self) -> Result<(), SourceSyncError> {
+        let _guard = SESSION_STORE_LOCK.lock().map_err(|_| {
+            SourceSyncError::Runtime("Cursor session store lock is unavailable".to_owned())
+        })?;
+        let directory = ensure_session_dir(&self.home)?;
+        remove_private_file(&directory, SESSION_FILE_NAME)
+    }
+
+    fn load_unlocked(&self) -> Result<CursorSession, SourceSyncError> {
+        let directory = ensure_session_dir(&self.home)?;
+        let contents = match read_regular_file_no_follow(&directory, SESSION_FILE_NAME) {
+            Ok(contents) => contents,
+            Err(SourceSyncError::Io(message)) if message == "not found" => {
+                return Err(SourceSyncError::MissingSession)
+            }
+            Err(error) => return Err(error),
+        };
+        let session: CursorSession =
+            serde_json::from_slice(&contents).map_err(|_| SourceSyncError::InvalidSession)?;
+        session.validate()?;
+        Ok(session)
+    }
 }
 
 struct PrivateDirectory {
@@ -160,7 +251,8 @@ async fn sync_cursor_cache_with_transport_in_home_async<T: CursorUsageTransport 
         });
     }
 
-    let outcome = match load_cursor_session(home) {
+    let store = CursorSessionStore::in_home(home);
+    let outcome = match store.load() {
         Ok(session) => match transport.export_usage_csv(&session.session_token).await {
             Ok(csv) => match validate_cursor_csv(&csv) {
                 Ok(rows) => match atomic_write(&cache_dir, "usage.csv", csv.as_bytes()) {
@@ -189,17 +281,8 @@ pub fn write_cursor_session_in_home(
     home: &Path,
     session_token: &str,
 ) -> Result<(), SourceSyncError> {
-    if session_token.is_empty() {
-        return Err(SourceSyncError::InvalidSession);
-    }
-    let directory = ensure_session_dir(home)?;
-    let serialized = serde_json::to_vec_pretty(&CursorSession {
-        version: 1,
-        session_token: session_token.to_owned(),
-        created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
-    })
-    .map_err(|_| SourceSyncError::InvalidSession)?;
-    write_private_file(&directory, SESSION_FILE_NAME, &serialized)
+    let session = CursorSession::new(session_token)?;
+    CursorSessionStore::in_home(home).save(&session)
 }
 
 fn home_dir() -> Result<PathBuf, SourceSyncError> {
@@ -211,21 +294,12 @@ fn home_dir() -> Result<PathBuf, SourceSyncError> {
         })
 }
 
-fn load_cursor_session(home: &Path) -> Result<CursorSession, SourceSyncError> {
-    let directory = ensure_session_dir(home)?;
-    let contents = match read_regular_file_no_follow(&directory, SESSION_FILE_NAME) {
-        Ok(contents) => contents,
-        Err(SourceSyncError::Io(message)) if message == "not found" => {
-            return Err(SourceSyncError::MissingSession)
-        }
-        Err(error) => return Err(error),
-    };
-    let session: CursorSession =
-        serde_json::from_slice(&contents).map_err(|_| SourceSyncError::InvalidSession)?;
-    if session.version != 1 || session.session_token.is_empty() || session.created_at.is_empty() {
-        return Err(SourceSyncError::InvalidSession);
-    }
-    Ok(session)
+fn valid_session_token(value: &str) -> bool {
+    !value.is_empty()
+        && !value
+            .chars()
+            .any(|character| character.is_whitespace() || character.is_control())
+        && HeaderValue::from_str(&format!("WorkosCursorSessionToken={value}")).is_ok()
 }
 
 fn sync_is_fresh(cache_dir: &PrivateDirectory, cache_name: &str) -> bool {
@@ -331,6 +405,20 @@ fn write_private_file(
 
 fn touch_attempt_marker(cache_dir: &PrivateDirectory) -> Result<(), SourceSyncError> {
     write_private_file(cache_dir, SYNC_ATTEMPT_MARKER, b"")
+}
+
+#[cfg(not(unix))]
+fn remove_private_file(directory: &PrivateDirectory, name: &str) -> Result<(), SourceSyncError> {
+    let path = directory.path.join(name);
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) => {
+            ensure_regular_file_metadata(&path, &metadata)?;
+            fs::remove_file(path).map_err(io_error)?;
+            sync_directory(&directory.path)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(io_error(error)),
+    }
 }
 
 #[cfg(not(unix))]
@@ -535,9 +623,27 @@ fn read_regular_file_at(
         .ok_or_else(|| SourceSyncError::Io("not found".to_owned()))?;
     let name_c = cstring_name(name)?;
     let mut file = open_regular_at(directory, &name_c, libc::O_RDONLY, 0)?;
+    file.set_permissions(fs::Permissions::from_mode(0o600))
+        .map_err(io_error)?;
     let mut contents = Vec::new();
     file.read_to_end(&mut contents).map_err(io_error)?;
     Ok(contents)
+}
+
+#[cfg(unix)]
+fn remove_private_file(directory: &PrivateDirectory, name: &str) -> Result<(), SourceSyncError> {
+    if ensure_regular_or_missing_at(directory, name)?.is_none() {
+        return Ok(());
+    }
+    let name = cstring_name(name)?;
+    let result = unsafe { libc::unlinkat(directory.file.as_raw_fd(), name.as_ptr(), 0) };
+    if result != 0 {
+        return Err(path_open_error(
+            &directory.path.join(name.to_string_lossy().as_ref()),
+            std::io::Error::last_os_error(),
+        ));
+    }
+    directory.file.sync_all().map_err(io_error)
 }
 
 #[cfg(unix)]

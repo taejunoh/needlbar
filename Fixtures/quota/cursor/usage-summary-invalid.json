@@ -1,0 +1,11 @@
+{
+  "billingCycleEnd": "2026-09-01T00:00:00Z",
+  "individualUsage": {
+    "plan": {
+      "enabled": true,
+      "used": 101,
+      "limit": 100,
+      "remaining": 0
+    }
+  }
+}

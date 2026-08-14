@@ -7,8 +7,8 @@ use std::{
 
 use async_trait::async_trait;
 use needlbar_source_sync::{
-    sync_cursor_cache_with_transport_in_home, write_cursor_session_in_home, CursorUsageTransport,
-    SourceSyncError,
+    sync_cursor_cache_with_transport_in_home, write_cursor_session_in_home, CursorSession,
+    CursorSessionStore, CursorUsageTransport, SourceSyncError,
 };
 use tempfile::TempDir;
 
@@ -44,6 +44,74 @@ impl CursorUsageTransport for FakeTransport {
             .pop_front()
             .expect("configured fake response")
     }
+}
+
+#[test]
+fn shared_session_store_round_trips_then_clears_the_rust_owned_session() {
+    let home = TempDir::new().expect("fixture home");
+    let store = CursorSessionStore::in_home(home.path());
+    let session = CursorSession::new("test-session-token").expect("valid session token");
+
+    store.save(&session).expect("save session");
+    assert_eq!(
+        store.load().expect("load saved session").session_token(),
+        "test-session-token"
+    );
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = home
+            .path()
+            .join("Library/Application Support/Needlbar/cursor-session.json");
+        assert_eq!(
+            fs::metadata(path)
+                .expect("session metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    store.clear().expect("clear session");
+    assert!(matches!(store.load(), Err(SourceSyncError::MissingSession)));
+}
+
+#[test]
+fn shared_session_store_rejects_non_cookie_safe_session_tokens() {
+    for token in ["", "has whitespace", "line\nbreak"] {
+        assert!(matches!(
+            CursorSession::new(token),
+            Err(SourceSyncError::InvalidSession)
+        ));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn shared_session_store_restricts_a_preexisting_session_file_on_load() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = TempDir::new().expect("fixture home");
+    let store = CursorSessionStore::in_home(home.path());
+    store
+        .save(&CursorSession::new("test-session-token").unwrap())
+        .unwrap();
+    let path = home
+        .path()
+        .join("Library/Application Support/Needlbar/cursor-session.json");
+    let mut permissions = fs::metadata(&path).unwrap().permissions();
+    permissions.set_mode(0o644);
+    fs::set_permissions(&path, permissions).unwrap();
+
+    store.load().expect("load existing session");
+
+    assert_eq!(
+        fs::metadata(path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
 }
 
 #[test]

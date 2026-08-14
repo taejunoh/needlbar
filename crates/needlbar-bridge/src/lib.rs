@@ -2,13 +2,16 @@ mod envelope;
 pub mod usage;
 
 use std::{
-    ffi::CString,
+    ffi::{CStr, CString},
     os::raw::c_char,
     panic::{catch_unwind, UnwindSafe},
+    thread,
 };
 
 use chrono::{SecondsFormat, Utc};
 use envelope::{BridgeError, Envelope, SCHEMA_VERSION};
+use needlbar_quota::{CursorQuotaProvider, QuotaError, QuotaErrorCode};
+use needlbar_source_sync::{CursorSession, CursorSessionStore};
 use serde::Serialize;
 
 fn internal_error_json() -> String {
@@ -84,21 +87,49 @@ fn usage_envelope_from_providers(
     }
 }
 
+/// # Safety
+///
+/// The returned non-null pointer is Rust-owned and must be passed exactly once
+/// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_usage_snapshot_json() -> *const c_char {
     ffi_envelope(usage_envelope)
 }
 
+/// # Safety
+///
+/// The returned non-null pointer is Rust-owned and must be passed exactly once
+/// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_quota_snapshot_json() -> *const c_char {
     ffi_json(|| serde_json::json!({}))
 }
 
+/// # Safety
+///
+/// The returned non-null pointer is Rust-owned and must be passed exactly once
+/// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_diagnostics_json() -> *const c_char {
     ffi_json(|| serde_json::json!({}))
 }
 
+/// # Safety
+///
+/// `session_token` must be null or a valid NUL-terminated UTF-8 string. The
+/// returned non-null pointer is Rust-owned and must be passed exactly once to
+/// [`needlbar_free_string`]. Callers must not mutate the returned bytes.
+#[no_mangle]
+pub unsafe extern "C" fn needlbar_cursor_import_session_json(
+    session_token: *const c_char,
+) -> *const c_char {
+    ffi_envelope(|| cursor_import_envelope(session_token))
+}
+
+/// # Safety
+///
+/// A non-null pointer must have been returned by this bridge, must not have
+/// been mutated, and must be freed exactly once. Null is accepted as a no-op.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_free_string(ptr: *const c_char) {
     let _ = catch_unwind(|| {
@@ -108,6 +139,104 @@ pub unsafe extern "C" fn needlbar_free_string(ptr: *const c_char) {
             unsafe { drop(CString::from_raw(ptr.cast_mut())) };
         }
     });
+}
+
+#[derive(Serialize)]
+struct CursorImportPayload {
+    connected: bool,
+}
+
+fn cursor_import_envelope(session_token: *const c_char) -> Envelope<CursorImportPayload> {
+    let token = match unsafe { cursor_session_token_from_ffi(session_token) } {
+        Ok(token) => token,
+        Err(error) => return Envelope::failure(error),
+    };
+    let store = match CursorSessionStore::new() {
+        Ok(store) => store,
+        Err(_) => return Envelope::failure(cursor_connect_error()),
+    };
+    match import_cursor_session_with_verifier(&token, store, verify_cursor_session_token) {
+        Ok(payload) => Envelope::success(payload),
+        Err(error) => Envelope::failure(error),
+    }
+}
+
+/// The C caller must provide either null or a valid NUL-terminated UTF-8
+/// pointer. Rust can safely reject null and invalid UTF-8, but cannot make an
+/// arbitrary non-null invalid address safe to dereference.
+unsafe fn cursor_session_token_from_ffi(
+    session_token: *const c_char,
+) -> Result<String, BridgeError> {
+    if session_token.is_null() {
+        return Err(cursor_connect_error());
+    }
+    let token = unsafe { CStr::from_ptr(session_token) }
+        .to_str()
+        .map_err(|_| cursor_connect_error())?;
+    if token.is_empty()
+        || token
+            .chars()
+            .any(|character| character.is_whitespace() || character.is_control())
+    {
+        return Err(cursor_connect_error());
+    }
+    Ok(token.to_owned())
+}
+
+fn import_cursor_session_with_verifier(
+    session_token: &str,
+    store: CursorSessionStore,
+    verifier: impl FnOnce(&str) -> Result<(), BridgeError>,
+) -> Result<CursorImportPayload, BridgeError> {
+    let session = CursorSession::new(session_token).map_err(|_| cursor_connect_error())?;
+    verifier(session.session_token())?;
+    store.save(&session).map_err(|_| cursor_connect_error())?;
+    Ok(CursorImportPayload { connected: true })
+}
+
+fn verify_cursor_session_token(session_token: &str) -> Result<(), BridgeError> {
+    let session_token = session_token.to_owned();
+    let verification = thread::Builder::new()
+        .name("needlbar-cursor-verify".to_owned())
+        .spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|_| cursor_connect_error())?;
+            runtime
+                .block_on(CursorQuotaProvider::new().verify_session_token(&session_token))
+                .map_err(bridge_error_from_quota)
+        })
+        .map_err(|_| cursor_connect_error())?;
+    verification.join().map_err(|_| cursor_connect_error())?
+}
+
+fn bridge_error_from_quota(error: QuotaError) -> BridgeError {
+    let code = match error.code {
+        QuotaErrorCode::NotInstalled => "notInstalled",
+        QuotaErrorCode::RequiresAuthentication => "requiresAuthentication",
+        QuotaErrorCode::AuthenticationExpired => "authenticationExpired",
+        QuotaErrorCode::RateLimited => "rateLimited",
+        QuotaErrorCode::NetworkUnavailable => "networkUnavailable",
+        QuotaErrorCode::ServiceUnavailable | QuotaErrorCode::ProviderUnavailable => {
+            "providerUnavailable"
+        }
+        QuotaErrorCode::SchemaChanged => "schemaChanged",
+    };
+    BridgeError {
+        provider: Some("cursor".to_owned()),
+        code: code.to_owned(),
+        message: error.message.to_owned(),
+    }
+}
+
+fn cursor_connect_error() -> BridgeError {
+    BridgeError {
+        provider: Some("cursor".to_owned()),
+        code: "requiresAuthentication".to_owned(),
+        message: "Cursor authentication was not available. Use connectCursor to add a session."
+            .to_owned(),
+    }
 }
 
 #[cfg(test)]
@@ -145,5 +274,47 @@ mod tests {
         assert_eq!(envelope.errors.len(), 2);
         assert_eq!(envelope.errors[0].provider.as_deref(), Some("codex"));
         assert_eq!(envelope.errors[0].code, "noUsageData");
+    }
+
+    #[test]
+    fn cursor_import_verifies_before_storing_and_never_echoes_the_session_token() {
+        let home = tempfile::TempDir::new().unwrap();
+        let token = "cursor-secret-test-token";
+        let payload = import_cursor_session_with_verifier(
+            token,
+            CursorSessionStore::in_home(home.path()),
+            |_| Ok(()),
+        )
+        .unwrap();
+
+        let json = serde_json::to_string(&Envelope::success(payload)).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["data"], serde_json::json!({ "connected": true }));
+        assert!(!json.contains(token));
+        assert_eq!(
+            CursorSessionStore::in_home(home.path())
+                .load()
+                .unwrap()
+                .session_token(),
+            token
+        );
+    }
+
+    #[test]
+    fn cursor_import_does_not_persist_a_session_when_verification_fails() {
+        let home = tempfile::TempDir::new().unwrap();
+        let store = CursorSessionStore::in_home(home.path());
+        let result = import_cursor_session_with_verifier("cursor-secret-test-token", store, |_| {
+            Err(cursor_connect_error())
+        });
+        let Err(error) = result else {
+            panic!("failed verification must not import a session");
+        };
+
+        assert_eq!(error.code, "requiresAuthentication");
+        assert!(!home
+            .path()
+            .join("Library/Application Support/Needlbar/cursor-session.json")
+            .exists());
     }
 }

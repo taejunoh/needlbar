@@ -4,6 +4,7 @@ use crate::{ProviderQuotaSnapshot, QuotaError};
 
 pub mod claude;
 pub mod codex;
+pub mod cursor;
 
 #[async_trait]
 pub trait QuotaProvider: Send + Sync {
