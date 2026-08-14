@@ -62,11 +62,13 @@ pub struct ProviderQuotaSnapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum QuotaErrorCode {
+    NotInstalled,
     RequiresAuthentication,
     AuthenticationExpired,
     RateLimited,
     NetworkUnavailable,
     ServiceUnavailable,
+    ProviderUnavailable,
     SchemaChanged,
 }
 
