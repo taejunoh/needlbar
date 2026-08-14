@@ -232,7 +232,7 @@ Verification evidence:
 - Affected strict lint: `cargo clippy -p needlbar-source-sync -p needlbar-quota -p needlbar-bridge --all-targets -- -D warnings` passed; formatting checks passed.
 - Full project gate: `make test` passed; Rust workspace including pinned `tokscale-core` had 1372 passed, 0 failed, 1 ignored, and Swift tests passed.
 - `vendor/tokscale-core` is clean and remains pinned at `53f9eefffd3278fd430076531548f7b1f5861f9a`.
-- Remote CI remains green through Task 6 at [run 31843385394](https://github.com/taejunoh/needlbar/actions/runs/31843385394); Task 7 commits are local and their CI push is pending.
+- Task 7/documented head `fcc5d22` is pushed and green in [run 31845316146](https://github.com/taejunoh/needlbar/actions/runs/31845316146).
 - No approved-design deviation was made; all prior v0.1 constraints remain unchanged.
 
 ## Required Next Action
