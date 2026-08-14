@@ -30,5 +30,13 @@ jobs:
           cargo --version
           rustc --version
 
+      - name: Select Swift 6 toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select --switch /Applications/Xcode_16.2.app
+          xcodebuild -version
+          swift --version
+
       - name: Test workspace
         run: make test
