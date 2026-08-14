@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 6 Codex quota adapter with App-Server RPC fallback complete
-**Next implementation task:** Task 7 — Add Cursor Quota and Explicit Connect Session Import
+**Current phase:** Task 7 Cursor quota and explicit connect session import complete
+**Next implementation task:** Task 8 — Wire Aggregate Quota Payloads Through the Bridge
 
 ## Source of Truth
 
@@ -56,6 +56,11 @@ Task 6 implementation commits on `main`:
 - `c77ed8d` — add the Codex quota adapter with RPC fallback.
 - `86f374f` — harden Codex RPC fallback transport and cleanup.
 - `37b8aaf` — validate Codex RPC request and response contracts.
+
+Task 7 implementation commits on `main`:
+
+- `ecf6d32` — add Cursor quota and explicit connection flow.
+- `20e02b6` — harden Cursor session import and source sync.
 
 ## Current CI State
 
@@ -207,9 +212,32 @@ Verification evidence:
 - Task 6/documented head `7aada1a` is pushed and green in [run 31843385394](https://github.com/taejunoh/needlbar/actions/runs/31843385394).
 - No approved-design deviation was made; all prior v0.1 constraints and the pinned `tokscale-core` revision remain unchanged.
 
+## Task 7 Verification
+
+Task 7 is complete and review-approved. The review has no open findings; the only deferred minor is logger-capture coverage, which is non-blocking because the bridge has no logging path.
+
+Implementation and contract evidence:
+
+- `CursorSessionStore` is shared by source sync and quota, remains Rust-owned, preserves descriptor-relative no-follow handling, and performs atomic durable saves with private `0600` permissions and safe clear/load behavior.
+- Cursor quota uses the bounded `https://cursor.com/api/usage-summary` request with HTTPS/host validation, redirects disabled, a 15-second timeout, the session cookie only, and the existing 64 KiB response cap. Usage-source transport is likewise bounded and preserves the last valid cache on failure.
+- Cursor windows are stable `cursor.plan` and `cursor.onDemand`; absent billing-cycle end remains `resetsAt: null`, while malformed/contradictory values fail closed as `schemaChanged`.
+- Missing/invalid sessions and 401/403 errors carry structured serialized `action: "connectCursor"`; `BridgeError { provider, code, message }` remains unchanged.
+- `needlbar_cursor_import_session_json` validates null/UTF-8/empty/whitespace/control input, verifies before saving, contains panics, returns only `{ "connected": true }`, and the ABI/redaction tests prove the token is absent from JSON/debug/captured-log surfaces.
+
+Verification evidence:
+
+- Source-sync suite: `cargo test -p needlbar-source-sync` — 12 tests passed (2 unit + 10 integration).
+- Cursor quota suite: `cargo test -p needlbar-quota --test cursor` — 7 passed.
+- Bridge suite: `cargo test -p needlbar-bridge` — 9 passed across unit and integration targets.
+- Affected strict lint: `cargo clippy -p needlbar-source-sync -p needlbar-quota -p needlbar-bridge --all-targets -- -D warnings` passed; formatting checks passed.
+- Full project gate: `make test` passed; Rust workspace including pinned `tokscale-core` had 1372 passed, 0 failed, 1 ignored, and Swift tests passed.
+- `vendor/tokscale-core` is clean and remains pinned at `53f9eefffd3278fd430076531548f7b1f5861f9a`.
+- Remote CI remains green through Task 6 at [run 31843385394](https://github.com/taejunoh/needlbar/actions/runs/31843385394); Task 7 commits are local and their CI push is pending.
+- No approved-design deviation was made; all prior v0.1 constraints remain unchanged.
+
 ## Required Next Action
 
-Task 6 verification is complete. Begin Task 7 exactly at **Task 7: Add Cursor Quota and Explicit Connect Session Import**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
+Task 7 verification is complete. Begin Task 8 exactly at **Task 8: Wire Aggregate Quota Payloads Through the Bridge**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## v0.1 Constraints to Preserve
 
