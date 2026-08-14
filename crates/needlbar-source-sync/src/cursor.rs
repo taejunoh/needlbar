@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, SystemTime},
@@ -32,6 +32,8 @@ pub enum SourceSyncError {
     HttpStatus(u16),
     #[error("Cursor usage export was not CSV")]
     InvalidCsv,
+    #[error("Cursor sync refused an unsafe path: {0}")]
+    UnsafePath(String),
     #[error("Cursor sync I/O failed: {0}")]
     Io(String),
     #[error("Cursor sync runtime is unavailable: {0}")]
@@ -96,7 +98,7 @@ impl CursorUsageTransport for ReqwestCursorUsageTransport {
             .text()
             .await
             .map_err(|error| SourceSyncError::Transport(error.to_string()))?;
-        if !csv.starts_with("Date,") {
+        if validate_cursor_csv(&csv).is_err() {
             return Err(SourceSyncError::InvalidCsv);
         }
         Ok(csv)
@@ -128,13 +130,10 @@ async fn sync_cursor_cache_with_transport_in_home_async<T: CursorUsageTransport 
     force: bool,
     transport: &T,
 ) -> Result<CursorSyncOutcome, SourceSyncError> {
-    let cache_path = cursor_cache_path(home);
-    let cache_dir = cache_path
-        .parent()
-        .expect("Cursor cache path always has a parent");
-    ensure_private_dir(cache_dir)?;
+    let cache_dir = ensure_cache_dir(home)?;
+    let cache_path = cache_dir.join("usage.csv");
 
-    if !force && sync_is_fresh(cache_dir, &cache_path) {
+    if !force && sync_is_fresh(&cache_dir, &cache_path) {
         return Ok(CursorSyncOutcome {
             synced: false,
             rows: 0,
@@ -145,12 +144,15 @@ async fn sync_cursor_cache_with_transport_in_home_async<T: CursorUsageTransport 
 
     let outcome = match load_cursor_session(home) {
         Ok(session) => match transport.export_usage_csv(&session.session_token).await {
-            Ok(csv) => match atomic_write(&cache_path, csv.as_bytes()) {
-                Ok(()) => CursorSyncOutcome {
-                    synced: true,
-                    rows: count_csv_rows(&csv),
-                    cache_path: cache_path.clone(),
-                    error: None,
+            Ok(csv) => match validate_cursor_csv(&csv) {
+                Ok(rows) => match atomic_write(&cache_path, csv.as_bytes()) {
+                    Ok(()) => CursorSyncOutcome {
+                        synced: true,
+                        rows,
+                        cache_path: cache_path.clone(),
+                        error: None,
+                    },
+                    Err(error) => failed_outcome(&cache_path, error),
                 },
                 Err(error) => failed_outcome(&cache_path, error),
             },
@@ -159,7 +161,7 @@ async fn sync_cursor_cache_with_transport_in_home_async<T: CursorUsageTransport 
         Err(error) => failed_outcome(&cache_path, error),
     };
 
-    if let Err(error) = touch_attempt_marker(cache_dir) {
+    if let Err(error) = touch_attempt_marker(&cache_dir) {
         return Ok(failed_outcome(&cache_path, error));
     }
     Ok(outcome)
@@ -172,8 +174,7 @@ pub fn write_cursor_session_in_home(
     if session_token.is_empty() {
         return Err(SourceSyncError::InvalidSession);
     }
-    let directory = session_dir(home);
-    ensure_private_dir(&directory)?;
+    let directory = ensure_session_dir(home)?;
     let serialized = serde_json::to_vec_pretty(&CursorSession {
         version: 1,
         session_token: session_token.to_owned(),
@@ -196,18 +197,14 @@ fn session_dir(home: &Path) -> PathBuf {
     home.join("Library/Application Support/Needlbar")
 }
 
-fn cursor_cache_path(home: &Path) -> PathBuf {
-    home.join(".config/tokscale/cursor-cache/usage.csv")
-}
-
 fn load_cursor_session(home: &Path) -> Result<CursorSession, SourceSyncError> {
-    let contents = fs::read(session_dir(home).join(SESSION_FILE_NAME)).map_err(|error| {
-        if error.kind() == std::io::ErrorKind::NotFound {
-            SourceSyncError::MissingSession
-        } else {
-            SourceSyncError::Io(error.to_string())
+    let contents = match read_regular_file_no_follow(&session_dir(home).join(SESSION_FILE_NAME)) {
+        Ok(contents) => contents,
+        Err(SourceSyncError::Io(message)) if message == "not found" => {
+            return Err(SourceSyncError::MissingSession)
         }
-    })?;
+        Err(error) => return Err(error),
+    };
     let session: CursorSession =
         serde_json::from_slice(&contents).map_err(|_| SourceSyncError::InvalidSession)?;
     if session.version != 1 || session.session_token.is_empty() || session.created_at.is_empty() {
@@ -221,7 +218,13 @@ fn sync_is_fresh(cache_dir: &Path, cache_path: &Path) -> bool {
 }
 
 fn is_fresh(path: &Path) -> bool {
-    let Ok(modified) = path.metadata().and_then(|metadata| metadata.modified()) else {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+        return false;
+    }
+    let Ok(modified) = metadata.modified() else {
         return false;
     };
     match SystemTime::now().duration_since(modified) {
@@ -239,19 +242,47 @@ fn failed_outcome(cache_path: &Path, error: SourceSyncError) -> CursorSyncOutcom
     }
 }
 
-fn count_csv_rows(csv: &str) -> usize {
-    csv.lines()
-        .skip(1)
-        .filter(|line| !line.trim().is_empty())
-        .count()
+fn ensure_session_dir(home: &Path) -> Result<PathBuf, SourceSyncError> {
+    ensure_private_dir_under(home, &["Library", "Application Support", "Needlbar"])
 }
 
-fn ensure_private_dir(path: &Path) -> Result<(), SourceSyncError> {
-    fs::create_dir_all(path).map_err(io_error)?;
+fn ensure_cache_dir(home: &Path) -> Result<PathBuf, SourceSyncError> {
+    ensure_private_dir_under(home, &[".config", "tokscale", "cursor-cache"])
+}
+
+fn ensure_private_dir_under(home: &Path, components: &[&str]) -> Result<PathBuf, SourceSyncError> {
+    ensure_directory(home)?;
+    let mut current = home.to_path_buf();
+    for component in components {
+        current.push(component);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) => ensure_directory_metadata(&current, &metadata)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(&current).map_err(io_error)?;
+                let metadata = fs::symlink_metadata(&current).map_err(io_error)?;
+                ensure_directory_metadata(&current, &metadata)?;
+            }
+            Err(error) => return Err(io_error(error)),
+        }
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
+        open_directory_no_follow(&current)?
+            .set_permissions(fs::Permissions::from_mode(0o700))
+            .map_err(io_error)?;
+    }
+    Ok(current)
+}
+
+fn ensure_directory(path: &Path) -> Result<(), SourceSyncError> {
+    let metadata = fs::symlink_metadata(path).map_err(io_error)?;
+    ensure_directory_metadata(path, &metadata)
+}
+
+fn ensure_directory_metadata(path: &Path, metadata: &fs::Metadata) -> Result<(), SourceSyncError> {
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_dir() {
+        return Err(SourceSyncError::UnsafePath(path.display().to_string()));
     }
     Ok(())
 }
@@ -270,6 +301,8 @@ fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), SourceSyncError> {
     let parent = path
         .parent()
         .ok_or_else(|| SourceSyncError::Io("invalid Cursor cache path".to_owned()))?;
+    ensure_directory(parent)?;
+    ensure_regular_or_missing(path)?;
     let sequence = TEMP_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let temp_path = parent.join(format!(
         ".needlbar-usage-{}-{}.tmp",
@@ -282,12 +315,14 @@ fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), SourceSyncError> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
+            options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
         }
         let mut file = options.open(&temp_path).map_err(io_error)?;
         file.write_all(contents).map_err(io_error)?;
         file.sync_all().map_err(io_error)?;
-        fs::rename(&temp_path, path).map_err(io_error)
+        ensure_regular_or_missing(path)?;
+        fs::rename(&temp_path, path).map_err(io_error)?;
+        sync_directory(parent)
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temp_path);
@@ -296,20 +331,179 @@ fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), SourceSyncError> {
 }
 
 fn private_open(path: &Path, truncate: bool) -> Result<File, SourceSyncError> {
+    ensure_regular_or_missing(path)?;
     let mut options = OpenOptions::new();
     options.write(true).create(true).truncate(truncate);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
     }
     let file = options.open(path).map_err(io_error)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(io_error)?;
+        file.set_permissions(fs::Permissions::from_mode(0o600))
+            .map_err(io_error)?;
     }
     Ok(file)
+}
+
+fn read_regular_file_no_follow(path: &Path) -> Result<Vec<u8>, SourceSyncError> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            SourceSyncError::Io("not found".to_owned())
+        } else {
+            io_error(error)
+        }
+    })?;
+    ensure_regular_file_metadata(path, &metadata)?;
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    let mut file = options.open(path).map_err(io_error)?;
+    ensure_regular_file_metadata(path, &file.metadata().map_err(io_error)?)?;
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents).map_err(io_error)?;
+    Ok(contents)
+}
+
+fn ensure_regular_or_missing(path: &Path) -> Result<(), SourceSyncError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => ensure_regular_file_metadata(path, &metadata),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(io_error(error)),
+    }
+}
+
+fn ensure_regular_file_metadata(
+    path: &Path,
+    metadata: &fs::Metadata,
+) -> Result<(), SourceSyncError> {
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+        return Err(SourceSyncError::UnsafePath(path.display().to_string()));
+    }
+    Ok(())
+}
+
+fn sync_directory(path: &Path) -> Result<(), SourceSyncError> {
+    open_directory_no_follow(path)?.sync_all().map_err(io_error)
+}
+
+fn open_directory_no_follow(path: &Path) -> Result<File, SourceSyncError> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW);
+    }
+    options.open(path).map_err(io_error)
+}
+
+fn validate_cursor_csv(csv: &str) -> Result<usize, SourceSyncError> {
+    let mut lines = csv.lines();
+    let header = lines.next().ok_or(SourceSyncError::InvalidCsv)?;
+    let header_fields = parse_csv_line(header).ok_or(SourceSyncError::InvalidCsv)?;
+    let layout = cursor_csv_layout(&header_fields).ok_or(SourceSyncError::InvalidCsv)?;
+    let rows = lines
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| parse_csv_line(line))
+        .filter(|fields| fields.len() >= layout.minimum_fields)
+        .filter(|fields| {
+            let date = fields[0].trim().trim_matches('"');
+            let model = fields[layout.model_index].trim().trim_matches('"');
+            valid_cursor_date(date) && !model.is_empty()
+        })
+        .count();
+    (rows > 0)
+        .then_some(rows)
+        .ok_or(SourceSyncError::InvalidCsv)
+}
+
+struct CursorCsvLayout {
+    model_index: usize,
+    minimum_fields: usize,
+}
+
+fn cursor_csv_layout(header: &[&str]) -> Option<CursorCsvLayout> {
+    let field = |index: usize| header_field(header, index);
+    let common = |model_index| {
+        field(0) == Some("Date")
+            && field(model_index) == Some("Model")
+            && field(model_index + 2) == Some("Input (w/ Cache Write)")
+            && field(model_index + 3) == Some("Input (w/o Cache Write)")
+            && field(model_index + 4) == Some("Cache Read")
+            && field(model_index + 5) == Some("Output Tokens")
+            && field(model_index + 6) == Some("Total Tokens")
+            && field(model_index + 7) == Some("Cost")
+    };
+    if header.len() >= 12 && field(3) == Some("Kind") && field(5) == Some("Max Mode") && common(4) {
+        Some(CursorCsvLayout {
+            model_index: 4,
+            minimum_fields: 12,
+        })
+    } else if header.len() >= 10
+        && field(1) == Some("Kind")
+        && field(3) == Some("Max Mode")
+        && common(2)
+    {
+        Some(CursorCsvLayout {
+            model_index: 2,
+            minimum_fields: 10,
+        })
+    } else if header.len() >= 8 && common(1) {
+        Some(CursorCsvLayout {
+            model_index: 1,
+            minimum_fields: 8,
+        })
+    } else {
+        None
+    }
+}
+
+fn header_field<'a>(header: &'a [&'a str], index: usize) -> Option<&'a str> {
+    header
+        .get(index)
+        .map(|value| value.trim().trim_matches('"'))
+}
+
+fn parse_csv_line(line: &str) -> Option<Vec<&str>> {
+    let mut fields = Vec::new();
+    let mut start = 0;
+    let mut in_quotes = false;
+    for (index, byte) in line.as_bytes().iter().copied().enumerate() {
+        match byte {
+            b'"' => in_quotes = !in_quotes,
+            b',' if !in_quotes => {
+                fields.push(&line[start..index]);
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    (!in_quotes).then(|| {
+        fields.push(&line[start..]);
+        fields
+    })
+}
+
+fn valid_cursor_date(value: &str) -> bool {
+    use chrono::NaiveDateTime;
+
+    [
+        "%Y-%m-%dT%H:%M:%S%.3fZ",
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S%.3f",
+        "%Y-%m-%dT%H:%M:%S",
+    ]
+    .iter()
+    .any(|format| NaiveDateTime::parse_from_str(value, format).is_ok())
+        || chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok()
 }
 
 fn io_error(error: std::io::Error) -> SourceSyncError {
