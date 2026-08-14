@@ -2,7 +2,7 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 1 bootstrap verification
+**Current phase:** Task 1 bootstrap verified
 **Next implementation task:** Task 2 — Rust JSON envelope and memory-safe C ABI
 
 ## Source of Truth
@@ -21,48 +21,29 @@ Task 1 bootstrap files exist on `main`, including:
 - Rust workspace with `needlbar-bridge`, `needlbar-source-sync`, and `needlbar-quota` crates.
 - Pinned `vendor/tokscale-core` submodule.
 - Root `Makefile` and `scripts/build-rust.sh`.
+- Tracked `Cargo.lock` for deterministic Rust dependency resolution.
 - Minimal Swift and Rust bootstrap sources/tests.
 - GitHub Actions CI on `macos-14` running `make test`.
 
-Latest known bootstrap commit before this status document: `6c4e7a5bc35cdb8f1b079aae5354522c7de43dd4` (`ci: add bootstrap verification workflow`).
+Task 1 continuation commits on `main`:
+
+- `dea34b2` — select Xcode 16.2 for Swift tests on CI.
+- `a7ca67a` — track `Cargo.lock`.
 
 ## Current CI State
 
-GitHub Actions CI run #1 (`31805524416`) completed with **failure**.
+Task 1 is verified green.
 
-The failure is in the Swift portion of `make test`: the package manifest declares Swift tools 6.0, while the selected `macos-14` runner currently invokes Swift 5.10.
-
-Known manifest line:
-
-```swift
-// swift-tools-version: 6.0
-```
-
-Known error:
-
-```text
-package 'needlbar' is using Swift tools version 6.0.0
-but the installed version is 5.10.0
-```
-
-Rust compilation/tests completed before that Swift failure; the current blocker is the Swift toolchain mismatch, not a known Rust test failure.
+- Local `make test` passed on Swift 6.3.3 and Rust 1.97.1.
+- `Cargo.lock` is tracked for deterministic Rust dependency resolution.
+- GitHub Actions run [31837456920](https://github.com/openai/needlbar/actions/runs/31837456920) succeeded in 3m49s.
+- CI retains `runs-on: macos-14` and deliberately selects `/Applications/Xcode_16.2.app` before running tests.
+- `Package.swift` remains on Swift tools version 6.0 with a macOS 14 deployment target.
+- No approved-baseline deviation was made.
 
 ## Required Next Action
 
-Do not begin Task 2 until Task 1 has a green project-wide verification.
-
-Resolve the mismatch deliberately. Two conceptual options are:
-
-1. Configure CI to use a Swift 6-capable toolchain while preserving the implementation plan's Swift 6 baseline.
-2. Lower `swift-tools-version` only if Swift 5.10 compatibility is intentionally accepted; document this as a baseline deviation here.
-
-Whichever path is chosen, verify with:
-
-```bash
-make test
-```
-
-Then push and confirm the GitHub Actions run is green.
+Task 1 verification is complete. Begin Task 2 exactly at the Rust JSON envelope and memory-safe C ABI work described below; preserve the approved Swift 6.0 baseline and macOS 14 deployment target.
 
 ## Task 2 Continuation Point
 
