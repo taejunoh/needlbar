@@ -71,7 +71,6 @@ public actor RefreshCoordinator {
         if let usageFileWatcher {
             await usageFileWatcher.start(using: usageRefreshRequestToken(generation: generation))
             guard isRunning, generation == runGeneration else {
-                await usageFileWatcher.stop()
                 return
             }
         }

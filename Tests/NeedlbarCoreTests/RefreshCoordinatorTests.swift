@@ -179,6 +179,41 @@ import Testing
     await coordinator.stop()
 }
 
+@Test func staleWatcherStartupCannotStopTheWatcherInstalledByANewerRun() async throws {
+    let now = try #require(BridgeDecoder.date("2026-08-14T10:00:00Z"))
+    let usage = UsageRefreshSpy(result: .init(snapshots: [:], errors: [:]))
+    let watcher = DelayedUsageFileWatcher()
+    let coordinator = RefreshCoordinator(
+        usageRepository: usage,
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        store: ProviderSnapshotStore(),
+        clock: ManualClock(now: now),
+        usageFileWatcher: watcher
+    )
+
+    let firstStart = Task { await coordinator.start() }
+    await eventuallyAsync { await watcher.firstStartIsSuspended }
+
+    await coordinator.stop()
+    await coordinator.start()
+    await eventually { usage.callCount == 1 }
+
+    await watcher.resumeFirstStart()
+    await firstStart.value
+
+    let lifecycleBeforeEvent = await watcher.lifecycle
+    #expect(lifecycleBeforeEvent == ["start-1", "stop", "start-2"])
+    #expect(await watcher.isActive)
+
+    await watcher.sendEvent()
+    await eventually { usage.callCount == 2 }
+
+    #expect(usage.callCount == 2)
+    let lifecycleAfterEvent = await watcher.lifecycle
+    #expect(lifecycleAfterEvent == ["start-1", "stop", "start-2"])
+    await coordinator.stop()
+}
+
 private final class UsageRefreshSpy: UsageRepository, @unchecked Sendable {
     private let lock = NSLock()
     private let result: UsageRefreshResult
@@ -291,6 +326,52 @@ private final class ForceRecordingUsageRepository: UsageRepository, @unchecked S
     }
 }
 
+private actor DelayedUsageFileWatcher: UsageFileWatching {
+    private var activeRefreshRequest: UsageRefreshRequestToken?
+    private var firstStartContinuation: CheckedContinuation<Void, Never>?
+    private var starts = 0
+    private var lifecycleCalls: [String] = []
+
+    var firstStartIsSuspended: Bool {
+        firstStartContinuation != nil
+    }
+
+    var isActive: Bool {
+        activeRefreshRequest != nil
+    }
+
+    var lifecycle: [String] {
+        lifecycleCalls
+    }
+
+    func start(using refreshRequest: UsageRefreshRequestToken) async {
+        starts += 1
+        lifecycleCalls.append("start-\(starts)")
+        activeRefreshRequest = refreshRequest
+        guard starts == 1 else { return }
+        await withCheckedContinuation { continuation in
+            firstStartContinuation = continuation
+        }
+    }
+
+    func stop() {
+        lifecycleCalls.append("stop")
+        activeRefreshRequest = nil
+    }
+
+    func resumeFirstStart() {
+        let continuation = firstStartContinuation
+        firstStartContinuation = nil
+        continuation?.resume()
+    }
+
+    func sendEvent() async {
+        if let activeRefreshRequest {
+            await activeRefreshRequest.submit()
+        }
+    }
+}
+
 private final class ManualClock: ClockLike, @unchecked Sendable {
     private struct Sleeper {
         let deadline: Date
@@ -357,6 +438,15 @@ private func eventually(
     yields: Int = 100
 ) async {
     for _ in 0 ..< yields where !condition() {
+        await Task.yield()
+    }
+}
+
+private func eventuallyAsync(
+    _ condition: @escaping @Sendable () async -> Bool,
+    yields: Int = 100
+) async {
+    for _ in 0 ..< yields where !(await condition()) {
         await Task.yield()
     }
 }

@@ -53,3 +53,11 @@ RED: `manualRefreshBurstDoesNotStartAnotherForcedCycleAfterItsQueuedCycleComplet
 GREEN: each manual waiter records whether a forced cycle was already active or queued before awaiting, and only an unsatisfied requirement may start a forced request. `RefreshCoordinator` now owns an injected `UsageFileWatching` component: every `start()` gives it a fresh, generation-bound `UsageRefreshRequestToken`; `stop()` invalidates/stops it; a restart receives a new token. `UsageFileWatcher` cannot start without that token. The final receiver rechecks the coordinator generation after an old debounced watcher delivery is deliberately paused across stop/restart. Watcher and coordinator API comments document the lifecycle.
 
 The controllable clocks now track per-sleeper deadlines: tests prove the safety cadence does not fire at 299 seconds and the debounce does not fire at 0.999 seconds. Focused results: refresh 7, watcher 5; full Swift 20. Stability checks ran each new race test 20 times successfully. Final `make test` and diff/vendor verification follow this report update.
+
+## Fix round 5
+
+RED: `staleWatcherStartupCannotStopTheWatcherInstalledByANewerRun` held G1 inside `UsageFileWatching.start`, then stopped and restarted the coordinator so G2 installed its receiver. Resuming G1 reproduced the bug: the stale continuation invoked a second shared watcher `stop`, producing lifecycle `start-1, stop, start-2, stop`; G2 became inactive and its event did not request the expected second usage refresh.
+
+GREEN: after `stop()` has invalidated G1 and stopped its watcher, a stale G1 `start()` continuation now only returns. It never stops the shared watcher, so G2 remains active and a G2 event requests exactly one additional usage refresh. The regression test asserts lifecycle order/count and the observable G2 refresh behavior.
+
+Verification: the focused race test passed 20 consecutive runs; `swift test --filter RefreshCoordinatorTests` passed 8 tests; `swift test --filter UsageFileWatcherTests` passed 5 tests; full `swift test` passed 21 tests; and a fresh `source /Users/taejunoh/.cargo/env && make test` passed.
