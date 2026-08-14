@@ -176,7 +176,7 @@ Verification evidence:
 - Scoped lint: `cargo clippy -p needlbar-quota --all-targets -- -D warnings` passed after preserving the separate Task 4 hygiene commit `1cef31c`.
 - Full project gate: `PATH="$HOME/.cargo/bin:$PATH" make test` passed; Rust workspace including pinned `tokscale-core` had 1372 passed, 0 failed, 1 ignored, and Swift had 2 passed.
 - Formatting and `git diff --check` passed.
-- Remote CI is green through Task 4 at [run 31840696364](https://github.com/taejunoh/needlbar/actions/runs/31840696364); Task 5 commits are local and their CI push is pending.
+- Task 5/documented head `e0d3da0` is pushed and green in [run 31841873719](https://github.com/taejunoh/needlbar/actions/runs/31841873719).
 - No approved-design deviation was made; the pinned `tokscale-core` revision and all prior v0.1 constraints are unchanged.
 
 ## Required Next Action
