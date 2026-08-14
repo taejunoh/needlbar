@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 4 Cursor usage source synchronization complete
-**Next implementation task:** Task 5 — Build the Quota Domain and Claude Adapter
+**Current phase:** Task 5 quota domain and Claude adapter complete
+**Next implementation task:** Task 6 — Add Codex Quota with App-Server RPC Fallback
 
 ## Source of Truth
 
@@ -44,6 +44,12 @@ Task 4 implementation commits on `main`:
 - `066e985` — hydrate Cursor usage before aggregation.
 - `96e49e7` — harden Cursor cache synchronization and validate exports.
 - `e8f0953` — close Cursor cache path races and support v1 CSV compatibility.
+- `1cef31c` — separate mechanical source-sync Clippy hygiene.
+
+Task 5 implementation commits on `main`:
+
+- `cf25a5f` — add the shared quota domain and Claude adapter.
+- `7526171` — harden Claude quota/auth/HTTP boundaries.
 
 ## Current CI State
 
@@ -152,9 +158,30 @@ Verification evidence:
 - Task 3 CI run [31839252018](https://github.com/openai/needlbar/actions/runs/31839252018) is green.
 - No approved-baseline deviation was made and the `tokscale-core` vendor revision was not changed.
 
+## Task 5 Verification
+
+Task 5 is complete and review-approved. The shared quota domain and Claude adapter are implemented without Codex/Cursor quota code, browser scraping, Keychain access, login prompts, token-history parsing, bridge changes, or presentation changes.
+
+Implementation and contract evidence:
+
+- The quota domain provides `ProviderId`, checked `QuotaWindow`, `ProviderQuotaSnapshot`, `QuotaErrorCode`, `QuotaError`, and the async `QuotaProvider` trait. Percentages are finite and normalized to `0...100`; invalid values return `schemaChanged` without clamping.
+- Claude credential precedence is exact: `CLAUDE_CONFIG_DIR/.credentials.json` when configured, otherwise `~/.claude/.credentials.json`. Background refresh uses existing file OAuth only, never Keychain/browser scraping; missing or unusable credentials return `requiresAuthentication`, and known expired evidence returns `authenticationExpired`.
+- The bounded/redacting HTTP client uses the Anthropic OAuth usage endpoint with a 15-second timeout, validates the allowed HTTPS host before attaching bearer authorization, does not follow redirects, limits response bodies to 64 KiB, bounds `Retry-After`, and never exposes fixture tokens or response bodies in errors.
+- Sanitized Claude fixtures produce stable `claude.session` and `claude.weekly` windows; malformed, missing-reset, and out-of-range payloads fail safely as `schemaChanged`.
+
+Verification evidence:
+
+- Claude integration suite: `cargo test -p needlbar-quota --test claude` — 11 passed, 0 failed.
+- Quota package: `cargo test -p needlbar-quota` — 7 unit tests and 11 Claude integration tests passed.
+- Scoped lint: `cargo clippy -p needlbar-quota --all-targets -- -D warnings` passed after preserving the separate Task 4 hygiene commit `1cef31c`.
+- Full project gate: `PATH="$HOME/.cargo/bin:$PATH" make test` passed; Rust workspace including pinned `tokscale-core` had 1372 passed, 0 failed, 1 ignored, and Swift had 2 passed.
+- Formatting and `git diff --check` passed.
+- Remote CI is green through Task 4 at [run 31840696364](https://github.com/taejunoh/needlbar/actions/runs/31840696364); Task 5 commits are local and their CI push is pending.
+- No approved-design deviation was made; the pinned `tokscale-core` revision and all prior v0.1 constraints are unchanged.
+
 ## Required Next Action
 
-Task 4 verification is complete. Begin Task 5 exactly at **Task 5: Build the Quota Domain and Claude Adapter**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
+Task 5 verification is complete. Begin Task 6 exactly at **Task 6: Add Codex Quota with App-Server RPC Fallback**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## v0.1 Constraints to Preserve
 
