@@ -733,7 +733,7 @@ fn validate_cursor_csv(csv: &str) -> Result<usize, SourceSyncError> {
     let layout = cursor_csv_layout(&header_fields).ok_or(SourceSyncError::InvalidCsv)?;
     let rows = lines
         .filter(|line| !line.trim().is_empty())
-        .filter_map(|line| parse_csv_line(line))
+        .filter_map(parse_csv_line)
         .filter(|fields| fields.len() >= layout.minimum_fields)
         .filter(|fields| {
             let date = fields[0].trim().trim_matches('"');
