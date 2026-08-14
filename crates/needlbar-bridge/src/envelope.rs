@@ -9,6 +9,8 @@ pub struct BridgeError {
     pub provider: Option<String>,
     pub code: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

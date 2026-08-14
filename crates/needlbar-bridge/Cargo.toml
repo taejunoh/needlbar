@@ -18,4 +18,5 @@ needlbar-source-sync = { path = "../needlbar-source-sync" }
 needlbar-quota = { path = "../needlbar-quota" }
 
 [dev-dependencies]
+async-trait.workspace = true
 tempfile.workspace = true

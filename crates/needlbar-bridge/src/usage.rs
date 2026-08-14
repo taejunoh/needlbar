@@ -257,6 +257,7 @@ fn bridge_error(
         provider: provider.map(ToOwned::to_owned),
         code: code.into(),
         message: message.into(),
+        action: None,
     }
 }
 

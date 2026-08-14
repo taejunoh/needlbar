@@ -1,4 +1,5 @@
 mod envelope;
+pub mod quota;
 pub mod usage;
 
 use std::{
@@ -25,6 +26,7 @@ fn internal_error_json() -> String {
         provider: None,
         code: "internalError".to_owned(),
         message: "The Needlbar bridge encountered an internal error".to_owned(),
+        action: None,
     }))
     .unwrap_or_else(|_| {
         "{\"schemaVersion\":\"needlbar.v1\",\"ok\":false,\"generatedAt\":\"1970-01-01T00:00:00Z\",\"data\":null,\"errors\":[{\"code\":\"internalError\",\"message\":\"The Needlbar bridge encountered an internal error\"}]}".to_owned()
@@ -81,6 +83,7 @@ fn usage_envelope_from_providers(
             provider: Some(provider.to_owned()),
             code: "noUsageData".to_owned(),
             message: "No local usage data is available".to_owned(),
+            action: None,
         })
         .collect();
     let has_provider_data = !providers.is_empty();
@@ -108,7 +111,7 @@ pub unsafe extern "C" fn needlbar_usage_snapshot_json() -> *const c_char {
 /// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_quota_snapshot_json() -> *const c_char {
-    ffi_json(|| serde_json::json!({}))
+    ffi_envelope(quota_envelope)
 }
 
 /// # Safety
@@ -240,6 +243,39 @@ fn verify_cursor_session_token(session_token: &str) -> Result<(), BridgeError> {
     verification.join().map_err(|_| cursor_connect_error())?
 }
 
+fn quota_envelope() -> Envelope<quota::QuotaPayload> {
+    match collect_quota_on_bridge_thread() {
+        Ok(collection) => quota::envelope_from_collection(collection),
+        Err(error) => Envelope::failure(error),
+    }
+}
+
+/// A C caller may invoke this bridge while a Tokio runtime is already active
+/// in the embedding process. A dedicated thread prevents nested-runtime
+/// panics while keeping the owned runtime scoped to this bridge refresh.
+fn collect_quota_on_bridge_thread() -> Result<quota::QuotaCollection, BridgeError> {
+    let worker = thread::Builder::new()
+        .name("needlbar-quota-collect".to_owned())
+        .spawn(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|_| bridge_internal_error())?;
+            Ok(runtime.block_on(quota::collect_quota()))
+        })
+        .map_err(|_| bridge_internal_error())?;
+    worker.join().map_err(|_| bridge_internal_error())?
+}
+
+fn bridge_internal_error() -> BridgeError {
+    BridgeError {
+        provider: None,
+        code: "internalError".to_owned(),
+        message: "The Needlbar bridge encountered an internal error".to_owned(),
+        action: None,
+    }
+}
+
 fn bridge_error_from_quota(error: QuotaError) -> BridgeError {
     let code = match error.code {
         QuotaErrorCode::NotInstalled => "notInstalled",
@@ -256,6 +292,9 @@ fn bridge_error_from_quota(error: QuotaError) -> BridgeError {
         provider: Some("cursor".to_owned()),
         code: code.to_owned(),
         message: error.message.to_owned(),
+        action: error.action.map(|action| match action {
+            needlbar_quota::QuotaAction::ConnectCursor => "connectCursor".to_owned(),
+        }),
     }
 }
 
@@ -264,6 +303,7 @@ fn cursor_connect_error() -> BridgeError {
         provider: Some("cursor".to_owned()),
         code: "requiresAuthentication".to_owned(),
         message: "Cursor authentication was not available.".to_owned(),
+        action: Some("connectCursor".to_owned()),
     }
 }
 

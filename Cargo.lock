@@ -873,6 +873,7 @@ dependencies = [
 name = "needlbar-bridge"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "needlbar-quota",
  "needlbar-source-sync",
