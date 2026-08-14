@@ -1,4 +1,5 @@
 mod envelope;
+pub mod usage;
 
 use std::{
     ffi::CString,
@@ -6,7 +7,8 @@ use std::{
     panic::{catch_unwind, UnwindSafe},
 };
 
-use envelope::{BridgeError, Envelope};
+use chrono::{SecondsFormat, Utc};
+use envelope::{BridgeError, Envelope, SCHEMA_VERSION};
 use serde::Serialize;
 
 fn internal_error_json() -> String {
@@ -26,10 +28,11 @@ fn fallback_pointer() -> *const c_char {
         .into_raw()
 }
 
-fn ffi_json<T: Serialize + UnwindSafe>(f: impl FnOnce() -> T + UnwindSafe) -> *const c_char {
+fn ffi_envelope<T: Serialize + UnwindSafe>(
+    f: impl FnOnce() -> Envelope<T> + UnwindSafe,
+) -> *const c_char {
     match catch_unwind(|| {
-        let json = serde_json::to_string(&Envelope::success(f()))
-            .unwrap_or_else(|_| internal_error_json());
+        let json = serde_json::to_string(&f()).unwrap_or_else(|_| internal_error_json());
         CString::new(json).unwrap_or_default().into_raw()
     }) {
         Ok(pointer) => pointer,
@@ -40,9 +43,46 @@ fn ffi_json<T: Serialize + UnwindSafe>(f: impl FnOnce() -> T + UnwindSafe) -> *c
     }
 }
 
+fn ffi_json<T: Serialize + UnwindSafe>(f: impl FnOnce() -> T + UnwindSafe) -> *const c_char {
+    ffi_envelope(|| Envelope::success(f()))
+}
+
+fn usage_envelope() -> Envelope<usage::UsagePayload> {
+    match usage::collect_usage() {
+        Ok(providers) => usage_envelope_from_providers(providers),
+        Err(error) => Envelope::failure(error),
+    }
+}
+
+fn usage_envelope_from_providers(
+    providers: Vec<usage::UsageProviderSnapshot>,
+) -> Envelope<usage::UsagePayload> {
+    let errors: Vec<BridgeError> = ["claude", "codex"]
+        .into_iter()
+        .filter(|provider| {
+            !providers
+                .iter()
+                .any(|snapshot| snapshot.provider == *provider)
+        })
+        .map(|provider| BridgeError {
+            provider: Some(provider.to_owned()),
+            code: "noUsageData".to_owned(),
+            message: "No local usage data is available".to_owned(),
+        })
+        .collect();
+    let has_provider_data = !providers.is_empty();
+    Envelope {
+        schema_version: SCHEMA_VERSION,
+        ok: has_provider_data,
+        generated_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+        data: has_provider_data.then_some(usage::UsagePayload { providers }),
+        errors,
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_usage_snapshot_json() -> *const c_char {
-    ffi_json(|| serde_json::json!({}))
+    ffi_envelope(usage_envelope)
 }
 
 #[no_mangle]
@@ -84,5 +124,22 @@ mod tests {
         assert_eq!(value["errors"][0]["code"], "internalError");
 
         unsafe { needlbar_free_string(ptr) };
+    }
+
+    #[test]
+    fn usage_envelope_keeps_available_provider_when_other_has_no_usage_data() {
+        let envelope = usage_envelope_from_providers(vec![usage::UsageProviderSnapshot {
+            provider: "claude".to_owned(),
+            all_time_split: usage::UsagePeriod::default(),
+            today: usage::UsagePeriod::default(),
+            last_7_days: usage::UsagePeriod::default(),
+            last_30_days: usage::UsagePeriod::default(),
+        }]);
+
+        assert!(envelope.ok);
+        assert_eq!(envelope.data.expect("partial data").providers.len(), 1);
+        assert_eq!(envelope.errors.len(), 1);
+        assert_eq!(envelope.errors[0].provider.as_deref(), Some("codex"));
+        assert_eq!(envelope.errors[0].code, "noUsageData");
     }
 }
