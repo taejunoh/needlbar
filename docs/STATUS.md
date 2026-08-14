@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 7 Cursor quota and explicit connect session import complete
-**Next implementation task:** Task 8 — Wire Aggregate Quota Payloads Through the Bridge
+**Current phase:** Task 8 aggregate quota payloads through the bridge complete
+**Next implementation task:** Task 9 — Implement Swift Models, Decoding, and Last-Known-Good State
 
 ## Source of Truth
 
@@ -61,6 +61,10 @@ Task 7 implementation commits on `main`:
 
 - `ecf6d32` — add Cursor quota and explicit connection flow.
 - `20e02b6` — harden Cursor session import and source sync.
+
+Task 8 implementation commit on `main`:
+
+- `8fd1e21` — expose partial quota results through the bridge.
 
 ## Current CI State
 
@@ -235,9 +239,29 @@ Verification evidence:
 - Task 7/documented head `fcc5d22` is pushed and green in [run 31845316146](https://github.com/taejunoh/needlbar/actions/runs/31845316146).
 - No approved-design deviation was made; all prior v0.1 constraints remain unchanged.
 
+## Task 8 Verification
+
+Task 8 is complete and review-approved with no Critical or Important findings. One minor delayed-provider test remains deferred and is non-blocking.
+
+Implementation and contract evidence:
+
+- `quota::collect_quota()` runs Claude, Codex, and Cursor adapters concurrently with bounded provider-owned timeouts while preserving deterministic provider/error order: Claude, Codex, Cursor.
+- Partial and all-provider failures preserve usable `data.providers` and provider-scoped errors with `ok: true`; only bridge-wide runtime, panic, or serialization failures return `ok: false`.
+- Synchronous quota C ABI calls execute collection on a dedicated Rust thread with a short-lived Tokio runtime, preventing nested-runtime panics when the embedding process already runs Tokio.
+- The additive structured `BridgeError.action` field propagates Cursor's `connectCursor` action without changing the required `provider`, `code`, and `message` fields. Usage and diagnostics ABI behavior remains compatible.
+
+Verification evidence:
+
+- Focused bridge contract: `cargo test -p needlbar-bridge --test quota_contract` — 2 passed.
+- Full bridge suite: `cargo test -p needlbar-bridge` — 11 passed.
+- `cargo fmt -p needlbar-bridge -- --check`, `cargo check -p needlbar-bridge`, and `cargo clippy -p needlbar-bridge --all-targets -- -D warnings` passed.
+- Full project gate: `make test` passed; Rust workspace including pinned `tokscale-core` had 1372 passed, 0 failed, 1 ignored, and Swift tests passed.
+- Remote CI remains green through Task 7 at [run 31845316146](https://github.com/taejunoh/needlbar/actions/runs/31845316146); Task 8 commit `8fd1e21` is local and its CI push is pending.
+- No approved-design deviation was made; all prior v0.1 constraints and the pinned `tokscale-core` revision remain unchanged.
+
 ## Required Next Action
 
-Task 7 verification is complete. Begin Task 8 exactly at **Task 8: Wire Aggregate Quota Payloads Through the Bridge**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
+Task 8 verification is complete. Begin Task 9 exactly at **Task 9: Implement Swift Models, Decoding, and Last-Known-Good State**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## v0.1 Constraints to Preserve
 
