@@ -1,4 +1,4 @@
-use std::{env, fs, io::ErrorKind, path::PathBuf, sync::Arc, time::Duration};
+use std::{env, fs, future::pending, io::ErrorKind, path::PathBuf, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, ChildStdout, Command},
-    time::timeout,
+    time::{timeout, timeout_at, Instant},
 };
 
 use crate::{
@@ -51,6 +51,8 @@ impl CodexQuotaProvider {
             config_dir: config_dir.filter(|path| !path.as_os_str().is_empty()),
             home_dir,
             http,
+            app_server_program: PathBuf::from("codex"),
+            app_server_deadline: APP_SERVER_DEADLINE,
         }))
     }
 
@@ -92,6 +94,8 @@ struct LocalCodexQuotaSource {
     config_dir: Option<PathBuf>,
     home_dir: PathBuf,
     http: RedactingHttpClient,
+    app_server_program: PathBuf,
+    app_server_deadline: Duration,
 }
 
 #[async_trait]
@@ -113,10 +117,7 @@ impl CodexQuotaSource for LocalCodexQuotaSource {
     }
 
     async fn fetch_from_app_server(&self) -> Result<ProviderQuotaSnapshot, QuotaError> {
-        match timeout(APP_SERVER_DEADLINE, self.fetch_from_app_server_bounded()).await {
-            Ok(result) => result,
-            Err(_) => Err(provider_unavailable()),
-        }
+        self.fetch_from_app_server_bounded().await
     }
 }
 
@@ -153,7 +154,8 @@ impl LocalCodexQuotaSource {
     }
 
     async fn fetch_from_app_server_bounded(&self) -> Result<ProviderQuotaSnapshot, QuotaError> {
-        let mut command = Command::new("codex");
+        let deadline = Instant::now() + self.app_server_deadline;
+        let mut command = Command::new(&self.app_server_program);
         command
             .args(["-s", "read-only", "-a", "untrusted", "app-server"])
             .stdin(std::process::Stdio::piped())
@@ -181,13 +183,37 @@ impl LocalCodexQuotaSource {
         let stdin = child.stdin.take().ok_or_else(provider_unavailable)?;
         let stdout = child.stdout.take().ok_or_else(provider_unavailable)?;
         let stderr = child.stderr.take().ok_or_else(provider_unavailable)?;
-        let stderr_reader = tokio::spawn(drain_stderr(stderr));
-        let result = run_app_server_protocol(stdin, stdout).await;
+        let mut stderr_reader = tokio::spawn(async move {
+            match drain_stderr(stderr).await {
+                Ok(()) => pending::<Result<(), QuotaError>>().await,
+                Err(error) => Err(error),
+            }
+        });
+        let protocol = run_app_server_protocol(stdin, stdout);
+        tokio::pin!(protocol);
+        let (result, stderr_finished) = match timeout_at(deadline, async {
+            tokio::select! {
+                result = &mut protocol => (result, false),
+                result = &mut stderr_reader => (match result {
+                    Ok(Err(error)) => Err(error),
+                    Ok(Ok(())) => Err(provider_unavailable()),
+                    Err(_) => Err(provider_unavailable()),
+                }, true),
+            }
+        })
+        .await
+        {
+            Ok((result, stderr_finished)) => (result, stderr_finished),
+            Err(_) => (Err(provider_unavailable()), false),
+        };
 
         // The app server is a one-shot fallback. Always terminate it rather
         // than leaving a background process attached to Needlbar.
-        stop_child(&mut child).await;
-        let _ = stderr_reader.await;
+        stop_child(&mut child, deadline).await;
+        if !stderr_finished {
+            stderr_reader.abort();
+            let _ = stderr_reader.await;
+        }
         result
     }
 }
@@ -221,24 +247,32 @@ fn parse_rate_limits(value: &Value) -> Result<ProviderQuotaSnapshot, QuotaError>
         .or_else(|| value.pointer("/result/rate_limit"))
         .or_else(|| value.pointer("/result/rateLimits"))
         .ok_or_else(schema_error)?;
-    let primary = rate_limit
-        .get("primary_window")
-        .or_else(|| rate_limit.get("primaryWindow"))
-        .or_else(|| rate_limit.get("primary"))
-        .ok_or_else(schema_error)?;
-    let secondary = rate_limit
-        .get("secondary_window")
-        .or_else(|| rate_limit.get("secondaryWindow"))
-        .or_else(|| rate_limit.get("secondary"))
-        .ok_or_else(schema_error)?;
+    let primary = optional_window(rate_limit, &["primary_window", "primaryWindow", "primary"])?;
+    let secondary = optional_window(
+        rate_limit,
+        &["secondary_window", "secondaryWindow", "secondary"],
+    )?;
+
+    let mut windows = Vec::with_capacity(2);
+    if let Some(primary) = primary {
+        windows.push(parse_window(primary, "codex.primary", "Primary")?);
+    }
+    if let Some(secondary) = secondary {
+        windows.push(parse_window(secondary, "codex.secondary", "Secondary")?);
+    }
 
     Ok(ProviderQuotaSnapshot {
         provider: ProviderId::Codex,
-        windows: vec![
-            parse_window(primary, "codex.primary", "Primary")?,
-            parse_window(secondary, "codex.secondary", "Secondary")?,
-        ],
+        windows,
     })
+}
+
+fn optional_window<'a>(value: &'a Value, names: &[&str]) -> Result<Option<&'a Value>, QuotaError> {
+    match names.iter().find_map(|name| value.get(*name)) {
+        None | Some(Value::Null) => Ok(None),
+        Some(window @ Value::Object(_)) => Ok(Some(window)),
+        Some(_) => Err(schema_error()),
+    }
 }
 
 fn parse_window(value: &Value, id: &str, default_title: &str) -> Result<QuotaWindow, QuotaError> {
@@ -251,8 +285,9 @@ fn parse_window(value: &Value, id: &str, default_title: &str) -> Result<QuotaWin
         }
     }
     let title = string_field(value, &["label", "title"]).unwrap_or(default_title);
-    let resets_at = timestamp_field(value, &["reset_at", "resetAt", "resets_at", "resetsAt"])?;
-    QuotaWindow::new(id, title, used_percent, Some(resets_at)).map_err(|_| schema_error())
+    let resets_at =
+        optional_timestamp_field(value, &["reset_at", "resetAt", "resets_at", "resetsAt"])?;
+    QuotaWindow::new(id, title, used_percent, resets_at).map_err(|_| schema_error())
 }
 
 fn number_field(value: &Value, names: &[&str]) -> Result<f64, QuotaError> {
@@ -270,12 +305,14 @@ fn string_field<'a>(value: &'a Value, names: &[&str]) -> Option<&'a str> {
     names.iter().find_map(|name| value.get(*name)?.as_str())
 }
 
-fn timestamp_field(value: &Value, names: &[&str]) -> Result<DateTime<Utc>, QuotaError> {
-    let value = names
-        .iter()
-        .find_map(|name| value.get(*name))
-        .ok_or_else(schema_error)?;
-    parse_timestamp(value).ok_or_else(schema_error)
+fn optional_timestamp_field(
+    value: &Value,
+    names: &[&str],
+) -> Result<Option<DateTime<Utc>>, QuotaError> {
+    match names.iter().find_map(|name| value.get(*name)) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => parse_timestamp(value).map(Some).ok_or_else(schema_error),
+    }
 }
 
 fn parse_timestamp(value: &Value) -> Option<DateTime<Utc>> {
@@ -311,22 +348,22 @@ async fn run_app_server_protocol(
         &mut stdin,
         1,
         "initialize",
-        json!({
+        Some(json!({
             "clientInfo": { "name": "needlbar", "version": "0.1.0" },
             "capabilities": {}
-        }),
+        })),
     )
     .await?;
     let _ = read_rpc_response(&mut stdout, 1).await?;
     write_rpc_notification(&mut stdin, "initialized", json!({})).await?;
 
-    write_rpc_request(&mut stdin, 2, "account/read", json!({})).await?;
+    write_rpc_request(&mut stdin, 2, "account/read", None).await?;
     let account = read_rpc_response(&mut stdout, 2).await?;
     if !account_is_signed_in(&account) {
         return Err(auth_required());
     }
 
-    write_rpc_request(&mut stdin, 3, "account/rateLimits/read", json!({})).await?;
+    write_rpc_request(&mut stdin, 3, "account/rateLimits/read", None).await?;
     let rate_limits = read_rpc_response(&mut stdout, 3).await?;
     parse_rate_limits(&rate_limits)
 }
@@ -344,13 +381,13 @@ async fn write_rpc_request(
     stdin: &mut ChildStdin,
     id: u64,
     method: &str,
-    params: Value,
+    params: Option<Value>,
 ) -> Result<(), QuotaError> {
-    write_rpc_message(
-        stdin,
-        &json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }),
-    )
-    .await
+    let mut message = json!({ "jsonrpc": "2.0", "id": id, "method": method });
+    if let Some(params) = params {
+        message["params"] = params;
+    }
+    write_rpc_message(stdin, &message).await
 }
 
 async fn write_rpc_notification(
@@ -431,9 +468,11 @@ async fn drain_stderr(mut stderr: tokio::process::ChildStderr) -> Result<(), Quo
     }
 }
 
-async fn stop_child(child: &mut Child) {
+async fn stop_child(child: &mut Child, deadline: Instant) {
     let _ = child.start_kill();
-    let _ = child.wait().await;
+    if timeout_at(deadline, child.wait()).await.is_err() {
+        let _ = timeout(Duration::from_millis(250), child.wait()).await;
+    }
 }
 
 fn normalize_access_token(value: &str) -> Option<String> {
@@ -504,9 +543,16 @@ fn schema_error() -> QuotaError {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{
+        fs,
+        os::unix::fs::PermissionsExt,
+        path::Path,
+        process::{Command as StdCommand, Stdio},
+        time::{Duration, Instant},
+    };
 
     use tempfile::TempDir;
+    use tokio::time::sleep;
 
     use super::*;
 
@@ -530,6 +576,8 @@ mod tests {
             config_dir: Some(codex_home),
             home_dir: temp.path().to_path_buf(),
             http: RedactingHttpClient::for_codex_usage(),
+            app_server_program: PathBuf::from("codex"),
+            app_server_deadline: APP_SERVER_DEADLINE,
         };
 
         let error = match source.load_credentials() {
@@ -548,5 +596,127 @@ mod tests {
         assert!(account_is_signed_in(
             &json!({"account": {"type": "chatgpt"}})
         ));
+    }
+
+    #[tokio::test]
+    async fn app_server_transport_uses_the_documented_order_and_reaps_the_child() {
+        let temp = TempDir::new().unwrap();
+        let transcript = temp.path().join("transcript.jsonl");
+        let pid_file = temp.path().join("child.pid");
+        let contents = format!(
+            "#!/bin/sh\nset -eu\n[ \"$1\" = \"-s\" ] && [ \"$2\" = \"read-only\" ] && [ \"$3\" = \"-a\" ] && [ \"$4\" = \"untrusted\" ] && [ \"$5\" = \"app-server\" ]\nprintf '%s\\n' \"$$\" > '{pid_file}'\nIFS= read -r line; printf '%s\\n' \"$line\" > '{transcript}'\nprintf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{{}}}}'\nprintf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"method\":\"account/updated\",\"params\":{{}}}}'\nprintf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{}}}}'\nIFS= read -r line; printf '%s\\n' \"$line\" >> '{transcript}'\nIFS= read -r line; printf '%s\\n' \"$line\" >> '{transcript}'\nprintf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{{\"account\":{{\"type\":\"chatgpt\"}}}}}}'\nIFS= read -r line; printf '%s\\n' \"$line\" >> '{transcript}'\nprintf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{{\"rateLimits\":{{\"primary\":{{\"usedPercent\":12,\"resetsAt\":null}},\"secondary\":null}}}}}}'\nsleep 10\n",
+            pid_file = shell_path(&pid_file),
+            transcript = shell_path(&transcript),
+        );
+        let source = test_source(
+            write_script(temp.path(), "app-server.sh", &contents),
+            Duration::from_secs(2),
+        );
+
+        let snapshot = source.fetch_from_app_server().await.unwrap();
+
+        assert_eq!(snapshot.windows.len(), 1);
+        assert_eq!(snapshot.windows[0].id(), "codex.primary");
+        let messages: Vec<Value> = fs::read_to_string(&transcript)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(messages.len(), 4);
+        assert_eq!(messages[0]["id"], 1);
+        assert_eq!(messages[0]["method"], "initialize");
+        assert_eq!(messages[1]["method"], "initialized");
+        assert!(messages[1].get("id").is_none());
+        assert_eq!(messages[2]["id"], 2);
+        assert_eq!(messages[2]["method"], "account/read");
+        assert_eq!(messages[3]["id"], 3);
+        assert_eq!(messages[3]["method"], "account/rateLimits/read");
+        assert!(messages[3].get("params").is_none());
+        assert_process_exits(&pid_file).await;
+    }
+
+    #[tokio::test]
+    async fn app_server_timeout_kills_and_reaps_the_child() {
+        let temp = TempDir::new().unwrap();
+        let pid_file = temp.path().join("child.pid");
+        let contents = format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$$\" > '{}'\nsleep 10\n",
+            shell_path(&pid_file),
+        );
+        let source = test_source(
+            write_script(temp.path(), "timeout.sh", &contents),
+            Duration::from_secs(1),
+        );
+        let started = Instant::now();
+
+        let error = source.fetch_from_app_server().await.unwrap_err();
+
+        assert_eq!(error.code, QuotaErrorCode::ProviderUnavailable);
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert_process_exits(&pid_file).await;
+    }
+
+    #[tokio::test]
+    async fn app_server_stderr_limit_fails_before_the_process_deadline() {
+        let temp = TempDir::new().unwrap();
+        let pid_file = temp.path().join("child.pid");
+        let contents = format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$$\" > '{}'\nhead -c 65537 /dev/zero >&2\nsleep 10\n",
+            shell_path(&pid_file),
+        );
+        let source = test_source(
+            write_script(temp.path(), "stderr.sh", &contents),
+            Duration::from_secs(2),
+        );
+        let started = Instant::now();
+
+        let error = source.fetch_from_app_server().await.unwrap_err();
+
+        assert_eq!(error.code, QuotaErrorCode::SchemaChanged);
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_process_exits(&pid_file).await;
+    }
+
+    fn test_source(
+        app_server_program: PathBuf,
+        app_server_deadline: Duration,
+    ) -> LocalCodexQuotaSource {
+        LocalCodexQuotaSource {
+            config_dir: None,
+            home_dir: PathBuf::from("/nonexistent"),
+            http: RedactingHttpClient::for_codex_usage(),
+            app_server_program,
+            app_server_deadline,
+        }
+    }
+
+    fn write_script(directory: &Path, name: &str, contents: &str) -> PathBuf {
+        let path = directory.join(name);
+        fs::write(&path, contents).unwrap();
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&path, permissions).unwrap();
+        path
+    }
+
+    fn shell_path(path: &Path) -> String {
+        path.display().to_string().replace('\'', "'\\\"'\\\"'")
+    }
+
+    async fn assert_process_exits(pid_file: &Path) {
+        let pid = fs::read_to_string(pid_file).unwrap();
+        for _ in 0..20 {
+            let status = StdCommand::new("kill")
+                .args(["-0", pid.trim()])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .unwrap();
+            if !status.success() {
+                return;
+            }
+            sleep(Duration::from_millis(25)).await;
+        }
+        panic!("scripted app-server process was still running");
     }
 }

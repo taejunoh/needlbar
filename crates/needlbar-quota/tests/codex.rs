@@ -44,6 +44,40 @@ fn rejects_codex_window_with_contradictory_used_and_remaining_percentages() {
     assert_eq!(error.code, QuotaErrorCode::SchemaChanged);
 }
 
+#[test]
+fn preserves_available_codex_windows_when_other_windows_or_resets_are_null() {
+    let snapshot = CodexQuotaProvider::parse_usage_payload(
+        r#"{
+          "rateLimits": {
+            "primary": null,
+            "secondary": {
+              "label": "Weekly limit",
+              "usedPercent": 60.0,
+              "remainingPercent": 40.0,
+              "resetsAt": null
+            }
+          }
+        }"#,
+    )
+    .unwrap();
+
+    assert_eq!(snapshot.provider, ProviderId::Codex);
+    assert_eq!(snapshot.windows.len(), 1);
+    assert_eq!(snapshot.windows[0].id(), "codex.secondary");
+    assert_eq!(snapshot.windows[0].resets_at(), None);
+}
+
+#[test]
+fn accepts_an_empty_codex_rate_limit_snapshot_when_both_windows_are_absent() {
+    let snapshot = CodexQuotaProvider::parse_usage_payload(
+        r#"{"rateLimits":{"primary":null,"secondary":null}}"#,
+    )
+    .unwrap();
+
+    assert_eq!(snapshot.provider, ProviderId::Codex);
+    assert!(snapshot.windows.is_empty());
+}
+
 #[tokio::test]
 async fn falls_back_to_app_server_for_authentication_failure() {
     let snapshot = successful_snapshot();
