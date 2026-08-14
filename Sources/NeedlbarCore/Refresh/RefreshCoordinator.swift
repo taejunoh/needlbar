@@ -35,6 +35,7 @@ public actor RefreshCoordinator {
     private var quotaRefreshRequestedWhileInFlight = false
     private var usageQueuedGeneration: UInt64?
     private var quotaQueuedGeneration: UInt64?
+    private var usageTaskIsForced = false
     private var runGeneration: UInt64 = 0
 
     public init(
@@ -67,7 +68,8 @@ public actor RefreshCoordinator {
         scheduleSafetyRefreshes()
     }
 
-    public func requestUsageRefresh() {
+    public func requestUsageRefresh(generation: UInt64? = nil) {
+        if let generation, (!isRunning || generation != runGeneration) { return }
         guard usageTask == nil else {
             usageRefreshRequestedWhileInFlight = true
             usageQueuedGeneration = runGeneration
@@ -88,11 +90,15 @@ public actor RefreshCoordinator {
     }
 
     public func manualRefresh() async {
+        let generation = runGeneration
         if let usageTask {
-            forceCursorSyncRequestedWhileInFlight = true
-            usageQueuedGeneration = runGeneration
+            if !usageTaskIsForced {
+                forceCursorSyncRequestedWhileInFlight = true
+                usageQueuedGeneration = generation
+            }
             await usageTask.value
-            if !isRunning {
+            guard generation == runGeneration, isRunning else { return }
+            if usageTask == nil {
                 beginUsageRefresh(forceCursorSync: true)
             }
         } else {
@@ -101,6 +107,7 @@ public actor RefreshCoordinator {
 
         if let quotaTask {
             await quotaTask.value
+            guard generation == runGeneration, isRunning else { return }
         } else {
             beginQuotaRefresh()
         }
@@ -124,7 +131,8 @@ public actor RefreshCoordinator {
 
     private func scheduleSafetyRefreshes() {
         let clock = clock
-        usageSafetyTask = Task { [weak self, clock] in
+        let generation = runGeneration
+        usageSafetyTask = Task { [weak self, clock, generation] in
             while !Task.isCancelled {
                 do {
                     try await clock.sleep(for: Self.safetyInterval)
@@ -134,11 +142,11 @@ public actor RefreshCoordinator {
                     break
                 }
                 guard !Task.isCancelled else { break }
-                await self?.requestUsageRefresh()
+                await self?.requestUsageRefresh(generation: generation)
             }
         }
 
-        quotaSafetyTask = Task { [weak self, clock] in
+        quotaSafetyTask = Task { [weak self, clock, generation] in
             while !Task.isCancelled {
                 do {
                     try await clock.sleep(for: Self.safetyInterval)
@@ -148,12 +156,13 @@ public actor RefreshCoordinator {
                     break
                 }
                 guard !Task.isCancelled else { break }
-                await self?.requestQuotaRefresh()
+                await self?.requestQuotaRefresh(generation: generation)
             }
         }
     }
 
-    private func requestQuotaRefresh() {
+    private func requestQuotaRefresh(generation: UInt64? = nil) {
+        if let generation, (!isRunning || generation != runGeneration) { return }
         guard quotaTask == nil else {
             quotaRefreshRequestedWhileInFlight = true
             quotaQueuedGeneration = runGeneration
@@ -164,6 +173,7 @@ public actor RefreshCoordinator {
 
     private func beginUsageRefresh(forceCursorSync: Bool) {
         guard usageTask == nil else { return }
+        usageTaskIsForced = forceCursorSync
         let repository = usageRepository
         let generation = runGeneration
         usageTask = Task { [weak self, repository] in
@@ -189,6 +199,7 @@ public actor RefreshCoordinator {
     ) async {
         defer {
             usageTask = nil
+            usageTaskIsForced = false
             let requested = usageRefreshRequestedWhileInFlight
             let forceCursorSync = forceCursorSyncRequestedWhileInFlight
             let queuedGeneration = usageQueuedGeneration
@@ -203,14 +214,17 @@ public actor RefreshCoordinator {
         switch result {
         case .success(let refresh):
             for (provider, usage) in refresh.snapshots {
+                guard generation == runGeneration, applyResult else { return }
                 await store.applyUsage(usage, for: provider, at: clock.now)
             }
             for (provider, error) in refresh.errors {
+                guard generation == runGeneration, applyResult else { return }
                 await store.markUsageFailure(for: provider, status: status(for: error), at: clock.now)
             }
         case .failure(let error):
             let status = DataStatus.error(message: String(describing: error), lastSuccessfulAt: nil)
             for provider in ProviderID.allCases {
+                guard generation == runGeneration, applyResult else { return }
                 await store.markUsageFailure(for: provider, status: status, at: clock.now)
             }
         }
@@ -239,14 +253,17 @@ public actor RefreshCoordinator {
                 lastQuotaSuccessfulAt = refreshedAt
             }
             for (provider, quota) in refresh.snapshots {
+                guard generation == runGeneration, applyResult else { return }
                 await store.applyQuota(quota, for: provider, at: refreshedAt)
             }
             for (provider, error) in refresh.errors {
+                guard generation == runGeneration, applyResult else { return }
                 await store.markQuotaFailure(for: provider, status: status(for: error), at: refreshedAt)
             }
         case .failure(let error):
             let status = DataStatus.error(message: String(describing: error), lastSuccessfulAt: nil)
             for provider in ProviderID.allCases {
+                guard generation == runGeneration, applyResult else { return }
                 await store.markQuotaFailure(for: provider, status: status, at: clock.now)
             }
         }

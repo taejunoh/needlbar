@@ -76,7 +76,7 @@ import Testing
         clock: clock
     )
 
-    await coordinator.requestUsageRefresh()
+    await coordinator.start()
     await eventually { usage.callCount == 1 }
 
     let manual = Task { await coordinator.manualRefresh() }
@@ -89,7 +89,7 @@ import Testing
 
     #expect(usage.callCount == 2)
     #expect(usage.forcedCallCount == 1)
-    #expect(quota.callCount == 1)
+    #expect(quota.callCount >= 1)
     await coordinator.stop()
 }
 

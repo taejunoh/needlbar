@@ -23,6 +23,7 @@ public actor UsageFileWatcher {
     private var sources: [any UsageFileEventSource] = []
     private var debounceTask: Task<Void, Never>?
     private var debounceGeneration: UInt64 = 0
+    private var runGeneration: UInt64 = 0
     private var isRunning = false
 
     public init(
@@ -50,6 +51,7 @@ public actor UsageFileWatcher {
 
     public func start() {
         guard !isRunning else { return }
+        runGeneration &+= 1
         isRunning = true
         sources = Self.discoverExistingRoots(
             homeDirectory: homeDirectory,
@@ -57,8 +59,9 @@ public actor UsageFileWatcher {
             cursorCacheDirectory: cursorCacheDirectory
         ).compactMap(sourceFactory)
         for source in sources {
+            let generation = runGeneration
             source.start { [weak self] in
-                Task { await self?.receivedFileSystemEvent() }
+                Task { await self?.receivedFileSystemEvent(runGeneration: generation) }
             }
         }
     }
@@ -66,6 +69,7 @@ public actor UsageFileWatcher {
     public func stop() {
         guard isRunning || !sources.isEmpty || debounceTask != nil else { return }
         isRunning = false
+        runGeneration &+= 1
         debounceGeneration &+= 1
         debounceTask?.cancel()
         debounceTask = nil
@@ -105,8 +109,8 @@ public actor UsageFileWatcher {
         }
     }
 
-    private func receivedFileSystemEvent() {
-        guard isRunning else { return }
+    private func receivedFileSystemEvent(runGeneration: UInt64) {
+        guard isRunning, runGeneration == self.runGeneration else { return }
         debounceGeneration &+= 1
         let generation = debounceGeneration
         debounceTask?.cancel()
@@ -120,12 +124,12 @@ public actor UsageFileWatcher {
                 return
             }
             guard !Task.isCancelled else { return }
-            await self?.requestDebouncedRefresh(generation: generation)
+            await self?.requestDebouncedRefresh(generation: generation, runGeneration: runGeneration)
         }
     }
 
-    private func requestDebouncedRefresh(generation: UInt64) async {
-        guard isRunning, debounceGeneration == generation else { return }
+    private func requestDebouncedRefresh(generation: UInt64, runGeneration: UInt64) async {
+        guard isRunning, self.runGeneration == runGeneration, debounceGeneration == generation else { return }
         debounceTask = nil
         await onUsageRefreshRequested()
     }
