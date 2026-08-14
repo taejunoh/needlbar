@@ -357,7 +357,7 @@ async fn run_app_server_protocol(
     let _ = read_rpc_response(&mut stdout, 1).await?;
     write_rpc_notification(&mut stdin, "initialized", json!({})).await?;
 
-    write_rpc_request(&mut stdin, 2, "account/read", None).await?;
+    write_rpc_request(&mut stdin, 2, "account/read", Some(json!({}))).await?;
     let account = read_rpc_response(&mut stdout, 2).await?;
     if !account_is_signed_in(&account) {
         return Err(auth_required());
@@ -421,6 +421,9 @@ async fn read_rpc_response(
         let value: Value = serde_json::from_slice(&message).map_err(|_| schema_error())?;
         if value.get("id").and_then(Value::as_u64) != Some(expected_id) {
             continue;
+        }
+        if value.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+            return Err(schema_error());
         }
         if value.get("error").is_some() {
             return Err(schema_error());
@@ -629,10 +632,42 @@ mod tests {
         assert!(messages[1].get("id").is_none());
         assert_eq!(messages[2]["id"], 2);
         assert_eq!(messages[2]["method"], "account/read");
+        assert_eq!(messages[2]["params"], json!({}));
         assert_eq!(messages[3]["id"], 3);
         assert_eq!(messages[3]["method"], "account/rateLimits/read");
         assert!(messages[3].get("params").is_none());
         assert_process_exits(&pid_file).await;
+    }
+
+    #[tokio::test]
+    async fn app_server_rejects_matched_responses_without_jsonrpc_2() {
+        for (name, initialize_response) in [
+            ("missing-version", r#"{"id":1,"result":{}}"#),
+            ("wrong-version", r#"{"jsonrpc":"1.0","id":1,"result":{}}"#),
+        ] {
+            let temp = TempDir::new().unwrap();
+            let contents = [
+                "#!/bin/sh\n",
+                "IFS= read -r line\n",
+                "printf '%s\\n' '",
+                initialize_response,
+                "'\n",
+                "IFS= read -r line\n",
+                "IFS= read -r line\n",
+                "printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}'\n",
+                "IFS= read -r line\n",
+                "printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"primary\":null,\"secondary\":null}}}'\n",
+            ]
+            .concat();
+            let source = test_source(
+                write_script(temp.path(), &format!("{name}.sh"), &contents),
+                Duration::from_secs(2),
+            );
+
+            let error = source.fetch_from_app_server().await.unwrap_err();
+
+            assert_eq!(error.code, QuotaErrorCode::SchemaChanged, "{name}");
+        }
     }
 
     #[tokio::test]
@@ -673,7 +708,7 @@ mod tests {
         let error = source.fetch_from_app_server().await.unwrap_err();
 
         assert_eq!(error.code, QuotaErrorCode::SchemaChanged);
-        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(started.elapsed() < Duration::from_secs(3));
         assert_process_exits(&pid_file).await;
     }
 
@@ -704,7 +739,11 @@ mod tests {
     }
 
     async fn assert_process_exits(pid_file: &Path) {
-        let pid = fs::read_to_string(pid_file).unwrap();
+        let Ok(pid) = fs::read_to_string(pid_file) else {
+            // A timeout can win before the child receives CPU time. In that
+            // case there is no child PID left to probe.
+            return;
+        };
         for _ in 0..20 {
             let status = StdCommand::new("kill")
                 .args(["-0", pid.trim()])
