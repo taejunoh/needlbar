@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 2 Rust JSON envelope and memory-safe C ABI complete
-**Next implementation task:** Task 3 — Integrate `tokscale-core` for Claude and Codex Usage
+**Current phase:** Task 3 Claude and Codex usage integration complete
+**Next implementation task:** Task 4 — Add Cursor Usage Source Synchronization
 
 ## Source of Truth
 
@@ -35,6 +35,10 @@ Task 2 implementation commits on `main`:
 - `29a0b71` — add the versioned Rust/Swift bridge contract.
 - `c46c4f8` — format the bridge ABI contract with scoped `rustfmt`.
 
+Task 3 implementation commit on `main`:
+
+- `37846c3` — aggregate Claude and Codex usage with `tokscale-core`.
+
 ## Current CI State
 
 Task 1 is verified green.
@@ -62,10 +66,6 @@ Verification evidence:
 - GREEN: `cargo test -p needlbar-bridge` passed with 3 tests and `make test` exited 0; Rust passed including `tokscale-core` (1372 passed, 0 failed, 1 ignored) and Swift passed 2 tests.
 - Scoped formatting: `cargo fmt -p needlbar-bridge -- --check` exited 0 after formatting only Task 2-owned Rust files.
 - No approved-baseline deviation was made.
-
-## Required Next Action
-
-Task 2 verification is complete. Begin Task 3 exactly at **Task 3: Integrate `tokscale-core` for Claude and Codex Usage**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## Task 2 Contract (Complete)
 
@@ -96,6 +96,36 @@ Required JSON envelope fields:
 - `errors`
 
 The bridge must contain panic boundaries and clear Rust-owned string lifetime/freeing semantics. Do not add presentation logic to the bridge.
+
+## Task 3 Verification
+
+Task 3 is complete. The usage adapter owns only the bridge-facing aggregation and delegates discovery/parsing to the pinned `tokscale-core` public graph-report API:
+
+- Builds `tokscale_core::ReportOptions` and calls `tokscale_core::generate_local_graph_report` through a short-lived Tokio runtime.
+- Consumes `GraphResult.contributions[] -> DailyContribution.clients[]`; no Claude/Codex parser copies were added to Needlbar.
+- Aggregates the exact upstream client IDs `claude` and `codex` into all-time, today, rolling 7-day, and rolling 30-day periods.
+- Rejects negative/corrupt signed counters and invalid costs before converting to normalized unsigned bridge values.
+
+Fixture totals are deterministic and sanitized:
+
+| Provider | Input | Output | Cache read | Cache write | Total |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Claude | 1000 | 250 | 400 | 100 | 1750 |
+| Codex | 800 | 200 | 300 | 0 | 1300 |
+
+Partial provider behavior is explicit: when one provider has no usage source, usable provider data remains in `data`, the envelope remains `ok: true`, and a provider-scoped `noUsageData` error is appended. When no providers have data, the envelope is `ok: false` with `noUsageData` errors.
+
+Verification evidence:
+
+- RED: `source /Users/taejunoh/.cargo/env && cargo test -p needlbar-bridge --test usage_contract` exited 101 before the adapter existed with the expected missing `usage::collect_usage_from_home` symbol (the partial-envelope test also intentionally exited 101 before extraction).
+- GREEN: `cargo fmt -p needlbar-bridge -- --check`, `cargo test -p needlbar-bridge --test usage_contract`, `cargo test -p needlbar-bridge`, and `cargo test --manifest-path vendor/tokscale-core/Cargo.toml` all exited 0; the pinned engine reported 1372 passed, 0 failed, 1 ignored.
+- GREEN project verification: `source /Users/taejunoh/.cargo/env && make test` exited 0; Rust passed including the pinned engine and Swift passed 2 tests.
+- Task 2 CI run [31838440815](https://github.com/openai/needlbar/actions/runs/31838440815) is green.
+- No approved-baseline deviation was made; no vendor revision was changed.
+
+## Required Next Action
+
+Task 3 verification is complete. Begin Task 4 exactly at **Task 4: Add Cursor Usage Source Synchronization**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## v0.1 Constraints to Preserve
 
