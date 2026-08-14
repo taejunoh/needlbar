@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 8 aggregate quota payloads through the bridge complete
-**Next implementation task:** Task 9 — Implement Swift Models, Decoding, and Last-Known-Good State
+**Current phase:** Task 9 Swift models, decoding, and last-known-good state complete
+**Next implementation task:** Task 10 — Add Refresh Coordination and File-System Triggers
 
 ## Source of Truth
 
@@ -65,6 +65,10 @@ Task 7 implementation commits on `main`:
 Task 8 implementation commit on `main`:
 
 - `8fd1e21` — expose partial quota results through the bridge.
+
+Task 9 implementation commit on `main`:
+
+- `f078ff7` — add Swift bridge models and stale state.
 
 ## Current CI State
 
@@ -259,9 +263,28 @@ Verification evidence:
 - Task 8/documented head `dc9f6d1` is pushed and green in [run 31846072025](https://github.com/taejunoh/needlbar/actions/runs/31846072025).
 - No approved-design deviation was made; all prior v0.1 constraints and the pinned `tokscale-core` revision remain unchanged.
 
+## Task 9 Verification
+
+Task 9 is complete and review-approved with no Critical or Important findings. Three test-only minors are deferred: successful/null-pointer bridge coverage, successful quota live-shape coverage, and generic pre-success/partial routing coverage.
+
+Implementation and contract evidence:
+
+- Added normalized Swift provider, usage, quota, status, and merged snapshot models with additive/live wire decoding that tolerates unknown fields, providers, and actions without installing unknown providers.
+- Decimal costs decode exactly from decimal strings and the existing Rust numeric representation, without a `Double` round-trip.
+- The Rust bridge wrapper copies C bytes into Swift-owned data and frees every non-null Rust string exactly once on all decode paths, including decoding errors.
+- Usage and quota repositories retain partial successes and provider-scoped errors independently. The actor-isolated snapshot store keeps independent usage/quota values and last-success timestamps, preserving prior values on refresh failures and applying authentication status only before any valid value exists.
+
+Verification evidence:
+
+- Focused Swift verification: `swift test --filter NeedlbarCoreTests` — 7 independently focused tests passed after the final decoding-error free-path regression.
+- Full project gate: `source /Users/taejunoh/.cargo/env && make test` exited 0; Swift reported 8 tests passed, Rust workspace including pinned `tokscale-core` had 1372 passed, 0 failed, 1 ignored.
+- `source /Users/taejunoh/.cargo/env && make rust` exited 0.
+- Remote CI remains green through Task 8 at [run 31846072025](https://github.com/taejunoh/needlbar/actions/runs/31846072025); Task 9 commit `f078ff7` is local and its CI push is pending.
+- No approved-design deviation was made; all prior v0.1 constraints and the pinned `tokscale-core` revision remain unchanged.
+
 ## Required Next Action
 
-Task 8 verification is complete. Begin Task 9 exactly at **Task 9: Implement Swift Models, Decoding, and Last-Known-Good State**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
+Task 9 verification is complete. Begin Task 10 exactly at **Task 10: Add Refresh Coordination and File-System Triggers**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## v0.1 Constraints to Preserve
 
