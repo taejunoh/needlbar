@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 5 quota domain and Claude adapter complete
-**Next implementation task:** Task 6 — Add Codex Quota with App-Server RPC Fallback
+**Current phase:** Task 6 Codex quota adapter with App-Server RPC fallback complete
+**Next implementation task:** Task 7 — Add Cursor Quota and Explicit Connect Session Import
 
 ## Source of Truth
 
@@ -50,6 +50,12 @@ Task 5 implementation commits on `main`:
 
 - `cf25a5f` — add the shared quota domain and Claude adapter.
 - `7526171` — harden Claude quota/auth/HTTP boundaries.
+
+Task 6 implementation commits on `main`:
+
+- `c77ed8d` — add the Codex quota adapter with RPC fallback.
+- `86f374f` — harden Codex RPC fallback transport and cleanup.
+- `37b8aaf` — validate Codex RPC request and response contracts.
 
 ## Current CI State
 
@@ -179,9 +185,31 @@ Verification evidence:
 - Task 5/documented head `e0d3da0` is pushed and green in [run 31841873719](https://github.com/taejunoh/needlbar/actions/runs/31841873719).
 - No approved-design deviation was made; the pinned `tokscale-core` revision and all prior v0.1 constraints are unchanged.
 
+## Task 6 Verification
+
+Task 6 is complete, review-approved, and has no open findings. Codex quota uses the authenticated primary source first and a bounded exact app-server fallback without launching an interactive TUI or login flow.
+
+Implementation and contract evidence:
+
+- Primary auth resolves `$CODEX_HOME/auth.json`, falling back to `~/.codex/auth.json`; OAuth evidence remains Rust-only and never enters presentation data or debug output.
+- The primary source calls the allowlisted `https://chatgpt.com/backend-api/wham/usage` endpoint through the bounded redacting HTTP client. The fallback runs `codex -s read-only -a untrusted app-server` with a 20-second deadline, capped stdout/stderr, request-ID correlation, `kill_on_drop`, explicit kill/wait/reap, and stderr-task cleanup.
+- The JSON-RPC transcript is exact: initialize → initialized → `account/read` with `params: {}` → `account/rateLimits/read` without params; matched responses require JSON-RPC 2.0 and tolerate notifications/mismatched IDs safely.
+- Primary and secondary windows plus reset fields accept absent/null provider values; available windows are preserved, both missing windows produce a valid empty snapshot, and malformed present values or contradictory percentages fail closed as `schemaChanged`.
+- Stable window IDs remain `codex.primary` and `codex.secondary`; executable-missing, authentication, deadline, and malformed-RPC cases map to the documented safe error categories.
+
+Verification evidence:
+
+- Transport unit tests: `cargo test -p needlbar-quota --lib providers::codex::tests` — 6 passed.
+- Codex integration tests: `cargo test -p needlbar-quota --test codex` — 6 passed.
+- Quota package: `cargo test -p needlbar-quota` — 30 passed.
+- `cargo check -p needlbar-quota` and `cargo clippy -p needlbar-quota --all-targets -- -D warnings` passed.
+- Full project gate: `make test` passed; Rust workspace including pinned `tokscale-core` had 1372 passed, 0 failed, 1 ignored, and Swift tests passed.
+- Remote CI remains green through Task 5 at [run 31841873719](https://github.com/taejunoh/needlbar/actions/runs/31841873719); Task 6 commits are local and their CI push is pending.
+- No approved-design deviation was made; all prior v0.1 constraints and the pinned `tokscale-core` revision remain unchanged.
+
 ## Required Next Action
 
-Task 5 verification is complete. Begin Task 6 exactly at **Task 6: Add Codex Quota with App-Server RPC Fallback**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
+Task 6 verification is complete. Begin Task 7 exactly at **Task 7: Add Cursor Quota and Explicit Connect Session Import**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## v0.1 Constraints to Preserve
 
