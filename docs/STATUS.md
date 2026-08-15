@@ -425,7 +425,8 @@ Verification evidence:
 - `git diff --check` passed and `git -C vendor/tokscale-core status --short` was clean at pinned revision `53f9eefffd3278fd430076531548f7b1f5861f9a`.
 - Strings checks over the release archive and production header found no `needlbar_test` markers.
 - The feature-only test harness is a deliberate test-only integration seam required by the Task 14 plan, not a production feature or design deviation. No other approved-design deviation was made.
-- Remote CI remains green through Task 13 at [run 31857311990](https://github.com/taejunoh/needlbar/actions/runs/31857311990); Task 14 push and CI verification are pending.
+- The first Task 14 CI run [31859272045](https://github.com/taejunoh/needlbar/actions/runs/31859272045) failed only after the builds because the Makefile symbol audit invoked unavailable `rg`; no test or build failed. Systematic diagnosis produced follow-up commits `c27b3b5` (portable `strings`/`grep` audit), `bd8b439` (trap-before-`mktemp` and signal cleanup), and `8e24654` (restoration-failure priority). Reviewers approved the fixes, and restricted-PATH local `make test` passed with Swift 54 and pinned core 1372 passed/1 ignored.
+- Remote verification is complete: Task 14 CI run [31859898712](https://github.com/taejunoh/needlbar/actions/runs/31859898712) passed in 4m52s at tested head `8e246543ef89bc789582e646d81c2cc7a6807492`. Task 15 remains the next implementation task.
 
 ## Required Next Action
 
