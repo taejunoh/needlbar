@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 10 Refresh Coordination and File-System Triggers complete
-**Next implementation task:** Task 11 — Implement Module Configuration and Menu-Bar Title Logic
+**Current phase:** Task 11 Module Configuration and Menu-Bar Title Logic complete
+**Next implementation task:** Task 12 — Build the Native Accessory App and Hybrid Status Items
 
 ## Source of Truth
 
@@ -318,9 +318,34 @@ Verification evidence:
 
 - Remote verification is complete: Task 10 CI run [31853771074](https://github.com/taejunoh/needlbar/actions/runs/31853771074) passed in 7m1s at head `6b7b969`. This confirms the Task 10 retry containing `7e345d5`; Task 11 remains the next implementation task.
 
+## Task 11 Verification
+
+Task 11 is complete and rereview-approved with no findings. Module configuration and menu-bar title rendering now follow the approved v0.1 defaults and presentation boundary.
+
+Implementation and contract evidence:
+
+- The approved defaults are Overview enabled, all providers disabled, and `quotaRemaining` as the quota headline mode.
+- Only non-secret UI preferences are stored in injected `UserDefaults`; credentials and provider session data remain outside the configuration layer.
+- The enabled-provider quota headline selects the most constrained available Overview quota, while Overview token and cost totals aggregate every available usage snapshot.
+- The pure menu-bar renderer uses a neutral unavailable state, deterministic number/cost formatting, deterministic reset formatting including `nil`, and checked `UInt64` aggregation without overflow wrapping.
+
+Task 11 implementation commits on `main`:
+
+- `5a00c3c` — implement module configuration and menu-bar title logic.
+- `6dbd4a9` — resolve review findings and harden configuration/rendering behavior.
+
+Verification evidence:
+
+- Review round 1 found 2 Important and 1 Minor findings; all were resolved in `6dbd4a9`, and rereview approved with no findings.
+- Root fresh verification passed: `ModuleConfigurationTests` — 2; `HeadlineQuotaSelectorTests` — 4; `MenuBarTitleRendererTests` — 5.
+- `source /Users/taejunoh/.cargo/env && make test` passed with Swift 32 tests and pinned `tokscale-core` 1372 passed, 0 failed, 1 ignored.
+- `git diff --check` passed and `git -C vendor/tokscale-core status --short` was clean.
+- No approved-design deviation was made; the pinned `tokscale-core` revision and all v0.1 constraints remain unchanged.
+- Remote CI remains green through Task 10 at [run 31853771074](https://github.com/taejunoh/needlbar/actions/runs/31853771074); Task 11 push and CI verification are pending.
+
 ## Required Next Action
 
-Task 10 verification is complete. Begin Task 11 exactly at **Task 11: Implement Module Configuration and Menu-Bar Title Logic**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
+Task 11 verification is complete. Begin Task 12 exactly at **Task 12: Build the Native Accessory App and Hybrid Status Items**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## v0.1 Constraints to Preserve
 
