@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 14 Diagnostics, Privacy Guardrails, and Full Integration Tests complete
-**Next implementation task:** Task 15 — Package an Installable arm64 macOS v0.1 Artifact
+**Current phase:** Task 15 packaging and final v0.1 implementation gate complete
+**Next action:** Push and verify CI artifacts, then perform credentialed/manual release acceptance before tagging v0.1
 
 ## Source of Truth
 
@@ -428,9 +428,46 @@ Verification evidence:
 - The first Task 14 CI run [31859272045](https://github.com/taejunoh/needlbar/actions/runs/31859272045) failed only after the builds because the Makefile symbol audit invoked unavailable `rg`; no test or build failed. Systematic diagnosis produced follow-up commits `c27b3b5` (portable `strings`/`grep` audit), `bd8b439` (trap-before-`mktemp` and signal cleanup), and `8e24654` (restoration-failure priority). Reviewers approved the fixes, and restricted-PATH local `make test` passed with Swift 54 and pinned core 1372 passed/1 ignored.
 - Remote verification is complete: Task 14 CI run [31859898712](https://github.com/taejunoh/needlbar/actions/runs/31859898712) passed in 4m52s at tested head `8e246543ef89bc789582e646d81c2cc7a6807492`. Task 15 remains the next implementation task.
 
+## Task 15 Verification
+
+Task 15 completes the approved v0.1 implementation plan. The final independent reviewer approved the packaging, smoke, cleanup, and release-workflow implementation after the review rounds.
+
+Implementation and artifact evidence:
+
+- The production build is an arm64 macOS 14 Rust/Swift accessory app with no test-only runtime feature. Packaging produces `dist/Needlbar.app` and `dist/Needlbar-macos-arm64.zip`; the app bundle contains `Contents/Info.plist`, the arm64 `Contents/MacOS/Needlbar` executable, and `Contents/Resources/ThirdPartyNotices.txt`. The zip has `Needlbar.app` at its archive root.
+- `make package` applies an ad-hoc signature accepted by strict `codesign` verification. `scripts/smoke-app.sh` validates plist, signature, and arm64 executable identity, launches the exact bundle executable, and performs bounded cleanup.
+- Smoke cleanup captures the launched PID, parent PID, exact executable command, and `ps lstart` identity before signaling. PID reuse/identity mismatch, deferred `INT`/`TERM`, bounded mismatch return, fixture-directory cleanup, and exact-PID regressions are covered; cleanup never signals an unverified process.
+- CI gates run workspace Cargo tests/strict Clippy, `make test`, package, packaged-app smoke, and arm64 artifact upload. The tag release workflow hard-gates stable publication on Developer ID certificate/keychain setup, Apple ID/team/app-specific-password secrets, then signs, notarizes, staples, re-verifies, and publishes the zip.
+- README install/privacy requirements, MIT licensing, Tokscale attribution, and third-party notices are included. `MACOSX_DEPLOYMENT_TARGET=14.0` preserves the approved macOS 14 floor and removes the locally observed Rust object-version linker warning.
+
+Task 15 implementation commits on `main`:
+
+- `d120264` — package and verify the Needlbar macOS release.
+- `6d1c240` — harden PID identity and deferred-signal cleanup.
+- `fecb08c` — bound identity-mismatch cleanup without synchronous waiting.
+- `5adaa7f` — close the fixture cleanup window around temporary directories and signals.
+- `a8e82fc` — harden fixture child identity capture and exact cleanup.
+
+Final acceptance evidence:
+
+- From the initialized submodule checkout, the pinned revision check, `cargo test --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `make test`, `make package`, `./scripts/smoke-app.sh`, and `git diff --check` all passed.
+- Root final gate reported Swift 54 tests, pinned `tokscale-core` 1372 passed with 1 ignored, strict workspace Clippy success, clean vendor state at `53f9eefffd3278fd430076531548f7b1f5861f9a`, and clean plist/codesign/file/unzip/artifact checks. Focused smoke cleanup regressions passed repeatedly with no lingering Needlbar process or fixture directories.
+- The first production `make run`/packaged-app smoke launched and terminated cleanly; the exact PID was cleaned and no Needlbar process remained.
+- No implementation or approved-design deviation was made. The macOS 14 deployment-target setting is an explicit build correction that preserves the approved platform floor.
+
+Release acceptance intentionally not claimed:
+
+- No git tag or GitHub Release was created.
+- Developer ID signing, notarization, stapling, and publication were not run because the required secrets were not provided; the release workflow refuses to publish an ad-hoc stable artifact when they are absent.
+- Live real-account Claude, Codex, or Cursor credential smoke and interactive menu-item/Settings click-through were not performed in the noninteractive session. These remain credentialed/manual release follow-ups, not silently accepted criteria.
+
+## Final v0.1 Continuation
+
+The implementation plan is complete. Next, push the implementation and verify the hosted CI package/smoke artifact. Then perform credentialed/manual release acceptance on a supported macOS 14 arm64 machine before creating a v0.1 tag; this is not a Task 16 implementation task.
+
 ## Required Next Action
 
-Task 14 verification is complete. Begin Task 15 exactly at **Task 15: Package an Installable arm64 macOS v0.1 Artifact**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
+Push the completed v0.1 implementation and verify the hosted CI package/smoke artifact. After that, perform credentialed/manual release acceptance before creating a v0.1 tag; do not begin a Task 16 implementation.
 
 ## v0.1 Constraints to Preserve
 
