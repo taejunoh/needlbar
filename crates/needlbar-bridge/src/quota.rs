@@ -78,8 +78,21 @@ fn bridge_error_from_quota(error: QuotaError) -> BridgeError {
     BridgeError {
         provider,
         code: code.to_owned(),
-        message: error.message.to_owned(),
+        message: safe_quota_message(code).to_owned(),
         action: error.action.map(action_name).map(str::to_owned),
+    }
+}
+
+fn safe_quota_message(code: &str) -> &'static str {
+    match code {
+        "notInstalled" => "The provider application is not available.",
+        "requiresAuthentication" => "Provider authentication is required.",
+        "authenticationExpired" => "Provider authentication has expired.",
+        "rateLimited" => "The provider rate limit was reached.",
+        "networkUnavailable" => "The provider could not be reached.",
+        "providerUnavailable" => "The provider is currently unavailable.",
+        "schemaChanged" => "The provider response could not be validated.",
+        _ => "Provider quota data is unavailable.",
     }
 }
 

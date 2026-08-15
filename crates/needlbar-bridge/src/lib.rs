@@ -1,3 +1,4 @@
+pub mod diagnostics;
 mod envelope;
 pub mod quota;
 pub mod usage;
@@ -54,6 +55,7 @@ fn ffi_envelope<T: Serialize + UnwindSafe>(
     }
 }
 
+#[cfg(test)]
 fn ffi_json<T: Serialize + UnwindSafe>(f: impl FnOnce() -> T + UnwindSafe) -> *const c_char {
     ffi_envelope(|| Envelope::success(f()))
 }
@@ -102,7 +104,11 @@ fn usage_envelope_from_providers(
 /// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_usage_snapshot_json() -> *const c_char {
-    ffi_envelope(|| usage_envelope(false))
+    ffi_envelope(|| {
+        let envelope = usage_envelope(false);
+        diagnostics::record_usage(&envelope);
+        envelope
+    })
 }
 
 /// # Safety
@@ -111,7 +117,11 @@ pub unsafe extern "C" fn needlbar_usage_snapshot_json() -> *const c_char {
 /// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_forced_usage_snapshot_json() -> *const c_char {
-    ffi_envelope(|| usage_envelope(true))
+    ffi_envelope(|| {
+        let envelope = usage_envelope(true);
+        diagnostics::record_usage(&envelope);
+        envelope
+    })
 }
 
 /// # Safety
@@ -120,7 +130,11 @@ pub unsafe extern "C" fn needlbar_forced_usage_snapshot_json() -> *const c_char 
 /// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_quota_snapshot_json() -> *const c_char {
-    ffi_envelope(quota_envelope)
+    ffi_envelope(|| {
+        let envelope = quota_envelope();
+        diagnostics::record_quota(&envelope);
+        envelope
+    })
 }
 
 /// # Safety
@@ -129,7 +143,7 @@ pub unsafe extern "C" fn needlbar_quota_snapshot_json() -> *const c_char {
 /// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_diagnostics_json() -> *const c_char {
-    ffi_json(|| serde_json::json!({}))
+    ffi_envelope(|| Envelope::success(diagnostics::DiagnosticsSnapshot::from_recorded_outcomes()))
 }
 
 /// # Safety
@@ -445,6 +459,62 @@ mod tests {
         assert_eq!(envelope.errors.len(), 2);
         assert_eq!(envelope.errors[0].provider.as_deref(), Some("codex"));
         assert_eq!(envelope.errors[0].code, "noUsageData");
+    }
+
+    #[test]
+    fn diagnostics_envelope_maps_bounded_outcomes_without_serializing_raw_errors() {
+        let usage = Envelope::success(usage::UsagePayload {
+            providers: vec![usage::UsageProviderSnapshot {
+                provider: "claude".to_owned(),
+                all_time_split: usage::UsagePeriod::default(),
+                today: usage::UsagePeriod::default(),
+                last_7_days: usage::UsagePeriod::default(),
+                last_7_days_daily: Vec::new(),
+                last_30_days: usage::UsagePeriod::default(),
+            }],
+        });
+        let quota = Envelope {
+            schema_version: SCHEMA_VERSION,
+            ok: true,
+            generated_at: "2026-08-14T12:00:00Z".to_owned(),
+            data: Some(quota::QuotaPayload {
+                providers: Vec::new(),
+            }),
+            errors: vec![
+                BridgeError {
+                    provider: Some("codex".to_owned()),
+                    code: "requiresAuthentication".to_owned(),
+                    message: "CODEX-CANARY-SECRET /Users/private/auth.json".to_owned(),
+                    action: None,
+                },
+                BridgeError {
+                    provider: Some("cursor".to_owned()),
+                    code: "networkUnavailable".to_owned(),
+                    message: "CURSOR-CANARY-SECRET".to_owned(),
+                    action: None,
+                },
+            ],
+        };
+
+        diagnostics::record_usage(&usage);
+        diagnostics::record_quota(&quota);
+        let envelope = Envelope::success(diagnostics::DiagnosticsSnapshot::from_recorded_outcomes());
+        let json = serde_json::to_string(&envelope).expect("diagnostics JSON");
+        let value: serde_json::Value = serde_json::from_str(&json).expect("diagnostics value");
+        let providers = &value["data"]["providers"];
+
+        assert_eq!(providers[0]["provider"], "claude");
+        assert_eq!(providers[0]["usageStatus"], "available");
+        assert!(providers[0]["lastUsageAt"].is_string());
+        assert_eq!(providers[1]["provider"], "codex");
+        assert_eq!(providers[1]["quotaStatus"], "requiresAuthentication");
+        assert_eq!(providers[1]["quotaErrorCode"], "requiresAuthentication");
+        assert_eq!(providers[2]["provider"], "cursor");
+        assert_eq!(providers[2]["quotaStatus"], "error");
+        assert_eq!(providers[2]["quotaErrorCode"], "networkUnavailable");
+        assert!(!json.contains("CODEX-CANARY-SECRET"));
+        assert!(!json.contains("CURSOR-CANARY-SECRET"));
+        assert!(!json.contains("/Users/private/auth.json"));
     }
 
     #[test]

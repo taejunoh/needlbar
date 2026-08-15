@@ -293,13 +293,27 @@ fn checked_add(current: u64, incoming: u64, provider: &str) -> Result<u64, Bridg
 fn bridge_error(
     provider: Option<&str>,
     code: impl Into<String>,
-    message: impl Into<String>,
+    _message: impl Into<String>,
 ) -> BridgeError {
+    let code = code.into();
     BridgeError {
         provider: provider.map(ToOwned::to_owned),
-        code: code.into(),
-        message: message.into(),
+        message: safe_usage_message(&code).to_owned(),
+        code,
         action: None,
+    }
+}
+
+fn safe_usage_message(code: &str) -> &'static str {
+    match code {
+        "noUsageData" => "No local usage data is available.",
+        "cursorSyncFailed" => {
+            "Cursor usage synchronization failed; cached usage may still be available."
+        }
+        "usageRuntimeUnavailable" => "Usage collection could not start.",
+        "usageReportUnavailable" => "Usage data could not be collected.",
+        "invalidUsageDate" | "invalidUsageData" => "Usage data could not be validated.",
+        _ => "Usage data is unavailable.",
     }
 }
 
