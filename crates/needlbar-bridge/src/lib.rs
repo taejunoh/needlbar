@@ -146,6 +146,15 @@ pub unsafe extern "C" fn needlbar_cursor_import_session_json(
 
 /// # Safety
 ///
+/// The returned non-null pointer is Rust-owned and must be passed exactly once
+/// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
+#[no_mangle]
+pub unsafe extern "C" fn needlbar_cursor_clear_session_json() -> *const c_char {
+    ffi_envelope(cursor_disconnect_envelope)
+}
+
+/// # Safety
+///
 /// A non-null pointer must have been returned by this bridge, must not have
 /// been mutated, and must be freed exactly once. Null is accepted as a no-op.
 #[no_mangle]
@@ -164,6 +173,11 @@ struct CursorImportPayload {
     connected: bool,
 }
 
+#[derive(Serialize)]
+struct CursorDisconnectPayload {
+    disconnected: bool,
+}
+
 fn cursor_import_envelope(session_token: *const c_char) -> Envelope<CursorImportPayload> {
     let token = match unsafe { cursor_session_token_from_ffi(session_token) } {
         Ok(token) => token,
@@ -176,6 +190,17 @@ fn cursor_import_envelope(session_token: *const c_char) -> Envelope<CursorImport
     match import_cursor_session_with_verifier(&token, store, verify_cursor_session_token) {
         Ok(payload) => Envelope::success(payload),
         Err(error) => Envelope::failure(error),
+    }
+}
+
+fn cursor_disconnect_envelope() -> Envelope<CursorDisconnectPayload> {
+    let store = match cursor_import_store() {
+        Ok(store) => store,
+        Err(_) => return Envelope::failure(cursor_disconnect_error()),
+    };
+    match store.clear() {
+        Ok(()) => Envelope::success(CursorDisconnectPayload { disconnected: true }),
+        Err(_) => Envelope::failure(cursor_disconnect_error()),
     }
 }
 
@@ -316,6 +341,15 @@ fn cursor_connect_error() -> BridgeError {
     }
 }
 
+fn cursor_disconnect_error() -> BridgeError {
+    BridgeError {
+        provider: Some("cursor".to_owned()),
+        code: "providerUnavailable".to_owned(),
+        message: "Cursor session could not be cleared.".to_owned(),
+        action: None,
+    }
+}
+
 #[cfg(test)]
 type TestCursorImportVerifier = Arc<dyn Fn(&str) -> Result<(), BridgeError> + Send + Sync>;
 
@@ -402,6 +436,7 @@ mod tests {
             all_time_split: usage::UsagePeriod::default(),
             today: usage::UsagePeriod::default(),
             last_7_days: usage::UsagePeriod::default(),
+            last_7_days_daily: Vec::new(),
             last_30_days: usage::UsagePeriod::default(),
         }]);
 
@@ -460,5 +495,34 @@ mod tests {
             .path()
             .join("Library/Application Support/Needlbar/cursor-session.json")
             .exists());
+    }
+
+    #[test]
+    fn exported_cursor_disconnect_is_idempotent_and_releases_its_response() {
+        let home = tempfile::TempDir::new().unwrap();
+        let _runtime = TestCursorImportRuntimeGuard::install(home.path(), |_| Ok(()));
+        let store = CursorSessionStore::in_home(home.path());
+        store
+            .save(&CursorSession::new("cursor-secret-test-token").unwrap())
+            .unwrap();
+
+        for _ in 0..2 {
+            let pointer = unsafe { needlbar_cursor_clear_session_json() };
+            assert!(!pointer.is_null());
+            let json = unsafe { CStr::from_ptr(pointer) }
+                .to_string_lossy()
+                .into_owned();
+            unsafe { needlbar_free_string(pointer) };
+            let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(value["schemaVersion"], "needlbar.v1");
+            assert_eq!(value["ok"], true);
+            assert_eq!(value["data"], serde_json::json!({ "disconnected": true }));
+            assert!(!json.contains("cursor-secret-test-token"));
+        }
+
+        assert!(matches!(
+            store.load(),
+            Err(needlbar_source_sync::SourceSyncError::MissingSession)
+        ));
     }
 }

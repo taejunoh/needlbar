@@ -1,5 +1,15 @@
 import Foundation
 
+public struct DailyUsagePoint: Codable, Sendable, Equatable {
+    public let date: String
+    public let totalTokens: UInt64
+
+    public init(date: String, totalTokens: UInt64) {
+        self.date = date
+        self.totalTokens = totalTokens
+    }
+}
+
 public struct UsagePeriod: Codable, Sendable, Equatable {
     public let inputTokens: UInt64
     public let outputTokens: UInt64
@@ -48,6 +58,7 @@ public struct UsageSnapshot: Codable, Sendable, Equatable {
     public let estimatedCostUSD: Decimal
     public let today: UsagePeriod
     public let last7Days: UsagePeriod
+    public let last7DaysDaily: [DailyUsagePoint]
     public let last30Days: UsagePeriod
 
     public init(
@@ -59,6 +70,7 @@ public struct UsageSnapshot: Codable, Sendable, Equatable {
         estimatedCostUSD: Decimal,
         today: UsagePeriod,
         last7Days: UsagePeriod,
+        last7DaysDaily: [DailyUsagePoint] = [],
         last30Days: UsagePeriod
     ) {
         self.inputTokens = inputTokens
@@ -69,12 +81,13 @@ public struct UsageSnapshot: Codable, Sendable, Equatable {
         self.estimatedCostUSD = estimatedCostUSD
         self.today = today
         self.last7Days = last7Days
+        self.last7DaysDaily = last7DaysDaily
         self.last30Days = last30Days
     }
 
     private enum CodingKeys: String, CodingKey {
         case inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, estimatedCostUSD
-        case today, last7Days, last30Days
+        case today, last7Days, last7DaysDaily, last30Days
     }
 
     public init(from decoder: Decoder) throws {
@@ -87,6 +100,7 @@ public struct UsageSnapshot: Codable, Sendable, Equatable {
         estimatedCostUSD = try container.decodeExactDecimal(forKey: .estimatedCostUSD)
         today = try container.decode(UsagePeriod.self, forKey: .today)
         last7Days = try container.decode(UsagePeriod.self, forKey: .last7Days)
+        last7DaysDaily = try container.decodeIfPresent([DailyUsagePoint].self, forKey: .last7DaysDaily) ?? []
         last30Days = try container.decode(UsagePeriod.self, forKey: .last30Days)
     }
 }

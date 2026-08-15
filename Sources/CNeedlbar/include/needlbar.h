@@ -16,6 +16,9 @@ const char *needlbar_diagnostics_json(void);
 // session_token must be null or a valid NUL-terminated UTF-8 string. The
 // returned envelope never contains the token and must be freed as above.
 const char *needlbar_cursor_import_session_json(const char *session_token);
+// Clears the Rust-owned Cursor session. The returned envelope contains only
+// { "disconnected": true } on success and must be freed as above.
+const char *needlbar_cursor_clear_session_json(void);
 void needlbar_free_string(const char *ptr);
 
 #ifdef __cplusplus

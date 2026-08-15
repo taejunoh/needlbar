@@ -19,6 +19,7 @@ import Testing
           "estimatedCostUSD": 12.345,
           "today": { "inputTokens": 10, "outputTokens": 2, "cacheReadTokens": 3, "cacheWriteTokens": 4, "totalTokens": 19, "estimatedCostUSD": "0.123" },
           "last7Days": { "inputTokens": 20, "outputTokens": 4, "cacheReadTokens": 6, "cacheWriteTokens": 8, "totalTokens": 38, "estimatedCostUSD": "0.456" },
+          "last7DaysDaily": [{ "date": "2026-08-08", "totalTokens": 12 }, { "date": "2026-08-09", "totalTokens": 26 }],
           "last30Days": { "inputTokens": 30, "outputTokens": 6, "cacheReadTokens": 9, "cacheWriteTokens": 12, "totalTokens": 57, "estimatedCostUSD": "0.789" },
           "futureProviderField": "ignored"
         }],
@@ -38,6 +39,24 @@ import Testing
     #expect(provider.providerID == .claude)
     #expect(provider.usage.estimatedCostUSD == Decimal(string: "12.345"))
     #expect(provider.usage.today.estimatedCostUSD == Decimal(string: "0.123"))
+    #expect(provider.usage.last7DaysDaily.map(\.totalTokens) == [12, 26])
+}
+
+@Test func usageEnvelopeAcceptsAnAbsentAdditiveDailySeries() throws {
+    let payload = """
+    {
+      "schemaVersion": "needlbar.v1", "ok": true, "generatedAt": "2026-08-14T12:34:56Z", "errors": [],
+      "data": { "providers": [{
+        "provider": "claude", "inputTokens": 0, "outputTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0, "totalTokens": 0, "estimatedCostUSD": 0,
+        "today": { "inputTokens": 0, "outputTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0, "totalTokens": 0, "estimatedCostUSD": 0 },
+        "last7Days": { "inputTokens": 0, "outputTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0, "totalTokens": 0, "estimatedCostUSD": 0 },
+        "last30Days": { "inputTokens": 0, "outputTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0, "totalTokens": 0, "estimatedCostUSD": 0 }
+      }] }
+    }
+    """
+
+    let envelope = try BridgeDecoder().decodeUsageEnvelope(Data(payload.utf8))
+    #expect(envelope.data?.providers.first?.usage.last7DaysDaily == [])
 }
 
 @Test func quotaEnvelopeRejectsOutOfRangePercentages() throws {

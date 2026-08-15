@@ -38,6 +38,14 @@ fn fixture_home_aggregates_exact_claude_and_codex_totals() {
     assert!(wire.get("allTimeSplit").is_none());
     assert!(wire.get("today").is_some());
     assert!(wire.get("last7Days").is_some());
+    let daily = wire["last7DaysDaily"]
+        .as_array()
+        .expect("daily 7-day series");
+    assert_eq!(daily.len(), 7);
+    assert!(daily.windows(2).all(|points| {
+        points[0]["date"].as_str().expect("first date")
+            < points[1]["date"].as_str().expect("second date")
+    }));
     assert!(wire.get("last30Days").is_some());
 }
 

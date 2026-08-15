@@ -17,15 +17,26 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
         self.snapshotStore = snapshotStore
         self.moduleConfiguration = moduleConfiguration
-        self.refreshCoordinator = RefreshCoordinator(
+        let refreshCoordinator = RefreshCoordinator(
             usageRepository: RustUsageRepository(),
             quotaRepository: RustQuotaRepository(),
             store: snapshotStore,
             usageFileWatcher: usageFileWatcher
         )
+        self.refreshCoordinator = refreshCoordinator
         self.menuBarController = MenuBarController(
             configuration: moduleConfiguration,
-            snapshotStore: snapshotStore
+            snapshotStore: snapshotStore,
+            onModuleActivated: { _ in
+                Task {
+                    await refreshCoordinator.popoverOpened()
+                }
+            },
+            onRetryRequested: {
+                Task {
+                    await refreshCoordinator.manualRefresh()
+                }
+            }
         )
         super.init()
     }

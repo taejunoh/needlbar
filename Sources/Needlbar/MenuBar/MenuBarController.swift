@@ -1,10 +1,16 @@
 import AppKit
 import NeedlbarCore
+import SwiftUI
 
 @MainActor
 public protocol StatusItemHandle: AnyObject {
     var title: String { get set }
     var action: (@MainActor () -> Void)? { get set }
+    func show(_ popover: NSPopover)
+}
+
+public extension StatusItemHandle {
+    func show(_ popover: NSPopover) {}
 }
 
 @MainActor
@@ -19,6 +25,9 @@ public final class MenuBarController {
     private let snapshotStore: ProviderSnapshotStore
     private let statusItemFactory: any StatusItemFactory
     private let onModuleActivated: @MainActor (MenuModuleID) -> Void
+    private let onRetryRequested: @MainActor () -> Void
+    private let settingsWindowController: SettingsWindowController
+    private let popover = NSPopover()
     private var statusItems: [MenuModuleID: any StatusItemHandle] = [:]
     private var cachedSnapshots: [ProviderSnapshot] = []
     private var configurationObserver: NSObjectProtocol?
@@ -29,12 +38,15 @@ public final class MenuBarController {
         configuration: ModuleConfiguration,
         snapshotStore: ProviderSnapshotStore,
         statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
-        onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in }
+        onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
+        onRetryRequested: @escaping @MainActor () -> Void = {}
     ) {
         self.configuration = configuration
         self.snapshotStore = snapshotStore
         self.statusItemFactory = statusItemFactory
         self.onModuleActivated = onModuleActivated
+        self.onRetryRequested = onRetryRequested
+        self.settingsWindowController = SettingsWindowController(configuration: configuration)
     }
 
     public var activeModuleIDs: [MenuModuleID] {
@@ -111,10 +123,45 @@ public final class MenuBarController {
                 allSnapshots: snapshots,
                 configuration: configuration
             )
-            statusItem.action = { [onModuleActivated] in
-                onModuleActivated(module.id)
+            statusItem.action = { [weak self, weak statusItem] in
+                guard let self, let statusItem else { return }
+                self.activate(module.id, from: statusItem)
             }
         }
+    }
+
+    private func activate(_ module: MenuModuleID, from statusItem: any StatusItemHandle) {
+        onModuleActivated(module)
+        Task { [weak self] in
+            guard let self else { return }
+            let snapshots = await self.snapshotStore.snapshots()
+            guard !Task.isCancelled else { return }
+            self.showPopover(for: module, snapshots: snapshots, from: statusItem)
+        }
+    }
+
+    private func showPopover(
+        for module: MenuModuleID,
+        snapshots: [ProviderSnapshot],
+        from statusItem: any StatusItemHandle
+    ) {
+        let view: AnyView
+        switch module {
+        case .overview:
+            view = AnyView(OverviewPopoverView(snapshots: snapshots) { [weak self] in
+                self?.popover.performClose(nil)
+                self?.settingsWindowController.showSettings()
+            })
+        case .claude, .codex, .cursor:
+            guard let provider = module.provider,
+                  let snapshot = snapshots.first(where: { $0.provider == provider }) else { return }
+            view = AnyView(ProviderPopoverView(snapshot: snapshot) { [weak self] in
+                self?.onRetryRequested()
+            })
+        }
+        popover.behavior = .transient
+        popover.contentViewController = NSHostingController(rootView: view)
+        statusItem.show(popover)
     }
 }
 
@@ -154,6 +201,11 @@ private final class AppKitStatusItemHandle: NSObject, StatusItemHandle {
     init(statusItem: NSStatusItem) {
         self.statusItem = statusItem
         super.init()
+    }
+
+    func show(_ popover: NSPopover) {
+        guard let button = statusItem.button else { return }
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
     @objc private func performAction() {

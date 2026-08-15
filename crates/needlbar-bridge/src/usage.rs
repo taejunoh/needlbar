@@ -28,7 +28,15 @@ pub struct UsageProviderSnapshot {
     pub all_time_split: UsagePeriod,
     pub today: UsagePeriod,
     pub last_7_days: UsagePeriod,
+    pub last_7_days_daily: Vec<DailyUsagePoint>,
     pub last_30_days: UsagePeriod,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyUsagePoint {
+    pub date: String,
+    pub total_tokens: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,6 +55,7 @@ struct ProviderPeriods {
     all_time: UsagePeriod,
     today: UsagePeriod,
     last_7_days: UsagePeriod,
+    last_7_days_daily: BTreeMap<NaiveDate, u64>,
     last_30_days: UsagePeriod,
 }
 
@@ -105,9 +114,10 @@ fn aggregate_report(
     contributions: &[DailyContribution],
     today: NaiveDate,
 ) -> Result<Vec<UsageProviderSnapshot>, BridgeError> {
-    let last_7_days_start = today
-        .checked_sub_days(Days::new(6))
-        .ok_or_else(|| bridge_error(None, "invalidUsageDate", "cannot calculate 7-day window"))?;
+    let last_7_dates = seven_day_dates(today)?;
+    let last_7_days_start = *last_7_dates
+        .first()
+        .expect("seven-day date helper always returns seven dates");
     let last_30_days_start = today
         .checked_sub_days(Days::new(29))
         .ok_or_else(|| bridge_error(None, "invalidUsageDate", "cannot calculate 30-day window"))?;
@@ -142,6 +152,8 @@ fn aggregate_report(
             }
             if (last_7_days_start..=today).contains(&date) {
                 provider_periods.last_7_days.add(&usage, provider)?;
+                let daily_total = provider_periods.last_7_days_daily.entry(date).or_default();
+                *daily_total = checked_add(*daily_total, usage.total_tokens, provider)?;
             }
             if (last_30_days_start..=today).contains(&date) {
                 provider_periods.last_30_days.add(&usage, provider)?;
@@ -160,10 +172,34 @@ fn aggregate_report(
                 all_time_split: periods.all_time,
                 today: periods.today,
                 last_7_days: periods.last_7_days,
+                last_7_days_daily: last_7_dates
+                    .iter()
+                    .map(|date| DailyUsagePoint {
+                        date: date.to_string(),
+                        total_tokens: periods
+                            .last_7_days_daily
+                            .get(date)
+                            .copied()
+                            .unwrap_or_default(),
+                    })
+                    .collect(),
                 last_30_days: periods.last_30_days,
             })
         })
         .collect())
+}
+
+fn seven_day_dates(today: NaiveDate) -> Result<Vec<NaiveDate>, BridgeError> {
+    let start = today
+        .checked_sub_days(Days::new(6))
+        .ok_or_else(|| bridge_error(None, "invalidUsageDate", "cannot calculate 7-day window"))?;
+    (0..7)
+        .map(|offset| {
+            start.checked_add_days(Days::new(offset)).ok_or_else(|| {
+                bridge_error(None, "invalidUsageDate", "cannot calculate 7-day window")
+            })
+        })
+        .collect()
 }
 
 fn normalize_client_contribution(
@@ -264,6 +300,31 @@ fn bridge_error(
         code: code.into(),
         message: message.into(),
         action: None,
+    }
+}
+
+#[cfg(test)]
+mod daily_series_tests {
+    use chrono::NaiveDate;
+
+    use super::*;
+
+    #[test]
+    fn seven_day_dates_are_chronological_and_include_today() {
+        let today = NaiveDate::from_ymd_opt(2026, 8, 14).unwrap();
+
+        let dates = seven_day_dates(today).unwrap();
+
+        assert_eq!(dates.len(), 7);
+        assert_eq!(dates.first().unwrap().to_string(), "2026-08-08");
+        assert_eq!(dates.last().unwrap().to_string(), "2026-08-14");
+    }
+
+    #[test]
+    fn daily_series_uses_checked_token_addition() {
+        let error = checked_add(u64::MAX, 1, "claude").unwrap_err();
+
+        assert_eq!(error.code, "invalidUsageData");
     }
 }
 
