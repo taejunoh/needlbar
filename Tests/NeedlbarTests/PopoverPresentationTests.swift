@@ -93,6 +93,48 @@ import Testing
     #expect(overview.sevenDayTokens == nil)
 }
 
+@Test func overviewHeadlineQuotaUsesOnlyEnabledProviderModules() throws {
+    let overview = OverviewPopoverPresentation(
+        snapshots: [
+            snapshot(provider: .claude, usage: nil, quota: quota(usedPercent: 20), usageStatus: .unavailable, quotaStatus: .fresh),
+            snapshot(provider: .cursor, usage: nil, quota: quota(usedPercent: 90), usageStatus: .unavailable, quotaStatus: .fresh),
+        ],
+        dailyUsage: [],
+        enabledProviders: [.claude]
+    )
+
+    #expect(overview.headlineQuotaRemaining == "80%")
+}
+
+@MainActor
+@Test func cursorConnectClearsTransientInputBeforeTheOffMainImporterFinishes() async {
+    let importer = SuspendedCursorSessionImporter()
+    let controller = CursorSessionConnectionController(
+        importer: { token in await importer.importSession(token) },
+        clearer: { true }
+    )
+    var transientInput = "cursor-secret-test-token"
+    var completion: Bool?
+
+    controller.connect(
+        transientInput,
+        clearInput: { transientInput = "" },
+        completion: { completion = $0 }
+    )
+
+    #expect(transientInput.isEmpty)
+    #expect(await eventuallyOnMainActor { await importer.receivedToken() != nil })
+
+    var mainActorWasResponsive = false
+    Task { @MainActor in mainActorWasResponsive = true }
+    await Task.yield()
+    #expect(mainActorWasResponsive)
+    #expect(completion == nil)
+
+    await importer.complete(with: true)
+    #expect(await eventuallyOnMainActor { completion == true })
+}
+
 private func snapshot(
     provider: ProviderID,
     usage: UsageSnapshot?,
@@ -136,4 +178,36 @@ private func quota(usedPercent: Double) -> QuotaSnapshot {
     QuotaSnapshot(windows: [
         try! QuotaWindow(id: "window", title: "Plan", usedPercent: usedPercent, resetsAt: nil),
     ])
+}
+
+@MainActor
+private func eventuallyOnMainActor(
+    _ condition: @escaping @MainActor () async -> Bool
+) async -> Bool {
+    for _ in 0..<100 {
+        if await condition() { return true }
+        await Task.yield()
+    }
+    return false
+}
+
+private actor SuspendedCursorSessionImporter {
+    private var token: String?
+    private var continuation: CheckedContinuation<Bool, Never>?
+
+    func importSession(_ token: String) async -> Bool {
+        self.token = token
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func receivedToken() -> String? {
+        token
+    }
+
+    func complete(with result: Bool) {
+        continuation?.resume(returning: result)
+        continuation = nil
+    }
 }

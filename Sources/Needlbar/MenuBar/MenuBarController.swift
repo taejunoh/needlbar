@@ -148,7 +148,7 @@ public final class MenuBarController {
         let view: AnyView
         switch module {
         case .overview:
-            view = AnyView(OverviewPopoverView(snapshots: snapshots) { [weak self] in
+            view = AnyView(OverviewPopoverView(snapshots: snapshots, configuration: configuration) { [weak self] in
                 self?.popover.performClose(nil)
                 self?.settingsWindowController.showSettings()
             })

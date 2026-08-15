@@ -6,6 +6,7 @@ import SwiftUI
 
 public struct SettingsView: View {
     private let configuration: ModuleConfiguration
+    private let cursorConnection = CursorSessionConnectionController()
     @State private var cursorSessionToken = ""
     @State private var connectionStatus: String?
 
@@ -77,27 +78,84 @@ public struct SettingsView: View {
     }
 
     private func connectCursor() {
-        let token = cursorSessionToken
-        let connected = CursorSessionBridge.importSession(token)
-        cursorSessionToken = ""
-        connectionStatus = connected ? "Cursor connected." : "Cursor could not be connected."
+        connectionStatus = "Connecting Cursor…"
+        cursorConnection.connect(
+            cursorSessionToken,
+            clearInput: { cursorSessionToken = "" },
+            completion: { connected in
+                connectionStatus = connected ? "Cursor connected." : "Cursor could not be connected."
+            }
+        )
     }
 
     private func disconnectCursor() {
-        connectionStatus = CursorSessionBridge.clearSession()
-            ? "Cursor disconnected."
-            : "Cursor could not be disconnected."
+        connectionStatus = "Disconnecting Cursor…"
+        cursorConnection.disconnect { disconnected in
+            connectionStatus = disconnected ? "Cursor disconnected." : "Cursor could not be disconnected."
+        }
+    }
+}
+
+@MainActor
+final class CursorSessionConnectionController {
+    typealias Importer = @Sendable (String) async -> Bool
+    typealias Clearer = @Sendable () async -> Bool
+
+    private let importer: Importer
+    private let clearer: Clearer
+
+    init(
+        importer: @escaping Importer = CursorSessionBridge.importSessionOffMainActor,
+        clearer: @escaping Clearer = CursorSessionBridge.clearSessionOffMainActor
+    ) {
+        self.importer = importer
+        self.clearer = clearer
+    }
+
+    func connect(
+        _ token: String,
+        clearInput: @escaping @MainActor () -> Void,
+        completion: @escaping @MainActor (Bool) -> Void
+    ) {
+        clearInput()
+        let importer = importer
+        Task {
+            let connected = await importer(token)
+            guard !Task.isCancelled else { return }
+            completion(connected)
+        }
+    }
+
+    func disconnect(completion: @escaping @MainActor (Bool) -> Void) {
+        let clearer = clearer
+        Task {
+            let disconnected = await clearer()
+            guard !Task.isCancelled else { return }
+            completion(disconnected)
+        }
     }
 }
 
 enum CursorSessionBridge {
-    static func importSession(_ token: String) -> Bool {
+    static func importSessionOffMainActor(_ token: String) async -> Bool {
+        await Task.detached(priority: .userInitiated) {
+            importSessionSynchronously(token)
+        }.value
+    }
+
+    static func clearSessionOffMainActor() async -> Bool {
+        await Task.detached(priority: .userInitiated) {
+            clearSessionSynchronously()
+        }.value
+    }
+
+    private static func importSessionSynchronously(_ token: String) -> Bool {
         token.withCString { token in
             decodeConnected(needlbar_cursor_import_session_json(token), key: "connected")
         }
     }
 
-    static func clearSession() -> Bool {
+    private static func clearSessionSynchronously() -> Bool {
         decodeConnected(needlbar_cursor_clear_session_json(), key: "disconnected")
     }
 

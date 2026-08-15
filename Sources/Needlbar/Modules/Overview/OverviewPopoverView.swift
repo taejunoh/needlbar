@@ -53,14 +53,20 @@ public struct OverviewPopoverPresentation: Equatable, Sendable {
     public let headlineQuotaRemaining: String?
     public let sevenDayTokens: [UInt64]?
 
-    public init(snapshots: [ProviderSnapshot], dailyUsage: [OverviewDailyUsagePoint]) {
+    public init(
+        snapshots: [ProviderSnapshot],
+        dailyUsage: [OverviewDailyUsagePoint],
+        enabledProviders: Set<ProviderID> = Set(ProviderID.allCases)
+    ) {
         providerRows = ProviderID.allCases.map { provider in
             ProviderPopoverPresentation(snapshot: snapshots.first { $0.provider == provider } ?? .unavailable(for: provider))
         }
         let usages = snapshots.compactMap(\.usage)
         tokensToday = Self.checkedTokenTotal(usages.map(\.today.totalTokens)).map(MetricFormatter.tokens)
         estimatedCostToday = usages.isEmpty ? nil : MetricFormatter.costUSD(usages.reduce(Decimal.zero) { $0 + $1.today.estimatedCostUSD })
-        headlineQuotaRemaining = HeadlineQuotaSelector.mostConstrained(snapshots).map { MetricFormatter.quotaRemaining($0.remainingPercent) }
+        headlineQuotaRemaining = HeadlineQuotaSelector.mostConstrained(
+            snapshots.filter { enabledProviders.contains($0.provider) }
+        ).map { MetricFormatter.quotaRemaining($0.remainingPercent) }
         sevenDayTokens = Self.dailyTotals(dailyUsage)
     }
 
@@ -92,6 +98,7 @@ public struct OverviewPopoverView: View {
 
     public init(
         snapshots: [ProviderSnapshot],
+        configuration: ModuleConfiguration,
         onShowSettings: @escaping () -> Void = {}
     ) {
         let dailyUsage = snapshots.flatMap { snapshot in
@@ -99,7 +106,14 @@ public struct OverviewPopoverView: View {
                 OverviewDailyUsagePoint(provider: snapshot.provider, date: $0.date, totalTokens: $0.totalTokens)
             } ?? []
         }
-        presentation = OverviewPopoverPresentation(snapshots: snapshots, dailyUsage: dailyUsage)
+        let enabledProviders = Set(
+            configuration.enabledModuleIDs.compactMap(\.provider)
+        )
+        presentation = OverviewPopoverPresentation(
+            snapshots: snapshots,
+            dailyUsage: dailyUsage,
+            enabledProviders: enabledProviders
+        )
         self.onShowSettings = onShowSettings
     }
 
