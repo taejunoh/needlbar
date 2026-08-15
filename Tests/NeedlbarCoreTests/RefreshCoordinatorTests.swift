@@ -48,15 +48,17 @@ import Testing
         snapshots: [:],
         errors: [.claude: BridgeError(provider: "claude", code: "requiresAuthentication", message: "sign in", action: nil)]
     ))
+    let store = ProviderSnapshotStore()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota,
-        store: ProviderSnapshotStore(),
+        store: store,
         clock: ManualClock(now: now)
     )
 
     await coordinator.popoverOpened()
     await eventually { quota.callCount == 1 }
+    await eventuallyAsync { await store.snapshot(for: .claude).quotaStatus == .requiresAuthentication }
     await coordinator.popoverOpened()
     await eventually { quota.callCount == 2 }
 

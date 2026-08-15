@@ -61,3 +61,37 @@ RED: `staleWatcherStartupCannotStopTheWatcherInstalledByANewerRun` held G1 insid
 GREEN: after `stop()` has invalidated G1 and stopped its watcher, a stale G1 `start()` continuation now only returns. It never stops the shared watcher, so G2 remains active and a G2 event requests exactly one additional usage refresh. The regression test asserts lifecycle order/count and the observable G2 refresh behavior.
 
 Verification: the focused race test passed 20 consecutive runs; `swift test --filter RefreshCoordinatorTests` passed 8 tests; `swift test --filter UsageFileWatcherTests` passed 5 tests; full `swift test` passed 21 tests; and a fresh `source /Users/taejunoh/.cargo/env && make test` passed.
+
+## Fix round 6 — quota retry test synchronization
+
+### Systematic-debugging evidence
+
+The flaky test's first `QuotaRefreshSpy.refresh()` increments `callCount` before
+the coordinator's asynchronous `finishQuotaRefresh` applies the provider error
+to `ProviderSnapshotStore` and clears `quotaTask`. The original test waited only
+for `callCount == 1`, so its second popover could run inside that effect window
+and be coalesced as an in-flight request. The production behavior is correct:
+an all-error refresh does not set `lastQuotaSuccessfulAt`.
+
+The test now retains the same `ProviderSnapshotStore` instance passed to the
+coordinator and awaits the observable effect boundary — `.claude.quotaStatus ==
+.requiresAuthentication` — via the existing async eventual helper before
+opening the second popover. This is a test-only synchronization change with no
+arbitrary sleep and no production changes.
+
+### Verification
+
+- Before this fix, the isolated test failed 40/40 runs under the known
+  call-count-only synchronization.
+- After this fix, the isolated test passed 40/40 consecutive runs.
+- `swift test --filter RefreshCoordinatorTests` — 8 passed.
+- `swift test --filter UsageFileWatcherTests` — 5 passed.
+- `swift test` — 21 passed.
+- Fresh `source /Users/taejunoh/.cargo/env && make test` — exit 0; Rust
+  workspace and pinned `tokscale-core` passed (1,372 passed, 0 failed, 1
+  ignored), Swift passed 21.
+- `git diff --check` passed; vendor diff remained clean.
+
+### Commit
+
+`test: await quota refresh completion`
