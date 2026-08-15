@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 11 Module Configuration and Menu-Bar Title Logic complete
-**Next implementation task:** Task 12 — Build the Native Accessory App and Hybrid Status Items
+**Current phase:** Task 12 Native Accessory App and Hybrid Status Items complete
+**Next implementation task:** Task 13 — Implement Overview, Provider Popovers, and Settings
 
 ## Source of Truth
 
@@ -343,9 +343,35 @@ Verification evidence:
 - No approved-design deviation was made; the pinned `tokscale-core` revision and all v0.1 constraints remain unchanged.
 - Remote verification is complete: Task 11 CI run [31854765005](https://github.com/taejunoh/needlbar/actions/runs/31854765005) passed in 4m40s at head `84a1d7c`. Task 12 remains the next implementation task.
 
+## Task 12 Verification
+
+Task 12 is complete and rereview-approved with no findings. The native accessory runner and hybrid status-item shell now own lifecycle coordination while keeping normalized state and presentation logic in their assigned layers.
+
+Implementation and contract evidence:
+
+- The thin AppKit runner/accessory shell is wired to the existing `LSUIElement` application configuration; `Info.plist` already had `LSUIElement`, so no manifest churn was needed.
+- `AppDelegate` owns one long-lived snapshot store, module configuration, refresh coordinator, Rust-backed repositories, watcher, and menu-bar controller for the application lifetime.
+- Menu-bar handles reconcile incrementally. Snapshot and configuration observations are installed with explicit cleanup, avoiding duplicate observers and stale handles.
+- Titles remain neutral when data is unavailable. `terminateLater` performs exactly-once awaited shutdown of the owned lifecycle resources.
+
+Task 12 implementation commits on `main`:
+
+- `b3cb0ca` — build the native accessory app and hybrid status items.
+- `b491f32` — resolve lifecycle/shutdown review findings.
+
+Verification evidence:
+
+- Review round 1 found 1 Important shutdown finding; it was resolved in `b491f32`, and rereview approved with no findings.
+- Root fresh verification passed: `MenuBarControllerTests` — 7; `AppDelegateLifecycleTests` — 1.
+- `source /Users/taejunoh/.cargo/env && make test` passed with Swift 40 tests and pinned `tokscale-core` 1372 passed, 0 failed, 1 ignored.
+- `git diff --check` passed and `git -C vendor/tokscale-core status --short` was clean.
+- Smoke verification initially hit the expected local-PATH-only failure when `make run` was invoked without the Cargo environment. After `source /Users/taejunoh/.cargo/env`, `make run` built and launched Needlbar; the foreground process group was interrupted and `pgrep` confirmed no Needlbar process remained.
+- No approved-design deviation was made; the pinned `tokscale-core` revision, existing `LSUIElement` setting, and all v0.1 constraints remain unchanged.
+- Remote CI remains green through Task 11 at [run 31854765005](https://github.com/taejunoh/needlbar/actions/runs/31854765005); Task 12 push and CI verification are pending.
+
 ## Required Next Action
 
-Task 11 verification is complete. Begin Task 12 exactly at **Task 12: Build the Native Accessory App and Hybrid Status Items**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
+Task 12 verification is complete. Begin Task 13 exactly at **Task 13: Implement Overview, Provider Popovers, and Settings**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## v0.1 Constraints to Preserve
 
