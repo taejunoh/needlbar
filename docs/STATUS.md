@@ -367,7 +367,7 @@ Verification evidence:
 - `git diff --check` passed and `git -C vendor/tokscale-core status --short` was clean.
 - Smoke verification initially hit the expected local-PATH-only failure when `make run` was invoked without the Cargo environment. After `source /Users/taejunoh/.cargo/env`, `make run` built and launched Needlbar; the foreground process group was interrupted and `pgrep` confirmed no Needlbar process remained.
 - No approved-design deviation was made; the pinned `tokscale-core` revision, existing `LSUIElement` setting, and all v0.1 constraints remain unchanged.
-- Remote CI remains green through Task 11 at [run 31854765005](https://github.com/taejunoh/needlbar/actions/runs/31854765005); Task 12 push and CI verification are pending.
+- Remote verification is complete: Task 12 CI run [31855885744](https://github.com/taejunoh/needlbar/actions/runs/31855885744) passed in 4m39s at head `4988d10230c30c347d5ab2d92af1155a9aec684d`. Task 13 remains the next implementation task.
 
 ## Required Next Action
 
