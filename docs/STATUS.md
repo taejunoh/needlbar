@@ -341,7 +341,7 @@ Verification evidence:
 - `source /Users/taejunoh/.cargo/env && make test` passed with Swift 32 tests and pinned `tokscale-core` 1372 passed, 0 failed, 1 ignored.
 - `git diff --check` passed and `git -C vendor/tokscale-core status --short` was clean.
 - No approved-design deviation was made; the pinned `tokscale-core` revision and all v0.1 constraints remain unchanged.
-- Remote CI remains green through Task 10 at [run 31853771074](https://github.com/taejunoh/needlbar/actions/runs/31853771074); Task 11 push and CI verification are pending.
+- Remote verification is complete: Task 11 CI run [31854765005](https://github.com/taejunoh/needlbar/actions/runs/31854765005) passed in 4m40s at head `84a1d7c`. Task 12 remains the next implementation task.
 
 ## Required Next Action
 
