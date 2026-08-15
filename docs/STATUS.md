@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 13 Overview, Provider Popovers, and Settings complete
-**Next implementation task:** Task 14 — Add Diagnostics, Privacy Guardrails, and Full Integration Tests
+**Current phase:** Task 14 Diagnostics, Privacy Guardrails, and Full Integration Tests complete
+**Next implementation task:** Task 15 — Package an Installable arm64 macOS v0.1 Artifact
 
 ## Source of Truth
 
@@ -398,9 +398,38 @@ Verification evidence:
 - The daily series and Cursor disconnect are deliberate additive bridge-contract extensions required by the Task 13 plan, not a product redesign or scope deviation. No other approved-design deviation was made.
 - Remote verification is complete: Task 13 CI run [31857311990](https://github.com/taejunoh/needlbar/actions/runs/31857311990) passed in 4m49s at tested head `0d73338aa9d79f40de42192d5715a60a824c15a6`. Task 14 remains the next implementation task.
 
+## Task 14 Verification
+
+Task 14 is complete and the final reviewer approved the implementation in review round 2. Diagnostics, privacy guardrails, public documentation, and the full feature-only integration seam now enforce the approved v0.1 boundaries.
+
+Implementation and contract evidence:
+
+- Rust diagnostics use safe DTOs with fixed provider, subsystem-status, source, and error-code enums. Swift uses a strict diagnostics decoder. The bounded observation store records only actual usage/quota ABI statuses, timestamps, and safe codes; it performs no extra source, credential, or provider-response scans.
+- Redaction coverage exercises the real exported C usage, quota, diagnostics, and free functions plus safe `BridgeError` serialization. `CLAUDE-CANARY-SECRET`, `CODEX-CANARY-SECRET`, and `CURSOR-CANARY-SECRET`, a raw path, and an email are absent while safe provider/code/action fields remain available.
+- The feature-only fixture runtime drives the real C ABI through `RustBridge`, the usage/quota repositories, and `ProviderSnapshotStore` end to end. It covers usage and quota for all three providers, deterministic constrained Cursor selection, and partial Codex failure isolation without erasing other providers.
+- Eight public documents lock the architecture, privacy, provider boundaries, security, contribution, and project usage contracts. Diagnostics and privacy surfaces exclude tokens, cookies, emails, raw paths, prompts, responses, and source code.
+- The integration work discovered and fixed the `estimatedCostUsd` versus approved `estimatedCostUSD` wire mismatch with an explicit Rust serialization rename.
+- The test harness feature is absent from the production C header and default bridge archive. `make swift-test` uses an exit/signal trap to restore the production bridge and clean SwiftPM artifacts, including after interrupted or failed test runs; archive/header checks found no `needlbar_test_*` markers.
+
+Task 14 implementation commits on `main`:
+
+- `5c0e339` — add diagnostics, privacy guardrails, public documentation, and feature-only integration coverage.
+- `9e56abc` — harden ABI redaction, wire compatibility, and test artifact hygiene.
+
+Verification evidence:
+
+- TDD RED coverage first caught the absent diagnostics module/decoder and outcome mapper; follow-up RED coverage caught the real ABI `estimatedCostUSD` mismatch and stale SwiftPM static-library reuse.
+- Root fresh `make test` exited 0 with Swift 54 tests and pinned `tokscale-core` 1372 passed, 0 failed, 1 ignored.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` passed.
+- `swift build -c release` exited 0. It emitted pre-existing, non-blocking macOS object-version/Apple linker warnings; the release build succeeded.
+- `git diff --check` passed and `git -C vendor/tokscale-core status --short` was clean at pinned revision `53f9eefffd3278fd430076531548f7b1f5861f9a`.
+- Strings checks over the release archive and production header found no `needlbar_test` markers.
+- The feature-only test harness is a deliberate test-only integration seam required by the Task 14 plan, not a production feature or design deviation. No other approved-design deviation was made.
+- Remote CI remains green through Task 13 at [run 31857311990](https://github.com/taejunoh/needlbar/actions/runs/31857311990); Task 14 push and CI verification are pending.
+
 ## Required Next Action
 
-Task 13 verification is complete. Begin Task 14 exactly at **Task 14: Add Diagnostics, Privacy Guardrails, and Full Integration Tests**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
+Task 14 verification is complete. Begin Task 15 exactly at **Task 15: Package an Installable arm64 macOS v0.1 Artifact**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## v0.1 Constraints to Preserve
 
