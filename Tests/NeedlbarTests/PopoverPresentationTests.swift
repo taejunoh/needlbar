@@ -135,6 +135,86 @@ import Testing
     #expect(await eventuallyOnMainActor { completion == true })
 }
 
+@MainActor
+@Test func cursorConnectionRejectsDisconnectWhileSlowConnectIsInFlight() async {
+    let importer = SuspendedCursorSessionImporter()
+    let clearer = SuspendedCursorSessionClearer()
+    let controller = CursorSessionConnectionController(
+        importer: { token in await importer.importSession(token) },
+        clearer: { await clearer.clearSession() }
+    )
+    var transientInput = "cursor-secret-A"
+    var status = "Idle"
+    var actionStates: [Bool] = []
+
+    let connectAccepted = controller.connect(
+        transientInput,
+        clearInput: { transientInput = "" },
+        operationStateChanged: { actionStates.append($0) },
+        completion: { connected in status = connected ? "Cursor connected." : "Cursor could not be connected." }
+    )
+    if connectAccepted { status = "Connecting Cursor…" }
+
+    #expect(connectAccepted)
+    #expect(transientInput.isEmpty)
+    #expect(await eventuallyOnMainActor { await importer.receivedToken() == "cursor-secret-A" })
+    #expect(controller.isOperationInFlight)
+    #expect(status == "Connecting Cursor…")
+
+    let disconnectAccepted = controller.disconnect(
+        operationStateChanged: { actionStates.append($0) },
+        completion: { disconnected in status = disconnected ? "Cursor disconnected." : "Cursor could not be disconnected." }
+    )
+    #expect(!disconnectAccepted)
+    #expect(await clearer.callCount() == 0)
+    #expect(status == "Connecting Cursor…")
+
+    await importer.complete(with: true)
+    #expect(await eventuallyOnMainActor { !controller.isOperationInFlight && status == "Cursor connected." })
+    #expect(actionStates == [true, false])
+}
+
+@MainActor
+@Test func cursorConnectionRejectsSecondSlowConnectWithoutRetainingItsToken() async {
+    let importer = SuspendedCursorSessionImporter()
+    let controller = CursorSessionConnectionController(
+        importer: { token in await importer.importSession(token) },
+        clearer: { true }
+    )
+    var firstInput = "cursor-secret-A"
+    var secondInput = "cursor-secret-B"
+    var status = "Idle"
+    var actionStates: [Bool] = []
+
+    let firstAccepted = controller.connect(
+        firstInput,
+        clearInput: { firstInput = "" },
+        operationStateChanged: { actionStates.append($0) },
+        completion: { connected in status = connected ? "Cursor connected." : "Cursor could not be connected." }
+    )
+    if firstAccepted { status = "Connecting Cursor…" }
+    #expect(await eventuallyOnMainActor { await importer.receivedToken() == "cursor-secret-A" })
+
+    let secondAccepted = controller.connect(
+        secondInput,
+        clearInput: { secondInput = "" },
+        operationStateChanged: { actionStates.append($0) },
+        completion: { connected in status = connected ? "Cursor connected." : "Cursor could not be connected." }
+    )
+
+    #expect(firstAccepted)
+    #expect(!secondAccepted)
+    #expect(firstInput.isEmpty)
+    #expect(secondInput.isEmpty)
+    #expect(await importer.receivedTokens() == ["cursor-secret-A"])
+    #expect(status == "Connecting Cursor…")
+    #expect(controller.isOperationInFlight)
+
+    await importer.complete(with: false)
+    #expect(await eventuallyOnMainActor { !controller.isOperationInFlight && status == "Cursor could not be connected." })
+    #expect(actionStates == [true, false])
+}
+
 private func snapshot(
     provider: ProviderID,
     usage: UsageSnapshot?,
@@ -192,18 +272,43 @@ private func eventuallyOnMainActor(
 }
 
 private actor SuspendedCursorSessionImporter {
-    private var token: String?
+    private var tokens: [String] = []
     private var continuation: CheckedContinuation<Bool, Never>?
 
     func importSession(_ token: String) async -> Bool {
-        self.token = token
+        tokens.append(token)
         return await withCheckedContinuation { continuation in
             self.continuation = continuation
         }
     }
 
     func receivedToken() -> String? {
-        token
+        tokens.first
+    }
+
+    func receivedTokens() -> [String] {
+        tokens
+    }
+
+    func complete(with result: Bool) {
+        continuation?.resume(returning: result)
+        continuation = nil
+    }
+}
+
+private actor SuspendedCursorSessionClearer {
+    private var calls = 0
+    private var continuation: CheckedContinuation<Bool, Never>?
+
+    func clearSession() async -> Bool {
+        calls += 1
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func callCount() -> Int {
+        calls
     }
 
     func complete(with result: Bool) {

@@ -9,6 +9,7 @@ public struct SettingsView: View {
     private let cursorConnection = CursorSessionConnectionController()
     @State private var cursorSessionToken = ""
     @State private var connectionStatus: String?
+    @State private var isCursorConnectionOperationInFlight = false
 
     public init(configuration: ModuleConfiguration) {
         self.configuration = configuration
@@ -38,10 +39,14 @@ public struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 SecureField("Cursor session token", text: $cursorSessionToken)
                     .onSubmit(connectCursor)
+                    .disabled(isCursorConnectionOperationInFlight)
                 HStack {
                     Button("Connect", action: connectCursor)
+                        .disabled(isCursorConnectionOperationInFlight)
                     Button("Reconnect", action: connectCursor)
+                        .disabled(isCursorConnectionOperationInFlight)
                     Button("Disconnect", action: disconnectCursor)
+                        .disabled(isCursorConnectionOperationInFlight)
                 }
                 if let connectionStatus {
                     Text(connectionStatus)
@@ -78,20 +83,28 @@ public struct SettingsView: View {
     }
 
     private func connectCursor() {
-        connectionStatus = "Connecting Cursor…"
-        cursorConnection.connect(
+        let accepted = cursorConnection.connect(
             cursorSessionToken,
             clearInput: { cursorSessionToken = "" },
+            operationStateChanged: { isCursorConnectionOperationInFlight = $0 },
             completion: { connected in
                 connectionStatus = connected ? "Cursor connected." : "Cursor could not be connected."
             }
         )
+        if accepted {
+            connectionStatus = "Connecting Cursor…"
+        }
     }
 
     private func disconnectCursor() {
-        connectionStatus = "Disconnecting Cursor…"
-        cursorConnection.disconnect { disconnected in
-            connectionStatus = disconnected ? "Cursor disconnected." : "Cursor could not be disconnected."
+        let accepted = cursorConnection.disconnect(
+            operationStateChanged: { isCursorConnectionOperationInFlight = $0 },
+            completion: { disconnected in
+                connectionStatus = disconnected ? "Cursor disconnected." : "Cursor could not be disconnected."
+            }
+        )
+        if accepted {
+            connectionStatus = "Disconnecting Cursor…"
         }
     }
 }
@@ -103,6 +116,10 @@ final class CursorSessionConnectionController {
 
     private let importer: Importer
     private let clearer: Clearer
+    private var nextOperationID: UInt64 = 0
+    private var activeOperationID: UInt64?
+
+    private(set) var isOperationInFlight = false
 
     init(
         importer: @escaping Importer = CursorSessionBridge.importSessionOffMainActor,
@@ -115,24 +132,64 @@ final class CursorSessionConnectionController {
     func connect(
         _ token: String,
         clearInput: @escaping @MainActor () -> Void,
+        operationStateChanged: @escaping @MainActor (Bool) -> Void = { _ in },
         completion: @escaping @MainActor (Bool) -> Void
-    ) {
+    ) -> Bool {
         clearInput()
+        guard let operationID = beginOperation(operationStateChanged: operationStateChanged) else { return false }
         let importer = importer
-        Task {
+        Task { [weak self] in
             let connected = await importer(token)
-            guard !Task.isCancelled else { return }
-            completion(connected)
+            self?.finishOperation(
+                operationID,
+                result: connected,
+                operationStateChanged: operationStateChanged,
+                completion: completion
+            )
         }
+        return true
     }
 
-    func disconnect(completion: @escaping @MainActor (Bool) -> Void) {
+    func disconnect(
+        operationStateChanged: @escaping @MainActor (Bool) -> Void = { _ in },
+        completion: @escaping @MainActor (Bool) -> Void
+    ) -> Bool {
+        guard let operationID = beginOperation(operationStateChanged: operationStateChanged) else { return false }
         let clearer = clearer
-        Task {
+        Task { [weak self] in
             let disconnected = await clearer()
-            guard !Task.isCancelled else { return }
-            completion(disconnected)
+            self?.finishOperation(
+                operationID,
+                result: disconnected,
+                operationStateChanged: operationStateChanged,
+                completion: completion
+            )
         }
+        return true
+    }
+
+    private func beginOperation(
+        operationStateChanged: @escaping @MainActor (Bool) -> Void
+    ) -> UInt64? {
+        guard activeOperationID == nil else { return nil }
+        nextOperationID &+= 1
+        activeOperationID = nextOperationID
+        isOperationInFlight = true
+        operationStateChanged(true)
+        return nextOperationID
+    }
+
+    private func finishOperation(
+        _ operationID: UInt64,
+        result: Bool,
+        operationStateChanged: @escaping @MainActor (Bool) -> Void,
+        completion: @escaping @MainActor (Bool) -> Void
+    ) {
+        guard activeOperationID == operationID else { return }
+        activeOperationID = nil
+        isOperationInFlight = false
+        operationStateChanged(false)
+        completion(result)
     }
 }
 
