@@ -24,14 +24,26 @@ test_live_identity_mismatch_never_waits_or_signals() {
   APP_PARENT_PID="$$"
   KILL_CALLS=""
   WAIT_CALLS=0
-  "$EXECUTABLE" >/dev/null 2>&1 &
-  LIVE_CHILD_PID=$!
+  LIVE_CHILD_PID=""
 
   cleanup_live_child() {
-    /bin/kill -TERM "$LIVE_CHILD_PID" 2>/dev/null || true
-    builtin wait "$LIVE_CHILD_PID" 2>/dev/null || true
+    if [[ "$LIVE_CHILD_PID" =~ ^[0-9]+$ ]]; then
+      /bin/kill -TERM "$LIVE_CHILD_PID" 2>/dev/null || true
+      builtin wait "$LIVE_CHILD_PID" 2>/dev/null || true
+    fi
   }
-  trap cleanup_live_child EXIT
+  finish_live_child() {
+    local cleanup_status=$?
+    trap - EXIT INT TERM
+    cleanup_live_child
+    exit "$cleanup_status"
+  }
+  trap finish_live_child EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  "$EXECUTABLE" >/dev/null 2>&1 &
+  LIVE_CHILD_PID=$!
 
   APP_PID="$LIVE_CHILD_PID"
   capture_child_identity || fail "live child identity should capture"
@@ -65,19 +77,46 @@ test_live_identity_mismatch_never_waits_or_signals() {
   assert_not_contains "-KILL" "$KILL_CALLS"
   [[ -z "$APP_PID" && -z "$APP_IDENTITY_LSTART" ]] || fail "mismatch must clear tracked child identity"
   cleanup_live_child
-  trap - EXIT
+  trap - EXIT INT TERM
   unset -f ps kill wait sleep
 }
 
 run_launch_signal_case() (
   local fixture="$1"
   local expected_status="$2"
-  local temp_root
-  local pid_file
-  local child_pid
-  temp_root="$(mktemp -d "${TMPDIR:-/tmp}/needlbar-smoke-test.XXXXXX")"
-  [[ "$temp_root" == "${TMPDIR:-/tmp}/needlbar-smoke-test."* ]] || fail "unexpected test directory: $temp_root"
-  trap 'rm -rf -- "$temp_root"' EXIT
+  local temp_root=""
+  local temp_root_valid=0
+  local temp_candidate=""
+  local pid_file=""
+  local child_pid=""
+
+  cleanup_signal_case() {
+    local cleanup_status=$?
+    local observed_command=""
+    trap - EXIT INT TERM
+    if [[ "$child_pid" =~ ^[0-9]+$ ]] && kill -0 "$child_pid" 2>/dev/null; then
+      observed_command="$(ps -o command= -p "$child_pid" 2>/dev/null || true)"
+      if [[ "$observed_command" == *"$fixture"* ]]; then
+        /bin/kill -TERM "$child_pid" 2>/dev/null || true
+        builtin wait "$child_pid" 2>/dev/null || true
+      fi
+    fi
+    if [[ "$temp_root_valid" -eq 1 && "$temp_root" == "${TMPDIR:-/tmp}/needlbar-smoke-test."* ]]; then
+      rm -rf -- "$temp_root"
+    fi
+    exit "$cleanup_status"
+  }
+  trap cleanup_signal_case EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  temp_candidate="$(mktemp -d "${TMPDIR:-/tmp}/needlbar-smoke-test.XXXXXX")"
+  if [[ "$temp_candidate" != "${TMPDIR:-/tmp}/needlbar-smoke-test."* ]]; then
+    rmdir -- "$temp_candidate" 2>/dev/null || true
+    fail "unexpected test directory: $temp_candidate"
+  fi
+  temp_root="$temp_candidate"
+  temp_root_valid=1
   pid_file="$temp_root/child.pid"
   mkdir -p "$temp_root/Needlbar.app/Contents"
   touch "$temp_root/Needlbar.app/Contents/Info.plist"
