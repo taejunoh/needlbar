@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 9 Swift models, decoding, and last-known-good state complete
-**Next implementation task:** Task 10 — Add Refresh Coordination and File-System Triggers
+**Current phase:** Task 10 Refresh Coordination and File-System Triggers complete
+**Next implementation task:** Task 11 — Implement Module Configuration and Menu-Bar Title Logic
 
 ## Source of Truth
 
@@ -76,7 +76,7 @@ Task 1 is verified green.
 
 - Local `make test` passed on Swift 6.3.3 and Rust 1.97.1.
 - `Cargo.lock` is tracked for deterministic Rust dependency resolution.
-- GitHub Actions run [31837456920](https://github.com/openai/needlbar/actions/runs/31837456920) succeeded in 3m49s.
+- GitHub Actions run [31837456920](https://github.com/taejunoh/needlbar/actions/runs/31837456920) succeeded in 3m49s.
 - CI retains `runs-on: macos-14` and deliberately selects `/Applications/Xcode_16.2.app` before running tests.
 - `Package.swift` remains on Swift tools version 6.0 with a macOS 14 deployment target.
 - No approved-baseline deviation was made.
@@ -151,7 +151,7 @@ Verification evidence:
 - RED: `source /Users/taejunoh/.cargo/env && cargo test -p needlbar-bridge --test usage_contract` exited 101 before the adapter existed with the expected missing `usage::collect_usage_from_home` symbol (the partial-envelope test also intentionally exited 101 before extraction).
 - GREEN: `cargo fmt -p needlbar-bridge -- --check`, `cargo test -p needlbar-bridge --test usage_contract`, `cargo test -p needlbar-bridge`, and `cargo test --manifest-path vendor/tokscale-core/Cargo.toml` all exited 0; the pinned engine reported 1372 passed, 0 failed, 1 ignored.
 - GREEN project verification: `source /Users/taejunoh/.cargo/env && make test` exited 0; Rust passed including the pinned engine and Swift passed 2 tests.
-- Task 2 CI run [31838440815](https://github.com/openai/needlbar/actions/runs/31838440815) is green.
+- Task 2 CI run [31838440815](https://github.com/taejunoh/needlbar/actions/runs/31838440815) is green.
 - No approved-baseline deviation was made; no vendor revision was changed.
 
 ## Task 4 Verification
@@ -174,7 +174,7 @@ Verification evidence:
 - Original RED: `source /Users/taejunoh/.cargo/env && cargo test -p needlbar-source-sync --test cursor_sync` and `cargo test -p needlbar-bridge --test cursor_usage_contract` exited 101 with the expected missing source-sync API/imports and missing Cursor snapshot assertion.
 - Original GREEN: `cargo fmt -p needlbar-source-sync -p needlbar-bridge -- --check`, `cargo test -p needlbar-source-sync`, `cargo test -p needlbar-bridge --test cursor_usage_contract`, `cargo test -p needlbar-bridge`, `cargo test --manifest-path vendor/tokscale-core/Cargo.toml`, and `source /Users/taejunoh/.cargo/env && make test` exited 0; the pinned engine reported 1372 passed, 0 failed, 1 ignored, and Swift passed 2 tests.
 - Hardening GREEN: source-sync tests passed 4 tests after malformed-response/no-follow validation and 5 tests after descriptor-relative traversal/v1 compatibility; bridge cursor contract passed 1 test; scoped rustfmt and `make test` passed with the pinned engine at 1372 passed, 0 failed, 1 ignored and Swift at 2 passed.
-- Task 3 CI run [31839252018](https://github.com/openai/needlbar/actions/runs/31839252018) is green.
+- Task 3 CI run [31839252018](https://github.com/taejunoh/needlbar/actions/runs/31839252018) is green.
 - No approved-baseline deviation was made and the `tokscale-core` vendor revision was not changed.
 
 ## Task 5 Verification
@@ -282,9 +282,42 @@ Verification evidence:
 - Remote CI remains green through Task 8 at [run 31846072025](https://github.com/taejunoh/needlbar/actions/runs/31846072025); Task 9 commit `f078ff7` is local and its CI push is pending.
 - No approved-design deviation was made; all prior v0.1 constraints and the pinned `tokscale-core` revision remain unchanged.
 
+## Task 10 Verification
+
+Task 10 is complete and final concurrency/spec review-approved with no findings. Refresh coordination, file-system triggers, and the production forced Cursor synchronization path are implemented across the assigned Swift, Rust, and C bridge layers.
+
+Implementation and contract evidence:
+
+- Manual and scheduled refreshes coordinate bounded usage and quota work independently. Usage keeps the approved five-minute cadence, file changes debounce for one second, and popover-triggered retries use the approved 60-second retry window.
+- The forced usage ABI reaches production `sync_cursor_cache(true)` through the Rust bridge and Swift `UsageRepository`, so a manual refresh actually bypasses the Cursor freshness gate while preserving the existing repository path and pinned `tokscale-core` discovery layout.
+- Refresh effects are guarded by run generation, manual bursts coalesce, watcher startup/stop ownership is lifecycle-safe, and descriptor/file-descriptor leases remain safe across asynchronous callbacks and cancellation.
+- Usage and quota remain independently refreshable and independently fallible; one side's failure does not erase the other's valid last-known-good state.
+
+Task 10 implementation commits on `main`:
+
+- `cba429c` — coordinate bounded usage and quota refresh.
+- `4675a40` — force Cursor sync through the production refresh bridge.
+- `06aff57` — guard refresh effects by run generation.
+- `8a873e4` — coalesce forced refresh requests.
+- `f37eb2a` — close refresh lifecycle races.
+- `ae2d70b` — isolate stale watcher startup.
+- `916a29d` — await quota refresh completion in the synchronization regression test.
+
+Verification evidence:
+
+- `cargo fmt -p needlbar-bridge -- --check` and `cargo clippy -p needlbar-bridge --all-targets -- -D warnings` passed.
+- `swift test --filter RefreshCoordinatorTests` — 8 tests passed.
+- `swift test --filter UsageFileWatcherTests` — 5 tests passed.
+- `source /Users/taejunoh/.cargo/env && make test` passed: Swift 21 tests, Rust including pinned `tokscale-core` 1372 passed, 0 failed, 1 ignored.
+- `git diff --check` passed and `git -C vendor/tokscale-core status --short` was clean.
+- Final independent review approved with no Critical, Important, or Minor findings. A test-only synchronization defect was diagnosed as a wait-condition issue; production behavior was verified correct, and `916a29d` now waits for the first quota refresh to finish before issuing the retry.
+- No approved-design deviation was made; the pinned `tokscale-core` revision and all v0.1 constraints remain unchanged.
+
+- Remote CI remains green through Task 9 at [run 31847118932](https://github.com/taejunoh/needlbar/actions/runs/31847118932); Task 10 push and CI verification are pending.
+
 ## Required Next Action
 
-Task 9 verification is complete. Begin Task 10 exactly at **Task 10: Add Refresh Coordination and File-System Triggers**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
+Task 10 verification is complete. Begin Task 11 exactly at **Task 11: Implement Module Configuration and Menu-Bar Title Logic**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## v0.1 Constraints to Preserve
 
