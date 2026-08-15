@@ -25,11 +25,47 @@ test_live_identity_mismatch_never_waits_or_signals() {
   KILL_CALLS=""
   WAIT_CALLS=0
   LIVE_CHILD_PID=""
+  LIVE_CHILD_PPID=""
+  LIVE_CHILD_COMMAND=""
+  LIVE_CHILD_LSTART=""
+
+  read_live_child_identity() {
+    local snapshot
+    snapshot="$(command ps -o ppid= -o stat= -o lstart= -o command= -p "$LIVE_CHILD_PID" 2>/dev/null)" || return 1
+    [[ -n "$snapshot" ]] || return 1
+    read -r OBSERVED_PPID OBSERVED_STATE OBSERVED_WEEKDAY OBSERVED_MONTH OBSERVED_DAY OBSERVED_TIME OBSERVED_YEAR OBSERVED_COMMAND <<<"$snapshot"
+    [[ -n "${OBSERVED_PPID:-}" && -n "${OBSERVED_STATE:-}" && -n "${OBSERVED_COMMAND:-}" ]] || return 1
+    OBSERVED_LSTART="$OBSERVED_WEEKDAY $OBSERVED_MONTH $OBSERVED_DAY $OBSERVED_TIME $OBSERVED_YEAR"
+  }
+  capture_live_child_identity() {
+    read_live_child_identity || return 1
+    [[ "$OBSERVED_PPID" == "$$" && "$OBSERVED_COMMAND" == "$EXECUTABLE" ]] || return 1
+    [[ "$OBSERVED_STATE" != Z* && "$OBSERVED_STATE" != *E* ]] || return 1
+    LIVE_CHILD_PPID="$OBSERVED_PPID"
+    LIVE_CHILD_COMMAND="$OBSERVED_COMMAND"
+    LIVE_CHILD_LSTART="$OBSERVED_LSTART"
+  }
+  live_child_identity_matches() {
+    read_live_child_identity || return 1
+    [[ "$OBSERVED_PPID" == "$LIVE_CHILD_PPID" ]] || return 2
+    [[ "$OBSERVED_COMMAND" == "$LIVE_CHILD_COMMAND" && "$OBSERVED_COMMAND" == "$EXECUTABLE" ]] || return 2
+    [[ "$OBSERVED_LSTART" == "$LIVE_CHILD_LSTART" ]] || return 2
+    [[ "$OBSERVED_STATE" != Z* && "$OBSERVED_STATE" != *E* ]] || return 1
+  }
 
   cleanup_live_child() {
-    if [[ "$LIVE_CHILD_PID" =~ ^[0-9]+$ ]]; then
+    if [[ "$LIVE_CHILD_PID" =~ ^[0-9]+$ ]] && live_child_identity_matches; then
       /bin/kill -TERM "$LIVE_CHILD_PID" 2>/dev/null || true
-      builtin wait "$LIVE_CHILD_PID" 2>/dev/null || true
+      for _ in $(seq 1 20); do
+        if live_child_identity_matches; then
+          sleep 0.1
+          continue
+        else
+          identity_status=$?
+          [[ "$identity_status" -eq 1 ]] && builtin wait "$LIVE_CHILD_PID" 2>/dev/null || true
+          break
+        fi
+      done
     fi
   }
   finish_live_child() {
@@ -44,6 +80,7 @@ test_live_identity_mismatch_never_waits_or_signals() {
 
   "$EXECUTABLE" >/dev/null 2>&1 &
   LIVE_CHILD_PID=$!
+  capture_live_child_identity || fail "live child cleanup identity should capture"
 
   APP_PID="$LIVE_CHILD_PID"
   capture_child_identity || fail "live child identity should capture"
@@ -76,6 +113,11 @@ test_live_identity_mismatch_never_waits_or_signals() {
   assert_not_contains "-TERM" "$KILL_CALLS"
   assert_not_contains "-KILL" "$KILL_CALLS"
   [[ -z "$APP_PID" && -z "$APP_IDENTITY_LSTART" ]] || fail "mismatch must clear tracked child identity"
+  expected_live_command="$LIVE_CHILD_COMMAND"
+  LIVE_CHILD_COMMAND="/unrelated/reused-pid"
+  cleanup_live_child
+  /bin/kill -0 "$LIVE_CHILD_PID" 2>/dev/null || fail "cleanup signalled a mismatched live child"
+  LIVE_CHILD_COMMAND="$expected_live_command"
   cleanup_live_child
   trap - EXIT INT TERM
   unset -f ps kill wait sleep
@@ -92,15 +134,9 @@ run_launch_signal_case() (
 
   cleanup_signal_case() {
     local cleanup_status=$?
-    local observed_command=""
     trap - EXIT INT TERM
-    if [[ "$child_pid" =~ ^[0-9]+$ ]] && kill -0 "$child_pid" 2>/dev/null; then
-      observed_command="$(ps -o command= -p "$child_pid" 2>/dev/null || true)"
-      if [[ "$observed_command" == *"$fixture"* ]]; then
-        /bin/kill -TERM "$child_pid" 2>/dev/null || true
-        builtin wait "$child_pid" 2>/dev/null || true
-      fi
-    fi
+    # The nested smoke runner owns and verifies the fixture child. This outer
+    # scope never signals a PID it did not identity-capture at spawn time.
     if [[ "$temp_root_valid" -eq 1 && "$temp_root" == "${TMPDIR:-/tmp}/needlbar-smoke-test."* ]]; then
       rm -rf -- "$temp_root"
     fi
