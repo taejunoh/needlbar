@@ -36,8 +36,8 @@ swift-test:
 		fi; \
 		if [ -n "$$symbols_file" ]; then rm -f "$$symbols_file" || restore_status=1; fi; \
 		swift package clean || restore_status=1; \
-		if [ $$status -ne 0 ]; then exit $$status; fi; \
 		if [ $$restore_status -ne 0 ]; then exit $$restore_status; fi; \
+		if [ $$status -ne 0 ]; then exit $$status; fi; \
 		exit 0; \
 	}; \
 	trap restore_bridge EXIT; \
