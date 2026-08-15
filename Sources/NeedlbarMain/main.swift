@@ -1,2 +1,7 @@
+import AppKit
 import NeedlbarApp
-print("Needlbar bootstrap: \(NeedlbarAppModule.isReady)")
+
+let application = NSApplication.shared
+let appDelegate = AppDelegate()
+application.delegate = appDelegate
+application.run()

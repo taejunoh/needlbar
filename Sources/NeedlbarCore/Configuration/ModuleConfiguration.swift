@@ -37,6 +37,8 @@ public struct ModuleSettings: Equatable, Sendable {
 }
 
 public final class ModuleConfiguration {
+    public static let didChangeNotification = Notification.Name("needlbar.module-configuration.did-change")
+
     private let defaults: UserDefaults
 
     public init(defaults: UserDefaults = .standard) {
@@ -74,6 +76,7 @@ public final class ModuleConfiguration {
     public func set(_ settings: ModuleSettings, for module: MenuModuleID) {
         defaults.set(settings.isEnabled, forKey: key(for: module, property: "enabled"))
         defaults.set(settings.metric.rawValue, forKey: key(for: module, property: "metric"))
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
     }
 
     public var enabledModuleIDs: [MenuModuleID] {

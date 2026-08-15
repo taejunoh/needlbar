@@ -15,6 +15,7 @@ public actor ProviderSnapshotStore {
 
     private var states: [ProviderID: State] = [:]
     private let now: @Sendable () -> Date
+    private var updateContinuations: [UUID: AsyncStream<[ProviderSnapshot]>.Continuation] = [:]
 
     public init(now: @escaping @Sendable () -> Date = { Date() }) {
         self.now = now
@@ -28,6 +29,7 @@ public actor ProviderSnapshotStore {
         state.usage.latestFailure = nil
         state.updatedAt = timestamp
         states[provider] = state
+        publishUpdates()
     }
 
     public func applyQuota(_ quota: QuotaSnapshot, for provider: ProviderID, at date: Date? = nil) {
@@ -38,6 +40,7 @@ public actor ProviderSnapshotStore {
         state.quota.latestFailure = nil
         state.updatedAt = timestamp
         states[provider] = state
+        publishUpdates()
     }
 
     public func markUsageFailure(for provider: ProviderID, status: DataStatus, at date: Date? = nil) {
@@ -46,6 +49,7 @@ public actor ProviderSnapshotStore {
         state.usage.latestFailure = normalizedFailure(status, lastSuccessfulAt: state.usage.lastSuccessfulAt)
         state.updatedAt = timestamp
         states[provider] = state
+        publishUpdates()
     }
 
     public func markQuotaFailure(for provider: ProviderID, status: DataStatus, at date: Date? = nil) {
@@ -54,6 +58,7 @@ public actor ProviderSnapshotStore {
         state.quota.latestFailure = normalizedFailure(status, lastSuccessfulAt: state.quota.lastSuccessfulAt)
         state.updatedAt = timestamp
         states[provider] = state
+        publishUpdates()
     }
 
     public func snapshot(for provider: ProviderID) -> ProviderSnapshot {
@@ -68,8 +73,36 @@ public actor ProviderSnapshotStore {
         )
     }
 
+    public func snapshots() -> [ProviderSnapshot] {
+        ProviderID.allCases.map { snapshot(for: $0) }
+    }
+
+    public func updates() -> AsyncStream<[ProviderSnapshot]> {
+        let identifier = UUID()
+        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            updateContinuations[identifier] = continuation
+            continuation.yield(snapshots())
+            continuation.onTermination = { [weak self] _ in
+                Task {
+                    await self?.removeUpdateContinuation(identifier)
+                }
+            }
+        }
+    }
+
     private func state(for provider: ProviderID, timestamp: Date) -> State {
         states[provider] ?? State(updatedAt: timestamp)
+    }
+
+    private func publishUpdates() {
+        let snapshots = snapshots()
+        for continuation in updateContinuations.values {
+            continuation.yield(snapshots)
+        }
+    }
+
+    private func removeUpdateContinuation(_ identifier: UUID) {
+        updateContinuations.removeValue(forKey: identifier)
     }
 
     private func normalizedFailure(_ status: DataStatus, lastSuccessfulAt: Date?) -> DataStatus {
