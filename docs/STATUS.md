@@ -3,7 +3,7 @@
 **Updated:** 2026-08-14
 **Branch:** `main`
 **Current phase:** Task 15 packaging and final v0.1 implementation gate complete
-**Next action:** Push and verify CI artifacts, then perform credentialed/manual release acceptance before tagging v0.1
+**Next action:** Perform credentialed/manual release acceptance, then create a user-authorized v0.1 tag/release
 
 ## Source of Truth
 
@@ -455,6 +455,9 @@ Final acceptance evidence:
 - The first production `make run`/packaged-app smoke launched and terminated cleanly; the exact PID was cleaned and no Needlbar process remained.
 - No implementation or approved-design deviation was made. The macOS 14 deployment-target setting is an explicit build correction that preserves the approved platform floor.
 
+- Hosted Task 15 verification is complete: CI run [31861693135](https://github.com/taejunoh/needlbar/actions/runs/31861693135) passed in 8m33s at tested head `98203636d5c8a5d5dd99cc2e575f18fb2ae7cea7`. Rust workspace tests, strict Clippy, `make test`, package, cleanup regression, packaged smoke, and arm64 artifact upload all passed.
+- Uploaded artifact `Needlbar-macos-arm64` has API id `9240875960`, size `5,139,200` bytes, was created `2026-08-15T03:32:10Z`, is not expired, and expires `2026-11-13T03:23:36Z`. Its downloaded `Needlbar-macos-arm64.zip` is 5,151,078 bytes with SHA-256 `1358d46f0c0ec29474e43d458a6b0c3751931df6ca9236d56a75a218ab7dccbe`; unzip integrity passed with `Needlbar.app` at the root, correct `Contents`, and no `dist` prefix, `__MACOSX`, or AppleDouble files.
+
 Release acceptance intentionally not claimed:
 
 - No git tag or GitHub Release was created.
@@ -463,11 +466,11 @@ Release acceptance intentionally not claimed:
 
 ## Final v0.1 Continuation
 
-The implementation plan is complete. Next, push the implementation and verify the hosted CI package/smoke artifact. Then perform credentialed/manual release acceptance on a supported macOS 14 arm64 machine before creating a v0.1 tag; this is not a Task 16 implementation task.
+The implementation plan and hosted CI/artifact verification are complete. The only remaining work is credentialed/manual release acceptance on a supported macOS 14 arm64 machine, followed by a user-authorized v0.1 tag/release; this is not a Task 16 implementation task.
 
 ## Required Next Action
 
-Push the completed v0.1 implementation and verify the hosted CI package/smoke artifact. After that, perform credentialed/manual release acceptance before creating a v0.1 tag; do not begin a Task 16 implementation.
+Perform credentialed/manual release acceptance, then create a user-authorized v0.1 tag/release. Do not begin a Task 16 implementation.
 
 ## v0.1 Constraints to Preserve
 
