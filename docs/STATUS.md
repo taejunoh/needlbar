@@ -302,6 +302,7 @@ Task 10 implementation commits on `main`:
 - `f37eb2a` — close refresh lifecycle races.
 - `ae2d70b` — isolate stale watcher startup.
 - `916a29d` — await quota refresh completion in the synchronization regression test.
+- `7e345d5` — serialize semaphore-based refresh race suites to prevent CI executor starvation.
 
 Verification evidence:
 
@@ -311,9 +312,11 @@ Verification evidence:
 - `source /Users/taejunoh/.cargo/env && make test` passed: Swift 21 tests, Rust including pinned `tokscale-core` 1372 passed, 0 failed, 1 ignored.
 - `git diff --check` passed and `git -C vendor/tokscale-core status --short` was clean.
 - Final independent review approved with no Critical, Important, or Minor findings. A test-only synchronization defect was diagnosed as a wait-condition issue; production behavior was verified correct, and `916a29d` now waits for the first quota refresh to finish before issuing the retry.
+- The first Task 10 CI run [31852585168](https://github.com/taejunoh/needlbar/actions/runs/31852585168) was cancelled after more than 16 minutes in the Test workspace. Root cause was test-only cooperative-executor starvation from three concurrent semaphore-based race tests, not a production defect. Commit `7e345d5` adds `@Suite(.serialized)` to preserve the assertions and contracts; the reviewer approved the correction with no findings.
+- Root verification passed: `RefreshCoordinatorTests` ran 10 times with `--parallel --num-workers 2`; `make test` passed with Swift 21 tests and pinned `tokscale-core` 1372 passed, 0 failed, 1 ignored; `git diff --check` and the vendor status check were clean.
 - No approved-design deviation was made; the pinned `tokscale-core` revision and all v0.1 constraints remain unchanged.
 
-- Remote CI remains green through Task 9 at [run 31847118932](https://github.com/taejunoh/needlbar/actions/runs/31847118932); Task 10 push and CI verification are pending.
+- Remote CI remains green through Task 9 at [run 31847118932](https://github.com/taejunoh/needlbar/actions/runs/31847118932); the Task 10 retry containing `7e345d5` is pending push and CI verification.
 
 ## Required Next Action
 
