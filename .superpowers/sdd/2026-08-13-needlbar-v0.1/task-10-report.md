@@ -95,3 +95,34 @@ arbitrary sleep and no production changes.
 ### Commit
 
 `test: await quota refresh completion`
+
+## Fix round 7 — prevent cooperative-executor starvation in refresh tests
+
+### Systematic-debugging evidence
+
+The three refresh race tests intentionally hold the synchronous
+`UsageRepository.refresh` call in flight with a bounded test gate. Swift
+Testing can start independent async tests concurrently, so the previous
+`DispatchSemaphore.wait()` gates could occupy every cooperative executor worker
+on a small CI runner before any test body reached `releaseFirstCall()`. That
+leaves the run in a deadlock despite each individual race test passing locally.
+
+The production repository contract is synchronous. Converting it to `async` to
+make this test double nonblocking would expand beyond Task 10 and change the
+approved bridge/repository boundary. The smallest in-scope fix is therefore a
+Swift Testing serialized suite trait on `RefreshCoordinatorTests`: the exact
+in-flight merge, burst, and restart assertions stay intact, but only one bounded
+blocking gate can run at a time.
+
+### Verification
+
+- The original CI run remained in `Test workspace` for more than 14 minutes,
+  while the preceding comparable run completed in about four minutes.
+- `swift test --filter RefreshCoordinatorTests --no-parallel` passed with the
+  suite reporting each of its eight tests in order.
+- `swift test --filter RefreshCoordinatorTests --parallel --num-workers 2`
+  passed 30 consecutive runs.
+- `swift test` passed all 21 Swift tests.
+- Fresh `source /Users/taejunoh/.cargo/env && make test` passed; Rust workspace
+  and pinned `tokscale-core` passed (1,372 passed, 0 failed, 1 ignored), and
+  Swift passed 21 tests.

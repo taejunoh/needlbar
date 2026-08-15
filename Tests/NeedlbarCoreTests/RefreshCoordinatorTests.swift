@@ -2,6 +2,12 @@ import Foundation
 import Testing
 @testable import NeedlbarCore
 
+// These tests deliberately hold a synchronous repository call in flight to
+// exercise coordinator merge/restart races. Keep the suite serialized so those
+// bounded blocking test doubles cannot exhaust Swift's cooperative executor.
+@Suite(.serialized)
+struct RefreshCoordinatorTests {
+
 @Test func popoverDoesNotRefreshQuotaBeforeSixtySeconds() async throws {
     let now = try #require(BridgeDecoder.date("2026-08-14T10:00:30Z"))
     let clock = ManualClock(now: now)
@@ -451,4 +457,6 @@ private func eventuallyAsync(
     for _ in 0 ..< yields where !(await condition()) {
         await Task.yield()
     }
+}
+
 }
