@@ -53,6 +53,9 @@ jobs:
       - name: Package arm64 app
         run: make package
 
+      - name: Regression-test smoke cleanup
+        run: ./scripts/tests/smoke-app-tests.sh
+
       - name: Smoke-test packaged app
         run: ./scripts/smoke-app.sh
 
