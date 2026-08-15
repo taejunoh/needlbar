@@ -75,6 +75,11 @@ report_identity_mismatch() {
   echo "smoke-app: refusing to signal PID $APP_PID because its identity changed" >&2
 }
 
+clear_tracked_child() {
+  APP_PID=""
+  APP_IDENTITY_LSTART=""
+}
+
 terminate_app() {
   [[ -n "$APP_PID" ]] || return 0
 
@@ -85,12 +90,11 @@ terminate_app() {
     identity_status=$?
     if [[ "$identity_status" -eq 2 ]]; then
       report_identity_mismatch
-      safe_wait_for_child
-      APP_PID=""
+      clear_tracked_child
       return 1
     fi
     safe_wait_for_child
-    APP_PID=""
+    clear_tracked_child
     return 0
   fi
 
@@ -102,12 +106,11 @@ terminate_app() {
       identity_status=$?
       if [[ "$identity_status" -eq 2 ]]; then
         report_identity_mismatch
-        safe_wait_for_child
-        APP_PID=""
+        clear_tracked_child
         return 1
       fi
       safe_wait_for_child
-      APP_PID=""
+      clear_tracked_child
       return 0
     fi
   done
@@ -119,14 +122,13 @@ terminate_app() {
     identity_status=$?
     if [[ "$identity_status" -eq 2 ]]; then
       report_identity_mismatch
-      safe_wait_for_child
-      APP_PID=""
+      clear_tracked_child
       return 1
     fi
   fi
 
   safe_wait_for_child
-  APP_PID=""
+  clear_tracked_child
 }
 
 cleanup() {
@@ -188,8 +190,7 @@ main() {
       identity_status=$?
       if [[ "$identity_status" -eq 2 ]]; then
         report_identity_mismatch
-        safe_wait_for_child
-        APP_PID=""
+        clear_tracked_child
         fail "Needlbar child identity changed during smoke"
       fi
       set +e

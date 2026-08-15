@@ -16,21 +16,28 @@ assert_not_contains() {
   [[ "$haystack" != *"$needle"* ]] || fail "did not expect '$needle' in '$haystack'"
 }
 
-test_pid_reuse_never_signals_mismatched_identity() (
+test_live_identity_mismatch_never_waits_or_signals() {
   # Source-only access is intentional: production calls main only when executed.
   source "$SMOKE_SCRIPT"
-  APP_PID=4242
+  EXECUTABLE="$ROOT/dist/Needlbar.app/Contents/MacOS/Needlbar"
+  [[ -x "$EXECUTABLE" ]] || fail "package the app before running smoke cleanup tests"
   APP_PARENT_PID="$$"
-  EXECUTABLE="/bundle/Needlbar"
-  APP_IDENTITY_LSTART="Fri Aug 14 23:00:20 2026"
-  FAKE_COMMAND="$EXECUTABLE"
-  FAKE_LSTART="$APP_IDENTITY_LSTART"
-  FAKE_PPID="$APP_PARENT_PID"
   KILL_CALLS=""
   WAIT_CALLS=0
+  "$EXECUTABLE" >/dev/null 2>&1 &
+  LIVE_CHILD_PID=$!
+
+  cleanup_live_child() {
+    /bin/kill -TERM "$LIVE_CHILD_PID" 2>/dev/null || true
+    builtin wait "$LIVE_CHILD_PID" 2>/dev/null || true
+  }
+  trap cleanup_live_child EXIT
+
+  APP_PID="$LIVE_CHILD_PID"
+  capture_child_identity || fail "live child identity should capture"
 
   ps() {
-    printf ' %s S %s %s\n' "$FAKE_PPID" "$FAKE_LSTART" "$FAKE_COMMAND"
+    printf ' 999999 S Sat Aug 15 00:00:00 2026 /unrelated/reused-pid\n'
   }
   kill() {
     if [[ "$1" == "-0" ]]; then
@@ -45,18 +52,22 @@ test_pid_reuse_never_signals_mismatched_identity() (
   }
   sleep() { :; }
 
-  capture_child_identity || fail "fixture child identity should capture"
-  FAKE_COMMAND="/unrelated/reused-pid"
+  SECONDS=0
   set +e
   terminate_app
   terminate_status=$?
   set -e
 
   [[ "$terminate_status" -eq 1 ]] || fail "identity mismatch should fail cleanup"
-  [[ "$WAIT_CALLS" -eq 1 ]] || fail "identity mismatch should safely wait exactly once"
+  [[ "$SECONDS" -le 1 ]] || fail "identity mismatch cleanup was not bounded"
+  [[ "$WAIT_CALLS" -eq 0 ]] || fail "identity mismatch must not synchronously wait"
   assert_not_contains "-TERM" "$KILL_CALLS"
   assert_not_contains "-KILL" "$KILL_CALLS"
-)
+  [[ -z "$APP_PID" && -z "$APP_IDENTITY_LSTART" ]] || fail "mismatch must clear tracked child identity"
+  cleanup_live_child
+  trap - EXIT
+  unset -f ps kill wait sleep
+}
 
 run_launch_signal_case() (
   local fixture="$1"
@@ -64,7 +75,9 @@ run_launch_signal_case() (
   local temp_root
   local pid_file
   local child_pid
-  temp_root="$(mktemp -d)"
+  temp_root="$(mktemp -d "${TMPDIR:-/tmp}/needlbar-smoke-test.XXXXXX")"
+  [[ "$temp_root" == "${TMPDIR:-/tmp}/needlbar-smoke-test."* ]] || fail "unexpected test directory: $temp_root"
+  trap 'rm -rf -- "$temp_root"' EXIT
   pid_file="$temp_root/child.pid"
   mkdir -p "$temp_root/Needlbar.app/Contents"
   touch "$temp_root/Needlbar.app/Contents/Info.plist"
@@ -100,8 +113,13 @@ run_launch_signal_case() (
   [[ -s "$pid_file" ]] || fail "fixture did not record its child PID"
   child_pid="$(<"$pid_file")"
   [[ "$child_pid" =~ ^[0-9]+$ ]] || fail "fixture recorded an invalid child PID"
+  for _ in $(seq 1 20); do
+    kill -0 "$child_pid" 2>/dev/null || break
+    sleep 0.1
+  done
   if kill -0 "$child_pid" 2>/dev/null; then
-    fail "signal-window child $child_pid remained after cleanup"
+    child_state="$(ps -o ppid= -o stat= -o command= -p "$child_pid" 2>/dev/null || true)"
+    fail "signal-window child $child_pid remained after cleanup: $child_state"
   fi
 )
 
@@ -113,7 +131,14 @@ test_launch_window_term_is_deferred_and_reaped() {
   run_launch_signal_case "$FIXTURES/signal-term-child.sh" 143
 }
 
-test_pid_reuse_never_signals_mismatched_identity
+count_fixture_directories() {
+  find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'needlbar-smoke-test.*' -print | wc -l | tr -d '[:space:]'
+}
+
+fixture_dirs_before="$(count_fixture_directories)"
+test_live_identity_mismatch_never_waits_or_signals
 test_launch_window_int_is_deferred_and_reaped
 test_launch_window_term_is_deferred_and_reaped
+fixture_dirs_after="$(count_fixture_directories)"
+[[ "$fixture_dirs_after" == "$fixture_dirs_before" ]] || fail "signal fixtures left temporary directories behind"
 echo "smoke-app cleanup regressions passed"
