@@ -41,7 +41,11 @@ public enum MetricFormatter {
     }
 
     private static func compact(_ value: Double, suffix: String) -> String {
-        let formatted = String(format: "%.2f", value)
+        let formatted = String(
+            format: "%.2f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            value
+        )
             .replacingOccurrences(of: #"\.?0+$"#, with: "", options: .regularExpression)
         return formatted + suffix
     }

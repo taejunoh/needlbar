@@ -61,6 +61,45 @@ import Testing
     #expect(title == "Claude —")
 }
 
+@Test func overviewUsageMetricsRemainNeutralWithoutAnyUsageValues() {
+    let configuration = ModuleConfiguration(defaults: freshDefaults())
+    let snapshotsWithoutUsage = [snapshotWithoutUsage(provider: .claude)]
+
+    for metric in [MenuBarMetric.tokensToday, .costToday] {
+        configuration.overview = ModuleSettings(isEnabled: true, metric: metric)
+
+        #expect(MenuBarTitleRenderer.render(
+            module: .overview,
+            snapshot: nil,
+            allSnapshots: [],
+            configuration: configuration
+        ) == "AI —")
+        #expect(MenuBarTitleRenderer.render(
+            module: .overview,
+            snapshot: nil,
+            allSnapshots: snapshotsWithoutUsage,
+            configuration: configuration
+        ) == "AI —")
+    }
+}
+
+@Test func overviewTokenAggregateReturnsNeutralOnUInt64Overflow() {
+    let configuration = ModuleConfiguration(defaults: freshDefaults())
+    configuration.overview = ModuleSettings(isEnabled: true, metric: .tokensToday)
+
+    let title = MenuBarTitleRenderer.render(
+        module: .overview,
+        snapshot: nil,
+        allSnapshots: [
+            snapshot(provider: .claude, usedPercent: 0, tokens: .max),
+            snapshot(provider: .codex, usedPercent: 0, tokens: 1),
+        ],
+        configuration: configuration
+    )
+
+    #expect(title == "AI —")
+}
+
 private func freshDefaults() -> UserDefaults {
     let suiteName = "MenuBarTitleRendererTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suiteName)!
@@ -101,6 +140,17 @@ private func snapshot(
         ]),
         usageStatus: .fresh,
         quotaStatus: .fresh,
+        updatedAt: .now
+    )
+}
+
+private func snapshotWithoutUsage(provider: ProviderID) -> ProviderSnapshot {
+    ProviderSnapshot(
+        provider: provider,
+        usage: nil,
+        quota: nil,
+        usageStatus: .unavailable,
+        quotaStatus: .unavailable,
         updatedAt: .now
     )
 }

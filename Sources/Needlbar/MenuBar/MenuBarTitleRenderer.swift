@@ -39,12 +39,27 @@ public enum MenuBarTitleRenderer {
             return HeadlineQuotaSelector.mostConstrained(enabledProviderSnapshots)
                 .map { MetricFormatter.quotaRemaining($0.remainingPercent) }
         case .tokensToday:
-            let total = snapshots.reduce(UInt64.zero) { $0 + ($1.usage?.today.totalTokens ?? 0) }
+            let tokenValues = snapshots.compactMap(\.usage?.today.totalTokens)
+            guard let total = checkedTokenTotal(tokenValues) else { return nil }
             return MetricFormatter.tokens(total)
         case .costToday:
-            let total = snapshots.reduce(Decimal.zero) { $0 + ($1.usage?.today.estimatedCostUSD ?? 0) }
+            let costValues = snapshots.compactMap(\.usage?.today.estimatedCostUSD)
+            guard !costValues.isEmpty else { return nil }
+            let total = costValues.reduce(Decimal.zero, +)
             return MetricFormatter.costUSD(total)
         }
+    }
+
+    private static func checkedTokenTotal(_ values: [UInt64]) -> UInt64? {
+        guard !values.isEmpty else { return nil }
+
+        var total: UInt64 = 0
+        for value in values {
+            let (nextTotal, overflow) = total.addingReportingOverflow(value)
+            guard !overflow else { return nil }
+            total = nextTotal
+        }
+        return total
     }
 
     private static func providerMetric(_ metric: MenuBarMetric, snapshot: ProviderSnapshot?) -> String? {

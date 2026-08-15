@@ -43,6 +43,9 @@ import Testing
 @Test func metricFormatterUsesCompactMetricFormatsAndDoesNotInventResets() {
     #expect(MetricFormatter.tokens(1_420_000) == "1.42M")
     #expect(MetricFormatter.tokens(842_000) == "842K")
+    #expect(MetricFormatter.tokens(999) == "999")
+    #expect(MetricFormatter.tokens(1_000) == "1K")
+    #expect(MetricFormatter.tokens(1_426_000) == "1.43M")
     #expect(MetricFormatter.costUSD(Decimal(string: "7.81")!) == "$7.81")
     #expect(MetricFormatter.quotaRemaining(19.4) == "19%")
     #expect(MetricFormatter.reset(nil) == nil)
