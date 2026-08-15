@@ -5,6 +5,9 @@ on:
     branches: [main, "feat/**"]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: macos-14
@@ -38,5 +41,24 @@ jobs:
           xcodebuild -version
           swift --version
 
-      - name: Test workspace
+      - name: Test Rust workspace
+        run: cargo test --workspace
+
+      - name: Lint Rust workspace
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Test complete project
         run: make test
+
+      - name: Package arm64 app
+        run: make package
+
+      - name: Smoke-test packaged app
+        run: ./scripts/smoke-app.sh
+
+      - name: Upload arm64 app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Needlbar-macos-arm64
+          path: dist/Needlbar-macos-arm64.zip
+          if-no-files-found: error

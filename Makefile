@@ -1,4 +1,4 @@
-.PHONY: rust swift swift-test test run
+.PHONY: rust swift swift-test test run package smoke
 
 rust:
 	./scripts/build-rust.sh
@@ -58,3 +58,9 @@ test:
 
 run: rust
 	swift run Needlbar
+
+package:
+	./scripts/package-app.sh
+
+smoke:
+	./scripts/smoke-app.sh
