@@ -17,6 +17,7 @@ pub struct UsagePeriod {
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
     pub total_tokens: u64,
+    #[serde(rename = "estimatedCostUSD")]
     pub estimated_cost_usd: f64,
 }
 
@@ -302,6 +303,18 @@ fn bridge_error(
         code,
         action: None,
     }
+}
+
+/// Maps an error observed at the usage boundary to the stable bridge contract.
+/// The source detail is deliberately consumed only to keep callers from
+/// carrying raw upstream diagnostics beyond this layer.
+#[cfg(feature = "bridge-test-runtime")]
+pub(crate) fn boundary_error(
+    provider: Option<&str>,
+    code: impl Into<String>,
+    source_detail: impl Into<String>,
+) -> BridgeError {
+    bridge_error(provider, code, source_detail)
 }
 
 fn safe_usage_message(code: &str) -> &'static str {

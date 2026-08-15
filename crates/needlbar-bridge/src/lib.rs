@@ -1,6 +1,9 @@
 pub mod diagnostics;
 mod envelope;
 pub mod quota;
+#[cfg(feature = "bridge-test-runtime")]
+#[doc(hidden)]
+pub mod test_runtime;
 pub mod usage;
 
 use std::{
@@ -105,7 +108,7 @@ fn usage_envelope_from_providers(
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_usage_snapshot_json() -> *const c_char {
     ffi_envelope(|| {
-        let envelope = usage_envelope(false);
+        let envelope = ffi_usage_envelope(false);
         diagnostics::record_usage(&envelope);
         envelope
     })
@@ -118,7 +121,7 @@ pub unsafe extern "C" fn needlbar_usage_snapshot_json() -> *const c_char {
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_forced_usage_snapshot_json() -> *const c_char {
     ffi_envelope(|| {
-        let envelope = usage_envelope(true);
+        let envelope = ffi_usage_envelope(true);
         diagnostics::record_usage(&envelope);
         envelope
     })
@@ -131,10 +134,26 @@ pub unsafe extern "C" fn needlbar_forced_usage_snapshot_json() -> *const c_char 
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_quota_snapshot_json() -> *const c_char {
     ffi_envelope(|| {
-        let envelope = quota_envelope();
+        let envelope = ffi_quota_envelope();
         diagnostics::record_quota(&envelope);
         envelope
     })
+}
+
+fn ffi_usage_envelope(force_cursor_sync: bool) -> Envelope<usage::UsagePayload> {
+    #[cfg(feature = "bridge-test-runtime")]
+    if let Some(envelope) = test_runtime::usage_envelope() {
+        return envelope;
+    }
+    usage_envelope(force_cursor_sync)
+}
+
+fn ffi_quota_envelope() -> Envelope<quota::QuotaPayload> {
+    #[cfg(feature = "bridge-test-runtime")]
+    if let Some(envelope) = test_runtime::quota_envelope() {
+        return envelope;
+    }
+    quota_envelope()
 }
 
 /// # Safety
@@ -498,7 +517,8 @@ mod tests {
 
         diagnostics::record_usage(&usage);
         diagnostics::record_quota(&quota);
-        let envelope = Envelope::success(diagnostics::DiagnosticsSnapshot::from_recorded_outcomes());
+        let envelope =
+            Envelope::success(diagnostics::DiagnosticsSnapshot::from_recorded_outcomes());
         let json = serde_json::to_string(&envelope).expect("diagnostics JSON");
         let value: serde_json::Value = serde_json::from_str(&json).expect("diagnostics value");
         let providers = &value["data"]["providers"];

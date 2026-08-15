@@ -7,6 +7,9 @@ license.workspace = true
 [lib]
 crate-type = ["staticlib", "rlib"]
 
+[features]
+bridge-test-runtime = ["dep:async-trait"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
@@ -16,7 +19,12 @@ tokio.workspace = true
 tokscale-core.workspace = true
 needlbar-source-sync = { path = "../needlbar-source-sync" }
 needlbar-quota = { path = "../needlbar-quota" }
+async-trait = { workspace = true, optional = true }
 
 [dev-dependencies]
 async-trait.workspace = true
 tempfile.workspace = true
+
+[[test]]
+name = "redaction_contract"
+required-features = ["bridge-test-runtime"]

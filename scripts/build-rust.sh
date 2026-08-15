@@ -15,6 +15,6 @@ else
   TARGET="$(rustc -vV | awk '/^host:/ { print $2 }')"
 fi
 
-cargo build --workspace --release --target "$TARGET"
+cargo build --workspace --release --target "$TARGET" "$@"
 mkdir -p target/release
 cp "target/$TARGET/release/libneedlbar_bridge.a" target/release/libneedlbar_bridge.a

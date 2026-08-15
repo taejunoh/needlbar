@@ -1,150 +1,162 @@
-use std::sync::Arc;
+use std::{
+    ffi::CStr,
+    fs,
+    os::raw::c_char,
+    path::{Path, PathBuf},
+};
 
-use async_trait::async_trait;
 use needlbar_bridge::{
-    diagnostics::{
-        DiagnosticProvider, DiagnosticsSnapshot, ProviderDiagnostic, QuotaSource, SubsystemStatus,
-        UsageSource,
-    },
-    quota::{collect_quota_with_providers, envelope_from_collection},
-    usage::{UsagePayload, UsagePeriod, UsageProviderSnapshot},
+    needlbar_diagnostics_json, needlbar_free_string, needlbar_quota_snapshot_json,
+    needlbar_usage_snapshot_json, test_runtime,
 };
-use needlbar_quota::{
-    ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaProvider,
-};
+use tempfile::TempDir;
 
-const CANARIES: [&str; 3] = [
-    "CLAUDE-CANARY-SECRET",
-    "CODEX-CANARY-SECRET",
-    "CURSOR-CANARY-SECRET",
-];
+const CLAUDE_CANARY: &str = "CLAUDE-CANARY-SECRET";
+const CODEX_CANARY: &str = "CODEX-CANARY-SECRET";
+const CURSOR_CANARY: &str = "CURSOR-CANARY-SECRET";
+const RAW_PATH: &str = "/Users/alice/.config/needlbar/raw-token.json";
+const EMAIL: &str = "alice@example.com";
 
-struct FakeProvider {
-    result: Result<ProviderQuotaSnapshot, QuotaError>,
+#[test]
+fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
+    let home = fixture_home();
+    let claude_failure = format!("credential {CLAUDE_CANARY} at {RAW_PATH} for {EMAIL}");
+    let codex_failure = format!("credential {CODEX_CANARY} at {RAW_PATH} for {EMAIL}");
+    let cursor_failure = format!("cookie {CURSOR_CANARY} at {RAW_PATH} for {EMAIL}");
+    assert!(test_runtime::install_redaction_fixture(
+        home.path().to_path_buf(),
+        claude_failure,
+        codex_failure,
+        cursor_failure,
+    ));
+    let _clear = RuntimeCleanup;
+
+    // Each call crosses the actual exported ABI, reads Rust-owned bytes, and
+    // releases the allocation through the actual exported free function.
+    let usage = ffi_json(needlbar_usage_snapshot_json);
+    let quota = ffi_json(needlbar_quota_snapshot_json);
+    let diagnostics = ffi_json(needlbar_diagnostics_json);
+    let error = test_runtime::error_envelope_json(format!(
+        "response {CLAUDE_CANARY} {CODEX_CANARY} {CURSOR_CANARY} {RAW_PATH} {EMAIL}"
+    ));
+
+    assert_safe_output(&usage);
+    assert_safe_output(&quota);
+    assert_safe_output(&diagnostics);
+    assert_safe_output(&error);
+
+    let usage_value: serde_json::Value = serde_json::from_str(&usage).expect("usage JSON");
+    assert_eq!(usage_value["schemaVersion"], "needlbar.v1");
+    assert_eq!(
+        usage_value["data"]["providers"].as_array().map(Vec::len),
+        Some(3)
+    );
+    assert_error_shape(&usage_value["errors"], "providerUnavailable");
+
+    let quota_value: serde_json::Value = serde_json::from_str(&quota).expect("quota JSON");
+    assert_eq!(quota_value["schemaVersion"], "needlbar.v1");
+    assert_eq!(
+        quota_value["data"]["providers"].as_array().map(Vec::len),
+        Some(0)
+    );
+    assert_error_shape(&quota_value["errors"], "requiresAuthentication");
+    assert_eq!(quota_value["errors"][1]["code"], "networkUnavailable");
+    assert_eq!(quota_value["errors"][2]["provider"], "cursor");
+    assert_eq!(quota_value["errors"][2]["action"], "connectCursor");
+
+    let diagnostics_value: serde_json::Value =
+        serde_json::from_str(&diagnostics).expect("diagnostics JSON");
+    assert_eq!(diagnostics_value["schemaVersion"], "needlbar.v1");
+    assert_eq!(
+        diagnostics_value["data"]["providers"]
+            .as_array()
+            .map(Vec::len),
+        Some(3)
+    );
+    assert_eq!(
+        diagnostics_value["data"]["providers"][0]["quotaErrorCode"],
+        "requiresAuthentication"
+    );
+    assert!(diagnostics_value["data"]["providers"]
+        .as_array()
+        .expect("diagnostic providers")
+        .iter()
+        .all(|provider| provider.get("message").is_none()));
+
+    let error_value: serde_json::Value = serde_json::from_str(&error).expect("error JSON");
+    assert_eq!(error_value["schemaVersion"], "needlbar.v1");
+    assert_error_shape(&error_value["errors"], "providerUnavailable");
 }
 
-#[async_trait]
-impl QuotaProvider for FakeProvider {
-    async fn fetch(&self) -> Result<ProviderQuotaSnapshot, QuotaError> {
-        self.result.clone()
+fn ffi_json(call: unsafe extern "C" fn() -> *const c_char) -> String {
+    let pointer = unsafe { call() };
+    assert!(
+        !pointer.is_null(),
+        "bridge returned a non-null JSON pointer"
+    );
+    let json = unsafe { CStr::from_ptr(pointer) }
+        .to_str()
+        .expect("bridge emits UTF-8")
+        .to_owned();
+    unsafe { needlbar_free_string(pointer) };
+    json
+}
+
+fn assert_safe_output(json: &str) {
+    for forbidden in [CLAUDE_CANARY, CODEX_CANARY, CURSOR_CANARY, RAW_PATH, EMAIL] {
+        assert!(
+            !json.contains(forbidden),
+            "unsafe upstream value crossed the bridge boundary: {forbidden}"
+        );
     }
 }
 
-#[tokio::test]
-async fn provider_credential_canaries_never_cross_usage_quota_diagnostics_or_error_envelopes() {
-    let claude = "CLAUDE-CANARY-SECRET";
-    let codex = "CODEX-CANARY-SECRET";
-    let cursor = "CURSOR-CANARY-SECRET";
-    let quota = envelope_from_collection(
-        collect_quota_with_providers(
-            Arc::new(FakeProvider {
-                result: Err(QuotaError {
-                    provider: Some(ProviderId::Claude),
-                    code: QuotaErrorCode::RequiresAuthentication,
-                    message: Box::leak(format!("invalid credential: {claude}").into_boxed_str()),
-                    retry_after: None,
-                    action: None,
-                }),
-            }),
-            Arc::new(FakeProvider {
-                result: Err(QuotaError {
-                    provider: Some(ProviderId::Codex),
-                    code: QuotaErrorCode::RequiresAuthentication,
-                    message: Box::leak(format!("invalid credential: {codex}").into_boxed_str()),
-                    retry_after: None,
-                    action: None,
-                }),
-            }),
-            Arc::new(FakeProvider {
-                result: Err(QuotaError {
-                    provider: Some(ProviderId::Cursor),
-                    code: QuotaErrorCode::RequiresAuthentication,
-                    message: Box::leak(format!("invalid cookie: {cursor}").into_boxed_str()),
-                    retry_after: None,
-                    action: None,
-                }),
-            }),
-        )
-        .await,
-    );
-    let diagnostics = DiagnosticsSnapshot::new(vec![
-        ProviderDiagnostic::new(
-            DiagnosticProvider::Claude,
-            SubsystemStatus::Available,
-            SubsystemStatus::Unavailable,
-            UsageSource::Local,
-            QuotaSource::OAuth,
-            Some("2026-08-14T12:00:00Z"),
-            None,
-            Some("noUsageData".to_owned()),
-            None,
-        ),
-        ProviderDiagnostic::new(
-            DiagnosticProvider::Codex,
-            SubsystemStatus::Unavailable,
-            SubsystemStatus::RequiresAuthentication,
-            UsageSource::Local,
-            QuotaSource::OAuth,
-            None,
-            None,
-            None,
-            Some(format!("failed credential: {codex}")),
-        ),
-        ProviderDiagnostic::new(
-            DiagnosticProvider::Cursor,
-            SubsystemStatus::Unavailable,
-            SubsystemStatus::RequiresAuthentication,
-            UsageSource::CursorExport,
-            QuotaSource::Session,
-            None,
-            None,
-            None,
-            Some(format!("failed cookie: {cursor}")),
-        ),
-    ]);
+fn assert_error_shape(errors: &serde_json::Value, code: &str) {
+    let error = errors
+        .as_array()
+        .expect("errors array")
+        .first()
+        .expect("at least one error");
+    assert_eq!(error["provider"], "claude");
+    assert_eq!(error["code"], code);
+    assert!(error["message"]
+        .as_str()
+        .is_some_and(|message| !message.is_empty()));
+    assert!(error.get("action").is_none());
+}
 
-    let usage = UsagePayload {
-        providers: vec![UsageProviderSnapshot {
-            provider: "claude".to_owned(),
-            all_time_split: UsagePeriod::default(),
-            today: UsagePeriod::default(),
-            last_7_days: UsagePeriod::default(),
-            last_7_days_daily: Vec::new(),
-            last_30_days: UsagePeriod::default(),
-        }],
-    };
-    let output = [
-        serde_json::to_string(&usage).expect("usage envelope serializes"),
-        serde_json::to_string(&quota).expect("quota envelope serializes"),
-        serde_json::to_string(&diagnostics).expect("diagnostics serializes"),
-    ];
+struct RuntimeCleanup;
 
-    let quota_value = serde_json::to_value(&quota).expect("quota envelope value");
-    assert_eq!(quota_value["errors"][0]["code"], "requiresAuthentication");
-    assert_eq!(
-        quota_value["errors"][0]["message"],
-        "Provider authentication is required."
-    );
-    assert_eq!(quota_value["errors"][1]["code"], "requiresAuthentication");
-    assert_eq!(
-        quota_value["errors"][1]["message"],
-        "Provider authentication is required."
-    );
-    let diagnostics_value = serde_json::to_value(&diagnostics).expect("diagnostics value");
-    assert_eq!(
-        diagnostics_value["providers"][0]["usageErrorCode"],
-        "noUsageData"
-    );
-    assert!(diagnostics_value["providers"][1]
-        .get("quotaErrorCode")
-        .is_none());
+impl Drop for RuntimeCleanup {
+    fn drop(&mut self) {
+        test_runtime::needlbar_test_clear_runtime();
+    }
+}
 
-    for serialized in output {
-        for canary in CANARIES {
-            assert!(
-                !serialized.contains(canary),
-                "canary unexpectedly crossed bridge boundary: {canary}"
-            );
+fn fixture_home() -> TempDir {
+    let home = TempDir::new().expect("fixture home");
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Fixtures/usage");
+    copy_tree(&fixtures.join("claude"), home.path());
+    copy_tree(&fixtures.join("codex"), home.path());
+    let cursor_cache = home.path().join(".config/tokscale/cursor-cache");
+    fs::create_dir_all(&cursor_cache).expect("cursor cache directory");
+    fs::copy(
+        fixtures.join("cursor/usage.csv"),
+        cursor_cache.join("usage.csv"),
+    )
+    .expect("cursor fixture");
+    home
+}
+
+fn copy_tree(source: &Path, destination: &Path) {
+    for entry in fs::read_dir(source).expect("fixture directory") {
+        let entry = entry.expect("fixture entry");
+        let target: PathBuf = destination.join(entry.file_name());
+        if entry.file_type().expect("fixture type").is_dir() {
+            fs::create_dir_all(&target).expect("fixture destination directory");
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), target).expect("fixture copy");
         }
     }
 }

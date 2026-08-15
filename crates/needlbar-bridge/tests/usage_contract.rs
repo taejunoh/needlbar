@@ -35,6 +35,8 @@ fn fixture_home_aggregates_exact_claude_and_codex_totals() {
 
     let wire = serde_json::to_value(claude).expect("usage snapshot JSON");
     assert_eq!(wire["inputTokens"], 1_000);
+    assert!(wire["estimatedCostUSD"].is_number());
+    assert!(wire.get("estimatedCostUsd").is_none());
     assert!(wire.get("allTimeSplit").is_none());
     assert!(wire.get("today").is_some());
     assert!(wire.get("last7Days").is_some());

@@ -71,8 +71,11 @@ The stable C surface is:
 
 ```c
 const char *needlbar_usage_snapshot_json(void);
+const char *needlbar_forced_usage_snapshot_json(void);
 const char *needlbar_quota_snapshot_json(void);
 const char *needlbar_diagnostics_json(void);
+const char *needlbar_cursor_import_session_json(const char *session_token);
+const char *needlbar_cursor_clear_session_json(void);
 void needlbar_free_string(const char *ptr);
 ```
 
