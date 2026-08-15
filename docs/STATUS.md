@@ -396,7 +396,7 @@ Verification evidence:
 - Bounded `make run` built and launched Needlbar; Ctrl-C stopped the foreground process group and a follow-up process check found no lingering Needlbar process.
 - Live interactive menu-bar clicks and a real Cursor-session smoke were not performed in the noninteractive environment; automated seams cover secret clearing and connection ordering.
 - The daily series and Cursor disconnect are deliberate additive bridge-contract extensions required by the Task 13 plan, not a product redesign or scope deviation. No other approved-design deviation was made.
-- Remote CI remains green through Task 12 at [run 31855885744](https://github.com/taejunoh/needlbar/actions/runs/31855885744); Task 13 push and CI verification are pending.
+- Remote verification is complete: Task 13 CI run [31857311990](https://github.com/taejunoh/needlbar/actions/runs/31857311990) passed in 4m49s at tested head `0d73338aa9d79f40de42192d5715a60a824c15a6`. Task 14 remains the next implementation task.
 
 ## Required Next Action
 
