@@ -56,3 +56,21 @@ Items**.
 The expected macOS menu-bar placement/no-Dock-window appearance remains a live
 visual smoke check for a release environment; the bounded launch verifies the
 entry point without leaving a process running.
+
+## Review fix round 1: termination completion
+
+- The original `applicationWillTerminate` started an unawaited `Task`, so
+  AppKit could terminate before `RefreshCoordinator.stop()` had completed.
+- `AccessoryTerminationController` now implements the native termination
+  handshake: the first `applicationShouldTerminate` returns `.terminateLater`,
+  cancels startup and synchronously stops menu-bar observation, awaits the
+  coordinator stop, then replies positively on `MainActor`. Repeated requests
+  share that one shutdown task. `applicationWillTerminate` now performs only
+  idempotent synchronous safety cleanup.
+- RED: `AppDelegateLifecycleTests` failed because the termination controller
+  did not exist. GREEN: its deterministic gate proves deferred termination,
+  exactly one shutdown start, synchronous UI stop, and exactly one reply after
+  cleanup completion.
+- Verification after the fix: lifecycle focused test passed 20/20; menu-bar
+  focused suite passed; `swift test` passed 40 tests; `make test` passed; diff
+  and vendor checks are clean.
