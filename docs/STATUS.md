@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-14
 **Branch:** `main`
-**Current phase:** Task 12 Native Accessory App and Hybrid Status Items complete
-**Next implementation task:** Task 13 — Implement Overview, Provider Popovers, and Settings
+**Current phase:** Task 13 Overview, Provider Popovers, and Settings complete
+**Next implementation task:** Task 14 — Add Diagnostics, Privacy Guardrails, and Full Integration Tests
 
 ## Source of Truth
 
@@ -369,9 +369,38 @@ Verification evidence:
 - No approved-design deviation was made; the pinned `tokscale-core` revision, existing `LSUIElement` setting, and all v0.1 constraints remain unchanged.
 - Remote verification is complete: Task 12 CI run [31855885744](https://github.com/taejunoh/needlbar/actions/runs/31855885744) passed in 4m39s at head `4988d10230c30c347d5ab2d92af1155a9aec684d`. Task 13 remains the next implementation task.
 
+## Task 13 Verification
+
+Task 13 is complete and the final reviewer approved it after three rounds. Overview, provider popovers, and Settings now cover partial data, provider connections, and the approved UI preferences without moving secrets into Swift persistence.
+
+Implementation and contract evidence:
+
+- `Overview`, provider popovers, and Settings use shared presentation models for partial usage/quota states, neutral unavailable rendering, provider rows, quota windows, resets, stale/error indicators, and the Settings action.
+- The existing aggregate bridge/Core contract now has the additive `last7DaysDaily` field: exactly seven chronological dated `{date,totalTokens}` points, including legitimate zero days, with checked token aggregation. Swift treats an absent additive field as `[]` for compatibility.
+- The Cursor Settings path adds the safe, idempotent `needlbar_cursor_clear_session_json` ABI backed by Rust-owned session clearing. It returns only the disconnect result, releases its response, and preserves token redaction.
+- Cursor input remains transient `@State`; import/clear run off-main, clear the input before work completes, and serialize connect/reconnect/disconnect operations so rejected actions retain no token and cannot race an accepted action.
+
+Task 13 implementation commits on `main`:
+
+- `e10cad3` — add AI usage popovers and Settings.
+- `0a9cda1` — harden enabled-provider quota selection and off-main secret handling.
+- `7720c81` — serialize Cursor connection actions.
+
+Verification evidence:
+
+- TDD RED coverage first caught the missing presentation models, additive `last7DaysDaily` bridge/Core field, and missing `needlbar_cursor_clear_session_json`; subsequent RED regressions covered enabled-provider headline selection, transient-input clearing, and serialized slow Cursor actions.
+- Final review completed three rounds and approved with no findings.
+- Root fresh verification passed: `cargo test -p needlbar-bridge` — 8 unit plus 7 integration/contract tests (15 total); `swift test --filter PopoverPresentationTests` — 10 tests.
+- `source /Users/taejunoh/.cargo/env && make test` passed with Swift 51 tests and pinned `tokscale-core` 1372 passed, 0 failed, 1 ignored.
+- `git diff --check` passed and `git -C vendor/tokscale-core status --short` was clean at pinned revision `53f9eefffd3278fd430076531548f7b1f5861f9a`.
+- Bounded `make run` built and launched Needlbar; Ctrl-C stopped the foreground process group and a follow-up process check found no lingering Needlbar process.
+- Live interactive menu-bar clicks and a real Cursor-session smoke were not performed in the noninteractive environment; automated seams cover secret clearing and connection ordering.
+- The daily series and Cursor disconnect are deliberate additive bridge-contract extensions required by the Task 13 plan, not a product redesign or scope deviation. No other approved-design deviation was made.
+- Remote CI remains green through Task 12 at [run 31855885744](https://github.com/taejunoh/needlbar/actions/runs/31855885744); Task 13 push and CI verification are pending.
+
 ## Required Next Action
 
-Task 12 verification is complete. Begin Task 13 exactly at **Task 13: Implement Overview, Provider Popovers, and Settings**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
+Task 13 verification is complete. Begin Task 14 exactly at **Task 14: Add Diagnostics, Privacy Guardrails, and Full Integration Tests**; preserve the approved Swift 6.0 baseline, macOS 14 deployment target, and all v0.1 constraints.
 
 ## v0.1 Constraints to Preserve
 
