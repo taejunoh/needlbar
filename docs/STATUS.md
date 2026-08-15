@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
-**Updated:** 2026-08-14
+**Updated:** 2026-08-15
 **Branch:** `main`
 **Current phase:** Task 15 packaging and final v0.1 implementation gate complete
-**Next action:** Perform credentialed/manual release acceptance, then create a user-authorized v0.1 tag/release
+**Next action:** Complete remaining credentialed acceptance and configure notarization secrets before a user-authorized v0.1 tag/release
 
 ## Source of Truth
 
@@ -461,8 +461,17 @@ Final acceptance evidence:
 Release acceptance intentionally not claimed:
 
 - No git tag or GitHub Release was created.
-- Developer ID signing, notarization, stapling, and publication were not run because the required secrets were not provided; the release workflow refuses to publish an ad-hoc stable artifact when they are absent.
-- Live real-account Claude, Codex, or Cursor credential smoke and interactive menu-item/Settings click-through were not performed in the noninteractive session. These remain credentialed/manual release follow-ups, not silently accepted criteria.
+- Local Developer ID signing, strict verification, and hardened-runtime checks passed. Notarization, stapling, and publication were not run because the required secrets were not provided; the release workflow refuses to publish an ad-hoc stable artifact when they are absent.
+- Manual Accessibility click-through and partial live smoke were performed on 2026-08-15; the full provider matrix remains incomplete for Claude quota/auth fallback, Cursor usage/quota with an explicit session, and the Codex CLI fallback.
+
+## Credentialed/Manual Release Acceptance — 2026-08-15
+
+- On a supported Mac, the packaged app launched as an accessory/menu-bar app with Overview as the only initial item. macOS Accessibility click-through opened the Overview popover, Settings window, and Codex provider popover. Enabling Codex added a second menu item; disabling it restored the single Overview item. An immediately-read `AXValue` can be stale after a press, but defaults, menu state, and rendered state agreed; no product bug was found.
+- A one-process ABI run returned usage successfully for Claude and Codex, with seven daily points each; Cursor returned `noUsageData`. Quota returned one successful Codex window; Claude observed `authenticationExpired` followed by `rateLimited`; Cursor returned `requiresAuthentication`/`connectCursor` because no session was available. Diagnostics reflected these statuses safely. The Codex CLI fallback was not forced because its primary source succeeded.
+- A standalone usage scan completed in approximately 89 seconds on the large local history during the second controlled run. The UI stayed responsive and displayed last-known-good data; this is a non-blocking performance observation unless the approved specification changes.
+- Gatekeeper rejected an unstapled/unnotarized copy as expected after the local Developer ID sign/strict-verification/hardened-runtime check. The GitHub repository secret list is empty, so the stable notarization workflow cannot run. No Cursor session was available.
+
+Remaining release acceptance: refresh Claude authentication and wait out the rate limit; explicitly connect Cursor and run its usage/quota flow; exercise the Codex CLI fallback if feasible; configure GitHub release secrets; notarize/staple and verify with Gatekeeper; then create the user-authorized v0.1 tag/release.
 
 ## Final v0.1 Continuation
 
