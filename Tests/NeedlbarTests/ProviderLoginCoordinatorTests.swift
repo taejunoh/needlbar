@@ -477,6 +477,75 @@ import Testing
     #expect(system.waitCount == 3)
 }
 
+@Test func processRunnerReturnsBoundedSafeFailureAfterPersistentTERMFailureAndRetainsTheSoleReaper() async {
+    let system = ScriptedPOSIXSystem(
+        spawn: .spawned(pid: 52),
+        waits: [.running, .running, .running, .running, .running, .exited(status: 0)],
+        signals: [.failed, .failed, .failed]
+    )
+    let sleeper = SuspensionGate()
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        pollSleeper: { _ in await sleeper.wait() },
+        system: system
+    )
+    let task = Task { await runner.run(scriptedCommand()) }
+
+    await system.waitForSpawn()
+    await sleeper.waitForEntry()
+    let stop = Task { await runner.stop() }
+    await system.waitForSignal()
+    await sleeper.release()
+    await stop.value
+
+    #expect(await task.value == .launchFailed)
+    #expect(system.sentSignals.count == 3)
+    #expect(system.sentSignals.allSatisfy { $0.0 == 52 && $0.1 == SIGTERM })
+    #expect(system.waitCount == 6)
+}
+
+@Test func processRunnerTreatsECHILDAsAnInvariantFailureWithoutSignaling() async {
+    let system = ScriptedPOSIXSystem(spawn: .spawned(pid: 61), waits: [.noChild], signals: [])
+    let runner = ProviderLoginProcessRunner(timeout: .seconds(30), system: system)
+
+    #expect(await runner.run(scriptedCommand()) == .launchFailed)
+    #expect(system.sentSignals.isEmpty)
+    #expect(system.waitCount == 1)
+}
+
+@Test func processRunnerConfirmsESRCHByReapingWithoutEscalating() async {
+    let system = ScriptedPOSIXSystem(
+        spawn: .spawned(pid: 62),
+        waits: [.running, .exited(status: 0)],
+        signals: [.noSuchProcess]
+    )
+    let sleeper = SuspensionGate()
+    let runner = ProviderLoginProcessRunner(timeout: .seconds(30), pollSleeper: { _ in await sleeper.wait() }, system: system)
+    let task = Task { await runner.run(scriptedCommand()) }
+
+    await system.waitForSpawn()
+    await sleeper.waitForEntry()
+    let stop = Task { await runner.stop() }
+    await system.waitForSignal()
+    await sleeper.release()
+    await stop.value
+
+    #expect(await task.value == .cancelled)
+    #expect(system.sentSignals.count == 1)
+    #expect(system.sentSignals.first?.0 == 62)
+    #expect(system.sentSignals.first?.1 == SIGTERM)
+}
+
+@Test func posixSpawnRejectsInteriorNULBeforeLaunching() {
+    let system = ProviderLoginPOSIXSystem()
+    let base = scriptedCommand()
+    let argumentNUL = ProviderLoginCommand(provider: base.provider, executableURL: base.executableURL, arguments: ["bad\0argument"], environment: [:])
+    let environmentNUL = ProviderLoginCommand(provider: base.provider, executableURL: base.executableURL, arguments: [], environment: ["SAFE": "bad\0value"])
+
+    #expect(system.spawn(argumentNUL) == .failed)
+    #expect(system.spawn(environmentNUL) == .failed)
+}
+
 private struct FixedLoginResolver: ProviderLoginCommandResolving {
     func command(for provider: ProviderID) throws -> ProviderLoginCommand {
         guard provider != .cursor else { throw ProviderLoginCommandResolutionError.unsupportedProvider }
@@ -708,6 +777,8 @@ private final class ScriptedPOSIXSystem: ProviderLoginProcessSystem, @unchecked 
     private(set) var spawnCount = 0
     private(set) var waitCount = 0
     private(set) var sentSignals: [(Int32, Int32)] = []
+    private var spawnWaiters: [CheckedContinuation<Void, Never>] = []
+    private var signalWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(spawn: ProviderLoginSpawnResult, waits: [ProviderLoginWaitResult], signals: [ProviderLoginSignalResult]) {
         self.spawnResult = spawn
@@ -718,6 +789,9 @@ private final class ScriptedPOSIXSystem: ProviderLoginProcessSystem, @unchecked 
     func spawn(_ command: ProviderLoginCommand) -> ProviderLoginSpawnResult {
         lock.lock(); defer { lock.unlock() }
         spawnCount += 1
+        let waiters = spawnWaiters
+        spawnWaiters.removeAll()
+        waiters.forEach { $0.resume() }
         return spawnResult
     }
 
@@ -730,7 +804,48 @@ private final class ScriptedPOSIXSystem: ProviderLoginProcessSystem, @unchecked 
     func sendSignal(_ signal: Int32, to pid: Int32) -> ProviderLoginSignalResult {
         lock.lock(); defer { lock.unlock() }
         sentSignals.append((pid, signal))
+        let waiters = signalWaiters
+        signalWaiters.removeAll()
+        waiters.forEach { $0.resume() }
         return signalResults.isEmpty ? .sent : signalResults.removeFirst()
+    }
+
+    func waitForSpawn() async {
+        if hasSpawned() { return }
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if spawnCount > 0 {
+                lock.unlock()
+                continuation.resume()
+                return
+            }
+            spawnWaiters.append(continuation)
+            lock.unlock()
+        }
+    }
+
+    private func hasSpawned() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return spawnCount > 0
+    }
+
+    func waitForSignal() async {
+        if hasSignal() { return }
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if !sentSignals.isEmpty {
+                lock.unlock()
+                continuation.resume()
+                return
+            }
+            signalWaiters.append(continuation)
+            lock.unlock()
+        }
+    }
+
+    private func hasSignal() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return !sentSignals.isEmpty
     }
 }
 

@@ -277,6 +277,7 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         let pid: Int32
         var stopReason: StopReason?
         var terminationTask: Task<Void, Never>?
+        var reaperTask: Task<Void, Never>?
     }
 
     private enum Session {
@@ -396,7 +397,7 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         }
         // Actor isolation makes launch registration atomic with respect to stop: after spawn
         // there is no suspension until this exact PID is represented by the session.
-        sessions[identifier] = .running(.init(pid: pid, stopReason: nil, terminationTask: nil))
+        sessions[identifier] = .running(.init(pid: pid, stopReason: nil, terminationTask: nil, reaperTask: nil))
         let observer = processStarted
         Task { await observer(pid) }
         return await waitForCompletion(identifier)
@@ -435,7 +436,9 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
             _ = await reap(identifier, pid: pid, limit: 4)
             return
         case .failed, .interrupted:
-            _ = await reap(identifier, pid: pid, limit: 4, failureOutcome: true)
+            if !(await reap(identifier, pid: pid, limit: 4, failureOutcome: true)) {
+                failButKeepReaping(identifier, pid: pid)
+            }
             return
         }
         if await reap(identifier, pid: pid, limit: 1) { return }
@@ -443,7 +446,9 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         case .sent, .noSuchProcess:
             _ = await reap(identifier, pid: pid, limit: 8)
         case .failed, .interrupted:
-            _ = await reap(identifier, pid: pid, limit: 8, failureOutcome: true)
+            if !(await reap(identifier, pid: pid, limit: 8, failureOutcome: true)) {
+                failButKeepReaping(identifier, pid: pid)
+            }
         }
     }
 
@@ -491,7 +496,7 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
             await beforeSignal(pid, signal)
             let result = system.sendSignal(signal, to: pid)
             if result == .sent { await signalObserved(pid, signal) }
-            if result != .interrupted { return result }
+            if result != .interrupted && result != .failed { return result }
         }
         return .failed
     }
@@ -506,6 +511,35 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         finished[identifier] = outcome
         let observer = processFinished
         Task { await observer(pid) }
+    }
+
+    /// A persistent permission error cannot safely be escalated. Return the fixed public failure
+    /// promptly, but retain this exact child until this actor is able to reap its natural exit.
+    private func failButKeepReaping(_ identifier: UUID, pid: Int32) {
+        guard case var .running(running)? = sessions[identifier], running.pid == pid else { return }
+        finished[identifier] = .launchFailed
+        guard running.reaperTask == nil else { return }
+        let runner = self
+        let reaper = Task { await runner.reapUntilExit(identifier, pid: pid) }
+        running.reaperTask = reaper
+        sessions[identifier] = .running(running)
+    }
+
+    private func reapUntilExit(_ identifier: UUID, pid: Int32) async {
+        while case let .running(running)? = sessions[identifier], running.pid == pid {
+            switch system.waitForChild(pid) {
+            case let .exited(status):
+                complete(identifier, pid: pid, outcome: running.stopReason.map(outcome(for:)) ?? .exited(status: status))
+                return
+            case .noChild, .failed:
+                complete(identifier, pid: pid, outcome: .launchFailed)
+                return
+            case .interrupted:
+                continue
+            case .running:
+                try? await pollSleeper(.milliseconds(5))
+            }
+        }
     }
 
     private func outcome(for reason: StopReason) -> ProviderLoginProcessOutcome {
