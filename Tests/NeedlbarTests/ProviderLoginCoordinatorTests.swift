@@ -207,6 +207,44 @@ import Testing
 }
 
 @MainActor
+@Test func coordinatorRetainsAProvidersAdmissionUntilItsFailedChildIsReaped() async {
+    let runner = DeferredReapingLoginRunner()
+    let states = LoginStateRecorder()
+    let finished = RunCompletionRecorder()
+    let coordinator = ProviderLoginCoordinator(
+        resolver: FixedLoginResolver(),
+        runner: runner,
+        refreshQuota: { _ in true },
+        stateObserver: { provider, state in await states.record(provider, state) },
+        runFinished: { provider in await finished.record(provider) }
+    )
+    defer {
+        Task {
+            await runner.completeNaturalExitAndReap(for: .claude)
+            await runner.completeNaturalExitAndReap(for: .codex)
+        }
+    }
+
+    #expect(coordinator.connect(.claude))
+    #expect(coordinator.connect(.codex))
+    await runner.waitForInvocation(of: .claude, count: 1)
+    await runner.waitForInvocation(of: .codex, count: 1)
+    await states.wait(for: .claude, state: .failed(.launchFailed))
+    await states.wait(for: .codex, state: .failed(.launchFailed))
+    await runner.waitForReapingWaiterCount(2)
+
+    #expect(!coordinator.connect(.claude))
+    #expect(await runner.invocationCount(for: .claude) == 1)
+
+    await runner.completeNaturalExitAndReap(for: .claude)
+    await finished.wait(for: .claude)
+
+    #expect(coordinator.connect(.claude))
+    await runner.waitForInvocation(of: .claude, count: 2)
+    #expect(await runner.invocationCount(for: .claude) == 2)
+}
+
+@MainActor
 @Test func coordinatorMapsMissingCliTimeoutAndCancellationToFixedFailures() async {
     let states = LoginStateRecorder()
     let missingCLI = ProviderLoginCoordinator(
@@ -754,6 +792,74 @@ private actor ImmediateLoginRunner: ProviderLoginProcessRunning {
 
     func stop() async {}
     func commands() -> [ProviderLoginCommand] { launched }
+}
+
+private actor DeferredReapingLoginRunner: ProviderLoginProcessRunning {
+    private var invocations: [ProviderID: Int] = [:]
+    private var invocationWaiters: [ProviderID: [(Int, CheckedContinuation<Void, Never>)]] = [:]
+    private var activeReapingProviders: Set<ProviderID> = []
+    private var providerReapingWaiters: [ProviderID: [CheckedContinuation<Void, Never>]] = [:]
+    private var globalReapingWaiters: [CheckedContinuation<Void, Never>] = []
+    private var reapingWaiterObservers: [(Int, CheckedContinuation<Void, Never>)] = []
+
+    func run(_ command: ProviderLoginCommand) async -> ProviderLoginProcessOutcome {
+        invocations[command.provider, default: 0] += 1
+        let count = invocations[command.provider, default: 0]
+        let waiters = invocationWaiters.removeValue(forKey: command.provider) ?? []
+        for (expectedCount, continuation) in waiters where count >= expectedCount {
+            continuation.resume()
+        }
+        if count == 1 {
+            activeReapingProviders.insert(command.provider)
+            return .launchFailed
+        }
+        return .exited(status: 1)
+    }
+
+    func stop() async {}
+
+    func waitForReaping() async {
+        observeReapingWaiter()
+        await withCheckedContinuation { globalReapingWaiters.append($0) }
+    }
+
+    func waitForReaping(for provider: ProviderID) async {
+        observeReapingWaiter()
+        await withCheckedContinuation { providerReapingWaiters[provider, default: []].append($0) }
+    }
+
+    func waitForInvocation(of provider: ProviderID, count: Int) async {
+        if invocations[provider, default: 0] >= count { return }
+        await withCheckedContinuation { invocationWaiters[provider, default: []].append((count, $0)) }
+    }
+
+    func waitForReapingWaiterCount(_ count: Int) async {
+        if reapingWaiterCount >= count { return }
+        await withCheckedContinuation { reapingWaiterObservers.append((count, $0)) }
+    }
+
+    func completeNaturalExitAndReap(for provider: ProviderID) {
+        activeReapingProviders.remove(provider)
+        let waiters = providerReapingWaiters.removeValue(forKey: provider) ?? []
+        waiters.forEach { $0.resume() }
+        guard activeReapingProviders.isEmpty else { return }
+        let globalWaiters = globalReapingWaiters
+        globalReapingWaiters.removeAll()
+        globalWaiters.forEach { $0.resume() }
+    }
+
+    func invocationCount(for provider: ProviderID) -> Int { invocations[provider, default: 0] }
+
+    private var reapingWaiterCount: Int {
+        globalReapingWaiters.count + providerReapingWaiters.values.reduce(0) { $0 + $1.count }
+    }
+
+    private func observeReapingWaiter() {
+        let matching = reapingWaiterObservers.enumerated().filter { reapingWaiterCount + 1 >= $0.element.0 }
+        for match in matching.reversed() {
+            reapingWaiterObservers.remove(at: match.offset).1.resume()
+        }
+    }
 }
 
 private actor CountingLoginRunner: ProviderLoginProcessRunning {

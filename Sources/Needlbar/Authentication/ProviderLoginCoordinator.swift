@@ -286,6 +286,13 @@ public struct ProviderLoginPOSIXSystem: ProviderLoginProcessSystem, Sendable {
 public protocol ProviderLoginProcessRunning: Sendable {
     func run(_ command: ProviderLoginCommand) async -> ProviderLoginProcessOutcome
     func stop() async
+    /// The coordinator holds this provider's admission until its failed child is reaped.
+    /// The coordinator permits one session per provider, so this is a session-specific boundary.
+    func waitForReaping(for provider: ProviderID) async
+}
+
+public extension ProviderLoginProcessRunning {
+    func waitForReaping(for provider: ProviderID) async {}
 }
 
 public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
@@ -330,7 +337,9 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
     private let processStarted: @Sendable (Int32) async -> Void
     private let processFinished: @Sendable (Int32) async -> Void
     private var sessions: [UUID: Session] = [:]
+    private var sessionProviders: [UUID: ProviderID] = [:]
     private var finished: [UUID: ProviderLoginProcessOutcome] = [:]
+    private var reapingWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
 
     public init(
         timeout: Duration = .seconds(300),
@@ -359,8 +368,9 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
     public func run(_ command: ProviderLoginCommand) async -> ProviderLoginProcessOutcome {
         let identifier = UUID()
         sessions[identifier] = .pending(Task.isCancelled ? .cancelled : nil)
+        sessionProviders[identifier] = command.provider
         if Task.isCancelled {
-            sessions.removeValue(forKey: identifier)
+            completePendingSession(identifier)
             return .cancelled
         }
         let processRunner = self
@@ -406,6 +416,18 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         }
     }
 
+    public func waitForReaping(for provider: ProviderID) async {
+        guard let identifier = sessionProviders.first(where: { $0.value == provider })?.key,
+              sessions[identifier] != nil else { return }
+        await withCheckedContinuation { continuation in
+            guard sessions[identifier] != nil else {
+                continuation.resume()
+                return
+            }
+            reapingWaiters[identifier, default: []].append(continuation)
+        }
+    }
+
     private func waitForProcess(_ command: ProviderLoginCommand, identifier: UUID) async -> ProviderLoginProcessOutcome {
         await preLaunch()
         guard case let .pending(reason)? = sessions[identifier] else { return .cancelled }
@@ -415,11 +437,11 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         }
 
         guard !Task.isCancelled else {
-            sessions.removeValue(forKey: identifier)
+            completePendingSession(identifier)
             return .cancelled
         }
         guard case let .spawned(pid) = system.spawn(command) else {
-            sessions.removeValue(forKey: identifier)
+            completePendingSession(identifier)
             return .launchFailed
         }
         // Actor isolation makes launch registration atomic with respect to stop: after spawn
@@ -530,14 +552,23 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
 
     private func completePendingSession(_ identifier: UUID) {
         sessions.removeValue(forKey: identifier)
+        sessionProviders.removeValue(forKey: identifier)
+        completeReapingWaiters(identifier)
     }
 
     private func complete(_ identifier: UUID, pid: Int32, outcome: ProviderLoginProcessOutcome) {
         guard case let .running(running)? = sessions[identifier], running.pid == pid else { return }
         sessions.removeValue(forKey: identifier)
+        sessionProviders.removeValue(forKey: identifier)
         finished[identifier] = outcome
+        completeReapingWaiters(identifier)
         let observer = processFinished
         Task { await observer(pid) }
+    }
+
+    private func completeReapingWaiters(_ identifier: UUID) {
+        let waiters = reapingWaiters.removeValue(forKey: identifier) ?? []
+        waiters.forEach { $0.resume() }
     }
 
     /// A persistent permission error cannot safely be escalated. Return the fixed public failure
@@ -669,6 +700,7 @@ public final class ProviderLoginCoordinator: ObservableObject {
         case .cancelled:
             updateState(.failed(.cancelled), for: provider)
         }
+        if outcome == .launchFailed { await runner.waitForReaping(for: provider) }
         if isCurrent(generation, for: provider) {
             tasks[provider] = nil
         }
