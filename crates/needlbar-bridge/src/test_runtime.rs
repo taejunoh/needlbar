@@ -30,6 +30,8 @@ type AllQuotaProviders = (
 
 #[derive(Clone)]
 struct FixtureRuntime {
+    /// Zero identifies a Rust-only fixture; nonzero values are monotonically
+    /// assigned C test session generation IDs.
     session: u64,
     home: PathBuf,
     mode: FixtureMode,
@@ -355,6 +357,9 @@ pub fn clear_runtime_for_rust_tests() {
 
 #[no_mangle]
 pub extern "C" fn needlbar_test_clear_fixture_runtime(session: u64) -> bool {
+    if session == 0 {
+        return false;
+    }
     let mut slot = FIXTURE_RUNTIME
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());

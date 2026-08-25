@@ -8,6 +8,7 @@ import Testing
 
     let fixtureSession = fixtureHome.path.withCString { needlbar_test_install_fixture_runtime($0) }
     #expect(fixtureSession != 0)
+    guard fixtureSession != 0 else { return }
     defer { #expect(needlbar_test_clear_fixture_runtime(fixtureSession)) }
 
     let bridge = RustBridge()

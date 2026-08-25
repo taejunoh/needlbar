@@ -255,6 +255,29 @@ fn provider_verification_fixture_is_scoped_through_worker_and_tracks_real_ffi_al
 }
 
 #[test]
+fn c_clear_zero_cannot_clear_a_rust_owned_fixture() {
+    let _serial = test_runtime::serial_guard();
+    let _clear = RuntimeCleanup;
+    test_runtime::install_provider_verification_fixture(
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Claude,
+            "claude.session",
+            20.0,
+        )),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+    );
+
+    assert!(!test_runtime::needlbar_test_clear_fixture_runtime(0));
+    let json = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let value: serde_json::Value = serde_json::from_str(&json).expect("Claude JSON");
+    assert_eq!(value["data"]["providers"][0]["provider"], "claude");
+}
+
+#[test]
 fn c_fixture_sessions_reject_cross_client_clear_and_never_fall_back_to_production() {
     // This exercises the feature-only C session protocol used by Swift. A
     // competing client cannot replace or clear the owner's fixture, and an
