@@ -144,8 +144,7 @@ impl RedactingHttpClient {
         Ok(body)
     }
 
-    #[cfg(test)]
-    fn for_test(allowed_host: String) -> Self {
+    pub(crate) fn for_test(allowed_host: String) -> Self {
         let client = Client::builder()
             .timeout(REQUEST_TIMEOUT)
             .redirect(reqwest::redirect::Policy::none())

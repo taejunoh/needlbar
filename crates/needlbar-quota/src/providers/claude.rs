@@ -19,6 +19,7 @@ const OAUTH_BETA_HEADER: &str = "oauth-2025-04-20";
 pub struct ClaudeQuotaProvider {
     credentials: Arc<dyn ClaudeCredentialResolver>,
     http: RedactingHttpClient,
+    usage_endpoint: String,
 }
 
 impl ClaudeQuotaProvider {
@@ -47,7 +48,37 @@ impl ClaudeQuotaProvider {
         credentials: Arc<dyn ClaudeCredentialResolver>,
         http: RedactingHttpClient,
     ) -> Self {
-        Self { credentials, http }
+        Self {
+            credentials,
+            http,
+            usage_endpoint: USAGE_ENDPOINT.to_owned(),
+        }
+    }
+
+    /// Test-only transport seam for a controlled loopback HTTP server. The
+    /// production constructors always retain the fixed HTTPS Anthropic endpoint
+    /// and its normal host/redirect policy.
+    #[doc(hidden)]
+    pub fn with_resolver_and_test_endpoint(
+        credentials: Arc<dyn ClaudeCredentialResolver>,
+        endpoint: &str,
+    ) -> Result<Self, QuotaError> {
+        let url = reqwest::Url::parse(endpoint).map_err(|_| schema_error())?;
+        if url.scheme() != "http"
+            || !matches!(
+                url.host_str(),
+                Some("127.0.0.1") | Some("::1") | Some("localhost")
+            )
+        {
+            return Err(schema_error());
+        }
+        let host = url.host_str().ok_or_else(schema_error)?.to_owned();
+
+        Ok(Self {
+            credentials,
+            http: RedactingHttpClient::for_test(host),
+            usage_endpoint: endpoint.to_owned(),
+        })
     }
 
     pub async fn fetch_with_credential_access(
@@ -61,7 +92,7 @@ impl ClaudeQuotaProvider {
         let request = self
             .http
             .get_bearer(
-                USAGE_ENDPOINT,
+                &self.usage_endpoint,
                 credentials.access_token(),
                 &[("anthropic-beta", OAUTH_BETA_HEADER)],
             )
