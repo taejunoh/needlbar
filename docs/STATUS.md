@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-25
 **Branch:** `main`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 2 complete and review-approved; release acceptance remains paused
-**Next action:** Execute Task 3 of `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md`, beginning with RED bridge/repository intent and coordinator-coalescing tests
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 3 complete and review-approved; release acceptance remains paused
+**Next action:** Execute Task 4 of `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md`, beginning with RED `ProviderLoginCoordinator` command/environment/state/concurrency/cleanup tests
 
 ## Source of Truth
 
@@ -526,9 +526,36 @@ Verification evidence:
 
 Release acceptance remains paused, and the full authentication amendment is not complete.
 
+### Task 3 Follow-Up Verification
+
+Task 3 of the provider-managed browser-login follow-up is complete and review-approved. Typed quota refresh intents, dedicated provider calls, and generation-scoped coordinator fairness are implemented without browser, Keychain, or network interaction.
+
+Implementation and contract evidence:
+
+- Typed background and user-initiated quota intents are carried through the bridge/repository/coordinator path; Claude and Codex use dedicated provider calls, while Cursor is explicitly unsupported for typed provider refresh.
+- Rust-owned C strings are freed exactly once by exact pointer, and generation-scoped waiters complete exactly once. Requested-provider failures remain scoped to the requested provider.
+- Background freshness gates and ticket fairness preserve the approved refresh behavior, and quota refresh has no usage side effects.
+
+Task 3 implementation commits:
+
+- `843d588` — initial typed quota refresh implementation.
+- `0095163` — fix waiter generation and protocol behavior.
+- `f910e9a` — add dedicated validation and fairness coverage.
+
+Verification evidence:
+
+- Final Bridge suite: 15 tests passed.
+- Final coordinator suite: 23 tests passed.
+- Final Swift suite: 80 tests passed.
+- `make swift-test` and `make test` exited 0.
+- The implementation is spec-compliant; the quality review found no Critical, Important, or Minor findings.
+- No browser, Keychain, or network interaction was performed, and no provider login command was launched.
+
+Release acceptance remains paused. Task 4's non-TTY manual gate still requires separate user authorization before actually launching provider login commands; that gate has not been performed or claimed complete.
+
 ## Required Next Action
 
-Execute Task 3 of the provider-managed browser-login plan: begin with RED bridge/repository intent and coordinator-coalescing tests. Task 2 is complete and reviewed; work one numbered follow-up task at a time and run `make test` before completing the feature. Release acceptance remains paused, and the full authentication amendment must not be claimed complete until the remaining tasks and credentialed Claude/Codex acceptance pass; only then resume the notarization/tag/release gate.
+Execute Task 4 of the provider-managed browser-login plan: begin with RED `ProviderLoginCoordinator` command/environment/state/concurrency/cleanup tests. Task 3 is complete and reviewed; work one numbered follow-up task at a time and run `make test` before completing the feature. The non-TTY manual gate for actually launching provider login commands still requires separate user authorization and has not been performed. Release acceptance remains paused, and the full authentication amendment must not be claimed complete until the remaining tasks and credentialed Claude/Codex acceptance pass; only then resume the notarization/tag/release gate.
 
 ## v0.1 Constraints to Preserve
 
