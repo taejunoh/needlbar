@@ -67,6 +67,7 @@ pub enum SafeErrorCode {
     NotInstalled,
     RequiresAuthentication,
     AuthenticationExpired,
+    PermissionDenied,
     RateLimited,
     NetworkUnavailable,
     ProviderUnavailable,
@@ -86,6 +87,7 @@ impl SafeErrorCode {
             "notInstalled" => Self::NotInstalled,
             "requiresAuthentication" => Self::RequiresAuthentication,
             "authenticationExpired" => Self::AuthenticationExpired,
+            "permissionDenied" => Self::PermissionDenied,
             "rateLimited" => Self::RateLimited,
             "networkUnavailable" => Self::NetworkUnavailable,
             "providerUnavailable" => Self::ProviderUnavailable,
@@ -300,6 +302,40 @@ pub fn record_quota(envelope: &Envelope<QuotaPayload>) {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .quota = Some(entries);
+}
+
+/// Records only the provider outcomes represented by a provider-specific quota
+/// envelope, preserving last-known outcomes for omitted providers.
+pub fn record_partial_quota(envelope: &Envelope<QuotaPayload>) {
+    let mut outcomes = RECORDED_OUTCOMES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let entries = outcomes.quota.get_or_insert_with(|| {
+        DiagnosticProvider::ALL
+            .into_iter()
+            .map(|_| stream_observation(false, envelope.generated_at.as_str(), None))
+            .collect()
+    });
+    for (index, provider) in DiagnosticProvider::ALL.into_iter().enumerate() {
+        let name = provider.name();
+        let present = envelope.data.as_ref().is_some_and(|payload| {
+            payload
+                .providers
+                .iter()
+                .any(|entry| provider_name(entry.provider) == name)
+        });
+        let error = envelope
+            .errors
+            .iter()
+            .find(|error| error.provider.as_deref() == Some(name));
+        if present || error.is_some() {
+            entries[index] = stream_observation(
+                present,
+                envelope.generated_at.as_str(),
+                error.map(|error| error.code.as_str()),
+            );
+        }
+    }
 }
 
 fn stream_observation(

@@ -20,6 +20,12 @@ use crate::{
     usage::{self, UsagePayload},
 };
 
+type AllQuotaProviders = (
+    Arc<dyn QuotaProvider>,
+    Arc<dyn QuotaProvider>,
+    Arc<dyn QuotaProvider>,
+);
+
 #[derive(Clone)]
 struct FixtureRuntime {
     home: PathBuf,
@@ -35,6 +41,7 @@ enum FixtureMode {
         cursor_failure: String,
     },
     ProviderVerification(ProviderVerificationFixture),
+    ProviderVerificationBlocking(BlockingClaudeFixture),
     ProviderVerificationPanic,
 }
 
@@ -48,6 +55,77 @@ pub fn serial_guard() -> MutexGuard<'static, ()> {
     FIXTURE_SERIAL
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+pub struct ProviderVerificationScope {
+    _guard: MutexGuard<'static, ()>,
+}
+
+pub fn provider_verification_scope() -> ProviderVerificationScope {
+    ProviderVerificationScope {
+        _guard: serial_guard(),
+    }
+}
+
+impl ProviderVerificationScope {
+    pub fn install(
+        &self,
+        claude: Result<ProviderQuotaSnapshot, QuotaError>,
+        codex: Result<ProviderQuotaSnapshot, QuotaError>,
+    ) -> ProviderVerificationFixture {
+        install_provider_verification_fixture(claude, codex)
+    }
+    pub fn clear(&self) {
+        needlbar_test_clear_runtime();
+    }
+    pub fn install_blocking_claude_fixture(&self) -> BlockingClaudeFixture {
+        let fixture = install_provider_verification_fixture(
+            Ok(fixture_snapshot(ProviderId::Claude, "claude.session", 20.0)),
+            Ok(fixture_snapshot(ProviderId::Codex, "codex.primary", 50.0)),
+        );
+        let blocking = BlockingClaudeFixture::new(fixture);
+        install_runtime(FixtureRuntime {
+            home: PathBuf::new(),
+            mode: FixtureMode::ProviderVerificationBlocking(blocking.clone()),
+        });
+        blocking
+    }
+}
+
+#[derive(Clone)]
+pub struct BlockingClaudeFixture {
+    fixture: ProviderVerificationFixture,
+    state: Arc<(Mutex<(bool, bool)>, std::sync::Condvar)>,
+}
+
+impl BlockingClaudeFixture {
+    fn new(fixture: ProviderVerificationFixture) -> Self {
+        Self {
+            fixture,
+            state: Arc::new((Mutex::new((false, false)), std::sync::Condvar::new())),
+        }
+    }
+    pub fn wait_until_fetch_started(&self) {
+        let (lock, signal) = &*self.state;
+        let mut state = lock.lock().expect("blocking fixture lock");
+        while !state.0 {
+            state = signal.wait(state).expect("blocking fixture wait");
+        }
+    }
+    pub fn allow_fetch_to_finish(&self) {
+        let (lock, signal) = &*self.state;
+        lock.lock().expect("blocking fixture lock").1 = true;
+        signal.notify_all();
+    }
+    fn wait_for_release(&self) {
+        let (lock, signal) = &*self.state;
+        let mut state = lock.lock().expect("blocking fixture lock");
+        state.0 = true;
+        signal.notify_all();
+        while !state.1 {
+            state = signal.wait(state).expect("blocking fixture wait");
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -138,12 +216,11 @@ impl ProviderVerificationFixture {
     }
 }
 
-pub fn fixture_snapshot(window_id: &str, used_percent: f64) -> ProviderQuotaSnapshot {
-    let provider = if window_id.starts_with("claude.") {
-        ProviderId::Claude
-    } else {
-        ProviderId::Codex
-    };
+pub fn fixture_snapshot(
+    provider: ProviderId,
+    window_id: &str,
+    used_percent: f64,
+) -> ProviderQuotaSnapshot {
     ProviderQuotaSnapshot {
         provider,
         windows: vec![QuotaWindow::new(window_id, "Fixture", used_percent, None)
@@ -182,6 +259,14 @@ pub fn install_provider_verification_panic_fixture() {
         home: PathBuf::new(),
         mode: FixtureMode::ProviderVerificationPanic,
     });
+}
+
+pub fn reset_ffi_allocation_counts() {
+    crate::reset_ffi_allocation_counts();
+}
+
+pub fn ffi_allocation_counts() -> (usize, usize, usize) {
+    crate::ffi_allocation_counts()
 }
 
 /// Test-only fixture setup. This symbol is intentionally not declared in the
@@ -274,7 +359,9 @@ pub fn usage_envelope() -> Option<Envelope<UsagePayload>> {
                 usage::boundary_error(Some("cursor"), "providerUnavailable", cursor_failure),
             ]);
         }
-        FixtureMode::ProviderVerification(_) | FixtureMode::ProviderVerificationPanic => {
+        FixtureMode::ProviderVerification(_)
+        | FixtureMode::ProviderVerificationBlocking(_)
+        | FixtureMode::ProviderVerificationPanic => {
             return None;
         }
     }
@@ -297,6 +384,168 @@ pub fn codex_quota_envelope() -> Option<Envelope<QuotaPayload>> {
     fixture_runtime()?;
     let collection = collect_fixture_quota(FixtureQuotaRequest::CodexOnly);
     Some(quota::envelope_from_collection(collection))
+}
+
+/// Factory-level fixture injection. The exported ABI still runs its normal
+/// envelope and dedicated worker; only external provider construction changes.
+pub fn all_quota_providers() -> Option<AllQuotaProviders> {
+    let runtime = fixture_runtime()?;
+    Some(match runtime.mode {
+        FixtureMode::Integration => (
+            Arc::new(FixtureQuotaProvider::success(
+                ProviderId::Claude,
+                "claude.session",
+                20.0,
+            )),
+            Arc::new(FixtureQuotaProvider::success(
+                ProviderId::Codex,
+                "codex.primary",
+                50.0,
+            )),
+            Arc::new(FixtureQuotaProvider::success(
+                ProviderId::Cursor,
+                "cursor.plan",
+                90.0,
+            )),
+        ),
+        FixtureMode::Redaction {
+            claude_failure,
+            codex_failure,
+            cursor_failure,
+        } => (
+            Arc::new(FixtureQuotaProvider::failure(
+                ProviderId::Claude,
+                QuotaErrorCode::RequiresAuthentication,
+                None,
+                claude_failure,
+            )),
+            Arc::new(FixtureQuotaProvider::failure(
+                ProviderId::Codex,
+                QuotaErrorCode::NetworkUnavailable,
+                None,
+                codex_failure,
+            )),
+            Arc::new(FixtureQuotaProvider::failure(
+                ProviderId::Cursor,
+                QuotaErrorCode::RequiresAuthentication,
+                Some(needlbar_quota::QuotaAction::ConnectCursor),
+                cursor_failure,
+            )),
+        ),
+        FixtureMode::ProviderVerification(fixture) => {
+            fixture.record_creation(ProviderId::Claude);
+            fixture.record_creation(ProviderId::Codex);
+            fixture.record_creation(ProviderId::Cursor);
+            (
+                Arc::new(ProviderVerificationQuotaProvider::new(
+                    ProviderId::Claude,
+                    fixture.claude_result.clone(),
+                    fixture.clone(),
+                )),
+                Arc::new(ProviderVerificationQuotaProvider::new(
+                    ProviderId::Codex,
+                    fixture.codex_result.clone(),
+                    fixture.clone(),
+                )),
+                Arc::new(ProviderVerificationQuotaProvider::new(
+                    ProviderId::Cursor,
+                    Err(QuotaError {
+                        provider: Some(ProviderId::Cursor),
+                        code: QuotaErrorCode::RequiresAuthentication,
+                        message: "Cursor authentication was not available.",
+                        retry_after: None,
+                        action: None,
+                    }),
+                    fixture,
+                )),
+            )
+        }
+        FixtureMode::ProviderVerificationBlocking(blocking) => (
+            Arc::new(ProviderVerificationQuotaProvider::new(
+                ProviderId::Claude,
+                blocking.fixture.claude_result.clone(),
+                blocking.fixture.clone(),
+            )),
+            Arc::new(ProviderVerificationQuotaProvider::new(
+                ProviderId::Codex,
+                blocking.fixture.codex_result.clone(),
+                blocking.fixture.clone(),
+            )),
+            Arc::new(ProviderVerificationQuotaProvider::new(
+                ProviderId::Cursor,
+                Err(QuotaError {
+                    provider: Some(ProviderId::Cursor),
+                    code: QuotaErrorCode::RequiresAuthentication,
+                    message: "Cursor authentication was not available.",
+                    retry_after: None,
+                    action: None,
+                }),
+                blocking.fixture,
+            )),
+        ),
+        FixtureMode::ProviderVerificationPanic => (
+            Arc::new(PanicProvider),
+            Arc::new(PanicProvider),
+            Arc::new(PanicProvider),
+        ),
+    })
+}
+
+pub fn claude_user_initiated_source() -> Option<Arc<dyn quota::ClaudeUserInitiatedQuotaSource>> {
+    let runtime = fixture_runtime()?;
+    Some(match runtime.mode {
+        FixtureMode::Integration => Arc::new(FixtureClaudeUserInitiatedSource::success(
+            "claude.session",
+            20.0,
+        )),
+        FixtureMode::Redaction { claude_failure, .. } => {
+            Arc::new(FixtureClaudeUserInitiatedSource::failure(
+                QuotaErrorCode::RequiresAuthentication,
+                claude_failure,
+            ))
+        }
+        FixtureMode::ProviderVerification(fixture) => {
+            fixture.record_creation(ProviderId::Claude);
+            Arc::new(ProviderVerificationClaudeSource::new(fixture))
+        }
+        FixtureMode::ProviderVerificationBlocking(blocking) => {
+            Arc::new(BlockingClaudeSource { blocking })
+        }
+        FixtureMode::ProviderVerificationPanic => Arc::new(PanicClaudeSource),
+    })
+}
+
+pub fn codex_quota_provider() -> Option<Arc<dyn QuotaProvider>> {
+    let runtime = fixture_runtime()?;
+    Some(match runtime.mode {
+        FixtureMode::Integration => Arc::new(FixtureQuotaProvider::success(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+        FixtureMode::Redaction { codex_failure, .. } => Arc::new(FixtureQuotaProvider::failure(
+            ProviderId::Codex,
+            QuotaErrorCode::NetworkUnavailable,
+            None,
+            codex_failure,
+        )),
+        FixtureMode::ProviderVerification(fixture) => {
+            fixture.record_creation(ProviderId::Codex);
+            Arc::new(ProviderVerificationQuotaProvider::new(
+                ProviderId::Codex,
+                fixture.codex_result.clone(),
+                fixture,
+            ))
+        }
+        FixtureMode::ProviderVerificationBlocking(blocking) => {
+            Arc::new(ProviderVerificationQuotaProvider::new(
+                ProviderId::Codex,
+                blocking.fixture.codex_result.clone(),
+                blocking.fixture,
+            ))
+        }
+        FixtureMode::ProviderVerificationPanic => Arc::new(PanicProvider),
+    })
 }
 
 fn fixture_runtime() -> Option<FixtureRuntime> {
@@ -470,6 +719,9 @@ fn collect_fixture_quota(request: FixtureQuotaRequest) -> QuotaCollection {
                     (FixtureMode::ProviderVerificationPanic, _) => {
                         panic!("provider verification fixture panic")
                     }
+                    (FixtureMode::ProviderVerificationBlocking(_), _) => {
+                        panic!("blocking fixture uses factory injection")
+                    }
                 }
             })
         })
@@ -484,7 +736,11 @@ struct FixtureClaudeUserInitiatedSource {
 impl FixtureClaudeUserInitiatedSource {
     fn success(window_id: &str, used_percent: f64) -> Self {
         Self {
-            result: Ok(fixture_snapshot(window_id, used_percent)),
+            result: Ok(fixture_snapshot(
+                ProviderId::Claude,
+                window_id,
+                used_percent,
+            )),
         }
     }
 
@@ -516,6 +772,27 @@ impl quota::ClaudeUserInitiatedQuotaSource for FixtureClaudeUserInitiatedSource 
 
 struct ProviderVerificationClaudeSource {
     fixture: ProviderVerificationFixture,
+}
+
+struct BlockingClaudeSource {
+    blocking: BlockingClaudeFixture,
+}
+
+impl quota::ClaudeUserInitiatedQuotaSource for BlockingClaudeSource {
+    fn fetch_with_credential_access<'a>(
+        &'a self,
+        access: needlbar_quota::ClaudeCredentialAccess,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a,
+        >,
+    > {
+        self.blocking.fixture.record_claude_access(access);
+        Box::pin(async move {
+            self.blocking.wait_for_release();
+            self.blocking.fixture.claude_result.clone()
+        })
+    }
 }
 
 impl ProviderVerificationClaudeSource {
@@ -569,6 +846,30 @@ impl QuotaProvider for ProviderVerificationQuotaProvider {
             ProviderId::Cursor => {}
         }
         self.result.clone()
+    }
+}
+
+struct PanicProvider;
+
+#[async_trait]
+impl QuotaProvider for PanicProvider {
+    async fn fetch(&self) -> Result<ProviderQuotaSnapshot, QuotaError> {
+        panic!("provider verification fixture panic")
+    }
+}
+
+struct PanicClaudeSource;
+
+impl quota::ClaudeUserInitiatedQuotaSource for PanicClaudeSource {
+    fn fetch_with_credential_access<'a>(
+        &'a self,
+        _access: needlbar_quota::ClaudeCredentialAccess,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a,
+        >,
+    > {
+        Box::pin(async { panic!("provider verification fixture panic") })
     }
 }
 

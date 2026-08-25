@@ -15,10 +15,15 @@ use std::{
     thread,
 };
 
+#[cfg(feature = "bridge-test-runtime")]
+use std::sync::LazyLock;
+#[cfg(any(test, feature = "bridge-test-runtime"))]
+use std::sync::Mutex;
+
 #[cfg(test)]
 use std::{
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, MutexGuard},
 };
 
 use chrono::{SecondsFormat, Utc};
@@ -40,9 +45,19 @@ fn internal_error_json() -> String {
 }
 
 fn fallback_pointer() -> *const c_char {
-    CString::new(internal_error_json())
-        .unwrap_or_default()
-        .into_raw()
+    ffi_string_pointer(internal_error_json())
+}
+
+fn ffi_string_pointer(json: String) -> *const c_char {
+    let pointer = CString::new(json).unwrap_or_default().into_raw();
+    #[cfg(feature = "bridge-test-runtime")]
+    {
+        FFI_ALLOCATION_COUNTS
+            .lock()
+            .expect("ffi allocation counts")
+            .0 += 1;
+    }
+    pointer
 }
 
 fn ffi_envelope<T: Serialize + UnwindSafe>(
@@ -50,7 +65,7 @@ fn ffi_envelope<T: Serialize + UnwindSafe>(
 ) -> *const c_char {
     match catch_unwind(|| {
         let json = serde_json::to_string(&f()).unwrap_or_else(|_| internal_error_json());
-        CString::new(json).unwrap_or_default().into_raw()
+        ffi_string_pointer(json)
     }) {
         Ok(pointer) => pointer,
         Err(_) => match catch_unwind(fallback_pointer) {
@@ -150,7 +165,7 @@ pub unsafe extern "C" fn needlbar_quota_snapshot_json() -> *const c_char {
 pub unsafe extern "C" fn needlbar_claude_user_initiated_quota_snapshot_json() -> *const c_char {
     ffi_envelope(|| {
         let envelope = ffi_claude_user_initiated_quota_envelope();
-        diagnostics::record_quota(&envelope);
+        diagnostics::record_partial_quota(&envelope);
         envelope
     })
 }
@@ -163,7 +178,7 @@ pub unsafe extern "C" fn needlbar_claude_user_initiated_quota_snapshot_json() ->
 pub unsafe extern "C" fn needlbar_codex_quota_snapshot_json() -> *const c_char {
     ffi_envelope(|| {
         let envelope = ffi_codex_quota_envelope();
-        diagnostics::record_quota(&envelope);
+        diagnostics::record_partial_quota(&envelope);
         envelope
     })
 }
@@ -177,26 +192,14 @@ fn ffi_usage_envelope(force_cursor_sync: bool) -> Envelope<usage::UsagePayload> 
 }
 
 fn ffi_quota_envelope() -> Envelope<quota::QuotaPayload> {
-    #[cfg(feature = "bridge-test-runtime")]
-    if let Some(envelope) = test_runtime::quota_envelope() {
-        return envelope;
-    }
     quota_envelope()
 }
 
 fn ffi_claude_user_initiated_quota_envelope() -> Envelope<quota::QuotaPayload> {
-    #[cfg(feature = "bridge-test-runtime")]
-    if let Some(envelope) = test_runtime::claude_user_initiated_quota_envelope() {
-        return envelope;
-    }
     claude_user_initiated_quota_envelope()
 }
 
 fn ffi_codex_quota_envelope() -> Envelope<quota::QuotaPayload> {
-    #[cfg(feature = "bridge-test-runtime")]
-    if let Some(envelope) = test_runtime::codex_quota_envelope() {
-        return envelope;
-    }
     codex_quota_envelope()
 }
 
@@ -238,11 +241,32 @@ pub unsafe extern "C" fn needlbar_cursor_clear_session_json() -> *const c_char {
 pub unsafe extern "C" fn needlbar_free_string(ptr: *const c_char) {
     let _ = catch_unwind(|| {
         if !ptr.is_null() {
+            #[cfg(feature = "bridge-test-runtime")]
+            {
+                FFI_ALLOCATION_COUNTS
+                    .lock()
+                    .expect("ffi allocation counts")
+                    .1 += 1;
+            }
             // SAFETY: The C ABI requires callers to pass a non-null pointer returned by
             // this bridge exactly once. The null case is handled above.
             unsafe { drop(CString::from_raw(ptr.cast_mut())) };
         }
     });
+}
+
+#[cfg(feature = "bridge-test-runtime")]
+static FFI_ALLOCATION_COUNTS: LazyLock<Mutex<(usize, usize, usize)>> =
+    LazyLock::new(|| Mutex::new((0, 0, 0)));
+
+#[cfg(feature = "bridge-test-runtime")]
+pub(crate) fn reset_ffi_allocation_counts() {
+    *FFI_ALLOCATION_COUNTS.lock().expect("ffi allocation counts") = (0, 0, 0);
+}
+
+#[cfg(feature = "bridge-test-runtime")]
+pub(crate) fn ffi_allocation_counts() -> (usize, usize, usize) {
+    *FFI_ALLOCATION_COUNTS.lock().expect("ffi allocation counts")
 }
 
 #[derive(Serialize)]

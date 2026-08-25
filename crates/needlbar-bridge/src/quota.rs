@@ -43,6 +43,10 @@ impl ClaudeUserInitiatedQuotaSource for ClaudeQuotaProvider {
 /// result order makes the JSON payload independent of provider completion
 /// timing.
 pub async fn collect_quota() -> QuotaCollection {
+    #[cfg(feature = "bridge-test-runtime")]
+    if let Some((claude, codex, cursor)) = crate::test_runtime::all_quota_providers() {
+        return collect_quota_with_providers(claude, codex, cursor).await;
+    }
     collect_quota_with_providers(
         Arc::new(ClaudeQuotaProvider::new()),
         Arc::new(CodexQuotaProvider::new()),
@@ -55,6 +59,10 @@ pub async fn collect_quota() -> QuotaCollection {
 /// intentionally kept here so callers cannot accidentally request interactive
 /// Keychain access through the all-provider collector.
 pub async fn collect_claude_user_initiated() -> QuotaCollection {
+    #[cfg(feature = "bridge-test-runtime")]
+    if let Some(source) = crate::test_runtime::claude_user_initiated_source() {
+        return collect_claude_user_initiated_with_source(source).await;
+    }
     collect_claude_user_initiated_with_source(Arc::new(ClaudeQuotaProvider::new())).await
 }
 
@@ -69,6 +77,10 @@ pub async fn collect_claude_user_initiated_with_source(
 /// Runs only Codex quota collection. It does not construct Claude or Cursor
 /// providers, preserving the physical provider boundary of the C export.
 pub async fn collect_codex_only() -> QuotaCollection {
+    #[cfg(feature = "bridge-test-runtime")]
+    if let Some(provider) = crate::test_runtime::codex_quota_provider() {
+        return collect_codex_with_provider(provider).await;
+    }
     collect_codex_with_provider(Arc::new(CodexQuotaProvider::new())).await
 }
 

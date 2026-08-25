@@ -10,6 +10,7 @@ use needlbar_bridge::{
     needlbar_diagnostics_json, needlbar_free_string, needlbar_quota_snapshot_json,
     needlbar_usage_snapshot_json, test_runtime,
 };
+use needlbar_quota::ProviderId;
 use tempfile::TempDir;
 
 const CLAUDE_CANARY: &str = "CLAUDE-CANARY-SECRET";
@@ -98,8 +99,16 @@ fn provider_verification_exports_are_isolated_redacted_panic_contained_and_freed
     let _serial = test_runtime::serial_guard();
     let canary = "CLAUDE-KEYCHAIN-CANARY";
     let fixture = test_runtime::install_provider_verification_fixture(
-        Ok(test_runtime::fixture_snapshot("claude.session", 20.0)),
-        Ok(test_runtime::fixture_snapshot("codex.primary", 50.0)),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Claude,
+            "claude.session",
+            20.0,
+        )),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
     );
     let _clear = RuntimeCleanup;
 
@@ -125,7 +134,11 @@ fn provider_verification_exports_are_isolated_redacted_panic_contained_and_freed
 
     let denied = test_runtime::install_provider_verification_fixture(
         Err(test_runtime::fixture_permission_denied(canary)),
-        Ok(test_runtime::fixture_snapshot("codex.primary", 50.0)),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
     );
     let denied_json = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
     let diagnostics = ffi_json(needlbar_diagnostics_json);
@@ -153,6 +166,93 @@ fn provider_verification_exports_are_isolated_redacted_panic_contained_and_freed
     }
 }
 
+#[test]
+fn provider_verification_preserves_unrelated_diagnostics_and_records_permission_denied() {
+    // This catches provider-only verification overwriting the most recent
+    // diagnostics for omitted providers, or dropping permissionDenied as an
+    // unknown diagnostics code.
+    let _serial = test_runtime::serial_guard();
+    let fixture = test_runtime::install_provider_verification_fixture(
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Claude,
+            "claude.session",
+            20.0,
+        )),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+    );
+    let _clear = RuntimeCleanup;
+
+    let _ = ffi_json(needlbar_quota_snapshot_json);
+    let baseline = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
+    let _ = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let after_claude = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
+    assert_eq!(after_claude["codex"], baseline["codex"]);
+    assert_eq!(after_claude["cursor"], baseline["cursor"]);
+
+    let _ = ffi_json(needlbar_codex_quota_snapshot_json);
+    let after_codex = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
+    assert_eq!(after_codex["claude"], after_claude["claude"]);
+    assert_eq!(after_codex["cursor"], baseline["cursor"]);
+
+    let denied = test_runtime::install_provider_verification_fixture(
+        Err(test_runtime::fixture_permission_denied(
+            "CLAUDE-KEYCHAIN-CANARY",
+        )),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+    );
+    let _ = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let diagnostics = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
+    assert_eq!(diagnostics["claude"]["quotaErrorCode"], "permissionDenied");
+    assert_eq!(denied.claude_accesses(), vec!["userInitiatedAllowUI"]);
+    assert_eq!(fixture.cursor_creations(), 1);
+}
+
+#[test]
+fn provider_verification_fixture_is_scoped_through_worker_and_tracks_real_ffi_allocation() {
+    // This catches a fixture clear racing an already-started exported call,
+    // which would otherwise fall through to production Keychain/network, and
+    // verifies allocation/release bookkeeping on the bridge's real C string
+    // ownership path.
+    let scope = test_runtime::provider_verification_scope();
+    let fixture = scope.install(
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Claude,
+            "claude.session",
+            20.0,
+        )),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+    );
+    test_runtime::reset_ffi_allocation_counts();
+
+    let pointer = unsafe { needlbar_claude_user_initiated_quota_snapshot_json() };
+    assert!(!pointer.is_null());
+    assert_eq!(test_runtime::ffi_allocation_counts(), (1, 0, 0));
+    unsafe { needlbar_free_string(pointer) };
+    assert_eq!(test_runtime::ffi_allocation_counts(), (1, 1, 0));
+    assert_eq!(fixture.claude_accesses(), vec!["userInitiatedAllowUI"]);
+
+    let worker_fixture = scope.install_blocking_claude_fixture();
+    let call = std::thread::spawn(|| ffi_json(needlbar_claude_user_initiated_quota_snapshot_json));
+    worker_fixture.wait_until_fetch_started();
+    scope.clear();
+    worker_fixture.allow_fetch_to_finish();
+    let json = call.join().expect("worker export joins");
+    let value: serde_json::Value = serde_json::from_str(&json).expect("worker JSON");
+    assert_eq!(value["data"]["providers"][0]["provider"], "claude");
+}
+
 fn ffi_json(call: unsafe extern "C" fn() -> *const c_char) -> String {
     let pointer = unsafe { call() };
     assert!(
@@ -165,6 +265,24 @@ fn ffi_json(call: unsafe extern "C" fn() -> *const c_char) -> String {
         .to_owned();
     unsafe { needlbar_free_string(pointer) };
     json
+}
+
+fn diagnostics_by_provider(json: &str) -> std::collections::BTreeMap<String, serde_json::Value> {
+    let value: serde_json::Value = serde_json::from_str(json).expect("diagnostics JSON");
+    value["data"]["providers"]
+        .as_array()
+        .expect("diagnostic providers")
+        .iter()
+        .map(|provider| {
+            (
+                provider["provider"]
+                    .as_str()
+                    .expect("provider name")
+                    .to_owned(),
+                provider.clone(),
+            )
+        })
+        .collect()
 }
 
 fn assert_safe_output(json: &str) {

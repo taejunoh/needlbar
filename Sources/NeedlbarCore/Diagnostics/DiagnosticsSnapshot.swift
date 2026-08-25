@@ -63,6 +63,7 @@ public enum DiagnosticsErrorCode: String, Decodable, Sendable, Equatable {
     case notInstalled
     case requiresAuthentication
     case authenticationExpired
+    case permissionDenied
     case rateLimited
     case networkUnavailable
     case providerUnavailable
