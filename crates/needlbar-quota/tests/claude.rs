@@ -1,14 +1,164 @@
-use std::fs;
+use std::{
+    fs,
+    sync::{Arc, Mutex},
+};
 
 use chrono::{TimeZone, Utc};
 use needlbar_quota::{
-    normalize_percent, ClaudeQuotaProvider, ProviderId, QuotaErrorCode, QuotaProvider, QuotaWindow,
-    RedactingHttpClient,
+    normalize_percent, ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver,
+    ClaudeOAuthSecret, ClaudeQuotaProvider, FileClaudeCredentialResolver, ProviderId,
+    QuotaErrorCode, QuotaProvider, QuotaWindow, RedactingHttpClient,
 };
 use tempfile::TempDir;
 
 const SUCCESS_FIXTURE: &str = include_str!("../../../Fixtures/quota/claude/usage-success.json");
 const MALFORMED_FIXTURE: &str = include_str!("../../../Fixtures/quota/claude/usage-malformed.json");
+
+struct RecordingResolver {
+    accesses: Arc<Mutex<Vec<ClaudeCredentialAccess>>>,
+    error: ClaudeCredentialError,
+}
+
+impl RecordingResolver {
+    fn failing(
+        accesses: Arc<Mutex<Vec<ClaudeCredentialAccess>>>,
+        error: ClaudeCredentialError,
+    ) -> Self {
+        Self { accesses, error }
+    }
+}
+
+impl ClaudeCredentialResolver for RecordingResolver {
+    fn resolve(
+        &self,
+        access: ClaudeCredentialAccess,
+    ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
+        self.accesses.lock().unwrap().push(access);
+        Err(self.error)
+    }
+}
+
+fn provider_with_resolver(resolver: Arc<dyn ClaudeCredentialResolver>) -> ClaudeQuotaProvider {
+    ClaudeQuotaProvider::with_resolver(resolver, RedactingHttpClient::new())
+}
+
+#[tokio::test]
+async fn background_fetch_forbids_keychain_interaction() {
+    let accesses = Arc::new(Mutex::new(Vec::new()));
+    let provider = provider_with_resolver(Arc::new(RecordingResolver::failing(
+        Arc::clone(&accesses),
+        ClaudeCredentialError::NotFound,
+    )));
+
+    let error = provider.fetch().await.unwrap_err();
+
+    assert_eq!(
+        accesses.lock().unwrap().as_slice(),
+        [ClaudeCredentialAccess::BackgroundNoUI]
+    );
+    assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
+}
+
+#[tokio::test]
+async fn user_initiated_fetch_allows_keychain_interaction() {
+    let accesses = Arc::new(Mutex::new(Vec::new()));
+    let provider = provider_with_resolver(Arc::new(RecordingResolver::failing(
+        Arc::clone(&accesses),
+        ClaudeCredentialError::NotFound,
+    )));
+
+    let error = provider
+        .fetch_with_credential_access(ClaudeCredentialAccess::UserInitiatedAllowUI)
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        accesses.lock().unwrap().as_slice(),
+        [ClaudeCredentialAccess::UserInitiatedAllowUI]
+    );
+    assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
+}
+
+#[tokio::test]
+async fn credential_failures_map_to_safe_quota_errors() {
+    let cases = [
+        (
+            ClaudeCredentialError::NotFound,
+            QuotaErrorCode::RequiresAuthentication,
+        ),
+        (
+            ClaudeCredentialError::InteractionNotAllowed,
+            QuotaErrorCode::PermissionDenied,
+        ),
+        (
+            ClaudeCredentialError::PermissionDenied,
+            QuotaErrorCode::PermissionDenied,
+        ),
+        (
+            ClaudeCredentialError::Cancelled,
+            QuotaErrorCode::PermissionDenied,
+        ),
+        (
+            ClaudeCredentialError::Expired,
+            QuotaErrorCode::AuthenticationExpired,
+        ),
+        (
+            ClaudeCredentialError::Malformed,
+            QuotaErrorCode::SchemaChanged,
+        ),
+    ];
+
+    for (credential_error, expected_code) in cases {
+        let provider = provider_with_resolver(Arc::new(RecordingResolver::failing(
+            Arc::new(Mutex::new(Vec::new())),
+            credential_error,
+        )));
+        let error = provider.fetch().await.unwrap_err();
+
+        assert_eq!(error.code, expected_code);
+    }
+}
+
+#[tokio::test]
+async fn injected_file_resolver_preserves_legacy_credentials() {
+    let temp = TempDir::new().unwrap();
+    let config_dir = temp.path().join("claude-config");
+    fs::create_dir_all(&config_dir).unwrap();
+    fs::write(
+        config_dir.join(".credentials.json"),
+        r#"{"claudeAiOauth":{"accessToken":"legacy-token"}}"#,
+    )
+    .unwrap();
+    let resolver =
+        FileClaudeCredentialResolver::from_paths(Some(config_dir), temp.path().to_path_buf());
+    let result = resolver.resolve(ClaudeCredentialAccess::BackgroundNoUI);
+
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn safe_credential_errors_never_expose_a_keychain_canary() {
+    let canary = "CLAUDE-KEYCHAIN-CANARY";
+    let errors = [
+        ClaudeCredentialError::NotFound,
+        ClaudeCredentialError::InteractionNotAllowed,
+        ClaudeCredentialError::PermissionDenied,
+        ClaudeCredentialError::Cancelled,
+        ClaudeCredentialError::Expired,
+        ClaudeCredentialError::Malformed,
+    ];
+
+    for credential_error in errors {
+        let provider = provider_with_resolver(Arc::new(RecordingResolver::failing(
+            Arc::new(Mutex::new(Vec::new())),
+            credential_error,
+        )));
+        let error = provider.fetch().await.unwrap_err();
+
+        assert!(!format!("{error:?}").contains(canary));
+        assert!(!serde_json::to_string(&error).unwrap().contains(canary));
+    }
+}
 
 #[test]
 fn normalizes_only_finite_percentages_in_range() {

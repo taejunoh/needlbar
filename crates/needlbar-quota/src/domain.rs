@@ -65,6 +65,7 @@ pub enum QuotaErrorCode {
     NotInstalled,
     RequiresAuthentication,
     AuthenticationExpired,
+    PermissionDenied,
     RateLimited,
     NetworkUnavailable,
     ServiceUnavailable,
