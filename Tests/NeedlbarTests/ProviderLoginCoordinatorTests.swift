@@ -327,18 +327,21 @@ import Testing
     let recorder = ProcessSignalRecorder()
     let runner = ProviderLoginProcessRunner(
         timeout: .seconds(30),
-        terminationGrace: .milliseconds(25),
-        signalSender: { pid, signal in await recorder.send(pid, signal) },
+        terminationGrace: .seconds(1),
+        signalObserved: { pid, signal in await recorder.send(pid, signal) },
         processStarted: { pid in await recorder.recordStart(pid) }
     )
     let readyFile = fixture.directory.appendingPathComponent("ready")
-    let task = Task { await runner.run(fixture.command(readyFile: readyFile)) }
+    let termFile = fixture.directory.appendingPathComponent("term")
+    let task = Task { await runner.run(fixture.command(readyFile: readyFile, termFile: termFile)) }
     let pid = await recorder.waitForStart()
     try await waitForFixtureReady(at: readyFile)
 
     await runner.stop()
     #expect(await task.value == .cancelled)
-    #expect(await recorder.signals() == [.init(pid: pid, signal: SIGTERM)])
+    let signals = await recorder.signals()
+    #expect((try? String(contentsOf: termFile, encoding: .utf8)) == "T")
+    #expect(signals == [.init(pid: pid, signal: SIGTERM)], "actual signals: \(signals)")
     #expect(Darwin.kill(pid, 0) == -1)
 }
 
@@ -349,8 +352,8 @@ import Testing
     let recorder = ProcessSignalRecorder(holdAfterTERM: true)
     let runner = ProviderLoginProcessRunner(
         timeout: .seconds(30),
-        terminationGrace: .milliseconds(25),
-        signalSender: { pid, signal in await recorder.send(pid, signal) },
+        terminationGrace: .seconds(1),
+        signalObserved: { pid, signal in await recorder.send(pid, signal) },
         processStarted: { pid in await recorder.recordStart(pid) }
     )
     let readyFile = fixture.directory.appendingPathComponent("ready")
@@ -379,8 +382,8 @@ import Testing
     let recorder = ProcessSignalRecorder(holdAfterTERM: true)
     let runner = ProviderLoginProcessRunner(
         timeout: .seconds(30),
-        terminationGrace: .milliseconds(25),
-        signalSender: { pid, signal in await recorder.send(pid, signal) },
+        terminationGrace: .seconds(1),
+        signalObserved: { pid, signal in await recorder.send(pid, signal) },
         processStarted: { pid in await recorder.recordStart(pid) },
         processFinished: { pid in await recorder.recordFinish(pid) }
     )
@@ -404,38 +407,6 @@ import Testing
     #expect(Darwin.kill(pid, 0) == -1)
 }
 
-@Test(.serialized) func processRunnerFailsClosedWhenAPIDIdentityChangesDuringGrace() async throws {
-    let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
-
-    let recorder = ProcessSignalRecorder(holdAfterTERM: true)
-    let identities = ProcessIdentityRecorder()
-    let runner = ProviderLoginProcessRunner(
-        timeout: .seconds(30),
-        terminationGrace: .milliseconds(25),
-        signalSender: { pid, signal in await recorder.send(pid, signal) },
-        processIdentity: { pid in identities.identity(for: pid) },
-        processStarted: { pid in await recorder.recordStart(pid) },
-        processFinished: { pid in await recorder.recordFinish(pid) }
-    )
-    let readyFile = fixture.directory.appendingPathComponent("ready")
-    let task = Task { await runner.run(fixture.command(arguments: ["ignore-term"], readyFile: readyFile)) }
-    let pid = await recorder.waitForStart()
-    try await waitForFixtureReady(at: readyFile)
-
-    let stop = Task { await runner.stop() }
-    await recorder.waitForTERM()
-    identities.replaceIdentity()
-    await recorder.releaseTERM()
-    try await Task.sleep(for: .milliseconds(50))
-    #expect(await recorder.signals() == [.init(pid: pid, signal: SIGTERM)])
-
-    _ = Darwin.kill(pid, SIGKILL)
-    await stop.value
-    #expect(await task.value == .cancelled)
-    #expect(await recorder.finishedPIDs() == [pid])
-}
-
 @Test(.serialized) func processRunnerTaskCancellationTerminatesAndReapsADirectChild() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
@@ -443,8 +414,8 @@ import Testing
     let recorder = ProcessSignalRecorder()
     let runner = ProviderLoginProcessRunner(
         timeout: .seconds(30),
-        terminationGrace: .milliseconds(25),
-        signalSender: { pid, signal in await recorder.send(pid, signal) },
+        terminationGrace: .milliseconds(100),
+        signalObserved: { pid, signal in await recorder.send(pid, signal) },
         processStarted: { pid in await recorder.recordStart(pid) },
         processFinished: { pid in await recorder.recordFinish(pid) }
     )
@@ -456,7 +427,8 @@ import Testing
     task.cancel()
 
     #expect(await task.value == .cancelled)
-    #expect(await recorder.signals() == [.init(pid: pid, signal: SIGTERM)])
+    let signals = await recorder.signals()
+    #expect(signals == [.init(pid: pid, signal: SIGTERM)], "actual signals: \(signals)")
     #expect(await recorder.finishedPIDs() == [pid])
     #expect(Darwin.kill(pid, 0) == -1)
 }
@@ -469,9 +441,9 @@ import Testing
     let timeoutGate = SuspensionGate()
     let runner = ProviderLoginProcessRunner(
         timeout: .milliseconds(10),
-        terminationGrace: .milliseconds(25),
+        terminationGrace: .milliseconds(100),
         timeoutSleeper: { _ in await timeoutGate.wait() },
-        signalSender: { pid, signal in await recorder.send(pid, signal) },
+        signalObserved: { pid, signal in await recorder.send(pid, signal) },
         processStarted: { pid in await recorder.recordStart(pid) },
         processFinished: { pid in await recorder.recordFinish(pid) }
     )
@@ -482,9 +454,27 @@ import Testing
     await timeoutGate.release()
 
     #expect(await task.value == .timedOut)
-    #expect(await recorder.signals() == [.init(pid: pid, signal: SIGTERM)])
+    let signals = await recorder.signals()
+    #expect(signals == [.init(pid: pid, signal: SIGTERM)], "actual signals: \(signals)")
     #expect(await recorder.finishedPIDs() == [pid])
     #expect(Darwin.kill(pid, 0) == -1)
+}
+
+@Test func processRunnerRetriesInterruptedWaitsAndSignalsWithoutLaunchingASecondChild() async {
+    let system = ScriptedPOSIXSystem(
+        spawn: .spawned(pid: 41),
+        waits: [.interrupted, .running, .exited(status: 0)],
+        signals: []
+    )
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        pollSleeper: { _ in },
+        system: system
+    )
+
+    #expect(await runner.run(scriptedCommand()) == .exited(status: 0))
+    #expect(system.spawnCount == 1)
+    #expect(system.waitCount == 3)
 }
 
 private struct FixedLoginResolver: ProviderLoginCommandResolving {
@@ -686,15 +676,13 @@ private actor ProcessSignalRecorder {
         return await withCheckedContinuation { continuation in startWaiters.append(continuation) }
     }
 
-    func send(_ pid: Int32, _ signal: Int32) async -> Int32 {
+    func send(_ pid: Int32, _ signal: Int32) async {
         sent.append(.init(pid: pid, signal: signal))
-        let result = Darwin.kill(pid, signal)
-        guard holdAfterTERM, signal == SIGTERM else { return result }
+        guard holdAfterTERM, signal == SIGTERM else { return }
         let waiters = termWaiters
         termWaiters.removeAll()
         waiters.forEach { $0.resume() }
         await withCheckedContinuation { continuation in heldTERM = continuation }
-        return result
     }
 
     func waitForTERM() async {
@@ -712,21 +700,47 @@ private actor ProcessSignalRecorder {
     func signals() -> [Signal] { sent }
 }
 
-private final class ProcessIdentityRecorder: @unchecked Sendable {
+private final class ScriptedPOSIXSystem: ProviderLoginProcessSystem, @unchecked Sendable {
     private let lock = NSLock()
-    private var startSeconds: Int64 = 1
+    private let spawnResult: ProviderLoginSpawnResult
+    private var waits: [ProviderLoginWaitResult]
+    private var signalResults: [ProviderLoginSignalResult]
+    private(set) var spawnCount = 0
+    private(set) var waitCount = 0
+    private(set) var sentSignals: [(Int32, Int32)] = []
 
-    func identity(for pid: Int32) -> ProviderLoginProcessIdentity? {
-        lock.lock()
-        defer { lock.unlock() }
-        return ProviderLoginProcessIdentity(processIdentifier: pid, startSeconds: startSeconds, startMicroseconds: 1)
+    init(spawn: ProviderLoginSpawnResult, waits: [ProviderLoginWaitResult], signals: [ProviderLoginSignalResult]) {
+        self.spawnResult = spawn
+        self.waits = waits
+        self.signalResults = signals
     }
 
-    func replaceIdentity() {
-        lock.lock()
-        startSeconds = 2
-        lock.unlock()
+    func spawn(_ command: ProviderLoginCommand) -> ProviderLoginSpawnResult {
+        lock.lock(); defer { lock.unlock() }
+        spawnCount += 1
+        return spawnResult
     }
+
+    func waitForChild(_ pid: Int32) -> ProviderLoginWaitResult {
+        lock.lock(); defer { lock.unlock() }
+        waitCount += 1
+        return waits.isEmpty ? .running : waits.removeFirst()
+    }
+
+    func sendSignal(_ signal: Int32, to pid: Int32) -> ProviderLoginSignalResult {
+        lock.lock(); defer { lock.unlock() }
+        sentSignals.append((pid, signal))
+        return signalResults.isEmpty ? .sent : signalResults.removeFirst()
+    }
+}
+
+private func scriptedCommand() -> ProviderLoginCommand {
+    ProviderLoginCommand(
+        provider: .claude,
+        executableURL: URL(fileURLWithPath: "/tmp/needlbar-login-tests/scripted"),
+        arguments: [],
+        environment: [:]
+    )
 }
 
 private struct SignalFixture {
@@ -744,13 +758,18 @@ private struct SignalFixture {
         #include <fcntl.h>
         #include <stdlib.h>
         #include <unistd.h>
+        static int term_fd = -1;
+        static void exit_on_term(int ignored) { if (term_fd >= 0) write(term_fd, "T", 1); _exit(0); }
         int main(int argc, char **argv) {
+            signal(SIGTERM, exit_on_term);
+            if (argc == 2 && argv[1][0] == 'i') signal(SIGTERM, SIG_IGN);
+            const char *term = getenv("NEEDLBAR_FIXTURE_TERM");
+            if (term) term_fd = open(term, O_WRONLY | O_CREAT, 0600);
             const char *ready = getenv("NEEDLBAR_FIXTURE_READY");
             if (ready) {
                 int fd = open(ready, O_WRONLY | O_CREAT, 0600);
                 if (fd >= 0) { write(fd, "1", 1); close(fd); }
             }
-            if (argc == 2 && argv[1][0] == 'i') signal(SIGTERM, SIG_IGN);
             for (;;) sleep(1);
         }
         """.write(to: source, atomically: true, encoding: .utf8)
@@ -771,12 +790,14 @@ private struct SignalFixture {
         }
     }
 
-    func command(arguments: [String] = [], readyFile: URL) -> ProviderLoginCommand {
-        ProviderLoginCommand(
+    func command(arguments: [String] = [], readyFile: URL, termFile: URL? = nil) -> ProviderLoginCommand {
+        var environment = ["NEEDLBAR_FIXTURE_READY": readyFile.path]
+        if let termFile { environment["NEEDLBAR_FIXTURE_TERM"] = termFile.path }
+        return ProviderLoginCommand(
             provider: .claude,
             executableURL: executable,
             arguments: arguments,
-            environment: ["NEEDLBAR_FIXTURE_READY": readyFile.path]
+            environment: environment
         )
     }
 }

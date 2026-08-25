@@ -150,15 +150,109 @@ public enum ProviderLoginProcessOutcome: Equatable, Sendable {
     case cancelled
 }
 
-public struct ProviderLoginProcessIdentity: Equatable, Sendable {
-    public let processIdentifier: Int32
-    public let startSeconds: Int64
-    public let startMicroseconds: Int64
+public enum ProviderLoginSpawnResult: Equatable, Sendable {
+    case spawned(pid: Int32)
+    case failed
+}
 
-    public init(processIdentifier: Int32, startSeconds: Int64, startMicroseconds: Int64) {
-        self.processIdentifier = processIdentifier
-        self.startSeconds = startSeconds
-        self.startMicroseconds = startMicroseconds
+public enum ProviderLoginWaitResult: Equatable, Sendable {
+    case running
+    case exited(status: Int32)
+    case interrupted
+    case noChild
+    case failed
+}
+
+public enum ProviderLoginSignalResult: Equatable, Sendable {
+    case sent
+    case noSuchProcess
+    case interrupted
+    case failed
+}
+
+/// The runner owns this narrow syscall surface so the actor is the sole reaper of its child.
+public protocol ProviderLoginProcessSystem: Sendable {
+    func spawn(_ command: ProviderLoginCommand) -> ProviderLoginSpawnResult
+    func waitForChild(_ pid: Int32) -> ProviderLoginWaitResult
+    func sendSignal(_ signal: Int32, to pid: Int32) -> ProviderLoginSignalResult
+}
+
+public struct ProviderLoginPOSIXSystem: ProviderLoginProcessSystem, Sendable {
+    public init() {}
+
+    public func spawn(_ command: ProviderLoginCommand) -> ProviderLoginSpawnResult {
+        let executable = command.executableURL.standardizedFileURL.path
+        let values = [executable] + command.arguments
+        let environment = command.environment
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+        guard values.allSatisfy({ !$0.utf8.contains(0) }), environment.allSatisfy({ !$0.utf8.contains(0) }) else {
+            return .failed
+        }
+
+        let argv = values.map { Darwin.strdup($0) }
+        let envp = environment.map { Darwin.strdup($0) }
+        guard argv.allSatisfy({ $0 != nil }), envp.allSatisfy({ $0 != nil }) else {
+            argv.forEach { Darwin.free($0) }
+            envp.forEach { Darwin.free($0) }
+            return .failed
+        }
+        defer {
+            argv.forEach { Darwin.free($0) }
+            envp.forEach { Darwin.free($0) }
+        }
+
+        var argvPointers = argv + [nil]
+        var envpPointers = envp + [nil]
+        var actions: posix_spawn_file_actions_t? = nil
+        guard posix_spawn_file_actions_init(&actions) == 0 else { return .failed }
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        let nullDevice = "/dev/null"
+        guard posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, nullDevice, O_RDONLY, 0) == 0,
+              posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, nullDevice, O_WRONLY, 0) == 0,
+              posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, nullDevice, O_WRONLY, 0) == 0 else {
+            return .failed
+        }
+
+        var attributes: posix_spawnattr_t? = nil
+        guard posix_spawnattr_init(&attributes) == 0 else { return .failed }
+        defer { posix_spawnattr_destroy(&attributes) }
+        var signalMask = sigset_t()
+        guard sigemptyset(&signalMask) == 0,
+              posix_spawnattr_setsigmask(&attributes, &signalMask) == 0,
+              posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGMASK)) == 0 else {
+            return .failed
+        }
+
+        var pid: pid_t = 0
+        let result = executable.withCString { executablePointer in
+            posix_spawn(&pid, executablePointer, &actions, &attributes, &argvPointers, &envpPointers)
+        }
+        return result == 0 ? .spawned(pid: pid) : .failed
+    }
+
+    public func waitForChild(_ pid: Int32) -> ProviderLoginWaitResult {
+        var status: Int32 = 0
+        let result = Darwin.waitpid(pid, &status, WNOHANG)
+        if result == 0 { return .running }
+        if result == pid {
+            if (status & 0x7f) == 0 { return .exited(status: (status >> 8) & 0xff) }
+            return .exited(status: 1)
+        }
+        switch errno {
+        case EINTR: return .interrupted
+        case ECHILD: return .noChild
+        default: return .failed
+        }
+    }
+
+    public func sendSignal(_ signal: Int32, to pid: Int32) -> ProviderLoginSignalResult {
+        if Darwin.kill(pid, signal) == 0 { return .sent }
+        switch errno {
+        case EINTR: return .interrupted
+        case ESRCH: return .noSuchProcess
+        default: return .failed
+        }
     }
 }
 
@@ -180,8 +274,7 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
     }
 
     private struct RunningSession {
-        let process: Process
-        let identity: ProviderLoginProcessIdentity?
+        let pid: Int32
         var stopReason: StopReason?
         var terminationTask: Task<Void, Never>?
     }
@@ -201,33 +294,36 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
     private let timeout: Duration
     private let terminationGrace: Duration
     private let timeoutSleeper: @Sendable (Duration) async throws -> Void
+    private let pollSleeper: @Sendable (Duration) async throws -> Void
     private let preLaunch: @Sendable () async -> Void
-    private let signalSender: @Sendable (Int32, Int32) async -> Int32
-    private let processIdentity: @Sendable (Int32) -> ProviderLoginProcessIdentity?
+    private let system: any ProviderLoginProcessSystem
+    private let beforeSignal: @Sendable (Int32, Int32) async -> Void
+    private let signalObserved: @Sendable (Int32, Int32) async -> Void
     private let processStarted: @Sendable (Int32) async -> Void
     private let processFinished: @Sendable (Int32) async -> Void
     private var sessions: [UUID: Session] = [:]
-    private var reapWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
+    private var finished: [UUID: ProviderLoginProcessOutcome] = [:]
 
     public init(
         timeout: Duration = .seconds(300),
         terminationGrace: Duration = .seconds(1),
         timeoutSleeper: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+        pollSleeper: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         preLaunch: @escaping @Sendable () async -> Void = {},
-        signalSender: @escaping @Sendable (Int32, Int32) async -> Int32 = { Darwin.kill($0, $1) },
-        processIdentity: (@Sendable (Int32) -> ProviderLoginProcessIdentity?)? = nil,
+        system: any ProviderLoginProcessSystem = ProviderLoginPOSIXSystem(),
+        beforeSignal: @escaping @Sendable (Int32, Int32) async -> Void = { _, _ in },
+        signalObserved: @escaping @Sendable (Int32, Int32) async -> Void = { _, _ in },
         processStarted: @escaping @Sendable (Int32) async -> Void = { _ in },
         processFinished: @escaping @Sendable (Int32) async -> Void = { _ in }
     ) {
         self.timeout = timeout
         self.terminationGrace = terminationGrace
         self.timeoutSleeper = timeoutSleeper
+        self.pollSleeper = pollSleeper
         self.preLaunch = preLaunch
-        self.signalSender = signalSender
-        let defaultIdentity: @Sendable (Int32) -> ProviderLoginProcessIdentity? = { pid in
-            Self.liveProcessIdentity(for: pid)
-        }
-        self.processIdentity = processIdentity ?? defaultIdentity
+        self.system = system
+        self.beforeSignal = beforeSignal
+        self.signalObserved = signalObserved
         self.processStarted = processStarted
         self.processFinished = processFinished
     }
@@ -241,7 +337,7 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         }
         let processRunner = self
         return await withTaskCancellationHandler(operation: {
-            await withTaskGroup(of: RaceResult.self, returning: ProviderLoginProcessOutcome.self) { group in
+            let outcome = await withTaskGroup(of: RaceResult.self, returning: ProviderLoginProcessOutcome.self) { group in
                 group.addTask { [self] in
                     .process(await waitForProcess(command, identifier: identifier))
                 }
@@ -268,6 +364,8 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
                 }
                 return .cancelled
             }
+            finished.removeValue(forKey: identifier)
+            return outcome
         }, onCancel: {
             Task { await processRunner.requestTermination(identifier, reason: .cancelled) }
         })
@@ -288,47 +386,20 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
             return outcome(for: reason)
         }
 
-        let process = Process()
-        process.executableURL = command.executableURL
-        process.arguments = command.arguments
-        process.environment = command.environment
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        let status: Int32? = await withCheckedContinuation { continuation in
-            process.terminationHandler = { terminated in
-                continuation.resume(returning: terminated.terminationStatus)
-            }
-            do {
-                try process.run()
-                // No actor suspension occurs between spawning and registration. A stop request
-                // therefore either prevents this launch while pending or targets this exact PID.
-                sessions[identifier] = .running(.init(
-                    process: process,
-                    identity: processIdentity(process.processIdentifier),
-                    stopReason: nil,
-                    terminationTask: nil
-                ))
-                let observer = processStarted
-                Task { await observer(process.processIdentifier) }
-            } catch {
-                continuation.resume(returning: nil)
-            }
+        guard !Task.isCancelled else {
+            sessions.removeValue(forKey: identifier)
+            return .cancelled
         }
-
-        let finishedProcess = sessions[identifier].flatMap { session -> Process? in
-            guard case let .running(running) = session else { return nil }
-            return running.process
+        guard case let .spawned(pid) = system.spawn(command) else {
+            sessions.removeValue(forKey: identifier)
+            return .launchFailed
         }
-        let stopReason = sessions.removeValue(forKey: identifier)?.stopReason
-        resumeReapWaiters(for: identifier)
-        if let finishedProcess {
-            await processFinished(finishedProcess.processIdentifier)
-        }
-        guard let status else { return .launchFailed }
-        if let stopReason { return outcome(for: stopReason) }
-        return .exited(status: status)
+        // Actor isolation makes launch registration atomic with respect to stop: after spawn
+        // there is no suspension until this exact PID is represented by the session.
+        sessions[identifier] = .running(.init(pid: pid, stopReason: nil, terminationTask: nil))
+        let observer = processStarted
+        Task { await observer(pid) }
+        return await waitForCompletion(identifier)
     }
 
     private func requestTermination(_ identifier: UUID, reason: StopReason) async {
@@ -344,12 +415,6 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
                 await terminationTask.value
                 return
             }
-            guard running.process.isRunning else {
-                sessions[identifier] = .running(running)
-                await waitForReap(identifier)
-                return
-            }
-
             let processRunner = self
             let terminationTask = Task {
                 await processRunner.terminateAndReap(identifier)
@@ -362,39 +427,85 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
 
     private func terminateAndReap(_ identifier: UUID) async {
         guard case let .running(running)? = sessions[identifier] else { return }
-        let pid = running.process.processIdentifier
-        _ = await signalSender(pid, SIGTERM)
-        try? await Task.sleep(for: terminationGrace)
-        guard case let .running(current)? = sessions[identifier], current.process.processIdentifier == pid else { return }
-        guard current.process.isRunning, let identity = current.identity else {
-            await waitForReap(identifier)
+        let pid = running.pid
+        switch await send(SIGTERM, to: pid) {
+        case .sent:
+            try? await pollSleeper(terminationGrace)
+        case .noSuchProcess:
+            _ = await reap(identifier, pid: pid, limit: 4)
+            return
+        case .failed, .interrupted:
+            _ = await reap(identifier, pid: pid, limit: 4, failureOutcome: true)
             return
         }
-        // PID equality is never sufficient: the start-time token must still identify the same
-        // child immediately before escalation. A missing or changed token fails closed.
-        guard processIdentity(pid) == identity else {
-            await waitForReap(identifier)
-            return
+        if await reap(identifier, pid: pid, limit: 1) { return }
+        switch await send(SIGKILL, to: pid) {
+        case .sent, .noSuchProcess:
+            _ = await reap(identifier, pid: pid, limit: 8)
+        case .failed, .interrupted:
+            _ = await reap(identifier, pid: pid, limit: 8, failureOutcome: true)
         }
-        _ = await signalSender(pid, SIGKILL)
-        await waitForReap(identifier)
     }
 
-    private func waitForReap(_ identifier: UUID) async {
-        guard case .running? = sessions[identifier] else { return }
-        await withCheckedContinuation { continuation in
-            reapWaiters[identifier, default: []].append(continuation)
+    private func waitForCompletion(_ identifier: UUID) async -> ProviderLoginProcessOutcome {
+        while true {
+            if let outcome = finished[identifier] { return outcome }
+            guard case let .running(running)? = sessions[identifier] else { return .cancelled }
+            switch system.waitForChild(running.pid) {
+            case .running:
+                try? await pollSleeper(.milliseconds(5))
+            case .interrupted:
+                continue
+            case let .exited(status):
+                complete(identifier, pid: running.pid, outcome: running.stopReason.map(outcome(for:)) ?? .exited(status: status))
+            case .noChild, .failed:
+                complete(identifier, pid: running.pid, outcome: .launchFailed)
+            }
         }
+    }
+
+    private func reap(_ identifier: UUID, pid: Int32, limit: Int, failureOutcome: Bool = false) async -> Bool {
+        for _ in 0..<limit {
+            if let outcome = finished[identifier] { return outcome != .launchFailed }
+            guard case let .running(running)? = sessions[identifier], running.pid == pid else { return true }
+            switch system.waitForChild(pid) {
+            case let .exited(status):
+                complete(identifier, pid: pid, outcome: failureOutcome ? .launchFailed : (running.stopReason.map(outcome(for:)) ?? .exited(status: status)))
+                return true
+            case .noChild, .failed:
+                complete(identifier, pid: pid, outcome: .launchFailed)
+                return true
+            case .interrupted:
+                continue
+            case .running:
+                try? await pollSleeper(.milliseconds(5))
+            }
+        }
+        // Keep the session registered if a hostile OS failure prevented a reap. A later stop
+        // can retry; this runner never forgets a known live child.
+        return false
+    }
+
+    private func send(_ signal: Int32, to pid: Int32) async -> ProviderLoginSignalResult {
+        for _ in 0..<3 {
+            await beforeSignal(pid, signal)
+            let result = system.sendSignal(signal, to: pid)
+            if result == .sent { await signalObserved(pid, signal) }
+            if result != .interrupted { return result }
+        }
+        return .failed
     }
 
     private func completePendingSession(_ identifier: UUID) {
         sessions.removeValue(forKey: identifier)
-        resumeReapWaiters(for: identifier)
     }
 
-    private func resumeReapWaiters(for identifier: UUID) {
-        let waiters = reapWaiters.removeValue(forKey: identifier) ?? []
-        waiters.forEach { $0.resume() }
+    private func complete(_ identifier: UUID, pid: Int32, outcome: ProviderLoginProcessOutcome) {
+        guard case let .running(running)? = sessions[identifier], running.pid == pid else { return }
+        sessions.removeValue(forKey: identifier)
+        finished[identifier] = outcome
+        let observer = processFinished
+        Task { await observer(pid) }
     }
 
     private func outcome(for reason: StopReason) -> ProviderLoginProcessOutcome {
@@ -402,17 +513,6 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         case .timedOut: return .timedOut
         case .cancelled: return .cancelled
         }
-    }
-
-    private static func liveProcessIdentity(for pid: Int32) -> ProviderLoginProcessIdentity? {
-        var info = proc_bsdinfo()
-        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
-        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
-        return ProviderLoginProcessIdentity(
-            processIdentifier: pid,
-            startSeconds: Int64(info.pbi_start_tvsec),
-            startMicroseconds: Int64(info.pbi_start_tvusec)
-        )
     }
 }
 
