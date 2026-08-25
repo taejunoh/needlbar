@@ -167,19 +167,46 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         case cancelledTimer
     }
 
+    private enum Session {
+        case pending(StopReason?)
+        case running(Process, StopReason?)
+
+        var stopReason: StopReason? {
+            switch self {
+            case let .pending(reason), let .running(_, reason): reason
+            }
+        }
+    }
+
     private let timeout: Duration
     private let terminationGrace: Duration
-    private var processes: [UUID: Process] = [:]
-    private var stoppedReasons: [UUID: StopReason] = [:]
+    private let preLaunch: @Sendable () async -> Void
+    private let signalSender: @Sendable (Int32, Int32) async -> Int32
+    private let processStarted: @Sendable (Int32) async -> Void
+    private var sessions: [UUID: Session] = [:]
     private var reapWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
 
-    public init(timeout: Duration = .seconds(300), terminationGrace: Duration = .seconds(1)) {
+    public init(
+        timeout: Duration = .seconds(300),
+        terminationGrace: Duration = .seconds(1),
+        preLaunch: @escaping @Sendable () async -> Void = {},
+        signalSender: @escaping @Sendable (Int32, Int32) async -> Int32 = { Darwin.kill($0, $1) },
+        processStarted: @escaping @Sendable (Int32) async -> Void = { _ in }
+    ) {
         self.timeout = timeout
         self.terminationGrace = terminationGrace
+        self.preLaunch = preLaunch
+        self.signalSender = signalSender
+        self.processStarted = processStarted
     }
 
     public func run(_ command: ProviderLoginCommand) async -> ProviderLoginProcessOutcome {
         let identifier = UUID()
+        sessions[identifier] = .pending(Task.isCancelled ? .cancelled : nil)
+        if Task.isCancelled {
+            sessions.removeValue(forKey: identifier)
+            return .cancelled
+        }
         let processRunner = self
         return await withTaskCancellationHandler(operation: {
             await withTaskGroup(of: RaceResult.self, returning: ProviderLoginProcessOutcome.self) { group in
@@ -215,7 +242,7 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
     }
 
     public func stop() async {
-        let active = Array(processes.keys)
+        let active = Array(sessions.keys)
         for identifier in active {
             await stopProcess(identifier, reason: .cancelled)
         }
@@ -225,6 +252,13 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
     }
 
     private func waitForProcess(_ command: ProviderLoginCommand, identifier: UUID) async -> ProviderLoginProcessOutcome {
+        await preLaunch()
+        guard case let .pending(reason)? = sessions[identifier] else { return .cancelled }
+        if let reason {
+            completePendingSession(identifier)
+            return outcome(for: reason)
+        }
+
         let process = Process()
         process.executableURL = command.executableURL
         process.arguments = command.arguments
@@ -239,37 +273,67 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
             }
             do {
                 try process.run()
-                processes[identifier] = process
+                // No actor suspension occurs between spawning and registration. A stop request
+                // therefore either prevents this launch while pending or targets this exact PID.
+                sessions[identifier] = .running(process, nil)
+                let observer = processStarted
+                Task { await observer(process.processIdentifier) }
             } catch {
                 continuation.resume(returning: nil)
             }
         }
 
-        processes.removeValue(forKey: identifier)
-        let waiters = reapWaiters.removeValue(forKey: identifier) ?? []
-        waiters.forEach { $0.resume() }
+        let stopReason = sessions.removeValue(forKey: identifier)?.stopReason
+        resumeReapWaiters(for: identifier)
         guard let status else { return .launchFailed }
-        switch stoppedReasons.removeValue(forKey: identifier) {
-        case .timedOut: return .timedOut
-        case .cancelled: return .cancelled
-        case nil: return .exited(status: status)
-        }
+        if let stopReason { return outcome(for: stopReason) }
+        return .exited(status: status)
     }
 
     private func stopProcess(_ identifier: UUID, reason: StopReason) async {
-        guard let process = processes[identifier], process.isRunning else { return }
+        guard let session = sessions[identifier] else { return }
+        switch session {
+        case .pending(let existingReason):
+            sessions[identifier] = .pending(existingReason ?? reason)
+            return
+        case let .running(process, existingReason):
+            let stopReason = existingReason ?? reason
+            sessions[identifier] = .running(process, stopReason)
+            guard process.isRunning else { return }
+        }
+
+        guard case let .running(process, _)? = sessions[identifier], process.isRunning else { return }
         let pid = process.processIdentifier
-        stoppedReasons[identifier] = reason
-        _ = Darwin.kill(pid, SIGTERM)
+        _ = await signalSender(pid, SIGTERM)
         try? await Task.sleep(for: terminationGrace)
-        guard let current = processes[identifier], current.processIdentifier == pid, current.isRunning else { return }
-        _ = Darwin.kill(pid, SIGKILL)
+        guard case let .running(current, _)? = sessions[identifier], current.processIdentifier == pid else { return }
+        // Foundation can observe a signal before it refreshes `isRunning`; the exact recorded
+        // PID is eligible for escalation only while the kernel still reports that child alive.
+        guard current.isRunning || Darwin.kill(pid, 0) == 0 else { return }
+        _ = await signalSender(pid, SIGKILL)
     }
 
     private func waitForReap(_ identifier: UUID) async {
-        guard processes[identifier] != nil else { return }
+        guard case .running? = sessions[identifier] else { return }
         await withCheckedContinuation { continuation in
             reapWaiters[identifier, default: []].append(continuation)
+        }
+    }
+
+    private func completePendingSession(_ identifier: UUID) {
+        sessions.removeValue(forKey: identifier)
+        resumeReapWaiters(for: identifier)
+    }
+
+    private func resumeReapWaiters(for identifier: UUID) {
+        let waiters = reapWaiters.removeValue(forKey: identifier) ?? []
+        waiters.forEach { $0.resume() }
+    }
+
+    private func outcome(for reason: StopReason) -> ProviderLoginProcessOutcome {
+        switch reason {
+        case .timedOut: return .timedOut
+        case .cancelled: return .cancelled
         }
     }
 }
@@ -281,7 +345,9 @@ public final class ProviderLoginCoordinator: ObservableObject {
     private let resolver: any ProviderLoginCommandResolving
     private let runner: any ProviderLoginProcessRunning
     private let refreshQuota: @Sendable (ProviderID) async -> Bool
+    private let beforeProcessStart: @Sendable (ProviderID) async -> Void
     private let stateObserver: @Sendable (ProviderID, ProviderLoginState) async -> Void
+    private let runFinished: @Sendable (ProviderID) async -> Void
     private var tasks: [ProviderID: Task<Void, Never>] = [:]
     private var generations: [ProviderID: UInt64] = [:]
 
@@ -289,12 +355,16 @@ public final class ProviderLoginCoordinator: ObservableObject {
         resolver: any ProviderLoginCommandResolving = ProviderLoginCommandResolver(),
         runner: any ProviderLoginProcessRunning = ProviderLoginProcessRunner(),
         refreshQuota: @escaping @Sendable (ProviderID) async -> Bool,
-        stateObserver: @escaping @Sendable (ProviderID, ProviderLoginState) async -> Void = { _, _ in }
+        stateObserver: @escaping @Sendable (ProviderID, ProviderLoginState) async -> Void = { _, _ in },
+        beforeProcessStart: @escaping @Sendable (ProviderID) async -> Void = { _ in },
+        runFinished: @escaping @Sendable (ProviderID) async -> Void = { _ in }
     ) {
         self.resolver = resolver
         self.runner = runner
         self.refreshQuota = refreshQuota
         self.stateObserver = stateObserver
+        self.beforeProcessStart = beforeProcessStart
+        self.runFinished = runFinished
     }
 
     @discardableResult
@@ -335,6 +405,12 @@ public final class ProviderLoginCoordinator: ObservableObject {
     }
 
     private func run(_ command: ProviderLoginCommand, provider: ProviderID, generation: UInt64) async {
+        defer {
+            let observer = runFinished
+            Task { await observer(provider) }
+        }
+        await beforeProcessStart(provider)
+        guard isCurrent(generation, for: provider), !Task.isCancelled else { return }
         updateState(.awaitingBrowser, for: provider)
         let outcome = await runner.run(command)
         guard isCurrent(generation, for: provider) else { return }

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import NeedlbarApp
@@ -271,6 +272,106 @@ import Testing
     #expect(coordinator.state(for: .codex) == .idle)
 }
 
+@MainActor
+@Test func coordinatorStopBeforeTheSpawnedTaskPassesItsStartBarrierNeverLaunchesOrMutates() async {
+    let startGate = SuspensionGate()
+    let runner = CountingLoginRunner()
+    let refresh = SuspendedQuotaRefresh()
+    let finished = RunCompletionRecorder()
+    let coordinator = ProviderLoginCoordinator(
+        resolver: FixedLoginResolver(),
+        runner: runner,
+        refreshQuota: { provider in await refresh.refresh(provider) },
+        beforeProcessStart: { _ in await startGate.wait() },
+        runFinished: { provider in await finished.record(provider) }
+    )
+
+    #expect(coordinator.connect(.claude))
+    await startGate.waitForEntry()
+    await coordinator.stop()
+    await startGate.release()
+    await finished.wait(for: .claude)
+
+    #expect(coordinator.state(for: .claude) == .idle)
+    #expect(await runner.invocationCount() == 0)
+    #expect(await refresh.callCount(for: .claude) == 0)
+}
+
+@Test func processRunnerPreventsALateLaunchWhenStoppedDuringPrelaunchRegistration() async throws {
+    let fixture = try SignalFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+
+    let prelaunch = SuspensionGate()
+    let starts = ProcessSignalRecorder()
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        terminationGrace: .milliseconds(10),
+        preLaunch: { await prelaunch.wait() },
+        processStarted: { pid in await starts.recordStart(pid) }
+    )
+    let task = Task { await runner.run(fixture.command(readyFile: fixture.directory.appendingPathComponent("unused-ready"))) }
+
+    await prelaunch.waitForEntry()
+    await runner.stop()
+    await prelaunch.release()
+
+    #expect(await task.value == .cancelled)
+    #expect(await starts.startedPIDs().isEmpty)
+    #expect(await starts.signals().isEmpty)
+}
+
+@Test func processRunnerSendsOnlyTERMToACompliantExactFixturePIDAndReapsIt() async throws {
+    let fixture = try SignalFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+
+    let recorder = ProcessSignalRecorder()
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        terminationGrace: .milliseconds(25),
+        signalSender: { pid, signal in await recorder.send(pid, signal) },
+        processStarted: { pid in await recorder.recordStart(pid) }
+    )
+    let readyFile = fixture.directory.appendingPathComponent("ready")
+    let task = Task { await runner.run(fixture.command(readyFile: readyFile)) }
+    let pid = await recorder.waitForStart()
+    try await waitForFixtureReady(at: readyFile)
+
+    await runner.stop()
+    #expect(await task.value == .cancelled)
+    #expect(await recorder.signals() == [.init(pid: pid, signal: SIGTERM)])
+    #expect(Darwin.kill(pid, 0) == -1)
+}
+
+@Test func processRunnerEscalatesOnlyTheTermIgnoringExactFixturePIDThenReapsIt() async throws {
+    let fixture = try SignalFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+
+    let recorder = ProcessSignalRecorder(holdAfterTERM: true)
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        terminationGrace: .milliseconds(25),
+        signalSender: { pid, signal in await recorder.send(pid, signal) },
+        processStarted: { pid in await recorder.recordStart(pid) }
+    )
+    let readyFile = fixture.directory.appendingPathComponent("ready")
+    let task = Task { await runner.run(fixture.command(arguments: ["ignore-term"], readyFile: readyFile)) }
+    let pid = await recorder.waitForStart()
+    try await waitForFixtureReady(at: readyFile)
+    #expect(Darwin.kill(pid, 0) == 0)
+
+    let stop = Task { await runner.stop() }
+    await recorder.waitForTERM()
+    #expect(Darwin.kill(pid, 0) == 0)
+    await recorder.releaseTERM()
+    await stop.value
+    #expect(await task.value == .cancelled)
+    #expect(await recorder.signals() == [
+        .init(pid: pid, signal: SIGTERM),
+        .init(pid: pid, signal: SIGKILL),
+    ])
+    #expect(Darwin.kill(pid, 0) == -1)
+}
+
 private struct FixedLoginResolver: ProviderLoginCommandResolving {
     func command(for provider: ProviderID) throws -> ProviderLoginCommand {
         guard provider != .cursor else { throw ProviderLoginCommandResolutionError.unsupportedProvider }
@@ -378,6 +479,181 @@ private actor ImmediateLoginRunner: ProviderLoginProcessRunning {
 
     func stop() async {}
     func commands() -> [ProviderLoginCommand] { launched }
+}
+
+private actor CountingLoginRunner: ProviderLoginProcessRunning {
+    private var calls = 0
+
+    func run(_ command: ProviderLoginCommand) async -> ProviderLoginProcessOutcome {
+        calls += 1
+        return .exited(status: 0)
+    }
+
+    func stop() async {}
+    func invocationCount() -> Int { calls }
+}
+
+private actor RunCompletionRecorder {
+    private var providers: Set<ProviderID> = []
+    private var waiters: [ProviderID: [CheckedContinuation<Void, Never>]] = [:]
+
+    func record(_ provider: ProviderID) {
+        providers.insert(provider)
+        let providerWaiters = waiters.removeValue(forKey: provider) ?? []
+        providerWaiters.forEach { $0.resume() }
+    }
+
+    func wait(for provider: ProviderID) async {
+        if providers.contains(provider) { return }
+        await withCheckedContinuation { continuation in waiters[provider, default: []].append(continuation) }
+    }
+}
+
+private actor SuspensionGate {
+    private var entered = false
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+    private var released = false
+
+    func wait() async {
+        entered = true
+        let waiters = entryWaiters
+        entryWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        if released { return }
+        await withCheckedContinuation { continuation in releaseWaiters.append(continuation) }
+    }
+
+    func waitForEntry() async {
+        if entered { return }
+        await withCheckedContinuation { continuation in entryWaiters.append(continuation) }
+    }
+
+    func release() {
+        released = true
+        let waiters = releaseWaiters
+        releaseWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+}
+
+private actor ProcessSignalRecorder {
+    struct Signal: Equatable, Sendable {
+        let pid: Int32
+        let signal: Int32
+    }
+
+    private var started: [Int32] = []
+    private var startWaiters: [CheckedContinuation<Int32, Never>] = []
+    private var sent: [Signal] = []
+    private let holdAfterTERM: Bool
+    private var termWaiters: [CheckedContinuation<Void, Never>] = []
+    private var heldTERM: CheckedContinuation<Void, Never>?
+
+    init(holdAfterTERM: Bool = false) {
+        self.holdAfterTERM = holdAfterTERM
+    }
+
+    func recordStart(_ pid: Int32) {
+        started.append(pid)
+        let waiters = startWaiters
+        startWaiters.removeAll()
+        waiters.forEach { $0.resume(returning: pid) }
+    }
+
+    func waitForStart() async -> Int32 {
+        if let pid = started.first { return pid }
+        return await withCheckedContinuation { continuation in startWaiters.append(continuation) }
+    }
+
+    func send(_ pid: Int32, _ signal: Int32) async -> Int32 {
+        sent.append(.init(pid: pid, signal: signal))
+        let result = Darwin.kill(pid, signal)
+        guard holdAfterTERM, signal == SIGTERM else { return result }
+        let waiters = termWaiters
+        termWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        await withCheckedContinuation { continuation in heldTERM = continuation }
+        return result
+    }
+
+    func waitForTERM() async {
+        if sent.contains(where: { $0.signal == SIGTERM }) { return }
+        await withCheckedContinuation { continuation in termWaiters.append(continuation) }
+    }
+
+    func releaseTERM() {
+        heldTERM?.resume()
+        heldTERM = nil
+    }
+
+    func startedPIDs() -> [Int32] { started }
+    func signals() -> [Signal] { sent }
+}
+
+private struct SignalFixture {
+    let directory: URL
+    let executable: URL
+
+    static func make() throws -> SignalFixture {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let source = directory.appendingPathComponent("signal-fixture.c")
+            let executable = directory.appendingPathComponent("signal-fixture")
+            try """
+        #include <signal.h>
+        #include <fcntl.h>
+        #include <stdlib.h>
+        #include <unistd.h>
+        int main(int argc, char **argv) {
+            const char *ready = getenv("NEEDLBAR_FIXTURE_READY");
+            if (ready) {
+                int fd = open(ready, O_WRONLY | O_CREAT, 0600);
+                if (fd >= 0) { write(fd, "1", 1); close(fd); }
+            }
+            if (argc == 2 && argv[1][0] == 'i') signal(SIGTERM, SIG_IGN);
+            for (;;) sleep(1);
+        }
+        """.write(to: source, atomically: true, encoding: .utf8)
+
+            let compiler = Process()
+            compiler.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+            compiler.arguments = ["clang", source.path, "-o", executable.path]
+            compiler.standardInput = FileHandle.nullDevice
+            compiler.standardOutput = FileHandle.nullDevice
+            compiler.standardError = FileHandle.nullDevice
+            try compiler.run()
+            compiler.waitUntilExit()
+            guard compiler.terminationStatus == 0 else { throw SignalFixtureError.compilationFailed }
+            return SignalFixture(directory: directory, executable: executable)
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw error
+        }
+    }
+
+    func command(arguments: [String] = [], readyFile: URL) -> ProviderLoginCommand {
+        ProviderLoginCommand(
+            provider: .claude,
+            executableURL: executable,
+            arguments: arguments,
+            environment: ["NEEDLBAR_FIXTURE_READY": readyFile.path]
+        )
+    }
+}
+
+private func waitForFixtureReady(at url: URL) async throws {
+    for _ in 0..<1_000 {
+        if FileManager.default.fileExists(atPath: url.path) { return }
+        try await Task.sleep(for: .milliseconds(1))
+    }
+    throw SignalFixtureError.readyTimedOut
+}
+
+private enum SignalFixtureError: Error {
+    case compilationFailed
+    case readyTimedOut
 }
 
 private enum CleanupEvent: Equatable, Sendable {
