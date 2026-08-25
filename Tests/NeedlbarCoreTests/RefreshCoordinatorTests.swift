@@ -426,6 +426,91 @@ struct RefreshCoordinatorTests {
     await coordinator.stop()
 }
 
+@Test func stopDuringQuotaStoreApplicationResumesCapturedVerificationWaiterFalseExactlyOnce() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let storeGate = QuotaApplicationGate()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota,
+        store: ProviderSnapshotStore(),
+        clock: ManualClock(now: try #require(BridgeDecoder.date("2026-08-25T12:00:00Z"))),
+        quotaApplicationWillApply: { await storeGate.pause() }
+    )
+    await coordinator.start()
+    await eventually { quota.callCount == 1 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+
+    let verification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+    await eventually { quota.callCount == 2 }
+    quota.releaseNext(with: try quotaResult(for: .claude, usedPercent: 10))
+    await storeGate.waitUntilEntered()
+    await coordinator.stop()
+
+    let verified = await verification.value
+    #expect(!verified)
+    await storeGate.resume()
+}
+
+@Test func sameProviderVerificationJoiningDuringQuotaApplicationUsesTheActiveResult() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let storeGate = QuotaApplicationGate()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota,
+        store: ProviderSnapshotStore(),
+        clock: ManualClock(now: try #require(BridgeDecoder.date("2026-08-25T12:00:00Z"))),
+        quotaApplicationWillApply: { await storeGate.pause() }
+    )
+    await coordinator.start()
+    await eventually { quota.callCount == 1 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+
+    let first = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+    await eventually { quota.callCount == 2 }
+    quota.releaseNext(with: try quotaResult(for: .claude, usedPercent: 10))
+    await storeGate.waitUntilEntered()
+    let joining = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+    await Task.yield()
+    await storeGate.resume()
+
+    #expect(await first.value)
+    await Task.yield()
+    if quota.callCount == 3 {
+        quota.releaseNext(with: try quotaResult(for: .claude, usedPercent: 10))
+    }
+    #expect(quota.callCount == 2)
+    #expect(await joining.value)
+    await coordinator.stop()
+}
+
+@Test func restartedGenerationKeepsNewProviderWaiterSeparateFromLateOldCompletion() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let store = ProviderSnapshotStore()
+    let coordinator = makeRunningCoordinator(quota: quota, store: store)
+    await coordinator.start()
+    await eventually { quota.callCount == 1 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+
+    let oldVerification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+    await eventually { quota.callCount == 2 }
+    await coordinator.stop()
+    #expect(!(await oldVerification.value))
+    await coordinator.start()
+    let newVerification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+
+    quota.releaseNext(with: try quotaResult(for: .claude, usedPercent: 10))
+    await eventually { quota.callCount == 3 }
+    quota.releaseNext(with: try quotaResult(for: .claude, usedPercent: 20))
+
+    #expect(await newVerification.value)
+    let expected = try QuotaSnapshot(windows: [.init(id: "claude.session", title: "Session", usedPercent: 20, resetsAt: nil)])
+    await eventuallyAsync { await store.snapshot(for: .claude).quota == expected }
+    #expect(await store.snapshot(for: .claude).quota == expected)
+    await eventually { quota.callCount == 4 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+    await coordinator.stop()
+}
+
 private func makeRunningCoordinator(
     usage: any UsageRepository = UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
     quota: any QuotaRepository,
@@ -441,6 +526,15 @@ private func makeRunningCoordinator(
 
 private func quotaResult(for provider: ProviderID) -> QuotaRefreshResult {
     .init(snapshots: [provider: QuotaSnapshot(windows: [])], errors: [:])
+}
+
+private func quotaResult(for provider: ProviderID, usedPercent: Double) throws -> QuotaRefreshResult {
+    .init(
+        snapshots: [provider: QuotaSnapshot(windows: [
+            try .init(id: "\(provider.rawValue).session", title: "Session", usedPercent: usedPercent, resetsAt: nil)
+        ])],
+        errors: [:]
+    )
 }
 
 private func permissionDenied(for provider: ProviderID) -> BridgeError {
@@ -479,7 +573,7 @@ private final class QuotaRefreshSpy: QuotaRepository, @unchecked Sendable {
         lock.withLock { calls }
     }
 
-    func refresh() throws -> QuotaRefreshResult {
+    func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
         lock.withLock { calls += 1 }
         return result
     }
@@ -497,10 +591,6 @@ private final class BlockingIntentQuotaRepository: QuotaRepository, @unchecked S
 
     var intents: [QuotaRefreshIntent] {
         lock.withLock { calls }
-    }
-
-    func refresh() throws -> QuotaRefreshResult {
-        try refresh(intent: .backgroundAll)
     }
 
     func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
@@ -537,6 +627,40 @@ private final class IntentRecordingQuotaRepository: QuotaRepository, @unchecked 
     func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
         lock.withLock { calls.append(intent) }
         return .init(snapshots: [:], errors: [:])
+    }
+}
+
+private actor QuotaApplicationGate {
+    private var entered = false
+    private var released = false
+    private var enteredContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    func pause() async {
+        entered = true
+        enteredContinuation?.resume()
+        enteredContinuation = nil
+        guard !released else { return }
+        await withCheckedContinuation { continuation in
+            if released {
+                continuation.resume()
+            } else {
+                releaseContinuation = continuation
+            }
+        }
+    }
+
+    func waitUntilEntered() async {
+        guard !entered else { return }
+        await withCheckedContinuation { continuation in
+            enteredContinuation = continuation
+        }
+    }
+
+    func resume() {
+        released = true
+        releaseContinuation?.resume()
+        releaseContinuation = nil
     }
 }
 

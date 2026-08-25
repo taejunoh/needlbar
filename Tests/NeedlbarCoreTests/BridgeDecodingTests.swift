@@ -188,6 +188,31 @@ import Testing
     #expect(frees.count == 1)
 }
 
+@Test func dedicatedQuotaRefreshRejectsAnUnknownProviderErrorInsteadOfDroppingIt() throws {
+    let frees = FreeRecorder()
+    let payload = """
+    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-08-25T12:00:00Z","data":{"providers":[]},"errors":[{"provider":"other","code":"permissionDenied","message":"denied"}]}
+    """
+    let bridge = RustBridge(
+        claudeUserInitiatedQuotaCall: { makeCString(Array(payload.utf8).map(CChar.init) + [0]) },
+        free: { frees.release($0) }
+    )
+
+    #expect(throws: BridgeFailure.self) {
+        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+    }
+    #expect(frees.count == 1)
+}
+
+@Test func intentOnlyQuotaRepositoryReceivesUserIntentWithoutAnyLegacyAggregateMethod() throws {
+    let repository = IntentOnlyQuotaRepository()
+
+    _ = try repository.refresh()
+    _ = try repository.refresh(intent: .userInitiated(provider: .claude))
+
+    #expect(repository.intents == [.backgroundAll, .userInitiated(provider: .claude)])
+}
+
 private final class FreeRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var releases = 0
@@ -213,6 +238,20 @@ private final class CallRecorder: @unchecked Sendable {
 
     func record(_ call: String) {
         lock.withLock { calls.append(call) }
+    }
+}
+
+private final class IntentOnlyQuotaRepository: QuotaRepository, @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [QuotaRefreshIntent] = []
+
+    var intents: [QuotaRefreshIntent] {
+        lock.withLock { calls }
+    }
+
+    func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
+        lock.withLock { calls.append(intent) }
+        return .init(snapshots: [:], errors: [:])
     }
 }
 

@@ -14,17 +14,12 @@ public enum QuotaRefreshIntent: Equatable, Sendable {
 }
 
 public protocol QuotaRepository: Sendable {
-    func refresh() throws -> QuotaRefreshResult
     func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult
 }
 
 public extension QuotaRepository {
     func refresh() throws -> QuotaRefreshResult {
         try refresh(intent: .backgroundAll)
-    }
-
-    func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
-        try refresh()
     }
 }
 
@@ -74,8 +69,14 @@ public struct RustQuotaRepository: QuotaRepository, Sendable {
         }
         var errors: [ProviderID: BridgeError] = [:]
         for error in envelope.errors {
-            if let expectedProvider, error.providerID != nil, error.providerID != expectedProvider {
-                throw safeFailure(provider: expectedProvider, code: "unexpectedProvider", message: "Provider verification returned an unexpected provider.")
+            if let expectedProvider, let rawProvider = error.provider,
+               ProviderID(rawValue: rawProvider) != expectedProvider
+            {
+                throw safeFailure(
+                    provider: expectedProvider,
+                    code: "unexpectedProvider",
+                    message: "Provider verification returned an unexpected provider."
+                )
             }
             if let provider = error.providerID {
                 errors[provider] = error
