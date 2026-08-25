@@ -297,7 +297,7 @@ import Testing
     #expect(await refresh.callCount(for: .claude) == 0)
 }
 
-@Test func processRunnerPreventsALateLaunchWhenStoppedDuringPrelaunchRegistration() async throws {
+@Test(.serialized) func processRunnerPreventsALateLaunchWhenStoppedDuringPrelaunchRegistration() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -320,7 +320,7 @@ import Testing
     #expect(await starts.signals().isEmpty)
 }
 
-@Test func processRunnerSendsOnlyTERMToACompliantExactFixturePIDAndReapsIt() async throws {
+@Test(.serialized) func processRunnerSendsOnlyTERMToACompliantExactFixturePIDAndReapsIt() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -342,7 +342,7 @@ import Testing
     #expect(Darwin.kill(pid, 0) == -1)
 }
 
-@Test func processRunnerEscalatesOnlyTheTermIgnoringExactFixturePIDThenReapsIt() async throws {
+@Test(.serialized) func processRunnerEscalatesOnlyTheTermIgnoringExactFixturePIDThenReapsIt() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -369,6 +369,121 @@ import Testing
         .init(pid: pid, signal: SIGTERM),
         .init(pid: pid, signal: SIGKILL),
     ])
+    #expect(Darwin.kill(pid, 0) == -1)
+}
+
+@Test(.serialized) func processRunnerSharesOneTerminationSequenceAcrossConcurrentCancellationAndStop() async throws {
+    let fixture = try SignalFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+
+    let recorder = ProcessSignalRecorder(holdAfterTERM: true)
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        terminationGrace: .milliseconds(25),
+        signalSender: { pid, signal in await recorder.send(pid, signal) },
+        processStarted: { pid in await recorder.recordStart(pid) },
+        processFinished: { pid in await recorder.recordFinish(pid) }
+    )
+    let readyFile = fixture.directory.appendingPathComponent("ready")
+    let task = Task { await runner.run(fixture.command(arguments: ["ignore-term"], readyFile: readyFile)) }
+    let pid = await recorder.waitForStart()
+    try await waitForFixtureReady(at: readyFile)
+
+    let stop = Task { await runner.stop() }
+    await recorder.waitForTERM()
+    task.cancel()
+    await recorder.releaseTERM()
+    await stop.value
+
+    #expect(await task.value == .cancelled)
+    #expect(await recorder.signals() == [
+        .init(pid: pid, signal: SIGTERM),
+        .init(pid: pid, signal: SIGKILL),
+    ])
+    #expect(await recorder.finishedPIDs() == [pid])
+    #expect(Darwin.kill(pid, 0) == -1)
+}
+
+@Test(.serialized) func processRunnerFailsClosedWhenAPIDIdentityChangesDuringGrace() async throws {
+    let fixture = try SignalFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+
+    let recorder = ProcessSignalRecorder(holdAfterTERM: true)
+    let identities = ProcessIdentityRecorder()
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        terminationGrace: .milliseconds(25),
+        signalSender: { pid, signal in await recorder.send(pid, signal) },
+        processIdentity: { pid in identities.identity(for: pid) },
+        processStarted: { pid in await recorder.recordStart(pid) },
+        processFinished: { pid in await recorder.recordFinish(pid) }
+    )
+    let readyFile = fixture.directory.appendingPathComponent("ready")
+    let task = Task { await runner.run(fixture.command(arguments: ["ignore-term"], readyFile: readyFile)) }
+    let pid = await recorder.waitForStart()
+    try await waitForFixtureReady(at: readyFile)
+
+    let stop = Task { await runner.stop() }
+    await recorder.waitForTERM()
+    identities.replaceIdentity()
+    await recorder.releaseTERM()
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(await recorder.signals() == [.init(pid: pid, signal: SIGTERM)])
+
+    _ = Darwin.kill(pid, SIGKILL)
+    await stop.value
+    #expect(await task.value == .cancelled)
+    #expect(await recorder.finishedPIDs() == [pid])
+}
+
+@Test(.serialized) func processRunnerTaskCancellationTerminatesAndReapsADirectChild() async throws {
+    let fixture = try SignalFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+
+    let recorder = ProcessSignalRecorder()
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        terminationGrace: .milliseconds(25),
+        signalSender: { pid, signal in await recorder.send(pid, signal) },
+        processStarted: { pid in await recorder.recordStart(pid) },
+        processFinished: { pid in await recorder.recordFinish(pid) }
+    )
+    let readyFile = fixture.directory.appendingPathComponent("ready")
+    let task = Task { await runner.run(fixture.command(readyFile: readyFile)) }
+    let pid = await recorder.waitForStart()
+    try await waitForFixtureReady(at: readyFile)
+
+    task.cancel()
+
+    #expect(await task.value == .cancelled)
+    #expect(await recorder.signals() == [.init(pid: pid, signal: SIGTERM)])
+    #expect(await recorder.finishedPIDs() == [pid])
+    #expect(Darwin.kill(pid, 0) == -1)
+}
+
+@Test(.serialized) func processRunnerTimeoutTerminatesAndReapsADirectChild() async throws {
+    let fixture = try SignalFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+
+    let recorder = ProcessSignalRecorder()
+    let timeoutGate = SuspensionGate()
+    let runner = ProviderLoginProcessRunner(
+        timeout: .milliseconds(10),
+        terminationGrace: .milliseconds(25),
+        timeoutSleeper: { _ in await timeoutGate.wait() },
+        signalSender: { pid, signal in await recorder.send(pid, signal) },
+        processStarted: { pid in await recorder.recordStart(pid) },
+        processFinished: { pid in await recorder.recordFinish(pid) }
+    )
+    let readyFile = fixture.directory.appendingPathComponent("ready")
+    let task = Task { await runner.run(fixture.command(readyFile: readyFile)) }
+    let pid = await recorder.waitForStart()
+    try await waitForFixtureReady(at: readyFile)
+    await timeoutGate.release()
+
+    #expect(await task.value == .timedOut)
+    #expect(await recorder.signals() == [.init(pid: pid, signal: SIGTERM)])
+    #expect(await recorder.finishedPIDs() == [pid])
     #expect(Darwin.kill(pid, 0) == -1)
 }
 
@@ -546,6 +661,7 @@ private actor ProcessSignalRecorder {
     private var started: [Int32] = []
     private var startWaiters: [CheckedContinuation<Int32, Never>] = []
     private var sent: [Signal] = []
+    private var finished: [Int32] = []
     private let holdAfterTERM: Bool
     private var termWaiters: [CheckedContinuation<Void, Never>] = []
     private var heldTERM: CheckedContinuation<Void, Never>?
@@ -559,6 +675,10 @@ private actor ProcessSignalRecorder {
         let waiters = startWaiters
         startWaiters.removeAll()
         waiters.forEach { $0.resume(returning: pid) }
+    }
+
+    func recordFinish(_ pid: Int32) {
+        finished.append(pid)
     }
 
     func waitForStart() async -> Int32 {
@@ -588,7 +708,25 @@ private actor ProcessSignalRecorder {
     }
 
     func startedPIDs() -> [Int32] { started }
+    func finishedPIDs() -> [Int32] { finished }
     func signals() -> [Signal] { sent }
+}
+
+private final class ProcessIdentityRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var startSeconds: Int64 = 1
+
+    func identity(for pid: Int32) -> ProviderLoginProcessIdentity? {
+        lock.lock()
+        defer { lock.unlock() }
+        return ProviderLoginProcessIdentity(processIdentifier: pid, startSeconds: startSeconds, startMicroseconds: 1)
+    }
+
+    func replaceIdentity() {
+        lock.lock()
+        startSeconds = 2
+        lock.unlock()
+    }
 }
 
 private struct SignalFixture {
