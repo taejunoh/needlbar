@@ -335,9 +335,9 @@ import Testing
     #expect(await refresh.callCount(for: .claude) == 0)
 }
 
-@Test(.serialized) func processRunnerPreventsALateLaunchWhenStoppedDuringPrelaunchRegistration() async throws {
-    await FixtureTestSerialization.shared.acquire()
-    defer { Task { await FixtureTestSerialization.shared.release() } }
+@Suite(.serialized)
+private struct ProviderLoginProcessRunnerTests {
+@Test func processRunnerPreventsALateLaunchWhenStoppedDuringPrelaunchRegistration() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -360,9 +360,7 @@ import Testing
     #expect(await starts.signals().isEmpty)
 }
 
-@Test(.serialized) func processRunnerSendsOnlyTERMToACompliantExactFixturePIDAndReapsIt() async throws {
-    await FixtureTestSerialization.shared.acquire()
-    defer { Task { await FixtureTestSerialization.shared.release() } }
+@Test func processRunnerSendsOnlyTERMToACompliantExactFixturePIDAndReapsIt() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -387,9 +385,7 @@ import Testing
     #expect(Darwin.kill(pid, 0) == -1)
 }
 
-@Test(.serialized) func processRunnerEscalatesOnlyTheTermIgnoringExactFixturePIDThenReapsIt() async throws {
-    await FixtureTestSerialization.shared.acquire()
-    defer { Task { await FixtureTestSerialization.shared.release() } }
+@Test func processRunnerEscalatesOnlyTheTermIgnoringExactFixturePIDThenReapsIt() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -419,9 +415,7 @@ import Testing
     #expect(Darwin.kill(pid, 0) == -1)
 }
 
-@Test(.serialized) func processRunnerSharesOneTerminationSequenceAcrossConcurrentCancellationAndStop() async throws {
-    await FixtureTestSerialization.shared.acquire()
-    defer { Task { await FixtureTestSerialization.shared.release() } }
+@Test func processRunnerSharesOneTerminationSequenceAcrossConcurrentCancellationAndStop() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -453,9 +447,7 @@ import Testing
     #expect(Darwin.kill(pid, 0) == -1)
 }
 
-@Test(.serialized) func processRunnerTaskCancellationTerminatesAndReapsADirectChild() async throws {
-    await FixtureTestSerialization.shared.acquire()
-    defer { Task { await FixtureTestSerialization.shared.release() } }
+@Test func processRunnerTaskCancellationTerminatesAndReapsADirectChild() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -481,9 +473,7 @@ import Testing
     #expect(Darwin.kill(pid, 0) == -1)
 }
 
-@Test(.serialized) func processRunnerTimeoutTerminatesAndReapsADirectChild() async throws {
-    await FixtureTestSerialization.shared.acquire()
-    defer { Task { await FixtureTestSerialization.shared.release() } }
+@Test func processRunnerTimeoutTerminatesAndReapsADirectChild() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -648,9 +638,7 @@ import Testing
     #expect(specification?.clearsSignalMask == true)
 }
 
-@Test(.serialized) func processRunnerReapsAHarmlessDirectChildThatExitsNormally() async throws {
-    await FixtureTestSerialization.shared.acquire()
-    defer { Task { await FixtureTestSerialization.shared.release() } }
+@Test func processRunnerReapsAHarmlessDirectChildThatExitsNormally() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
     let recorder = ProcessSignalRecorder()
@@ -664,9 +652,7 @@ import Testing
     #expect(Darwin.kill(pid, 0) == -1)
 }
 
-@Test(.serialized) func processRunnerSignalsOnlyTheDirectFixtureWhenItHasADescendant() async throws {
-    await FixtureTestSerialization.shared.acquire()
-    defer { Task { await FixtureTestSerialization.shared.release() } }
+@Test func processRunnerSignalsOnlyTheDirectFixtureWhenItHasADescendant() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
     let recorder = ProcessSignalRecorder()
@@ -683,6 +669,7 @@ import Testing
     #expect(directPID == pids.parent)
     #expect(pids.child != directPID)
     #expect(Darwin.kill(pids.child, 0) == 0)
+}
 }
 
 private struct FixedLoginResolver: ProviderLoginCommandResolving {
@@ -915,22 +902,6 @@ private actor SuspensionGate {
         let waiters = releaseWaiters
         releaseWaiters.removeAll()
         waiters.forEach { $0.resume() }
-    }
-}
-
-private actor FixtureTestSerialization {
-    static let shared = FixtureTestSerialization()
-    private var held = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    func acquire() async {
-        if !held { held = true; return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    func release() {
-        if waiters.isEmpty { held = false }
-        else { waiters.removeFirst().resume() }
     }
 }
 

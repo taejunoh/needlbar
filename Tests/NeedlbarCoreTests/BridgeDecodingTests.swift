@@ -229,27 +229,41 @@ import Testing
 }
 
 @Test func dedicatedQuotaRefreshNormalizesABridgeWideErrorToTheRequestedProvider() throws {
+    let frees = FreeRecorder()
     let payload = """
     {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-08-25T12:00:00Z","data":{"providers":[]},"errors":[{"provider":null,"code":"permissionDenied","message":"denied"}]}
     """
-    let bridge = RustBridge(claudeUserInitiatedQuotaCall: { makeCString(Array(payload.utf8).map(CChar.init) + [0]) })
+    let returnedPointer = try CStringPointer(makeCString(Array(payload.utf8).map(CChar.init) + [0]))
+    let bridge = RustBridge(
+        claudeUserInitiatedQuotaCall: { returnedPointer.pointer },
+        free: { frees.release($0) }
+    )
 
     let result = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
 
     #expect(result.snapshots.isEmpty)
     #expect(result.errors[.claude]?.provider == ProviderID.claude.rawValue)
     #expect(result.errors[.claude]?.code == "permissionDenied")
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
 }
 
 @Test func dedicatedQuotaRefreshRejectsAnUnexpectedProviderEvenWhenTheEnvelopeFails() throws {
+    let frees = FreeRecorder()
     let payload = """
     {"schemaVersion":"needlbar.v1","ok":false,"generatedAt":"2026-08-25T12:00:00Z","data":{"providers":[{"provider":"claude","windows":[]}]},"errors":[{"provider":"codex","code":"permissionDenied","message":"denied"}]}
     """
-    let bridge = RustBridge(claudeUserInitiatedQuotaCall: { makeCString(Array(payload.utf8).map(CChar.init) + [0]) })
+    let returnedPointer = try CStringPointer(makeCString(Array(payload.utf8).map(CChar.init) + [0]))
+    let bridge = RustBridge(
+        claudeUserInitiatedQuotaCall: { returnedPointer.pointer },
+        free: { frees.release($0) }
+    )
 
     #expect(throws: BridgeFailure.self) {
         _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
     }
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
 }
 
 @Test func intentOnlyQuotaRepositoryReceivesUserIntentWithoutAnyLegacyAggregateMethod() throws {
