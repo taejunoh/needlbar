@@ -349,6 +349,45 @@ import Testing
 }
 
 @MainActor
+@Test func coordinatorNeverLetsDelayedStoppedCleanupClearANewerAdmission() async {
+    let runner = StopAndReapLoginRunner()
+    let finished = RunCompletionRecorder()
+    let coordinator = ProviderLoginCoordinator(
+        resolver: FixedLoginResolver(),
+        runner: runner,
+        refreshQuota: { _ in true },
+        runFinished: { provider in await finished.record(provider) }
+    )
+
+    #expect(coordinator.connect(.claude))
+    await runner.waitForStart(.claude)
+    await runner.holdStopReturn()
+    let stop = Task { await coordinator.stop() }
+    await runner.waitForStopStart()
+    await runner.releaseTerminationGrace()
+    await runner.waitForReapingWaiterCount(for: .claude, count: 1)
+    await runner.releaseStopReturn()
+    await stop.value
+    await runner.waitForReapingWaiterCount(for: .claude, count: 2)
+
+    await runner.completeOneReapingWaiter(for: .claude)
+    await finished.wait(for: .claude)
+
+    #expect(coordinator.connect(.claude))
+    await runner.waitForInvocation(of: .claude, count: 2)
+
+    await runner.completeRemainingReapingWaiters(for: .claude)
+    try? await Task.sleep(for: .milliseconds(20))
+
+    let secondReconnect = coordinator.connect(.claude)
+    #expect(!secondReconnect)
+    #expect(await runner.invocationCount(for: .claude) == 2)
+
+    await runner.completeAll(.claude, with: .cancelled)
+    await finished.wait(for: .claude, count: secondReconnect ? 3 : 2)
+}
+
+@MainActor
 @Test func coordinatorStopBeforeTheSpawnedTaskPassesItsStartBarrierNeverLaunchesOrMutates() async {
     let startGate = SuspensionGate()
     let runner = CountingLoginRunner()
@@ -890,13 +929,16 @@ private actor DeferredReapingLoginRunner: ProviderLoginProcessRunning {
 private actor StopAndReapLoginRunner: ProviderLoginProcessRunning {
     private var invocations: [ProviderID: Int] = [:]
     private var invocationWaiters: [ProviderID: [(Int, CheckedContinuation<Void, Never>)]] = [:]
-    private var active: [ProviderID: CheckedContinuation<ProviderLoginProcessOutcome, Never>] = [:]
+    private var active: [ProviderID: [CheckedContinuation<ProviderLoginProcessOutcome, Never>]] = [:]
     private var starts: Set<ProviderID> = []
     private var startWaiters: [ProviderID: [CheckedContinuation<Void, Never>]] = [:]
     private var stopStarted = false
     private var stopStartWaiters: [CheckedContinuation<Void, Never>] = []
     private var terminationGraceWaiters: [CheckedContinuation<Void, Never>] = []
     private var terminationGraceReleased = false
+    private var holdsStopReturn = false
+    private var stopReturnWaiters: [CheckedContinuation<Void, Never>] = []
+    private var stopReturnReleased = false
     private var reapedProviders: Set<ProviderID> = []
     private var reapingWaiters: [ProviderID: [CheckedContinuation<Void, Never>]] = [:]
     private var reapingWaiterObservers: [ProviderID: [(Int, CheckedContinuation<Void, Never>)]] = [:]
@@ -909,7 +951,7 @@ private actor StopAndReapLoginRunner: ProviderLoginProcessRunning {
         starts.insert(provider)
         let startWaiters = startWaiters.removeValue(forKey: provider) ?? []
         startWaiters.forEach { $0.resume() }
-        return await withCheckedContinuation { active[provider] = $0 }
+        return await withCheckedContinuation { active[provider, default: []].append($0) }
     }
 
     func stop() async {
@@ -917,12 +959,15 @@ private actor StopAndReapLoginRunner: ProviderLoginProcessRunning {
         let waiters = stopStartWaiters
         stopStartWaiters.removeAll()
         waiters.forEach { $0.resume() }
-        let stopping = active
+        let stopping = active.values.flatMap { $0 }
         active.removeAll()
         if !terminationGraceReleased {
             await withCheckedContinuation { terminationGraceWaiters.append($0) }
         }
-        stopping.values.forEach { $0.resume(returning: .launchFailed) }
+        stopping.forEach { $0.resume(returning: .launchFailed) }
+        if holdsStopReturn && !stopReturnReleased {
+            await withCheckedContinuation { stopReturnWaiters.append($0) }
+        }
     }
 
     func waitForReaping(for provider: ProviderID) async {
@@ -948,6 +993,17 @@ private actor StopAndReapLoginRunner: ProviderLoginProcessRunning {
         waiters.forEach { $0.resume() }
     }
 
+    func releaseStopReturn() {
+        stopReturnReleased = true
+        let waiters = stopReturnWaiters
+        stopReturnWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+
+    func holdStopReturn() {
+        holdsStopReturn = true
+    }
+
     func waitForInvocation(of provider: ProviderID, count: Int) async {
         if invocations[provider, default: 0] >= count { return }
         await withCheckedContinuation { invocationWaiters[provider, default: []].append((count, $0)) }
@@ -966,8 +1022,26 @@ private actor StopAndReapLoginRunner: ProviderLoginProcessRunning {
         waiters.forEach { $0.resume() }
     }
 
+    func completeOneReapingWaiter(for provider: ProviderID) {
+        reapedProviders.insert(provider)
+        guard !reapingWaiters[provider, default: []].isEmpty else { return }
+        reapingWaiters[provider]?.removeFirst().resume()
+    }
+
+    func completeRemainingReapingWaiters(for provider: ProviderID) {
+        reapedProviders.insert(provider)
+        let waiters = reapingWaiters.removeValue(forKey: provider) ?? []
+        waiters.forEach { $0.resume() }
+    }
+
     func complete(_ provider: ProviderID, with outcome: ProviderLoginProcessOutcome) {
-        active.removeValue(forKey: provider)?.resume(returning: outcome)
+        active[provider]?.removeFirst().resume(returning: outcome)
+        if active[provider]?.isEmpty == true { active[provider] = nil }
+    }
+
+    func completeAll(_ provider: ProviderID, with outcome: ProviderLoginProcessOutcome) {
+        let continuations = active.removeValue(forKey: provider) ?? []
+        continuations.forEach { $0.resume(returning: outcome) }
     }
 
     private func resumeInvocationWaiters(for provider: ProviderID, count: Int) {

@@ -220,13 +220,13 @@ public struct ProviderLoginPOSIXSystem: ProviderLoginProcessSystem, Sendable {
         let argv = values.map { Darwin.strdup($0) }
         let envp = environment.map { Darwin.strdup($0) }
         guard argv.allSatisfy({ $0 != nil }), envp.allSatisfy({ $0 != nil }) else {
-            argv.forEach { Darwin.free($0) }
-            envp.forEach { Darwin.free($0) }
+            envp.reversed().forEach { Darwin.free($0) }
+            argv.reversed().forEach { Darwin.free($0) }
             return .failed
         }
         defer {
-            argv.forEach { Darwin.free($0) }
-            envp.forEach { Darwin.free($0) }
+            envp.reversed().forEach { Darwin.free($0) }
+            argv.reversed().forEach { Darwin.free($0) }
         }
 
         var argvPointers = argv + [nil]
@@ -301,17 +301,16 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         case cancelled
     }
 
-    private enum RaceResult {
-        case process(ProviderLoginProcessOutcome)
-        case timeout
-        case cancelledTimer
+    private enum TerminationState {
+        case idle
+        case terminating([CheckedContinuation<Void, Never>])
+        case backgroundReaping
     }
 
     private struct RunningSession {
         let pid: Int32
         var stopReason: StopReason?
-        var terminationTask: Task<Void, Never>?
-        var reaperTask: Task<Void, Never>?
+        var terminationState: TerminationState
     }
 
     private enum Session {
@@ -375,37 +374,21 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         }
         let processRunner = self
         return await withTaskCancellationHandler(operation: {
-            let outcome = await withTaskGroup(of: RaceResult.self, returning: ProviderLoginProcessOutcome.self) { group in
-                group.addTask { [self] in
-                    .process(await waitForProcess(command, identifier: identifier))
+            let timeoutTask = Task.detached { [timeout, timeoutSleeper, processRunner] in
+                do {
+                    try await timeoutSleeper(timeout)
+                } catch {
+                    return
                 }
-                group.addTask { [timeout, timeoutSleeper] in
-                    do {
-                        try await timeoutSleeper(timeout)
-                        return .timeout
-                    } catch {
-                        return .cancelledTimer
-                    }
-                }
-
-                while let result = await group.next() {
-                    switch result {
-                    case let .process(outcome):
-                        group.cancelAll()
-                        return outcome
-                    case .timeout:
-                        await requestTermination(identifier, reason: .timedOut)
-                        group.cancelAll()
-                    case .cancelledTimer:
-                        continue
-                    }
-                }
-                return .cancelled
+                await processRunner.requestTermination(identifier, reason: .timedOut)
             }
+            let outcome = await waitForProcess(command, identifier: identifier)
+            timeoutTask.cancel()
+            await timeoutTask.value
             finished.removeValue(forKey: identifier)
             return outcome
         }, onCancel: {
-            Task { await processRunner.requestTermination(identifier, reason: .cancelled) }
+            Task.detached { await processRunner.requestTermination(identifier, reason: .cancelled) }
         })
     }
 
@@ -446,9 +429,8 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         }
         // Actor isolation makes launch registration atomic with respect to stop: after spawn
         // there is no suspension until this exact PID is represented by the session.
-        sessions[identifier] = .running(.init(pid: pid, stopReason: nil, terminationTask: nil, reaperTask: nil))
-        let observer = processStarted
-        Task { await observer(pid) }
+        sessions[identifier] = .running(.init(pid: pid, stopReason: nil, terminationState: .idle))
+        await processStarted(pid)
         return await waitForCompletion(identifier)
     }
 
@@ -460,84 +442,84 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
             return
         case var .running(running):
             running.stopReason = running.stopReason ?? reason
-            if let terminationTask = running.terminationTask {
+            switch running.terminationState {
+            case .backgroundReaping:
                 sessions[identifier] = .running(running)
-                await terminationTask.value
                 return
+            case .terminating:
+                sessions[identifier] = .running(running)
+                await waitForTermination(identifier, pid: running.pid)
+                return
+            case .idle:
+                running.terminationState = .terminating([])
+                sessions[identifier] = .running(running)
+                switch await send(SIGTERM, to: running.pid) {
+                case .sent:
+                    try? await pollSleeper(terminationGrace)
+                    guard isTerminating(identifier, pid: running.pid) else { return }
+                    switch await send(SIGKILL, to: running.pid) {
+                    case .sent, .noSuchProcess:
+                        await waitForTermination(identifier, pid: running.pid)
+                    case .failed, .interrupted:
+                        beginBackgroundReaping(identifier, pid: running.pid)
+                    }
+                case .noSuchProcess:
+                    await waitForTermination(identifier, pid: running.pid)
+                case .failed, .interrupted:
+                    beginBackgroundReaping(identifier, pid: running.pid)
+                }
             }
-            let processRunner = self
-            let terminationTask = Task {
-                await processRunner.terminateAndReap(identifier)
-            }
-            running.terminationTask = terminationTask
-            sessions[identifier] = .running(running)
-            await terminationTask.value
         }
     }
 
-    private func terminateAndReap(_ identifier: UUID) async {
-        guard case let .running(running)? = sessions[identifier] else { return }
-        let pid = running.pid
-        switch await send(SIGTERM, to: pid) {
-        case .sent:
-            try? await pollSleeper(terminationGrace)
-        case .noSuchProcess:
-            _ = await reap(identifier, pid: pid, limit: 4)
-            return
-        case .failed, .interrupted:
-            if !(await reap(identifier, pid: pid, limit: 4, failureOutcome: true)) {
-                failButKeepReaping(identifier, pid: pid)
+    private func waitForTermination(_ identifier: UUID, pid: Int32) async {
+        await withCheckedContinuation { continuation in
+            guard case var .running(running)? = sessions[identifier], running.pid == pid else {
+                continuation.resume()
+                return
             }
-            return
-        }
-        if await reap(identifier, pid: pid, limit: 1) { return }
-        switch await send(SIGKILL, to: pid) {
-        case .sent, .noSuchProcess:
-            _ = await reap(identifier, pid: pid, limit: 8)
-        case .failed, .interrupted:
-            if !(await reap(identifier, pid: pid, limit: 8, failureOutcome: true)) {
-                failButKeepReaping(identifier, pid: pid)
+            guard case var .terminating(waiters) = running.terminationState else {
+                continuation.resume()
+                return
             }
+            waiters.append(continuation)
+            running.terminationState = .terminating(waiters)
+            sessions[identifier] = .running(running)
         }
+    }
+
+    private func isTerminating(_ identifier: UUID, pid: Int32) -> Bool {
+        guard case let .running(running)? = sessions[identifier], running.pid == pid else { return false }
+        guard case .terminating = running.terminationState else { return false }
+        return true
+    }
+
+    private func beginBackgroundReaping(_ identifier: UUID, pid: Int32) {
+        guard case var .running(running)? = sessions[identifier], running.pid == pid else { return }
+        guard case let .terminating(waiters) = running.terminationState else { return }
+        running.terminationState = .backgroundReaping
+        sessions[identifier] = .running(running)
+        waiters.forEach { $0.resume() }
     }
 
     private func waitForCompletion(_ identifier: UUID) async -> ProviderLoginProcessOutcome {
         while true {
             if let outcome = finished[identifier] { return outcome }
             guard case let .running(running)? = sessions[identifier] else { return .cancelled }
+            if case .backgroundReaping = running.terminationState {
+                return handOffToBackgroundReaper(identifier, pid: running.pid)
+            }
             switch system.waitForChild(running.pid) {
             case .running:
                 try? await pollSleeper(.milliseconds(5))
             case .interrupted:
                 continue
             case let .exited(status):
-                complete(identifier, pid: running.pid, outcome: running.stopReason.map(outcome(for:)) ?? .exited(status: status))
+                await complete(identifier, pid: running.pid, outcome: running.stopReason.map(outcome(for:)) ?? .exited(status: status))
             case .noChild, .failed:
-                complete(identifier, pid: running.pid, outcome: .launchFailed)
+                await complete(identifier, pid: running.pid, outcome: .launchFailed)
             }
         }
-    }
-
-    private func reap(_ identifier: UUID, pid: Int32, limit: Int, failureOutcome: Bool = false) async -> Bool {
-        for _ in 0..<limit {
-            if let outcome = finished[identifier] { return outcome != .launchFailed }
-            guard case let .running(running)? = sessions[identifier], running.pid == pid else { return true }
-            switch system.waitForChild(pid) {
-            case let .exited(status):
-                complete(identifier, pid: pid, outcome: failureOutcome ? .launchFailed : (running.stopReason.map(outcome(for:)) ?? .exited(status: status)))
-                return true
-            case .noChild, .failed:
-                complete(identifier, pid: pid, outcome: .launchFailed)
-                return true
-            case .interrupted:
-                continue
-            case .running:
-                try? await pollSleeper(.milliseconds(5))
-            }
-        }
-        // Keep the session registered if a hostile OS failure prevented a reap. A later stop
-        // can retry; this runner never forgets a known live child.
-        return false
     }
 
     private func send(_ signal: Int32, to pid: Int32) async -> ProviderLoginSignalResult {
@@ -556,14 +538,16 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         completeReapingWaiters(identifier)
     }
 
-    private func complete(_ identifier: UUID, pid: Int32, outcome: ProviderLoginProcessOutcome) {
+    private func complete(_ identifier: UUID, pid: Int32, outcome: ProviderLoginProcessOutcome) async {
         guard case let .running(running)? = sessions[identifier], running.pid == pid else { return }
         sessions.removeValue(forKey: identifier)
         sessionProviders.removeValue(forKey: identifier)
         finished[identifier] = outcome
         completeReapingWaiters(identifier)
-        let observer = processFinished
-        Task { await observer(pid) }
+        if case let .terminating(waiters) = running.terminationState {
+            waiters.forEach { $0.resume() }
+        }
+        await processFinished(pid)
     }
 
     private func completeReapingWaiters(_ identifier: UUID) {
@@ -571,26 +555,25 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         waiters.forEach { $0.resume() }
     }
 
-    /// A persistent permission error cannot safely be escalated. Return the fixed public failure
-    /// promptly, but retain this exact child until this actor is able to reap its natural exit.
-    private func failButKeepReaping(_ identifier: UUID, pid: Int32) {
-        guard case var .running(running)? = sessions[identifier], running.pid == pid else { return }
+    /// The foreground polling task owns waitpid until it hands the exact session to this reaper.
+    /// A persistent signal failure can therefore return promptly without losing child admission.
+    private func handOffToBackgroundReaper(_ identifier: UUID, pid: Int32) -> ProviderLoginProcessOutcome {
+        guard case let .running(running)? = sessions[identifier], running.pid == pid else { return .launchFailed }
+        guard case .backgroundReaping = running.terminationState else { return .cancelled }
         finished[identifier] = .launchFailed
-        guard running.reaperTask == nil else { return }
         let runner = self
-        let reaper = Task { await runner.reapUntilExit(identifier, pid: pid) }
-        running.reaperTask = reaper
-        sessions[identifier] = .running(running)
+        Task.detached { await runner.reapUntilExit(identifier, pid: pid) }
+        return .launchFailed
     }
 
     private func reapUntilExit(_ identifier: UUID, pid: Int32) async {
         while case let .running(running)? = sessions[identifier], running.pid == pid {
             switch system.waitForChild(pid) {
             case let .exited(status):
-                complete(identifier, pid: pid, outcome: finished[identifier] ?? (running.stopReason.map(outcome(for:)) ?? .exited(status: status)))
+                await complete(identifier, pid: pid, outcome: finished[identifier] ?? (running.stopReason.map(outcome(for:)) ?? .exited(status: status)))
                 return
             case .noChild, .failed:
-                complete(identifier, pid: pid, outcome: .launchFailed)
+                await complete(identifier, pid: pid, outcome: .launchFailed)
                 return
             case .interrupted:
                 continue
@@ -620,7 +603,7 @@ public final class ProviderLoginCoordinator: ObservableObject {
     private let runFinished: @Sendable (ProviderID) async -> Void
     private var tasks: [ProviderID: Task<Void, Never>] = [:]
     private var taskGenerations: [ProviderID: UInt64] = [:]
-    private var stoppingProviders: Set<ProviderID> = []
+    private var stoppingGenerations: [ProviderID: UInt64] = [:]
     private var generations: [ProviderID: UInt64] = [:]
 
     public init(
@@ -668,19 +651,23 @@ public final class ProviderLoginCoordinator: ObservableObject {
     }
 
     public func stop() async {
-        let activeProviders = tasks.keys.filter { !stoppingProviders.contains($0) }
+        let activeProviders = tasks.keys.filter { stoppingGenerations[$0] != taskGenerations[$0] }
+        var stoppedGenerations: [ProviderID: UInt64] = [:]
         for provider in activeProviders {
-            stoppingProviders.insert(provider)
+            guard let taskGeneration = taskGenerations[provider] else { continue }
+            stoppedGenerations[provider] = taskGeneration
+            stoppingGenerations[provider] = taskGeneration
             _ = nextGeneration(for: provider)
             tasks[provider]?.cancel()
             updateState(.idle, for: provider)
         }
         await runner.stop()
         for provider in activeProviders {
+            guard let stoppedGeneration = stoppedGenerations[provider] else { continue }
             let runner = runner
             Task.detached { [weak self] in
                 await runner.waitForReaping(for: provider)
-                await self?.completeStoppedAdmission(for: provider)
+                await self?.completeStoppedAdmission(for: provider, generation: stoppedGeneration)
             }
         }
     }
@@ -735,12 +722,14 @@ public final class ProviderLoginCoordinator: ObservableObject {
             tasks[provider] = nil
             taskGenerations[provider] = nil
         } else if didReap {
-            completeStoppedAdmission(for: provider)
+            completeStoppedAdmission(for: provider, generation: generation)
         }
     }
 
-    private func completeStoppedAdmission(for provider: ProviderID) {
-        guard stoppingProviders.remove(provider) != nil else { return }
+    private func completeStoppedAdmission(for provider: ProviderID, generation: UInt64) {
+        guard stoppingGenerations[provider] == generation else { return }
+        stoppingGenerations[provider] = nil
+        guard taskGenerations[provider] == generation else { return }
         tasks[provider] = nil
         taskGenerations[provider] = nil
     }
