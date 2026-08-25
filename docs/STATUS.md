@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-25
 **Branch:** `codex/provider-browser-login`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 4 automated implementation is complete; the approved direct `posix_spawn` deviation is documented, final reviews passed, and release acceptance remains paused
-**Next action:** Request explicit authorization for the non-TTY provider compatibility gate, then run `claude auth login --claudeai` and `codex login` one provider at a time and record the results
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 4 is complete; the approved direct `posix_spawn` deviation is documented, automated and non-TTY compatibility gates passed, and release acceptance remains paused
+**Next action:** Continue with Task 5 — wire Settings, popovers, and app termination from the approved provider-managed browser-login plan
 
 ## Source of Truth
 
@@ -551,13 +551,13 @@ Verification evidence:
 - The implementation is spec-compliant; the quality review found no Critical, Important, or Minor findings.
 - No browser, Keychain, or network interaction was performed, and no provider login command was launched.
 
-Release acceptance remains paused. Task 4's non-TTY manual gate still requires separate user authorization before actually launching provider login commands; that gate has not been performed or claimed complete.
+Release acceptance remains paused. Task 4's non-TTY manual gate is complete; continue with Task 5 before returning to the remaining release-acceptance checks.
 
 ### Task 4 Automated Verification
 
-Task 4's automated implementation is complete and final spec-compliance and code-quality reviews passed with no open Critical or Important findings. The implementation is not yet accepted as complete because the separate user-authorized non-TTY provider compatibility gate has not been run.
+Task 4's automated implementation is complete and final spec-compliance and code-quality reviews passed with no open Critical or Important findings. The separate user-authorized non-TTY provider compatibility gate also passed, so Task 4 is accepted as complete.
 
-Implementation commits through the current head `8405b66` include the provider login coordinator, direct POSIX runner, bounded termination/reaping hardening, deterministic syscall seams, and admission lifetime fixes. No real provider login command, browser interaction, Keychain access, network call, or credentialed compatibility check was performed.
+Implementation commits through the current head `3364c3c` include the provider login coordinator, direct POSIX runner, bounded termination/reaping hardening, deterministic syscall seams, admission lifetime fixes, and the documented gate result. No provider credentials, account identifiers, or login URLs are recorded here.
 
 Verification evidence:
 
@@ -566,7 +566,14 @@ Verification evidence:
 - `git diff --check` passed and the working tree is clean.
 - The final automated review evidence covers process lifecycle, signal/reap races, exact executable/argv/env/fd/CLOEXEC contract, cancellation/timeout/stop coalescing, descendant isolation, and failure-path bounds.
 
-The remaining gate must be run only after explicit user authorization. Run one provider at a time, safely cancel if the environment is non-interactive, and record each result. If either CLI is incompatible, stop before Task 5; do not claim Task 4 accepted or complete.
+### Task 4 Non-TTY Provider Compatibility Gate
+
+The user-authorized non-TTY compatibility gate passed on 2026-08-25 using the implementation runner's exact contract: direct `posix_spawn`, exact executable path and fixed argv, stdin from `/dev/null`, stdout/stderr from `/dev/null`, allowlisted environment, and no shell, PTY, output parsing, or credential capture.
+
+- Claude Code 2.1.238: the resolver selected `/Users/taejunoh/.local/bin/claude`; `auth login --claudeai` opened the provider-owned browser and exited with status 0 after 207.856 seconds. The sanitized status was `loggedIn: true`, `authMethod: claude.ai`.
+- Codex CLI 0.142.5: the resolver selected `/opt/homebrew/bin/codex`; `login` opened the provider-owned browser and exited with status 0 after 17.626 seconds. The sanitized status was `Logged in` / `ChatGPT`.
+
+No provider login child remained after either run. The production Rust archive was restored without test symbols, the temporary manual test was removed, and the worktree remained clean. No account identifiers, URLs, credentials, or provider CLI output were persisted in project files.
 
 ### Task 4 approved implementation deviation — direct POSIX spawn
 
@@ -574,11 +581,11 @@ The approved Task 4 implementation keeps AppKit as the application/lifecycle own
 
 The single session actor is the sole waitpid owner. The runner resolves an exact executable URL/path (never `posix_spawnp`), validates NUL-free executable/argv/envp values, passes the executable path as `argv[0]` followed by fixed arguments, builds an allowlisted `envp`, connects stdin to `/dev/null` read and stdout/stderr to `/dev/null` write through spawn file actions, and sets `POSIX_SPAWN_CLOEXEC_DEFAULT`. It polls `waitpid(WNOHANG)`, retries `EINTR`, treats `ECHILD` as an invariant violation with no further signal, switches to reap confirmation after `ESRCH`, and bounds other signal failures. Timeout, cancellation, and app stop coalesce into TERM, bounded grace, KILL, and final reap of the direct PID only; descendants are never targeted.
 
-Task 4 verification must include harmless real-child normal and TERM-only exits, TERM-to-KILL, cancellation, timeout, cancel-plus-stop coalescing, pre/post-spawn cancellation, syscall-seam `WNOHANG`/exit/`EINTR`/`ECHILD`/`ESRCH`/KILL-failure cases, exact argv/env/fd/CLOEXEC assertions, and descendant isolation. The separate non-TTY provider command compatibility gate remains pending separate user authorization and has not been run or claimed complete.
+Task 4 verification included harmless real-child normal and TERM-only exits, TERM-to-KILL, cancellation, timeout, cancel-plus-stop coalescing, pre/post-spawn cancellation, syscall-seam `WNOHANG`/exit/`EINTR`/`ECHILD`/`ESRCH`/KILL-failure cases, exact argv/env/fd/CLOEXEC assertions, descendant isolation, and the user-authorized non-TTY provider command compatibility gate.
 
 ## Required Next Action
 
-Request explicit user authorization before launching either provider login command. Then run the non-TTY compatibility gate one provider at a time: `claude auth login --claudeai`, followed by `codex login`. Cancel safely when browser interaction cannot proceed, record the observed result, and stop before Task 5 if either CLI is incompatible. Task 4 remains pending acceptance until both commands have been manually verified or safely cancelled; release acceptance remains paused.
+Continue with Task 5: wire Settings, popovers, and app termination from the approved provider-managed browser-login plan. Task 4 is accepted as complete; release acceptance remains paused.
 
 ## v0.1 Constraints to Preserve
 
