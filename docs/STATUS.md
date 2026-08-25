@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
 **Updated:** 2026-08-25
-**Branch:** `main`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 4 in progress; the approved direct `posix_spawn` deviation is documented and release acceptance remains paused
-**Next action:** Implement the approved direct `posix_spawn` runner for Task 4, then re-run the Task 4 spec-compliance and code-quality reviews
+**Branch:** `codex/provider-browser-login`
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 4 automated implementation is complete; the approved direct `posix_spawn` deviation is documented, final reviews passed, and release acceptance remains paused
+**Next action:** Request explicit authorization for the non-TTY provider compatibility gate, then run `claude auth login --claudeai` and `codex login` one provider at a time and record the results
 
 ## Source of Truth
 
@@ -553,6 +553,21 @@ Verification evidence:
 
 Release acceptance remains paused. Task 4's non-TTY manual gate still requires separate user authorization before actually launching provider login commands; that gate has not been performed or claimed complete.
 
+### Task 4 Automated Verification
+
+Task 4's automated implementation is complete and final spec-compliance and code-quality reviews passed with no open Critical or Important findings. The implementation is not yet accepted as complete because the separate user-authorized non-TTY provider compatibility gate has not been run.
+
+Implementation commits through the current head `8405b66` include the provider login coordinator, direct POSIX runner, bounded termination/reaping hardening, deterministic syscall seams, and admission lifetime fixes. No real provider login command, browser interaction, Keychain access, network call, or credentialed compatibility check was performed.
+
+Verification evidence:
+
+- `make swift-test` passed in five consecutive runs, with 113 Swift tests each run.
+- `make test` passed cleanly after the final Task 4 implementation and test hardening.
+- `git diff --check` passed and the working tree is clean.
+- The final automated review evidence covers process lifecycle, signal/reap races, exact executable/argv/env/fd/CLOEXEC contract, cancellation/timeout/stop coalescing, descendant isolation, and failure-path bounds.
+
+The remaining gate must be run only after explicit user authorization. Run one provider at a time, safely cancel if the environment is non-interactive, and record each result. If either CLI is incompatible, stop before Task 5; do not claim Task 4 accepted or complete.
+
 ### Task 4 approved implementation deviation — direct POSIX spawn
 
 The approved Task 4 implementation keeps AppKit as the application/lifecycle owner but replaces the planned Foundation transport with direct macOS `posix_spawn` and parent-owned nonblocking `waitpid`. Foundation Process was rejected because it can reap asynchronously and exposes only a numeric PID; direct spawn/waitpid preserves PID identity until Needlbar itself reaps the child.
@@ -563,7 +578,7 @@ Task 4 verification must include harmless real-child normal and TERM-only exits,
 
 ## Required Next Action
 
-Continue Task 4 of the provider-managed browser-login plan with the approved direct `posix_spawn` runner, then re-run its spec-compliance and code-quality reviews. Task 3 is complete and reviewed; work one numbered follow-up task at a time and run `make test` before completing the feature. The non-TTY manual gate for actually launching provider login commands still requires separate user authorization and has not been performed. Release acceptance remains paused, and the full authentication amendment must not be claimed complete until the remaining tasks and credentialed Claude/Codex acceptance pass; only then resume the notarization/tag/release gate.
+Request explicit user authorization before launching either provider login command. Then run the non-TTY compatibility gate one provider at a time: `claude auth login --claudeai`, followed by `codex login`. Cancel safely when browser interaction cannot proceed, record the observed result, and stop before Task 5 if either CLI is incompatible. Task 4 remains pending acceptance until both commands have been manually verified or safely cancelled; release acceptance remains paused.
 
 ## v0.1 Constraints to Preserve
 
