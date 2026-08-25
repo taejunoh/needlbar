@@ -25,10 +25,26 @@ public actor RefreshCoordinator {
     private let clock: any ClockLike
     private let usageFileWatcher: (any UsageFileWatching)?
     private let quotaApplicationWillApply: (@Sendable () async -> Void)?
+    private let quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)?
 
     private struct UserQuotaWaiter {
         let generation: UInt64
+        let backgroundTicket: UInt64?
         let continuation: CheckedContinuation<Bool, Never>
+    }
+
+    private enum UserQuotaWaiterBatch {
+        case all
+        case beforeBackgroundTicket(UInt64)
+
+        func contains(_ waiter: UserQuotaWaiter) -> Bool {
+            switch self {
+            case .all:
+                true
+            case .beforeBackgroundTicket:
+                waiter.backgroundTicket == nil
+            }
+        }
     }
 
     private var usageTask: Task<Void, Never>?
@@ -43,8 +59,13 @@ public actor RefreshCoordinator {
     private var usageTaskIsForced = false
     private var runGeneration: UInt64 = 0
     private var activeQuotaIntent: QuotaRefreshIntent?
+    private var activeQuotaUserWaiterBatch: UserQuotaWaiterBatch?
     private var queuedBackgroundQuotaRefresh = false
     private var queuedUserInitiatedProviders: Set<ProviderID> = []
+    private var queuedUserInitiatedProvidersAheadOfBackground: Set<ProviderID>?
+    private var queuedUserInitiatedProvidersAfterBackground: Set<ProviderID> = []
+    private var queuedBackgroundTicket: UInt64?
+    private var nextQueuedBackgroundTicket: UInt64 = 0
     private var userQuotaWaiters: [ProviderID: [UserQuotaWaiter]] = [:]
     private var completingUserQuotaWaiters: [ProviderID: [UserQuotaWaiter]] = [:]
 
@@ -63,7 +84,8 @@ public actor RefreshCoordinator {
             clock: clock,
             lastQuotaSuccessfulAt: lastQuotaSuccessfulAt,
             usageFileWatcher: usageFileWatcher,
-            quotaApplicationWillApply: nil
+            quotaApplicationWillApply: nil,
+            quotaIntentRegistered: nil
         )
     }
 
@@ -74,7 +96,8 @@ public actor RefreshCoordinator {
         clock: any ClockLike = SystemClock(),
         lastQuotaSuccessfulAt: Date? = nil,
         usageFileWatcher: (any UsageFileWatching)? = nil,
-        quotaApplicationWillApply: (@Sendable () async -> Void)?
+        quotaApplicationWillApply: (@Sendable () async -> Void)? = nil,
+        quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)? = nil
     ) {
         self.usageRepository = usageRepository
         self.quotaRepository = quotaRepository
@@ -83,6 +106,7 @@ public actor RefreshCoordinator {
         self.lastBackgroundQuotaSuccessfulAt = lastQuotaSuccessfulAt
         self.usageFileWatcher = usageFileWatcher
         self.quotaApplicationWillApply = quotaApplicationWillApply
+        self.quotaIntentRegistered = quotaIntentRegistered
     }
 
     deinit {
@@ -165,17 +189,30 @@ public actor RefreshCoordinator {
     public func refreshQuota(afterUserAuthenticationFor provider: ProviderID) async -> Bool {
         guard isRunning, provider == .claude || provider == .codex else { return false }
         return await withCheckedContinuation { continuation in
-            let waiter = UserQuotaWaiter(generation: runGeneration, continuation: continuation)
+            let intent = QuotaRefreshIntent.userInitiated(provider: provider)
+            let waiter = UserQuotaWaiter(
+                generation: runGeneration,
+                backgroundTicket: queuedBackgroundTicket,
+                continuation: continuation
+            )
             if case .userInitiated(let activeProvider) = activeQuotaIntent,
                activeProvider == provider,
+               waiter.backgroundTicket == nil,
                completingUserQuotaWaiters[provider]?.contains(where: { $0.generation == runGeneration }) == true
             {
                 completingUserQuotaWaiters[provider, default: []].append(waiter)
+                quotaIntentRegistered?(intent)
+                return
+            }
+            if queuedBackgroundTicket != nil {
+                userQuotaWaiters[provider, default: []].append(waiter)
+                queuedUserInitiatedProvidersAfterBackground.insert(provider)
+                quotaIntentRegistered?(intent)
                 return
             }
             let hadWaiter = userQuotaWaiters[provider]?.contains { $0.generation == runGeneration } ?? false
             userQuotaWaiters[provider, default: []].append(waiter)
-            let intent = QuotaRefreshIntent.userInitiated(provider: provider)
+            quotaIntentRegistered?(intent)
             switch activeQuotaIntent {
             case nil:
                 beginQuotaRefresh(intent: intent)
@@ -202,6 +239,9 @@ public actor RefreshCoordinator {
         usageQueuedGeneration = nil
         queuedBackgroundQuotaRefresh = false
         queuedUserInitiatedProviders.removeAll()
+        queuedUserInitiatedProvidersAheadOfBackground = nil
+        queuedUserInitiatedProvidersAfterBackground.removeAll()
+        queuedBackgroundTicket = nil
         resumeAllUserQuotaWaiters(with: false)
         if let usageFileWatcher {
             await usageFileWatcher.stop()
@@ -249,7 +289,14 @@ public actor RefreshCoordinator {
     private func requestQuotaRefresh(generation: UInt64? = nil) {
         if let generation, (!isRunning || generation != runGeneration) { return }
         guard quotaTask == nil else {
-            queuedBackgroundQuotaRefresh = true
+            if !queuedBackgroundQuotaRefresh {
+                queuedBackgroundQuotaRefresh = true
+                nextQueuedBackgroundTicket &+= 1
+                queuedBackgroundTicket = nextQueuedBackgroundTicket
+                queuedUserInitiatedProvidersAheadOfBackground = queuedUserInitiatedProviders
+                queuedUserInitiatedProviders.removeAll()
+                quotaIntentRegistered?(.backgroundAll)
+            }
             return
         }
         beginQuotaRefresh(intent: .backgroundAll)
@@ -266,9 +313,17 @@ public actor RefreshCoordinator {
         }
     }
 
-    private func beginQuotaRefresh(intent: QuotaRefreshIntent) {
+    private func beginQuotaRefresh(
+        intent: QuotaRefreshIntent,
+        userWaiterBatch: UserQuotaWaiterBatch = .all
+    ) {
         guard quotaTask == nil else { return }
         activeQuotaIntent = intent
+        if case .userInitiated = intent {
+            activeQuotaUserWaiterBatch = userWaiterBatch
+        } else {
+            activeQuotaUserWaiterBatch = nil
+        }
         let repository = quotaRepository
         let generation = runGeneration
         quotaTask = Task { [weak self, repository, intent] in
@@ -323,11 +378,18 @@ public actor RefreshCoordinator {
     ) async {
         var verificationSucceeded = false
         let verifiedProvider: ProviderID?
+        let verifiedProviderWaiterBatch: UserQuotaWaiterBatch?
         if case .userInitiated(let provider) = intent {
             verifiedProvider = provider
-            moveUserQuotaWaiters(for: provider, generation: generation)
+            verifiedProviderWaiterBatch = activeQuotaUserWaiterBatch
+            moveUserQuotaWaiters(
+                for: provider,
+                generation: generation,
+                matching: verifiedProviderWaiterBatch ?? .all
+            )
         } else {
             verifiedProvider = nil
+            verifiedProviderWaiterBatch = nil
         }
         defer {
             if let verifiedProvider {
@@ -339,6 +401,7 @@ public actor RefreshCoordinator {
             }
             quotaTask = nil
             activeQuotaIntent = nil
+            activeQuotaUserWaiterBatch = nil
             drainQueuedQuotaRefreshes()
         }
 
@@ -402,6 +465,25 @@ public actor RefreshCoordinator {
 
     private func drainQueuedQuotaRefreshes() {
         guard isRunning else { return }
+        if let ticket = queuedBackgroundTicket {
+            if let provider = ProviderID.allCases.first(where: {
+                queuedUserInitiatedProvidersAheadOfBackground?.contains($0) == true
+            }) {
+                queuedUserInitiatedProvidersAheadOfBackground?.remove(provider)
+                beginQuotaRefresh(
+                    intent: .userInitiated(provider: provider),
+                    userWaiterBatch: .beforeBackgroundTicket(ticket)
+                )
+                return
+            }
+            queuedUserInitiatedProvidersAheadOfBackground = nil
+            queuedBackgroundTicket = nil
+            queuedBackgroundQuotaRefresh = false
+            queuedUserInitiatedProviders.formUnion(queuedUserInitiatedProvidersAfterBackground)
+            queuedUserInitiatedProvidersAfterBackground.removeAll()
+            beginQuotaRefresh(intent: .backgroundAll)
+            return
+        }
         if let provider = ProviderID.allCases.first(where: { queuedUserInitiatedProviders.contains($0) }) {
             queuedUserInitiatedProviders.remove(provider)
             beginQuotaRefresh(intent: .userInitiated(provider: provider))
@@ -420,10 +502,14 @@ public actor RefreshCoordinator {
         waiters.forEach { $0.continuation.resume(returning: result) }
     }
 
-    private func moveUserQuotaWaiters(for provider: ProviderID, generation: UInt64) {
+    private func moveUserQuotaWaiters(
+        for provider: ProviderID,
+        generation: UInt64,
+        matching batch: UserQuotaWaiterBatch
+    ) {
         let waiters = userQuotaWaiters[provider] ?? []
-        let captured = waiters.filter { $0.generation == generation }
-        let remaining = waiters.filter { $0.generation != generation }
+        let captured = waiters.filter { $0.generation == generation && batch.contains($0) }
+        let remaining = waiters.filter { $0.generation != generation || !batch.contains($0) }
         if remaining.isEmpty {
             userQuotaWaiters.removeValue(forKey: provider)
         } else {
