@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{future::Future, pin::Pin, sync::Arc};
 
 use needlbar_quota::{
-    ClaudeQuotaProvider, CodexQuotaProvider, CursorQuotaProvider, ProviderId,
-    ProviderQuotaSnapshot, QuotaAction, QuotaError, QuotaErrorCode, QuotaProvider,
+    ClaudeCredentialAccess, ClaudeQuotaProvider, CodexQuotaProvider, CursorQuotaProvider,
+    ProviderId, ProviderQuotaSnapshot, QuotaAction, QuotaError, QuotaErrorCode, QuotaProvider,
 };
 use serde::Serialize;
 
@@ -18,6 +18,27 @@ pub struct QuotaCollection {
     pub errors: Vec<BridgeError>,
 }
 
+/// Narrow Claude boundary used by the explicit verification path. Keeping the
+/// credential access mode at this boundary makes it testable without exposing
+/// Claude credentials or a provider-selection parameter over the C ABI.
+pub trait ClaudeUserInitiatedQuotaSource: Send + Sync {
+    fn fetch_with_credential_access<'a>(
+        &'a self,
+        access: ClaudeCredentialAccess,
+    ) -> Pin<Box<dyn Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a>>;
+}
+
+impl ClaudeUserInitiatedQuotaSource for ClaudeQuotaProvider {
+    fn fetch_with_credential_access<'a>(
+        &'a self,
+        access: ClaudeCredentialAccess,
+    ) -> Pin<Box<dyn Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a>> {
+        Box::pin(ClaudeQuotaProvider::fetch_with_credential_access(
+            self, access,
+        ))
+    }
+}
+
 /// Collects each independently-bounded provider concurrently. The explicit
 /// result order makes the JSON payload independent of provider completion
 /// timing.
@@ -30,16 +51,47 @@ pub async fn collect_quota() -> QuotaCollection {
     .await
 }
 
+/// Runs only the explicit Claude verification flow. Production construction is
+/// intentionally kept here so callers cannot accidentally request interactive
+/// Keychain access through the all-provider collector.
+pub async fn collect_claude_user_initiated() -> QuotaCollection {
+    collect_claude_user_initiated_with_source(Arc::new(ClaudeQuotaProvider::new())).await
+}
+
+pub async fn collect_claude_user_initiated_with_source(
+    source: Arc<dyn ClaudeUserInitiatedQuotaSource>,
+) -> QuotaCollection {
+    collection_from_results([source
+        .fetch_with_credential_access(ClaudeCredentialAccess::UserInitiatedAllowUI)
+        .await])
+}
+
+/// Runs only Codex quota collection. It does not construct Claude or Cursor
+/// providers, preserving the physical provider boundary of the C export.
+pub async fn collect_codex_only() -> QuotaCollection {
+    collect_codex_with_provider(Arc::new(CodexQuotaProvider::new())).await
+}
+
+pub async fn collect_codex_with_provider(provider: Arc<dyn QuotaProvider>) -> QuotaCollection {
+    collection_from_results([provider.fetch().await])
+}
+
 pub async fn collect_quota_with_providers(
     claude: Arc<dyn QuotaProvider>,
     codex: Arc<dyn QuotaProvider>,
     cursor: Arc<dyn QuotaProvider>,
 ) -> QuotaCollection {
     let (claude, codex, cursor) = tokio::join!(claude.fetch(), codex.fetch(), cursor.fetch());
-    let mut providers = Vec::with_capacity(3);
-    let mut errors = Vec::with_capacity(3);
+    collection_from_results([claude, codex, cursor])
+}
 
-    for result in [claude, codex, cursor] {
+fn collection_from_results(
+    results: impl IntoIterator<Item = Result<ProviderQuotaSnapshot, QuotaError>>,
+) -> QuotaCollection {
+    let mut providers = Vec::new();
+    let mut errors = Vec::new();
+
+    for result in results {
         match result {
             Ok(snapshot) => providers.push(snapshot),
             Err(error) => errors.push(bridge_error_from_quota(error)),

@@ -12,6 +12,12 @@ const char *needlbar_usage_snapshot_json(void);
 // needlbar_usage_snapshot_json and the returned pointer must be freed once.
 const char *needlbar_forced_usage_snapshot_json(void);
 const char *needlbar_quota_snapshot_json(void);
+// Performs only Claude quota verification after an explicit user action.
+// Ownership matches needlbar_quota_snapshot_json.
+const char *needlbar_claude_user_initiated_quota_snapshot_json(void);
+// Performs only non-interactive Codex quota verification. Ownership matches
+// needlbar_quota_snapshot_json.
+const char *needlbar_codex_quota_snapshot_json(void);
 const char *needlbar_diagnostics_json(void);
 // session_token must be null or a valid NUL-terminated UTF-8 string. The
 // returned envelope never contains the token and must be freed as above.

@@ -8,8 +8,10 @@ pub mod usage;
 
 use std::{
     ffi::{CStr, CString},
+    future::Future,
     os::raw::c_char,
     panic::{catch_unwind, UnwindSafe},
+    pin::Pin,
     thread,
 };
 
@@ -140,6 +142,32 @@ pub unsafe extern "C" fn needlbar_quota_snapshot_json() -> *const c_char {
     })
 }
 
+/// # Safety
+///
+/// The returned non-null pointer is Rust-owned and must be passed exactly once
+/// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
+#[no_mangle]
+pub unsafe extern "C" fn needlbar_claude_user_initiated_quota_snapshot_json() -> *const c_char {
+    ffi_envelope(|| {
+        let envelope = ffi_claude_user_initiated_quota_envelope();
+        diagnostics::record_quota(&envelope);
+        envelope
+    })
+}
+
+/// # Safety
+///
+/// The returned non-null pointer is Rust-owned and must be passed exactly once
+/// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
+#[no_mangle]
+pub unsafe extern "C" fn needlbar_codex_quota_snapshot_json() -> *const c_char {
+    ffi_envelope(|| {
+        let envelope = ffi_codex_quota_envelope();
+        diagnostics::record_quota(&envelope);
+        envelope
+    })
+}
+
 fn ffi_usage_envelope(force_cursor_sync: bool) -> Envelope<usage::UsagePayload> {
     #[cfg(feature = "bridge-test-runtime")]
     if let Some(envelope) = test_runtime::usage_envelope() {
@@ -154,6 +182,22 @@ fn ffi_quota_envelope() -> Envelope<quota::QuotaPayload> {
         return envelope;
     }
     quota_envelope()
+}
+
+fn ffi_claude_user_initiated_quota_envelope() -> Envelope<quota::QuotaPayload> {
+    #[cfg(feature = "bridge-test-runtime")]
+    if let Some(envelope) = test_runtime::claude_user_initiated_quota_envelope() {
+        return envelope;
+    }
+    claude_user_initiated_quota_envelope()
+}
+
+fn ffi_codex_quota_envelope() -> Envelope<quota::QuotaPayload> {
+    #[cfg(feature = "bridge-test-runtime")]
+    if let Some(envelope) = test_runtime::codex_quota_envelope() {
+        return envelope;
+    }
+    codex_quota_envelope()
 }
 
 /// # Safety
@@ -311,7 +355,21 @@ fn verify_cursor_session_token(session_token: &str) -> Result<(), BridgeError> {
 }
 
 fn quota_envelope() -> Envelope<quota::QuotaPayload> {
-    match collect_quota_on_bridge_thread() {
+    match collect_quota_on_bridge_thread(|| Box::pin(quota::collect_quota())) {
+        Ok(collection) => quota::envelope_from_collection(collection),
+        Err(error) => Envelope::failure(error),
+    }
+}
+
+fn claude_user_initiated_quota_envelope() -> Envelope<quota::QuotaPayload> {
+    match collect_quota_on_bridge_thread(|| Box::pin(quota::collect_claude_user_initiated())) {
+        Ok(collection) => quota::envelope_from_collection(collection),
+        Err(error) => Envelope::failure(error),
+    }
+}
+
+fn codex_quota_envelope() -> Envelope<quota::QuotaPayload> {
+    match collect_quota_on_bridge_thread(|| Box::pin(quota::collect_codex_only())) {
         Ok(collection) => quota::envelope_from_collection(collection),
         Err(error) => Envelope::failure(error),
     }
@@ -320,7 +378,11 @@ fn quota_envelope() -> Envelope<quota::QuotaPayload> {
 /// A C caller may invoke this bridge while a Tokio runtime is already active
 /// in the embedding process. A dedicated thread prevents nested-runtime
 /// panics while keeping the owned runtime scoped to this bridge refresh.
-fn collect_quota_on_bridge_thread() -> Result<quota::QuotaCollection, BridgeError> {
+fn collect_quota_on_bridge_thread(
+    collect: impl FnOnce() -> Pin<Box<dyn Future<Output = quota::QuotaCollection> + Send>>
+        + Send
+        + 'static,
+) -> Result<quota::QuotaCollection, BridgeError> {
     let worker = thread::Builder::new()
         .name("needlbar-quota-collect".to_owned())
         .spawn(|| {
@@ -328,7 +390,7 @@ fn collect_quota_on_bridge_thread() -> Result<quota::QuotaCollection, BridgeErro
                 .enable_all()
                 .build()
                 .map_err(|_| bridge_internal_error())?;
-            Ok(runtime.block_on(quota::collect_quota()))
+            Ok(runtime.block_on(collect()))
         })
         .map_err(|_| bridge_internal_error())?;
     worker.join().map_err(|_| bridge_internal_error())?
