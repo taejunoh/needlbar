@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-25
 **Branch:** `main`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 1 complete and review-approved; release acceptance remains paused
-**Next action:** Execute Task 2 of `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md`, beginning with RED ABI/intent-isolation tests for Claude and Codex-only exports
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 2 complete and review-approved; release acceptance remains paused
+**Next action:** Execute Task 3 of `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md`, beginning with RED bridge/repository intent and coordinator-coalescing tests
 
 ## Source of Truth
 
@@ -505,9 +505,30 @@ TDD RED was observed for the missing credential-access API and the follow-up tes
 
 No real Keychain access, UI interaction, or external provider call was performed. The spec-compliance review passed, and the code-quality review passed with no issues. The pre-existing Task 15 verification remains valid for the current code, but release acceptance remains paused; the full authentication amendment is not complete.
 
+### Task 2 Follow-Up Verification
+
+Task 2 of the provider-managed browser-login follow-up is complete and review-approved. The implementation was delivered in focused commits:
+
+- `fc76d64` — map `PermissionDenied` through the bridge integration path, restoring the full workspace green after Task 1.
+- `ca80091` — add provider-specific Claude/Codex quota ABI exports.
+- `8b6fd5c` — resolve diagnostics/runtime review fixes.
+- `09112dc` — scope fixture sessions and remove production fallback behavior.
+- `7adc458` — harden zero-session handling.
+
+The provider-specific exports are `needlbar_claude_user_initiated_quota_snapshot_json` and `needlbar_codex_quota_snapshot_json`. Claude's explicit login path uses `UserInitiatedAllowUI`; the all-provider path remains `BackgroundNoUI`; and the Codex-only path does not invoke unrelated providers.
+
+Verification evidence:
+
+- FFI contract — 3 tests; quota contract — 6 tests; redaction contract — 6 tests; full bridge suite passed.
+- Clippy with `-D warnings` passed; full `make test` exited 0 with Swift 55 tests and pinned `tokscale-core` 1372 passed, 0 failed, 1 ignored.
+- No real Keychain, network, or UI interaction was performed; only pre-existing linker warnings remain.
+- Final spec-compliance and code-quality reviews approved with no Critical, Important, or Minor findings.
+
+Release acceptance remains paused, and the full authentication amendment is not complete.
+
 ## Required Next Action
 
-Execute Task 2 of the provider-managed browser-login plan: begin with RED ABI/intent-isolation tests for the Claude and Codex-only exports. Task 1 is complete and reviewed; work one numbered follow-up task at a time and run `make test` before completing the feature. Release acceptance remains paused, and the full authentication amendment must not be claimed complete until the remaining tasks and credentialed Claude/Codex acceptance pass; only then resume the notarization/tag/release gate.
+Execute Task 3 of the provider-managed browser-login plan: begin with RED bridge/repository intent and coordinator-coalescing tests. Task 2 is complete and reviewed; work one numbered follow-up task at a time and run `make test` before completing the feature. Release acceptance remains paused, and the full authentication amendment must not be claimed complete until the remaining tasks and credentialed Claude/Codex acceptance pass; only then resume the notarization/tag/release gate.
 
 ## v0.1 Constraints to Preserve
 
