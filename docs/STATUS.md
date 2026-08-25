@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-25
 **Branch:** `main`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 3 complete and review-approved; release acceptance remains paused
-**Next action:** Execute Task 4 of `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md`, beginning with RED `ProviderLoginCoordinator` command/environment/state/concurrency/cleanup tests
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 4 in progress; the approved direct `posix_spawn` deviation is documented and release acceptance remains paused
+**Next action:** Implement the approved direct `posix_spawn` runner for Task 4, then re-run the Task 4 spec-compliance and code-quality reviews
 
 ## Source of Truth
 
@@ -553,9 +553,17 @@ Verification evidence:
 
 Release acceptance remains paused. Task 4's non-TTY manual gate still requires separate user authorization before actually launching provider login commands; that gate has not been performed or claimed complete.
 
+### Task 4 approved implementation deviation — direct POSIX spawn
+
+The approved Task 4 implementation keeps AppKit as the application/lifecycle owner but replaces the planned Foundation transport with direct macOS `posix_spawn` and parent-owned nonblocking `waitpid`. Foundation Process was rejected because it can reap asynchronously and exposes only a numeric PID; direct spawn/waitpid preserves PID identity until Needlbar itself reaps the child.
+
+The single session actor is the sole waitpid owner. The runner resolves an exact executable URL/path (never `posix_spawnp`), validates NUL-free executable/argv/envp values, passes the executable path as `argv[0]` followed by fixed arguments, builds an allowlisted `envp`, connects stdin to `/dev/null` read and stdout/stderr to `/dev/null` write through spawn file actions, and sets `POSIX_SPAWN_CLOEXEC_DEFAULT`. It polls `waitpid(WNOHANG)`, retries `EINTR`, treats `ECHILD` as an invariant violation with no further signal, switches to reap confirmation after `ESRCH`, and bounds other signal failures. Timeout, cancellation, and app stop coalesce into TERM, bounded grace, KILL, and final reap of the direct PID only; descendants are never targeted.
+
+Task 4 verification must include harmless real-child normal and TERM-only exits, TERM-to-KILL, cancellation, timeout, cancel-plus-stop coalescing, pre/post-spawn cancellation, syscall-seam `WNOHANG`/exit/`EINTR`/`ECHILD`/`ESRCH`/KILL-failure cases, exact argv/env/fd/CLOEXEC assertions, and descendant isolation. The separate non-TTY provider command compatibility gate remains pending separate user authorization and has not been run or claimed complete.
+
 ## Required Next Action
 
-Execute Task 4 of the provider-managed browser-login plan: begin with RED `ProviderLoginCoordinator` command/environment/state/concurrency/cleanup tests. Task 3 is complete and reviewed; work one numbered follow-up task at a time and run `make test` before completing the feature. The non-TTY manual gate for actually launching provider login commands still requires separate user authorization and has not been performed. Release acceptance remains paused, and the full authentication amendment must not be claimed complete until the remaining tasks and credentialed Claude/Codex acceptance pass; only then resume the notarization/tag/release gate.
+Continue Task 4 of the provider-managed browser-login plan with the approved direct `posix_spawn` runner, then re-run its spec-compliance and code-quality reviews. Task 3 is complete and reviewed; work one numbered follow-up task at a time and run `make test` before completing the feature. The non-TTY manual gate for actually launching provider login commands still requires separate user authorization and has not been performed. Release acceptance remains paused, and the full authentication amendment must not be claimed complete until the remaining tasks and credentialed Claude/Codex acceptance pass; only then resume the notarization/tag/release gate.
 
 ## v0.1 Constraints to Preserve
 

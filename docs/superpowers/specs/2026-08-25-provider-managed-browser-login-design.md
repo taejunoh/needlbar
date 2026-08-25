@@ -62,13 +62,13 @@ The `NeedlbarApp` target owns the login handoff because it is an explicit user-i
 A single application-lifetime `ProviderLoginCoordinator` will:
 
 - resolve a supported provider CLI without invoking a shell,
-- launch only a fixed provider command and fixed arguments,
+- launch only a fixed provider command and fixed arguments through direct macOS `posix_spawn`,
 - maintain at most one in-flight login per provider,
 - allow Claude and Codex logins to proceed independently,
 - publish transient provider login state to Settings and popovers,
 - discard child stdout/stderr,
 - enforce a bounded completion timeout,
-- cancel and reap active children during app termination,
+- own the single session actor/lifecycle that polls `waitpid(WNOHANG)` and reaps active children during app termination,
 - request a quota-only refresh after a successful child exit.
 
 `AppDelegate` owns the coordinator and passes its actions/state into `MenuBarController`, `SettingsWindowController`, Settings, and provider popovers. UI views do not construct commands or touch credentials.
@@ -131,13 +131,13 @@ The executable locator checks, in order:
 3. `/opt/homebrew/bin` and `/usr/local/bin`,
 4. version-manager bin directories under `~/.nvm/versions/node/*/bin` and `~/.asdf/shims`.
 
-The chosen path is standardized, must pass the executable check, and may remain a trusted user-installed wrapper or symlink required by a version manager. `PATH` lookup is an explicit trust decision over the user's own executable environment; arguments remain fixed by Needlbar. Login execution uses `Process` with an executable URL and argument array directly; it never uses `sh -c`, `zsh -lc`, AppleScript, or string interpolation into a command line.
+The chosen path is standardized, must pass the executable check, and may remain a trusted user-installed wrapper or symlink required by a version manager. `PATH` lookup is an explicit trust decision over the user's own executable environment; arguments remain fixed by Needlbar. The resolved executable URL is converted to an exact filesystem path; it is passed as both `argv[0]` and the executable path to `posix_spawn` (never `posix_spawnp`). The executable path, fixed arguments, and allowlisted environment entries are validated to contain no NUL bytes before building `argv`/`envp`. No shell, AppleScript, or string interpolation into a command line is used.
 
-The child receives a minimal allowlisted environment: `HOME`, `USER`, `LOGNAME`, `TMPDIR`, locale variables, proxy/certificate variables, and the selected provider's `CLAUDE_CONFIG_DIR` or `CODEX_HOME` when present. Its `PATH` is the inherited path with the selected executable's parent directory prepended so version-managed Node wrappers can resolve their runtime. `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, and other credential environment variables are not forwarded. Needlbar does not synthesize or inject tokens. Standard input is closed and standard output/error are directed to the null device so login URLs, device codes, and account information cannot enter Needlbar logs or state.
+The child receives a minimal allowlisted `envp`: `HOME`, `USER`, `LOGNAME`, `TMPDIR`, locale variables, proxy/certificate variables, and the selected provider's `CLAUDE_CONFIG_DIR` or `CODEX_HOME` when present. Its `PATH` is the inherited path with the selected executable's parent directory prepended so version-managed Node wrappers can resolve their runtime. `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, and other credential environment variables are not forwarded. Needlbar does not synthesize or inject tokens. `posix_spawn_file_actions` connects stdin to `/dev/null` opened read-only and stdout/stderr to `/dev/null` opened write-only; `POSIX_SPAWN_CLOEXEC_DEFAULT` is set. Login URLs, device codes, and account information therefore cannot enter Needlbar logs or state.
 
-The operation timeout is five minutes. Timeout, app termination, or explicit cancellation sends `SIGTERM`, waits a short bounded grace period, then sends `SIGKILL` to the exact still-running child PID when necessary and awaits reaping. Needlbar never signals the browser process opened by the provider.
+The operation timeout is five minutes. A single session actor is the sole owner of each child PID and its `waitpid` calls; no other task reaps or signals that child. It polls nonblocking `waitpid(pid, &status, WNOHANG)`, retrying `EINTR`. Until the child is reaped, its PID cannot be reused by the process table. Timeout, app termination, or explicit cancellation coalesces into `SIGTERM`, a short bounded grace period, `SIGKILL` if the exact direct child is still running, and a final reap of that same PID. `ECHILD` is an invariant violation and stops further signaling; `ESRCH` switches to reap confirmation; other signal failures produce a bounded safe failure and never an infinite wait. Needlbar never signals the browser process opened by the provider.
 
-The supported Claude Code and Codex CLI versions must pass a manual compatibility gate proving these exact commands can start their browser flow from a non-TTY `Process` with closed stdin. If either CLI requires terminal input or depends on parsing login output, the feature is blocked; Needlbar does not fall back to Terminal automation, stdout parsing, or a shell.
+The supported Claude Code and Codex CLI versions must pass a separate, user-authorized manual compatibility gate proving these exact commands can start their browser flow from a non-TTY direct `posix_spawn` child with stdin connected to `/dev/null`. That gate is still pending and must not be claimed as run by implementation work. If either CLI requires terminal input or depends on parsing login output, the feature is blocked; Needlbar does not fall back to Terminal automation, stdout parsing, or a shell.
 
 ## 5. State and Error Model
 
@@ -228,7 +228,11 @@ Required coverage:
 - new C ABI pointer/free/panic behavior,
 - Codex-only verification that never invokes Claude or Cursor,
 - provider-specific success that cannot mark the all-provider background refresh timestamp fresh,
-- bounded TERM-to-KILL child reaping,
+- harmless real-child normal exit, TERM-only exit, TERM-to-KILL escalation, cancellation, timeout, and coalesced cancellation-plus-stop cleanup,
+- syscall-seam coverage for `WNOHANG`, normal exit, `EINTR`, `ECHILD`, `ESRCH`, and signal failure,
+- pre- and post-spawn cancellation,
+- exact executable path/argv/envp, NUL validation, file descriptors, and `POSIX_SPAWN_CLOEXEC_DEFAULT`,
+- descendant isolation proving cleanup never targets a provider-opened descendant,
 - full `make test` success.
 
 No automated test opens a real browser or runs a real provider login. Synthetic credential canaries are permitted; real credentials never enter tests. Manual acceptance first verifies the exact non-TTY CLI launch contract, then uses test accounts or the user's existing provider accounts and verifies that no credentials appear in Needlbar diagnostics or preferences.
@@ -264,7 +268,7 @@ The implementation must update:
 7. Usage and quota independence and last-known-good behavior remain intact.
 8. Background refresh cannot display Keychain UI, while only the explicit Claude post-authentication path can allow it.
 9. The supported Claude Code Keychain contract passes a user-authorized local compatibility check or remains an explicit release blocker.
-10. The supported Claude Code and Codex CLI versions pass the exact non-TTY `Process` browser-launch compatibility gate without shell or output parsing.
+10. The supported Claude Code and Codex CLI versions pass the exact non-TTY direct `posix_spawn` browser-launch compatibility gate without shell or output parsing; this separate user-authorized gate remains pending until performed.
 11. The full project test gate passes.
 
 ## 11. Official Provider References

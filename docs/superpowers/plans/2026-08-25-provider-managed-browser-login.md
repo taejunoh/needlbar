@@ -4,11 +4,17 @@
 
 **Goal:** Add explicit provider-managed browser login for Claude and Codex, including user-approved Claude Keychain quota verification, while preserving Cursor's validated session-token connection and Needlbar's local-first privacy boundary.
 
-**Architecture:** AppKit launches fixed provider CLI commands and owns child-process lifecycle. `NeedlbarCore` distinguishes ordinary quota refresh from a user-initiated post-authentication refresh. Rust keeps the raw Claude credential inside `needlbar-quota`, using interaction-forbidden Keychain access in the background and a dedicated Claude-only C export that may permit Keychain UI only after the explicit user action.
+**Architecture:** AppKit launches fixed provider CLI commands through direct macOS `posix_spawn`, owns the child-process lifecycle, and parent-reaps children with `waitpid`. `NeedlbarCore` distinguishes ordinary quota refresh from a user-initiated post-authentication refresh. Rust keeps the raw Claude credential inside `needlbar-quota`, using interaction-forbidden Keychain access in the background and a dedicated Claude-only C export that may permit Keychain UI only after the explicit user action.
 
-**Tech Stack:** Swift 6, AppKit, SwiftUI, Combine `ObservableObject`, Foundation `Process`, Rust 2021, macOS Security.framework, JSON-over-C ABI, Swift Testing, Cargo tests
+**Tech Stack:** Swift 6, AppKit, SwiftUI, Combine `ObservableObject`, direct macOS `posix_spawn`/`waitpid`, Rust 2021, macOS Security.framework, JSON-over-C ABI, Swift Testing, Cargo tests
 
 **Spec:** `docs/superpowers/specs/2026-08-25-provider-managed-browser-login-design.md`
+
+### Approved implementation deviation: direct POSIX spawn
+
+The approved Task 4 implementation uses direct macOS `posix_spawn` with parent-owned nonblocking `waitpid`, while AppKit remains the application/lifecycle owner. Foundation Process was rejected because it can reap asynchronously and exposes only a numeric PID; direct spawn/waitpid preserves PID identity until Needlbar itself reaps the child. The session actor is the sole waitpid owner, with no asynchronous reaper or independently reaped child.
+
+The runner must use the exact executable URL/path (never `posix_spawnp`), pass the executable path as `argv[0]` followed by fixed arguments, build a NUL-validated allowlisted `envp`, and use no shell. `posix_spawn_file_actions` connects stdin to `/dev/null` read and stdout/stderr to `/dev/null` write, with `POSIX_SPAWN_CLOEXEC_DEFAULT`. Cleanup polls `waitpid(WNOHANG)`, retries `EINTR`, treats `ECHILD` as an invariant violation with no further signal, treats `ESRCH` as requiring reap confirmation, and bounds all other signal failures. TERM, bounded grace, KILL, and final reap are coalesced against the direct child PID only.
 
 ## Global Constraints
 
@@ -22,6 +28,7 @@
 - User-initiated Claude verification queries only the exact `Claude Code-credentials` generic-password service; no Keychain enumeration, account guessing, `security` subprocess, or browser crawling.
 - Raw Claude credentials remain in a redacting/zeroizing Rust secret type and never cross the C ABI or enter Swift, diagnostics, logs, preferences, or bridge errors. Real credentials never enter tests; synthetic canaries are permitted only to prove containment and redaction.
 - Never invoke a shell, interpolate user input into a command, or retain provider child stdout/stderr.
+- The provider runner uses direct `posix_spawn`/`waitpid` only; exact executable path, argv, envp, NUL validation, null-device file actions, close-on-exec defaults, PID ownership, and bounded signal/reap behavior follow the approved deviation above.
 - Usage and quota remain independently refreshable and independently fallible; failed verification preserves last-known-good quota.
 - Work one numbered task at a time, use tests first, run narrow tests while developing, and run `make test` before completion.
 - Do not tag, release, notarize, or perform a real provider login without separate user-authorized acceptance.
@@ -404,7 +411,7 @@ git commit -m "feat: add typed post-authentication quota refresh"
 
 ---
 
-### Task 4: Build the Provider Login Process Coordinator
+### Task 4: Build the Provider Login Coordinator
 
 **Files:**
 - Create: `Sources/Needlbar/Authentication/ProviderLoginCoordinator.swift`
@@ -414,6 +421,7 @@ git commit -m "feat: add typed post-authentication quota refresh"
 - Produces `ProviderLoginState`, `ProviderLoginFailure`, `ProviderLoginCommand`, resolver/runner protocols, and `ProviderLoginCoordinator`.
 - Produces `connect(_:) -> Bool`, `state(for:)`, and `stop() async`.
 - Injects `refreshQuota: @Sendable (ProviderID) async -> Bool`.
+- The runner uses an injected syscall seam for `posix_spawn`, `waitpid`, and `kill`, while one session actor owns lifecycle and PID reaping.
 
 - [ ] **Step 1: Add RED fixed-command and environment tests**
 
@@ -426,7 +434,7 @@ Assert exact commands through the resolver result:
 
 Test executable discovery through inherited `PATH`, `~/.local/bin`, `~/.volta/bin`, `~/.bun/bin`, `~/.asdf/shims`, `/opt/homebrew/bin`, `/usr/local/bin`, and `~/.nvm/versions/node/*/bin`. The selected executable must pass an injected executable predicate.
 
-Assert the child environment contains only the documented allowlist, prepends the executable parent to `PATH`, includes only the matching `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, and excludes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, and fixture secrets.
+Assert the exact executable URL/path is used (not `posix_spawnp`), `argv[0]` is that path followed by only the fixed arguments, and executable/argv/envp values reject NUL bytes. Assert the child environment contains only the documented allowlist, prepends the executable parent to `PATH`, includes only the matching `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, and excludes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, and fixture secrets. Assert stdin is `/dev/null` read, stdout/stderr are `/dev/null` write, and `POSIX_SPAWN_CLOEXEC_DEFAULT` is set.
 
 - [ ] **Step 2: Add RED state, concurrency, and cleanup tests**
 
@@ -441,8 +449,12 @@ With suspended fake runners, prove:
 - Cursor never launches,
 - `stop()` cancels/reaps both children and late completion cannot refresh or mutate state,
 - no child output field exists in the result/state model,
-- a never-finishing child receives `SIGTERM`, then `SIGKILL` after the bounded grace period, and is reaped,
-- cleanup targets only the exact spawned child PID and never a provider-opened browser.
+- harmless real children cover normal exit and TERM-only exit,
+- a never-finishing child receives coalesced `SIGTERM`, then `SIGKILL` after the bounded grace period, and is finally reaped,
+- cancellation, timeout, and cancel-plus-stop coalescing each complete safely,
+- pre-spawn and post-spawn cancellation are covered,
+- a syscall seam covers `waitpid(WNOHANG)`, normal exit, `EINTR`, `ECHILD`, `ESRCH`, and other signal failures,
+- cleanup targets only the exact spawned child PID and never a provider-opened descendant.
 
 - [ ] **Step 3: Run the new suite and verify RED**
 
@@ -475,19 +487,19 @@ struct ProviderLoginCommand: Equatable, Sendable {
 
 The resolver builds candidates from fixed locations only. It never launches a shell or reads shell startup files.
 
-- [ ] **Step 5: Implement the bounded direct `Process` runner**
+- [ ] **Step 5: Implement the bounded direct POSIX runner**
 
-Use `Process` with an executable URL and argument array. Standardize candidate URLs, require the injected executable check, and permit ordinary wrappers/symlinks only after they resolve through the fixed candidate search. Set the minimal environment, close standard input, and direct stdout/stderr to `FileHandle.nullDevice`. Bridge the termination handler asynchronously and race completion against `.seconds(300)`.
+Resolve the selected executable URL to an exact filesystem path and call `posix_spawn` directly, never `posix_spawnp`. Validate the path, fixed arguments, and every allowlisted environment entry for embedded NUL bytes. Build `argv` with the executable path at index zero and fixed provider arguments after it; build only the documented allowlisted `envp`. Configure `posix_spawn_file_actions` with stdin connected to `/dev/null` opened read-only and stdout/stderr connected to `/dev/null` opened write-only, and set `POSIX_SPAWN_CLOEXEC_DEFAULT`. Do not invoke a shell or retain output.
 
-On timeout, cancellation, or app stop, send `SIGTERM` to the exact still-running child PID, wait a short bounded grace period, then call `Darwin.kill(pid, SIGKILL)` if that same child remains alive; finally await and reap it. Never target a process group, application name, provider browser, or descendant discovered by scanning. Store active processes inside an actor so `Process` never crosses its isolation boundary.
+Keep the spawned PID inside one session actor that is the sole owner of `waitpid` and signal operations. Poll `waitpid(pid, &status, WNOHANG)` without blocking, retrying `EINTR`; an unreaped PID cannot be reused. Coalesce timeout, cancellation, and app stop into `SIGTERM`, a short bounded grace period, `SIGKILL` only if the exact direct child remains alive, and a final reap of that same PID. Treat `ECHILD` as an invariant violation with no further signal, switch to reap confirmation after `ESRCH`, and convert other signal failures into bounded safe failure without infinite waiting. Never target a process group, application name, provider browser, or descendant discovered by scanning.
 
 - [ ] **Step 6: Implement the observable coordinator**
 
 Use `@MainActor public final class ProviderLoginCoordinator: ObservableObject`. Keep provider-scoped tasks and generation counters. A successful process sets `.refreshingQuota`, awaits `refreshQuota(provider)`, and sets `.connected` only for `true` on the current generation. Login progress remains ephemeral and is never written to UserDefaults or diagnostics.
 
-- [ ] **Step 7: Run the non-TTY provider compatibility gate**
+- [ ] **Step 7: Keep the non-TTY provider compatibility gate pending**
 
-Before Task 4 is accepted, use the same direct `Process` configuration—exact arguments, closed stdin, null stdout/stderr, no shell or Terminal—to confirm that installed `claude auth login --claudeai` and `codex login` can open their provider-owned browser from a non-TTY child. This is a user-authorized manual compatibility check because it may start a login flow; cancel before entering credentials unless separately authorized.
+Before Task 4 is accepted, a separate user-authorized manual compatibility check must use the same direct `posix_spawn` configuration—exact executable path/argv, stdin `/dev/null`, null stdout/stderr, allowlisted envp, no shell or Terminal—to confirm that installed `claude auth login --claudeai` and `codex login` can open their provider-owned browser from a non-TTY child. This gate may start a login flow; it remains pending until separately authorized and performed, and implementation work must not claim it ran.
 
 Do not parse output and do not add a shell, Terminal, AppleScript, PTY, or fallback command. If either installed CLI cannot initiate browser login under this contract, mark that provider feature blocked in `docs/STATUS.md` and stop before Task 5 rather than weakening the boundary.
 
