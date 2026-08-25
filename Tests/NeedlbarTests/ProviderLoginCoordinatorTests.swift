@@ -490,31 +490,32 @@ import Testing
 }
 
 @Test func processRunnerReturnsBoundedSafeFailureAfterPersistentTERMFailureAndRetainsTheSoleReaper() async {
-    let system = ScriptedPOSIXSystem(
-        spawn: .spawned(pid: 52),
-        waits: [.running, .running, .running, .running, .running, .exited(status: 0)],
+    let system = StagedPOSIXSystem(
+        pid: 52,
+        normalWaits: [.running],
+        terminationWaits: Array(repeating: .interrupted, count: 4) + [.exited(status: 0)],
         signals: [.failed, .failed, .failed]
     )
-    let sleeper = SuspensionGate()
+    let normalPoll = SuspensionGate()
     let runner = ProviderLoginProcessRunner(
         timeout: .seconds(30),
-        pollSleeper: { _ in await sleeper.wait() },
+        pollSleeper: { _ in await normalPoll.wait() },
         system: system
     )
     let task = Task { await runner.run(scriptedCommand()) }
 
-    await system.waitForSpawn()
-    await sleeper.waitForEntry()
+    await system.waitForNormalPoll()
     let stop = Task { await runner.stop() }
-    await system.waitForSignal()
-    await sleeper.release()
+    await system.waitForTERM()
     await stop.value
+    await normalPoll.release()
 
     let outcome = await task.value
     #expect(outcome == .launchFailed, "actual outcome: \(outcome)")
     #expect(system.sentSignals.count == 3)
-    #expect(system.sentSignals.allSatisfy { $0.0 == 52 && $0.1 == SIGTERM })
-    #expect(system.waitCount == 6)
+    #expect(system.sentSignals.allSatisfy { $0.pid == 52 && $0.signal == SIGTERM })
+    #expect(system.normalWaitCount == 1)
+    #expect(system.terminationWaitCount == 5)
 }
 
 @Test func processRunnerBoundsPersistentKILLFailureAndLetsItsSoleReaperObserveNaturalExit() async {
