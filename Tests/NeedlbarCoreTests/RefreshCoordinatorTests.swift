@@ -222,6 +222,231 @@ struct RefreshCoordinatorTests {
     await coordinator.stop()
 }
 
+@Test func authenticationVerificationDoesNotTriggerUsageOrForcedCursorSync() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let usage = ForceRecordingUsageRepository()
+    let coordinator = makeRunningCoordinator(usage: usage, quota: quota)
+    await coordinator.start()
+    await eventually { quota.callCount == 1 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+    usage.releaseFirstCall()
+    await eventually { usage.completedCallCount == 1 }
+
+    let verification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+    await eventually { quota.callCount == 2 }
+    quota.releaseNext(with: quotaResult(for: .claude))
+
+    #expect(await verification.value)
+    #expect(usage.callCount == 1)
+    #expect(usage.forceFlags == [false])
+    await coordinator.stop()
+}
+
+@Test func claudeAuthenticationVerificationReturnsTrueOnlyAfterFreshClaudeQuota() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let coordinator = makeRunningCoordinator(quota: quota)
+    await coordinator.start()
+    await eventually { quota.callCount == 1 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+
+    let verification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+    await eventually { quota.callCount == 2 }
+    #expect(!verification.isCancelled)
+    quota.releaseNext(with: quotaResult(for: .claude))
+
+    #expect(await verification.value)
+    #expect(quota.intents == [.backgroundAll, .userInitiated(provider: .claude)])
+    await coordinator.stop()
+}
+
+@Test func permissionDeniedVerificationPreservesLastKnownGoodQuotaAndReturnsFalse() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let store = ProviderSnapshotStore()
+    let previous = QuotaSnapshot(windows: [try .init(id: "claude.session", title: "Session", usedPercent: 42, resetsAt: nil)])
+    await store.applyQuota(previous, for: .claude)
+    let coordinator = makeRunningCoordinator(quota: quota, store: store)
+    await coordinator.start()
+    await eventually { quota.callCount == 1 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+
+    let verification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+    await eventually { quota.callCount == 2 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [.claude: permissionDenied(for: .claude)]))
+
+    let verified = await verification.value
+    #expect(!verified)
+    #expect(await store.snapshot(for: .claude).quota == previous)
+    if case .error(message: "access denied", lastSuccessfulAt: _) = await store.snapshot(for: .claude).quotaStatus {
+        // The previous quota timestamp must survive the failed verification.
+    } else {
+        Issue.record("Expected a safe permission-denied quota failure.")
+    }
+    await coordinator.stop()
+}
+
+@Test func userVerificationQueuedDuringBackgroundRefreshIsNotMergedAway() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let coordinator = makeRunningCoordinator(quota: quota)
+    await coordinator.start()
+    await eventually { quota.callCount == 1 }
+
+    let verification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+    await Task.yield()
+    #expect(quota.callCount == 1)
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+    await eventually { quota.callCount == 2 }
+    quota.releaseNext(with: quotaResult(for: .claude))
+
+    #expect(await verification.value)
+    #expect(quota.intents == [.backgroundAll, .userInitiated(provider: .claude)])
+    await coordinator.stop()
+}
+
+@Test func concurrentClaudeVerificationsCoalesceToOneFollowUpAndResumeAllWaitersOnce() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let coordinator = makeRunningCoordinator(quota: quota)
+    await coordinator.start()
+    await eventually { quota.callCount == 1 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+
+    let callers = (0 ..< 3).map { _ in Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) } }
+    await eventually { quota.callCount == 2 }
+    quota.releaseNext(with: quotaResult(for: .claude))
+
+    for caller in callers {
+        #expect(await caller.value)
+    }
+    #expect(quota.intents == [.backgroundAll, .userInitiated(provider: .claude)])
+    await coordinator.stop()
+}
+
+@Test func simultaneousProviderVerificationsRunInStableProviderOrderAndResumeOnlyTheirWaiters() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let coordinator = makeRunningCoordinator(quota: quota)
+    await coordinator.start()
+    await eventually { quota.callCount == 1 }
+
+    let codex = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .codex) }
+    let claude = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+    await Task.yield()
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+    await eventually { quota.callCount == 2 }
+    #expect(quota.intents[1] == .userInitiated(provider: .claude))
+    quota.releaseNext(with: .init(snapshots: [:], errors: [.claude: permissionDenied(for: .claude)]))
+    await eventually { quota.callCount == 3 }
+    let claudeVerified = await claude.value
+    #expect(!claudeVerified)
+    quota.releaseNext(with: quotaResult(for: .codex))
+
+    #expect(await codex.value)
+    #expect(quota.intents == [.backgroundAll, .userInitiated(provider: .claude), .userInitiated(provider: .codex)])
+    await coordinator.stop()
+}
+
+@Test func stopAndRestartResumeOutstandingVerificationWaitersFalseAndIgnoreLateQuota() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let store = ProviderSnapshotStore()
+    let coordinator = makeRunningCoordinator(quota: quota, store: store)
+    await coordinator.start()
+    await eventually { quota.callCount == 1 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+    let verification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+    await eventually { quota.callCount == 2 }
+
+    await coordinator.stop()
+    let verified = await verification.value
+    #expect(!verified)
+    quota.releaseNext(with: quotaResult(for: .claude))
+    await coordinator.start()
+    await eventually { quota.callCount == 3 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+
+    #expect(await store.snapshot(for: .claude).quota == nil)
+    await coordinator.stop()
+}
+
+@Test func providerOnlyVerificationDoesNotAdvanceBackgroundFreshnessAndPopoverQueuesBackgroundAll() async throws {
+    let now = try #require(BridgeDecoder.date("2026-08-25T12:00:00Z"))
+    let quota = BlockingIntentQuotaRepository()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota,
+        store: ProviderSnapshotStore(),
+        clock: ManualClock(now: now),
+        lastQuotaSuccessfulAt: now.addingTimeInterval(-61)
+    )
+    await coordinator.start()
+    await eventually { quota.callCount == 1 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+    let verification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+    await eventually { quota.callCount == 2 }
+    quota.releaseNext(with: quotaResult(for: .claude))
+    #expect(await verification.value)
+
+    await coordinator.popoverOpened()
+    await eventually { quota.callCount == 3 }
+    #expect(quota.intents[2] == .backgroundAll)
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+    await coordinator.stop()
+}
+
+@Test func unsupportedCursorAuthenticationVerificationReturnsFalseWithoutQuotaFetch() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let coordinator = makeRunningCoordinator(quota: quota)
+    await coordinator.start()
+    await eventually { quota.callCount == 1 }
+    quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+
+    let verified = await coordinator.refreshQuota(afterUserAuthenticationFor: .cursor)
+    #expect(!verified)
+    #expect(quota.callCount == 1)
+    await coordinator.stop()
+}
+
+@Test func timerPopoverAndManualQuotaPathsAlwaysUseBackgroundAllIntent() async throws {
+    let now = try #require(BridgeDecoder.date("2026-08-25T12:00:00Z"))
+    let clock = ManualClock(now: now)
+    let quota = IntentRecordingQuotaRepository()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota,
+        store: ProviderSnapshotStore(),
+        clock: clock
+    )
+    await coordinator.start()
+    await eventually { quota.callCount == 1 && clock.sleeperCount == 2 }
+    await coordinator.manualRefresh()
+    await eventually { quota.callCount >= 2 }
+    await coordinator.popoverOpened()
+    await eventually { quota.callCount >= 3 }
+    clock.advance(by: 5 * 60)
+    await eventually { quota.callCount >= 4 }
+
+    #expect(quota.intents.allSatisfy { $0 == .backgroundAll })
+    await coordinator.stop()
+}
+
+private func makeRunningCoordinator(
+    usage: any UsageRepository = UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+    quota: any QuotaRepository,
+    store: ProviderSnapshotStore = ProviderSnapshotStore()
+) -> RefreshCoordinator {
+    RefreshCoordinator(
+        usageRepository: usage,
+        quotaRepository: quota,
+        store: store,
+        clock: ManualClock(now: BridgeDecoder.date("2026-08-25T12:00:00Z")!)
+    )
+}
+
+private func quotaResult(for provider: ProviderID) -> QuotaRefreshResult {
+    .init(snapshots: [provider: QuotaSnapshot(windows: [])], errors: [:])
+}
+
+private func permissionDenied(for provider: ProviderID) -> BridgeError {
+    .init(provider: provider.rawValue, code: "permissionDenied", message: "access denied", action: nil)
+}
+
 private final class UsageRefreshSpy: UsageRepository, @unchecked Sendable {
     private let lock = NSLock()
     private let result: UsageRefreshResult
@@ -257,6 +482,61 @@ private final class QuotaRefreshSpy: QuotaRepository, @unchecked Sendable {
     func refresh() throws -> QuotaRefreshResult {
         lock.withLock { calls += 1 }
         return result
+    }
+}
+
+private final class BlockingIntentQuotaRepository: QuotaRepository, @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [QuotaRefreshIntent] = []
+    private var gates: [DispatchSemaphore] = []
+    private var results: [QuotaRefreshResult] = []
+
+    var callCount: Int {
+        lock.withLock { calls.count }
+    }
+
+    var intents: [QuotaRefreshIntent] {
+        lock.withLock { calls }
+    }
+
+    func refresh() throws -> QuotaRefreshResult {
+        try refresh(intent: .backgroundAll)
+    }
+
+    func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
+        let gate = DispatchSemaphore(value: 0)
+        lock.withLock {
+            calls.append(intent)
+            gates.append(gate)
+        }
+        gate.wait()
+        return lock.withLock { results.removeFirst() }
+    }
+
+    func releaseNext(with result: QuotaRefreshResult) {
+        let gate = lock.withLock { () -> DispatchSemaphore in
+            results.append(result)
+            return gates.removeFirst()
+        }
+        gate.signal()
+    }
+}
+
+private final class IntentRecordingQuotaRepository: QuotaRepository, @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [QuotaRefreshIntent] = []
+
+    var callCount: Int {
+        lock.withLock { calls.count }
+    }
+
+    var intents: [QuotaRefreshIntent] {
+        lock.withLock { calls }
+    }
+
+    func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
+        lock.withLock { calls.append(intent) }
+        return .init(snapshots: [:], errors: [:])
     }
 }
 

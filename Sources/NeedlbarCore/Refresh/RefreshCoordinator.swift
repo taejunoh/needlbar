@@ -29,15 +29,17 @@ public actor RefreshCoordinator {
     private var quotaTask: Task<Void, Never>?
     private var usageSafetyTask: Task<Void, Never>?
     private var quotaSafetyTask: Task<Void, Never>?
-    private var lastQuotaSuccessfulAt: Date?
+    private var lastBackgroundQuotaSuccessfulAt: Date?
     private var isRunning = false
     private var usageRefreshRequestedWhileInFlight = false
     private var forceCursorSyncRequestedWhileInFlight = false
-    private var quotaRefreshRequestedWhileInFlight = false
     private var usageQueuedGeneration: UInt64?
-    private var quotaQueuedGeneration: UInt64?
     private var usageTaskIsForced = false
     private var runGeneration: UInt64 = 0
+    private var activeQuotaIntent: QuotaRefreshIntent?
+    private var queuedBackgroundQuotaRefresh = false
+    private var queuedUserInitiatedProviders: Set<ProviderID> = []
+    private var userQuotaWaiters: [ProviderID: [CheckedContinuation<Bool, Never>]] = [:]
 
     public init(
         usageRepository: any UsageRepository,
@@ -51,7 +53,7 @@ public actor RefreshCoordinator {
         self.quotaRepository = quotaRepository
         self.store = store
         self.clock = clock
-        self.lastQuotaSuccessfulAt = lastQuotaSuccessfulAt
+        self.lastBackgroundQuotaSuccessfulAt = lastQuotaSuccessfulAt
         self.usageFileWatcher = usageFileWatcher
     }
 
@@ -65,6 +67,7 @@ public actor RefreshCoordinator {
     /// Starts refresh scheduling and installs a fresh generation-bound watcher receiver.
     public func start() async {
         guard !isRunning else { return }
+        resumeAllUserQuotaWaiters(with: false)
         runGeneration &+= 1
         isRunning = true
         let generation = runGeneration
@@ -91,14 +94,14 @@ public actor RefreshCoordinator {
     }
 
     public func popoverOpened() {
-        guard let lastQuotaSuccessfulAt else {
-            beginQuotaRefresh()
+        guard let lastBackgroundQuotaSuccessfulAt else {
+            requestQuotaRefresh()
             return
         }
-        guard clock.now.timeIntervalSince(lastQuotaSuccessfulAt) > Self.popoverQuotaRefreshThreshold else {
+        guard clock.now.timeIntervalSince(lastBackgroundQuotaSuccessfulAt) > Self.popoverQuotaRefreshThreshold else {
             return
         }
-        beginQuotaRefresh()
+        requestQuotaRefresh()
     }
 
     public func manualRefresh() async {
@@ -123,10 +126,28 @@ public actor RefreshCoordinator {
         }
 
         if let quotaTask {
+            requestQuotaRefresh()
             await quotaTask.value
             guard generation == runGeneration, isRunning else { return }
         } else {
-            beginQuotaRefresh()
+            requestQuotaRefresh()
+        }
+    }
+
+    public func refreshQuota(afterUserAuthenticationFor provider: ProviderID) async -> Bool {
+        guard isRunning, provider == .claude || provider == .codex else { return false }
+        return await withCheckedContinuation { continuation in
+            let hadWaiter = !(userQuotaWaiters[provider]?.isEmpty ?? true)
+            userQuotaWaiters[provider, default: []].append(continuation)
+            let intent = QuotaRefreshIntent.userInitiated(provider: provider)
+            switch activeQuotaIntent {
+            case nil:
+                beginQuotaRefresh(intent: intent)
+            case .userInitiated(let activeProvider) where activeProvider == provider && hadWaiter:
+                break
+            default:
+                queuedUserInitiatedProviders.insert(provider)
+            }
         }
     }
 
@@ -142,9 +163,10 @@ public actor RefreshCoordinator {
         quotaSafetyTask = nil
         usageRefreshRequestedWhileInFlight = false
         forceCursorSyncRequestedWhileInFlight = false
-        quotaRefreshRequestedWhileInFlight = false
         usageQueuedGeneration = nil
-        quotaQueuedGeneration = nil
+        queuedBackgroundQuotaRefresh = false
+        queuedUserInitiatedProviders.removeAll()
+        resumeAllUserQuotaWaiters(with: false)
         if let usageFileWatcher {
             await usageFileWatcher.stop()
         }
@@ -191,11 +213,10 @@ public actor RefreshCoordinator {
     private func requestQuotaRefresh(generation: UInt64? = nil) {
         if let generation, (!isRunning || generation != runGeneration) { return }
         guard quotaTask == nil else {
-            quotaRefreshRequestedWhileInFlight = true
-            quotaQueuedGeneration = runGeneration
+            queuedBackgroundQuotaRefresh = true
             return
         }
-        beginQuotaRefresh()
+        beginQuotaRefresh(intent: .backgroundAll)
     }
 
     private func beginUsageRefresh(forceCursorSync: Bool) {
@@ -209,13 +230,14 @@ public actor RefreshCoordinator {
         }
     }
 
-    private func beginQuotaRefresh() {
+    private func beginQuotaRefresh(intent: QuotaRefreshIntent) {
         guard quotaTask == nil else { return }
+        activeQuotaIntent = intent
         let repository = quotaRepository
         let generation = runGeneration
-        quotaTask = Task { [weak self, repository] in
-            let result = Result { try repository.refresh() }
-            await self?.finishQuotaRefresh(result, applyResult: !Task.isCancelled, generation: generation)
+        quotaTask = Task { [weak self, repository, intent] in
+            let result = Result { try repository.refresh(intent: intent) }
+            await self?.finishQuotaRefresh(result, intent: intent, applyResult: !Task.isCancelled, generation: generation)
         }
     }
 
@@ -259,25 +281,33 @@ public actor RefreshCoordinator {
 
     private func finishQuotaRefresh(
         _ result: Result<QuotaRefreshResult, Error>,
+        intent: QuotaRefreshIntent,
         applyResult: Bool,
         generation: UInt64
     ) async {
         defer {
             quotaTask = nil
-            let requested = quotaRefreshRequestedWhileInFlight
-            let queuedGeneration = quotaQueuedGeneration
-            quotaRefreshRequestedWhileInFlight = false
-            quotaQueuedGeneration = nil
-            if isRunning, queuedGeneration == runGeneration, requested {
-                beginQuotaRefresh()
-            }
+            activeQuotaIntent = nil
+            drainQueuedQuotaRefreshes()
         }
-        guard applyResult, generation == runGeneration else { return }
+        let providerWaiters: [CheckedContinuation<Bool, Never>]
+        if case .userInitiated(let provider) = intent {
+            providerWaiters = userQuotaWaiters.removeValue(forKey: provider) ?? []
+        } else {
+            providerWaiters = []
+        }
+
+        guard applyResult, generation == runGeneration else {
+            providerWaiters.forEach { $0.resume(returning: false) }
+            return
+        }
+
+        var verificationSucceeded = false
         switch result {
         case .success(let refresh):
             let refreshedAt = clock.now
-            if !refresh.snapshots.isEmpty {
-                lastQuotaSuccessfulAt = refreshedAt
+            if case .backgroundAll = intent, !refresh.snapshots.isEmpty {
+                lastBackgroundQuotaSuccessfulAt = refreshedAt
             }
             for (provider, quota) in refresh.snapshots {
                 guard generation == runGeneration, applyResult else { return }
@@ -287,13 +317,63 @@ public actor RefreshCoordinator {
                 guard generation == runGeneration, applyResult else { return }
                 await store.markQuotaFailure(for: provider, status: status(for: error), at: refreshedAt)
             }
+            if case .userInitiated(let provider) = intent {
+                verificationSucceeded = refresh.snapshots[provider] != nil
+            }
         case .failure(let error):
+            if let bridgeFailure = error as? BridgeFailure,
+               case .bridgeFailed(let bridgeErrors) = bridgeFailure
+            {
+                let requestedProviders: Set<ProviderID>
+                if case .userInitiated(let provider) = intent {
+                    requestedProviders = [provider]
+                } else {
+                    requestedProviders = Set(ProviderID.allCases)
+                }
+                let matchingErrors = bridgeErrors.filter {
+                    guard let provider = $0.providerID else { return false }
+                    return requestedProviders.contains(provider)
+                }
+                if !matchingErrors.isEmpty {
+                    for error in matchingErrors {
+                        guard let provider = error.providerID, generation == runGeneration, applyResult else { return }
+                        await store.markQuotaFailure(for: provider, status: status(for: error), at: clock.now)
+                    }
+                    break
+                }
+            }
             let status = DataStatus.error(message: String(describing: error), lastSuccessfulAt: nil)
-            for provider in ProviderID.allCases {
+            let providers: [ProviderID]
+            if case .userInitiated(let provider) = intent {
+                providers = [provider]
+            } else {
+                providers = ProviderID.allCases
+            }
+            for provider in providers {
                 guard generation == runGeneration, applyResult else { return }
                 await store.markQuotaFailure(for: provider, status: status, at: clock.now)
             }
         }
+        providerWaiters.forEach { $0.resume(returning: verificationSucceeded) }
+    }
+
+    private func drainQueuedQuotaRefreshes() {
+        guard isRunning else { return }
+        if let provider = ProviderID.allCases.first(where: { queuedUserInitiatedProviders.contains($0) }) {
+            queuedUserInitiatedProviders.remove(provider)
+            beginQuotaRefresh(intent: .userInitiated(provider: provider))
+            return
+        }
+        if queuedBackgroundQuotaRefresh {
+            queuedBackgroundQuotaRefresh = false
+            beginQuotaRefresh(intent: .backgroundAll)
+        }
+    }
+
+    private func resumeAllUserQuotaWaiters(with result: Bool) {
+        let waiters = userQuotaWaiters.values.flatMap { $0 }
+        userQuotaWaiters.removeAll()
+        waiters.forEach { $0.resume(returning: result) }
     }
 
     private func status(for error: BridgeError) -> DataStatus {
