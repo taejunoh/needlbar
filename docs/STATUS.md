@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
-**Updated:** 2026-08-15
+**Updated:** 2026-08-25
 **Branch:** `main`
-**Current phase:** Task 15 packaging and final v0.1 implementation gate complete
-**Next action:** Complete remaining credentialed acceptance and configure notarization secrets before a user-authorized v0.1 tag/release
+**Current phase:** Provider-managed Claude/Codex browser-login design amendment approved; implementation plan ready
+**Next action:** Execute Task 1 of `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md`, beginning with Claude credential-access mode and Keychain resolver RED tests
 
 ## Source of Truth
 
@@ -11,6 +11,8 @@ The v0.1 work is governed by:
 
 - `docs/superpowers/specs/2026-08-13-needlbar-v0.1-design.md` — approved architecture and product scope.
 - `docs/superpowers/plans/2026-08-13-needlbar-v0.1.md` — ordered implementation plan.
+- `docs/superpowers/specs/2026-08-25-provider-managed-browser-login-design.md` — approved authentication UX amendment.
+- `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md` — ordered follow-up implementation plan.
 - `AGENTS.md` — continuation rules for Codex/agentic workers.
 
 ## What Is Already Implemented
@@ -475,11 +477,27 @@ Remaining release acceptance: refresh Claude authentication and wait out the rat
 
 ## Final v0.1 Continuation
 
-The implementation plan and hosted CI/artifact verification are complete. The only remaining work is credentialed/manual release acceptance on a supported macOS 14 arm64 machine, followed by a user-authorized v0.1 tag/release; this is not a Task 16 implementation task.
+The original fifteen-task implementation plan and hosted CI/artifact verification are complete. Release acceptance is now paused by the approved authentication amendment below; complete its separate follow-up plan and verification before returning to credentialed/manual release acceptance and a user-authorized v0.1 tag/release.
+
+## Approved Authentication Amendment — 2026-08-25
+
+The user approved a deliberate post-plan design change before release acceptance:
+
+- Claude gains `Sign in with Claude`, launching `claude auth login --claudeai` as an explicit user action.
+- Codex gains `Sign in with ChatGPT`, launching `codex login` as an explicit user action.
+- The provider CLIs continue to own browser navigation, OAuth callbacks, token refresh, and credential storage.
+- Needlbar does not add an OAuth client, persist or expose Claude/Codex tokens, read browser profiles, or retain child-process output.
+- The user explicitly approved access to Claude Code's exact provider-owned macOS Keychain item after clicking Connect. Raw credentials remain ephemeral inside Rust quota code and never cross the C ABI; background refresh uses interaction-forbidden access and never displays Keychain UI.
+- Cursor retains the current explicit validated session-token Connect/Reconnect/Disconnect path. Cursor's documented CLI browser login does not expose the personal usage/quota handoff required by Needlbar.
+- AppKit owns login-process lifecycle; `NeedlbarCore` gains typed background/user-initiated quota intents; Rust adds dedicated Claude-only and Codex-only post-authentication quota exports but no login/OAuth callback API.
+
+The approved delta spec is `docs/superpowers/specs/2026-08-25-provider-managed-browser-login-design.md`. The test-first execution plan is `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md`.
+
+No feature implementation or verification has been performed for this amendment yet. The pre-existing Task 15 verification remains valid for the current code, but release acceptance is paused until the browser-login plan is implemented and reverified.
 
 ## Required Next Action
 
-Perform credentialed/manual release acceptance, then create a user-authorized v0.1 tag/release. Do not begin a Task 16 implementation.
+Execute Task 1 of the provider-managed browser-login plan: add RED tests for `BackgroundNoUI` versus `UserInitiatedAllowUI`, exact-service Keychain resolution, permission/error mapping, and credential redaction before implementing the Rust credential boundary. Work one numbered follow-up task at a time and run `make test` before completing the feature. After the amendment passes credentialed Claude/Codex acceptance, resume the notarization/tag/release gate.
 
 ## v0.1 Constraints to Preserve
 
