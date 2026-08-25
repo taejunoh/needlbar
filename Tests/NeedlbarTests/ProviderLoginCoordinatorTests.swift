@@ -298,6 +298,8 @@ import Testing
 }
 
 @Test(.serialized) func processRunnerPreventsALateLaunchWhenStoppedDuringPrelaunchRegistration() async throws {
+    await FixtureTestSerialization.shared.acquire()
+    defer { Task { await FixtureTestSerialization.shared.release() } }
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -321,6 +323,8 @@ import Testing
 }
 
 @Test(.serialized) func processRunnerSendsOnlyTERMToACompliantExactFixturePIDAndReapsIt() async throws {
+    await FixtureTestSerialization.shared.acquire()
+    defer { Task { await FixtureTestSerialization.shared.release() } }
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -346,6 +350,8 @@ import Testing
 }
 
 @Test(.serialized) func processRunnerEscalatesOnlyTheTermIgnoringExactFixturePIDThenReapsIt() async throws {
+    await FixtureTestSerialization.shared.acquire()
+    defer { Task { await FixtureTestSerialization.shared.release() } }
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -376,6 +382,8 @@ import Testing
 }
 
 @Test(.serialized) func processRunnerSharesOneTerminationSequenceAcrossConcurrentCancellationAndStop() async throws {
+    await FixtureTestSerialization.shared.acquire()
+    defer { Task { await FixtureTestSerialization.shared.release() } }
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -408,6 +416,8 @@ import Testing
 }
 
 @Test(.serialized) func processRunnerTaskCancellationTerminatesAndReapsADirectChild() async throws {
+    await FixtureTestSerialization.shared.acquire()
+    defer { Task { await FixtureTestSerialization.shared.release() } }
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -434,6 +444,8 @@ import Testing
 }
 
 @Test(.serialized) func processRunnerTimeoutTerminatesAndReapsADirectChild() async throws {
+    await FixtureTestSerialization.shared.acquire()
+    defer { Task { await FixtureTestSerialization.shared.release() } }
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -498,10 +510,40 @@ import Testing
     await sleeper.release()
     await stop.value
 
-    #expect(await task.value == .launchFailed)
+    let outcome = await task.value
+    #expect(outcome == .launchFailed, "actual outcome: \(outcome)")
     #expect(system.sentSignals.count == 3)
     #expect(system.sentSignals.allSatisfy { $0.0 == 52 && $0.1 == SIGTERM })
     #expect(system.waitCount == 6)
+}
+
+@Test func processRunnerBoundsPersistentKILLFailureAndLetsItsSoleReaperObserveNaturalExit() async {
+    let system = StagedPOSIXSystem(
+        pid: 53,
+        normalWaits: [.running],
+        terminationWaits: [.interrupted] + Array(repeating: .interrupted, count: 8) + [.exited(status: 0)],
+        signals: [.sent, .failed, .failed, .failed]
+    )
+    let normalPoll = SuspensionGate()
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        terminationGrace: .zero,
+        pollSleeper: { duration in if duration != .zero { await normalPoll.wait() } },
+        system: system
+    )
+    let task = Task { await runner.run(scriptedCommand()) }
+
+    await system.waitForNormalPoll()
+    let stop = Task { await runner.stop() }
+    await system.waitForTERM()
+    await stop.value
+    await normalPoll.release()
+
+    let killOutcome = await task.value
+    #expect(killOutcome == .launchFailed, "actual outcome: \(killOutcome)")
+    #expect(system.sentSignals == [.init(pid: 53, signal: SIGTERM), .init(pid: 53, signal: SIGKILL), .init(pid: 53, signal: SIGKILL), .init(pid: 53, signal: SIGKILL)])
+    #expect(system.normalWaitCount == 1)
+    #expect(system.terminationWaitCount == 10)
 }
 
 @Test func processRunnerTreatsECHILDAsAnInvariantFailureWithoutSignaling() async {
@@ -568,6 +610,8 @@ import Testing
 }
 
 @Test(.serialized) func processRunnerReapsAHarmlessDirectChildThatExitsNormally() async throws {
+    await FixtureTestSerialization.shared.acquire()
+    defer { Task { await FixtureTestSerialization.shared.release() } }
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
     let recorder = ProcessSignalRecorder()
@@ -582,6 +626,8 @@ import Testing
 }
 
 @Test(.serialized) func processRunnerSignalsOnlyTheDirectFixtureWhenItHasADescendant() async throws {
+    await FixtureTestSerialization.shared.acquire()
+    defer { Task { await FixtureTestSerialization.shared.release() } }
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
     let recorder = ProcessSignalRecorder()
@@ -765,6 +811,22 @@ private actor SuspensionGate {
     }
 }
 
+private actor FixtureTestSerialization {
+    static let shared = FixtureTestSerialization()
+    private var held = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        if !held { held = true; return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        if waiters.isEmpty { held = false }
+        else { waiters.removeFirst().resume() }
+    }
+}
+
 private actor ProcessSignalRecorder {
     struct Signal: Equatable, Sendable {
         let pid: Int32
@@ -900,6 +962,73 @@ private final class ScriptedPOSIXSystem: ProviderLoginProcessSystem, @unchecked 
     private func hasSignal() -> Bool {
         lock.lock(); defer { lock.unlock() }
         return !sentSignals.isEmpty
+    }
+}
+
+private final class StagedPOSIXSystem: ProviderLoginProcessSystem, @unchecked Sendable {
+    struct Signal: Equatable { let pid: Int32; let signal: Int32 }
+    private let lock = NSLock()
+    private let pid: Int32
+    private var normalWaits: [ProviderLoginWaitResult]
+    private var terminationWaits: [ProviderLoginWaitResult]
+    private var signalResults: [ProviderLoginSignalResult]
+    private var terminating = false
+    private var normalPollWaiters: [CheckedContinuation<Void, Never>] = []
+    private var termWaiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var sentSignals: [Signal] = []
+    private(set) var normalWaitCount = 0
+    private(set) var terminationWaitCount = 0
+
+    init(pid: Int32, normalWaits: [ProviderLoginWaitResult], terminationWaits: [ProviderLoginWaitResult], signals: [ProviderLoginSignalResult]) {
+        self.pid = pid
+        self.normalWaits = normalWaits
+        self.terminationWaits = terminationWaits
+        self.signalResults = signals
+    }
+
+    func spawn(_ command: ProviderLoginCommand) -> ProviderLoginSpawnResult { .spawned(pid: pid) }
+
+    func waitForChild(_ pid: Int32) -> ProviderLoginWaitResult {
+        lock.lock(); defer { lock.unlock() }
+        if terminating {
+            terminationWaitCount += 1
+            return terminationWaits.isEmpty ? .running : terminationWaits.removeFirst()
+        }
+        normalWaitCount += 1
+        let waiters = normalPollWaiters
+        normalPollWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        return normalWaits.isEmpty ? .running : normalWaits.removeFirst()
+    }
+
+    func sendSignal(_ signal: Int32, to pid: Int32) -> ProviderLoginSignalResult {
+        lock.lock(); defer { lock.unlock() }
+        sentSignals.append(.init(pid: pid, signal: signal))
+        if signal == SIGTERM {
+            terminating = true
+            let waiters = termWaiters
+            termWaiters.removeAll()
+            waiters.forEach { $0.resume() }
+        }
+        return signalResults.isEmpty ? .sent : signalResults.removeFirst()
+    }
+
+    func waitForNormalPoll() async {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if normalWaitCount > 0 { lock.unlock(); continuation.resume(); return }
+            normalPollWaiters.append(continuation)
+            lock.unlock()
+        }
+    }
+
+    func waitForTERM() async {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if terminating { lock.unlock(); continuation.resume(); return }
+            termWaiters.append(continuation)
+            lock.unlock()
+        }
     }
 }
 

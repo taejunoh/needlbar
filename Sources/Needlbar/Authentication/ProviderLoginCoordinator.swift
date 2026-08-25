@@ -556,7 +556,7 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         while case let .running(running)? = sessions[identifier], running.pid == pid {
             switch system.waitForChild(pid) {
             case let .exited(status):
-                complete(identifier, pid: pid, outcome: running.stopReason.map(outcome(for:)) ?? .exited(status: status))
+                complete(identifier, pid: pid, outcome: finished[identifier] ?? (running.stopReason.map(outcome(for:)) ?? .exited(status: status)))
                 return
             case .noChild, .failed:
                 complete(identifier, pid: pid, outcome: .launchFailed)
