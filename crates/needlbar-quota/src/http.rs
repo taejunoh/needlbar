@@ -144,6 +144,7 @@ impl RedactingHttpClient {
         Ok(body)
     }
 
+    #[cfg(test)]
     pub(crate) fn for_test(allowed_host: String) -> Self {
         let client = Client::builder()
             .timeout(REQUEST_TIMEOUT)

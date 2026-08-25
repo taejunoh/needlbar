@@ -19,6 +19,7 @@ const OAUTH_BETA_HEADER: &str = "oauth-2025-04-20";
 pub struct ClaudeQuotaProvider {
     credentials: Arc<dyn ClaudeCredentialResolver>,
     http: RedactingHttpClient,
+    #[cfg(test)]
     usage_endpoint: String,
 }
 
@@ -51,15 +52,13 @@ impl ClaudeQuotaProvider {
         Self {
             credentials,
             http,
+            #[cfg(test)]
             usage_endpoint: USAGE_ENDPOINT.to_owned(),
         }
     }
 
-    /// Test-only transport seam for a controlled loopback HTTP server. The
-    /// production constructors always retain the fixed HTTPS Anthropic endpoint
-    /// and its normal host/redirect policy.
-    #[doc(hidden)]
-    pub fn with_resolver_and_test_endpoint(
+    #[cfg(test)]
+    fn with_resolver_and_test_endpoint_for_test(
         credentials: Arc<dyn ClaudeCredentialResolver>,
         endpoint: &str,
     ) -> Result<Self, QuotaError> {
@@ -89,10 +88,14 @@ impl ClaudeQuotaProvider {
             .credentials
             .resolve(access)
             .map_err(credential_error_to_quota_error)?;
+        #[cfg(test)]
+        let usage_endpoint = self.usage_endpoint.as_str();
+        #[cfg(not(test))]
+        let usage_endpoint = USAGE_ENDPOINT;
         let request = self
             .http
             .get_bearer(
-                &self.usage_endpoint,
+                usage_endpoint,
                 credentials.access_token(),
                 &[("anthropic-beta", OAUTH_BETA_HEADER)],
             )
@@ -196,11 +199,125 @@ fn schema_error() -> QuotaError {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{
+        fs,
+        io::{Read, Write},
+        net::TcpListener,
+        sync::{Arc, Mutex},
+        thread,
+    };
 
     use tempfile::TempDir;
 
     use super::*;
+    use crate::providers::claude_credentials::parse_credential_payload;
+
+    struct CanaryResolver {
+        accesses: Arc<Mutex<Vec<ClaudeCredentialAccess>>>,
+    }
+
+    impl ClaudeCredentialResolver for CanaryResolver {
+        fn resolve(
+            &self,
+            access: ClaudeCredentialAccess,
+        ) -> Result<super::super::claude_credentials::ClaudeOAuthSecret, ClaudeCredentialError>
+        {
+            self.accesses.lock().unwrap().push(access);
+            parse_credential_payload(
+                br#"{"claudeAiOauth":{"accessToken":"CLAUDE-KEYCHAIN-CANARY"}}"#,
+            )
+        }
+    }
+
+    #[tokio::test]
+    async fn test_only_provider_endpoint_keeps_parser_canary_off_success_and_failure_surfaces() {
+        let canary = "CLAUDE-KEYCHAIN-CANARY";
+        let accesses = Arc::new(Mutex::new(Vec::new()));
+        let success_payload = include_str!("../../../../Fixtures/quota/claude/usage-success.json");
+        let success_response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            success_payload.len(),
+            success_payload
+        )
+        .into_bytes();
+        let (success_endpoint, success_server) = capturing_local_server(success_response);
+        let success_provider = ClaudeQuotaProvider::with_resolver_and_test_endpoint_for_test(
+            Arc::new(CanaryResolver {
+                accesses: Arc::clone(&accesses),
+            }),
+            &success_endpoint,
+        )
+        .unwrap();
+
+        let snapshot = success_provider
+            .fetch_with_credential_access(ClaudeCredentialAccess::UserInitiatedAllowUI)
+            .await
+            .unwrap();
+        let success_request = String::from_utf8(success_server.join().unwrap()).unwrap();
+
+        assert!(success_request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer claude-keychain-canary"));
+        assert_eq!(success_request.matches(canary).count(), 1);
+        assert!(!format!("{snapshot:?}").contains(canary));
+        assert!(!serde_json::to_string(&snapshot).unwrap().contains(canary));
+
+        let (failure_endpoint, failure_server) = capturing_local_server(
+            b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                .to_vec(),
+        );
+        let failure_provider = ClaudeQuotaProvider::with_resolver_and_test_endpoint_for_test(
+            Arc::new(CanaryResolver {
+                accesses: Arc::clone(&accesses),
+            }),
+            &failure_endpoint,
+        )
+        .unwrap();
+
+        let error = failure_provider
+            .fetch_with_credential_access(ClaudeCredentialAccess::UserInitiatedAllowUI)
+            .await
+            .unwrap_err();
+        let failure_request = String::from_utf8(failure_server.join().unwrap()).unwrap();
+
+        assert!(failure_request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer claude-keychain-canary"));
+        assert_eq!(failure_request.matches(canary).count(), 1);
+        assert!(!format!("{error:?}").contains(canary));
+        assert!(!serde_json::to_string(&error).unwrap().contains(canary));
+        assert_eq!(
+            accesses.lock().unwrap().as_slice(),
+            [
+                ClaudeCredentialAccess::UserInitiatedAllowUI,
+                ClaudeCredentialAccess::UserInitiatedAllowUI,
+            ]
+        );
+    }
+
+    fn capturing_local_server(response: Vec<u8>) -> (String, thread::JoinHandle<Vec<u8>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}/usage", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 1024];
+            loop {
+                let read = stream.read(&mut chunk).unwrap();
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..read]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            stream.write_all(&response).unwrap();
+            stream.flush().unwrap();
+            request
+        });
+        (endpoint, server)
+    }
 
     #[test]
     fn malformed_expiry_is_unusable_oauth_evidence() {
