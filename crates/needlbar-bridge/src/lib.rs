@@ -348,6 +348,7 @@ fn bridge_error_from_quota(error: QuotaError) -> BridgeError {
         QuotaErrorCode::NotInstalled => "notInstalled",
         QuotaErrorCode::RequiresAuthentication => "requiresAuthentication",
         QuotaErrorCode::AuthenticationExpired => "authenticationExpired",
+        QuotaErrorCode::PermissionDenied => "permissionDenied",
         QuotaErrorCode::RateLimited => "rateLimited",
         QuotaErrorCode::NetworkUnavailable => "networkUnavailable",
         QuotaErrorCode::ServiceUnavailable | QuotaErrorCode::ProviderUnavailable => {
@@ -355,10 +356,14 @@ fn bridge_error_from_quota(error: QuotaError) -> BridgeError {
         }
         QuotaErrorCode::SchemaChanged => "schemaChanged",
     };
+    let message = match error.code {
+        QuotaErrorCode::PermissionDenied => "Provider credential access was denied.",
+        _ => error.message,
+    };
     BridgeError {
         provider: Some("cursor".to_owned()),
         code: code.to_owned(),
-        message: error.message.to_owned(),
+        message: message.to_owned(),
         action: error.action.map(|action| match action {
             needlbar_quota::QuotaAction::ConnectCursor => "connectCursor".to_owned(),
         }),

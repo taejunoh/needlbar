@@ -67,6 +67,7 @@ fn bridge_error_from_quota(error: QuotaError) -> BridgeError {
         QuotaErrorCode::NotInstalled => "notInstalled",
         QuotaErrorCode::RequiresAuthentication => "requiresAuthentication",
         QuotaErrorCode::AuthenticationExpired => "authenticationExpired",
+        QuotaErrorCode::PermissionDenied => "permissionDenied",
         QuotaErrorCode::RateLimited => "rateLimited",
         QuotaErrorCode::NetworkUnavailable => "networkUnavailable",
         QuotaErrorCode::ServiceUnavailable | QuotaErrorCode::ProviderUnavailable => {
@@ -88,6 +89,7 @@ fn safe_quota_message(code: &str) -> &'static str {
         "notInstalled" => "The provider application is not available.",
         "requiresAuthentication" => "Provider authentication is required.",
         "authenticationExpired" => "Provider authentication has expired.",
+        "permissionDenied" => "Provider credential access was denied.",
         "rateLimited" => "The provider rate limit was reached.",
         "networkUnavailable" => "The provider could not be reached.",
         "providerUnavailable" => "The provider is currently unavailable.",
