@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-25
 **Branch:** `main`
-**Current phase:** Provider-managed Claude/Codex browser-login design amendment approved; implementation plan ready
-**Next action:** Execute Task 1 of `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md`, beginning with Claude credential-access mode and Keychain resolver RED tests
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 1 complete and review-approved; release acceptance remains paused
+**Next action:** Execute Task 2 of `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md`, beginning with RED ABI/intent-isolation tests for Claude and Codex-only exports
 
 ## Source of Truth
 
@@ -493,11 +493,21 @@ The user approved a deliberate post-plan design change before release acceptance
 
 The approved delta spec is `docs/superpowers/specs/2026-08-25-provider-managed-browser-login-design.md`. The test-first execution plan is `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md`.
 
-No feature implementation or verification has been performed for this amendment yet. The pre-existing Task 15 verification remains valid for the current code, but release acceptance is paused until the browser-login plan is implemented and reverified.
+### Task 1 Follow-Up Verification
+
+Task 1 of the provider-managed browser-login follow-up is complete and review-approved. The implementation was delivered in focused commits:
+
+- `6611ac0` — add prompt-safe Claude credential resolution.
+- `35cecf0` — cover Claude bearer canary redaction.
+- `57331fa` — confine the Claude test endpoint seam.
+
+TDD RED was observed for the missing credential-access API and the follow-up test seams before implementation. Final verification passed: Claude integration — 16 tests; full `needlbar-quota` — 46 tests; formatting check; Clippy with `-D warnings`; default Cargo check; and `git diff --check`.
+
+No real Keychain access, UI interaction, or external provider call was performed. The spec-compliance review passed, and the code-quality review passed with no issues. The pre-existing Task 15 verification remains valid for the current code, but release acceptance remains paused; the full authentication amendment is not complete.
 
 ## Required Next Action
 
-Execute Task 1 of the provider-managed browser-login plan: add RED tests for `BackgroundNoUI` versus `UserInitiatedAllowUI`, exact-service Keychain resolution, permission/error mapping, and credential redaction before implementing the Rust credential boundary. Work one numbered follow-up task at a time and run `make test` before completing the feature. After the amendment passes credentialed Claude/Codex acceptance, resume the notarization/tag/release gate.
+Execute Task 2 of the provider-managed browser-login plan: begin with RED ABI/intent-isolation tests for the Claude and Codex-only exports. Task 1 is complete and reviewed; work one numbered follow-up task at a time and run `make test` before completing the feature. Release acceptance remains paused, and the full authentication amendment must not be claimed complete until the remaining tasks and credentialed Claude/Codex acceptance pass; only then resume the notarization/tag/release gate.
 
 ## v0.1 Constraints to Preserve
 
