@@ -170,6 +170,37 @@ public enum ProviderLoginSignalResult: Equatable, Sendable {
     case failed
 }
 
+public enum ProviderLoginChildFileAction: Equatable, Sendable {
+    case openNullForRead(descriptor: Int32)
+    case openNullForWrite(descriptor: Int32)
+}
+
+public struct ProviderLoginSpawnSpecification: Equatable, Sendable {
+    public let executablePath: String
+    public let argv: [String]
+    public let environment: [String]
+    public let fileActions: [ProviderLoginChildFileAction]
+    public let closeOnExecByDefault: Bool
+    public let clearsSignalMask: Bool
+
+    public init?(_ command: ProviderLoginCommand) {
+        let executablePath = command.executableURL.standardizedFileURL.path
+        let argv = [executablePath] + command.arguments
+        let environment = command.environment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+        guard (argv + environment).allSatisfy({ !$0.utf8.contains(0) }) else { return nil }
+        self.executablePath = executablePath
+        self.argv = argv
+        self.environment = environment
+        self.fileActions = [
+            .openNullForRead(descriptor: STDIN_FILENO),
+            .openNullForWrite(descriptor: STDOUT_FILENO),
+            .openNullForWrite(descriptor: STDERR_FILENO),
+        ]
+        self.closeOnExecByDefault = true
+        self.clearsSignalMask = true
+    }
+}
+
 /// The runner owns this narrow syscall surface so the actor is the sole reaper of its child.
 public protocol ProviderLoginProcessSystem: Sendable {
     func spawn(_ command: ProviderLoginCommand) -> ProviderLoginSpawnResult
@@ -181,14 +212,10 @@ public struct ProviderLoginPOSIXSystem: ProviderLoginProcessSystem, Sendable {
     public init() {}
 
     public func spawn(_ command: ProviderLoginCommand) -> ProviderLoginSpawnResult {
-        let executable = command.executableURL.standardizedFileURL.path
-        let values = [executable] + command.arguments
-        let environment = command.environment
-            .sorted { $0.key < $1.key }
-            .map { "\($0.key)=\($0.value)" }
-        guard values.allSatisfy({ !$0.utf8.contains(0) }), environment.allSatisfy({ !$0.utf8.contains(0) }) else {
-            return .failed
-        }
+        guard let specification = ProviderLoginSpawnSpecification(command) else { return .failed }
+        let executable = specification.executablePath
+        let values = specification.argv
+        let environment = specification.environment
 
         let argv = values.map { Darwin.strdup($0) }
         let envp = environment.map { Darwin.strdup($0) }

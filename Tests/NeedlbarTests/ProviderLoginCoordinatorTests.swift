@@ -546,6 +546,60 @@ import Testing
     #expect(system.spawn(environmentNUL) == .failed)
 }
 
+@Test func spawnSpecificationPreservesTheDirectExecutableArgvEnvironmentAndFileActions() {
+    let command = ProviderLoginCommand(
+        provider: .claude,
+        executableURL: URL(fileURLWithPath: "/opt/test/bin/claude"),
+        arguments: ["auth", "login", "--claudeai"],
+        environment: ["HOME": "/tmp/home", "PATH": "/opt/test/bin:/usr/bin"]
+    )
+    let specification = ProviderLoginSpawnSpecification(command)
+
+    #expect(specification?.executablePath == "/opt/test/bin/claude")
+    #expect(specification?.argv == ["/opt/test/bin/claude", "auth", "login", "--claudeai"])
+    #expect(specification?.environment == ["HOME=/tmp/home", "PATH=/opt/test/bin:/usr/bin"])
+    #expect(specification?.fileActions == [
+        .openNullForRead(descriptor: STDIN_FILENO),
+        .openNullForWrite(descriptor: STDOUT_FILENO),
+        .openNullForWrite(descriptor: STDERR_FILENO),
+    ])
+    #expect(specification?.closeOnExecByDefault == true)
+    #expect(specification?.clearsSignalMask == true)
+}
+
+@Test(.serialized) func processRunnerReapsAHarmlessDirectChildThatExitsNormally() async throws {
+    let fixture = try SignalFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    let recorder = ProcessSignalRecorder()
+    let runner = ProviderLoginProcessRunner(processStarted: { pid in await recorder.recordStart(pid) }, processFinished: { pid in await recorder.recordFinish(pid) })
+    let task = Task { await runner.run(fixture.command(arguments: ["exit"], readyFile: fixture.directory.appendingPathComponent("ready"))) }
+    let pid = await recorder.waitForStart()
+
+    #expect(await task.value == .exited(status: 0))
+    #expect(await recorder.signals().isEmpty)
+    #expect(await recorder.finishedPIDs() == [pid])
+    #expect(Darwin.kill(pid, 0) == -1)
+}
+
+@Test(.serialized) func processRunnerSignalsOnlyTheDirectFixtureWhenItHasADescendant() async throws {
+    let fixture = try SignalFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    let recorder = ProcessSignalRecorder()
+    let ready = fixture.directory.appendingPathComponent("descendant-ready")
+    let runner = ProviderLoginProcessRunner(terminationGrace: .milliseconds(100), signalObserved: { pid, signal in await recorder.send(pid, signal) }, processStarted: { pid in await recorder.recordStart(pid) })
+    let task = Task { await runner.run(fixture.command(arguments: ["descendant"], readyFile: ready)) }
+    let directPID = await recorder.waitForStart()
+    let pids = try await fixture.pids(at: ready)
+    defer { _ = Darwin.kill(pids.child, SIGKILL) }
+
+    await runner.stop()
+    #expect(await task.value == .cancelled)
+    #expect(await recorder.signals() == [.init(pid: directPID, signal: SIGTERM)])
+    #expect(directPID == pids.parent)
+    #expect(pids.child != directPID)
+    #expect(Darwin.kill(pids.child, 0) == 0)
+}
+
 private struct FixedLoginResolver: ProviderLoginCommandResolving {
     func command(for provider: ProviderID) throws -> ProviderLoginCommand {
         guard provider != .cursor else { throw ProviderLoginCommandResolutionError.unsupportedProvider }
@@ -871,20 +925,29 @@ private struct SignalFixture {
             try """
         #include <signal.h>
         #include <fcntl.h>
+        #include <stdio.h>
         #include <stdlib.h>
         #include <unistd.h>
         static int term_fd = -1;
         static void exit_on_term(int ignored) { if (term_fd >= 0) write(term_fd, "T", 1); _exit(0); }
         int main(int argc, char **argv) {
+            int descendant_mode = argc == 2 && argv[1][0] == 'd';
+            int exit_mode = argc == 2 && argv[1][0] == 'e';
             signal(SIGTERM, exit_on_term);
             if (argc == 2 && argv[1][0] == 'i') signal(SIGTERM, SIG_IGN);
+            pid_t descendant = 0;
+            if (descendant_mode) {
+                descendant = fork();
+                if (descendant == 0) { signal(SIGTERM, SIG_IGN); for (;;) sleep(1); }
+            }
             const char *term = getenv("NEEDLBAR_FIXTURE_TERM");
             if (term) term_fd = open(term, O_WRONLY | O_CREAT, 0600);
             const char *ready = getenv("NEEDLBAR_FIXTURE_READY");
             if (ready) {
                 int fd = open(ready, O_WRONLY | O_CREAT, 0600);
-                if (fd >= 0) { write(fd, "1", 1); close(fd); }
+                if (fd >= 0) { if (descendant_mode) dprintf(fd, "%d %d", (int)getpid(), (int)descendant); else write(fd, "1", 1); close(fd); }
             }
+            if (exit_mode) return 0;
             for (;;) sleep(1);
         }
         """.write(to: source, atomically: true, encoding: .utf8)
@@ -914,6 +977,13 @@ private struct SignalFixture {
             arguments: arguments,
             environment: environment
         )
+    }
+
+    func pids(at url: URL) async throws -> (parent: Int32, child: Int32) {
+        try await waitForFixtureReady(at: url)
+        let parts = try String(contentsOf: url, encoding: .utf8).split(separator: " ").map { Int32($0) }
+        guard parts.count == 2, let parent = parts[0], let child = parts[1] else { throw SignalFixtureError.readyTimedOut }
+        return (parent, child)
     }
 }
 
