@@ -594,6 +594,45 @@ private struct ProviderLoginProcessRunnerTests {
     #expect(system.waitCount == 3)
 }
 
+@MainActor
+@Test func coordinatorRetainsAdmissionAfterAGenericWaitFailureUntilTheBackgroundReaperConfirmsExit() async {
+    let system = FailedWaitThenExitPOSIXSystem(pid: 72)
+    let reaperPoll = SuspensionGate()
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        pollSleeper: { _ in await reaperPoll.wait() },
+        system: system
+    )
+    let states = LoginStateRecorder()
+    let coordinator = ProviderLoginCoordinator(
+        resolver: FixedLoginResolver(),
+        runner: runner,
+        refreshQuota: { _ in true },
+        stateObserver: { provider, state in await states.record(provider, state) }
+    )
+
+    #expect(coordinator.connect(.claude))
+    await states.wait(for: .claude, state: .failed(.launchFailed))
+
+    let retryBeforeReap = coordinator.connect(.claude)
+    #expect(!retryBeforeReap)
+    guard !retryBeforeReap else { return }
+    await reaperPoll.waitForEntry()
+    #expect(await system.spawnCount() == 1)
+    #expect(await system.sentSignals().isEmpty)
+
+    await reaperPoll.release()
+    while !coordinator.connect(.claude) {
+        await Task.yield()
+    }
+    while await system.spawnCount() < 2 {
+        await Task.yield()
+    }
+    #expect(await system.spawnCount() == 2)
+    #expect(await system.sentSignals().isEmpty)
+    await states.wait(for: .claude, state: .failed(.providerRejected))
+}
+
 @Test func processRunnerReturnsBoundedSafeFailureAfterPersistentTERMFailureAndRetainsTheSoleReaper() async {
     let system = StagedPOSIXSystem(
         pid: 52,
@@ -1321,6 +1360,51 @@ private final class StagedPOSIXSystem: ProviderLoginProcessSystem, @unchecked Se
             termWaiters.append(continuation)
             lock.unlock()
         }
+    }
+}
+
+private final class FailedWaitThenExitPOSIXSystem: ProviderLoginProcessSystem, @unchecked Sendable {
+    private let lock = NSLock()
+    private let pid: Int32
+    private var spawnInvocations = 0
+    private var waitInvocations = 0
+    private var signals: [(Int32, Int32)] = []
+
+    init(pid: Int32) {
+        self.pid = pid
+    }
+
+    func spawn(_ command: ProviderLoginCommand) -> ProviderLoginSpawnResult {
+        lock.lock(); defer { lock.unlock() }
+        spawnInvocations += 1
+        return .spawned(pid: pid)
+    }
+
+    func waitForChild(_ pid: Int32) -> ProviderLoginWaitResult {
+        lock.lock(); defer { lock.unlock() }
+        if spawnInvocations > 1 { return .exited(status: 1) }
+        waitInvocations += 1
+        switch waitInvocations {
+        case 1, 2: return .failed
+        case 3: return .running
+        default: return .exited(status: 1)
+        }
+    }
+
+    func sendSignal(_ signal: Int32, to pid: Int32) -> ProviderLoginSignalResult {
+        lock.lock(); defer { lock.unlock() }
+        signals.append((pid, signal))
+        return .sent
+    }
+
+    func spawnCount() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        return spawnInvocations
+    }
+
+    func sentSignals() -> [(Int32, Int32)] {
+        lock.lock(); defer { lock.unlock() }
+        return signals
     }
 }
 

@@ -496,7 +496,15 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
 
     private func beginBackgroundReaping(_ identifier: UUID, pid: Int32) {
         guard case var .running(running)? = sessions[identifier], running.pid == pid else { return }
-        guard case let .terminating(waiters) = running.terminationState else { return }
+        let waiters: [CheckedContinuation<Void, Never>]
+        switch running.terminationState {
+        case .backgroundReaping:
+            return
+        case let .terminating(terminationWaiters):
+            waiters = terminationWaiters
+        case .idle:
+            waiters = []
+        }
         running.terminationState = .backgroundReaping
         sessions[identifier] = .running(running)
         waiters.forEach { $0.resume() }
@@ -516,8 +524,10 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
                 continue
             case let .exited(status):
                 await complete(identifier, pid: running.pid, outcome: running.stopReason.map(outcome(for:)) ?? .exited(status: status))
-            case .noChild, .failed:
+            case .noChild:
                 await complete(identifier, pid: running.pid, outcome: .launchFailed)
+            case .failed:
+                beginBackgroundReaping(identifier, pid: running.pid)
             }
         }
     }
@@ -538,11 +548,18 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         completeReapingWaiters(identifier)
     }
 
-    private func complete(_ identifier: UUID, pid: Int32, outcome: ProviderLoginProcessOutcome) async {
+    private func complete(
+        _ identifier: UUID,
+        pid: Int32,
+        outcome: ProviderLoginProcessOutcome,
+        recordPublicOutcome: Bool = true
+    ) async {
         guard case let .running(running)? = sessions[identifier], running.pid == pid else { return }
         sessions.removeValue(forKey: identifier)
         sessionProviders.removeValue(forKey: identifier)
-        finished[identifier] = outcome
+        if recordPublicOutcome {
+            finished[identifier] = outcome
+        }
         completeReapingWaiters(identifier)
         if case let .terminating(waiters) = running.terminationState {
             waiters.forEach { $0.resume() }
@@ -560,7 +577,6 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
     private func handOffToBackgroundReaper(_ identifier: UUID, pid: Int32) -> ProviderLoginProcessOutcome {
         guard case let .running(running)? = sessions[identifier], running.pid == pid else { return .launchFailed }
         guard case .backgroundReaping = running.terminationState else { return .cancelled }
-        finished[identifier] = .launchFailed
         let runner = self
         Task.detached { await runner.reapUntilExit(identifier, pid: pid) }
         return .launchFailed
@@ -569,12 +585,14 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
     private func reapUntilExit(_ identifier: UUID, pid: Int32) async {
         while case let .running(running)? = sessions[identifier], running.pid == pid {
             switch system.waitForChild(pid) {
-            case let .exited(status):
-                await complete(identifier, pid: pid, outcome: finished[identifier] ?? (running.stopReason.map(outcome(for:)) ?? .exited(status: status)))
+            case .exited:
+                await complete(identifier, pid: pid, outcome: .launchFailed, recordPublicOutcome: false)
                 return
-            case .noChild, .failed:
-                await complete(identifier, pid: pid, outcome: .launchFailed)
+            case .noChild:
+                await complete(identifier, pid: pid, outcome: .launchFailed, recordPublicOutcome: false)
                 return
+            case .failed:
+                try? await pollSleeper(.milliseconds(5))
             case .interrupted:
                 continue
             case .running:
