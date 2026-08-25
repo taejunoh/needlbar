@@ -619,6 +619,8 @@ public final class ProviderLoginCoordinator: ObservableObject {
     private let stateObserver: @Sendable (ProviderID, ProviderLoginState) async -> Void
     private let runFinished: @Sendable (ProviderID) async -> Void
     private var tasks: [ProviderID: Task<Void, Never>] = [:]
+    private var taskGenerations: [ProviderID: UInt64] = [:]
+    private var stoppingProviders: Set<ProviderID> = []
     private var generations: [ProviderID: UInt64] = [:]
 
     public init(
@@ -657,6 +659,7 @@ public final class ProviderLoginCoordinator: ObservableObject {
         tasks[provider] = Task { [weak self] in
             await self?.run(command, provider: provider, generation: generation)
         }
+        taskGenerations[provider] = generation
         return true
     }
 
@@ -665,13 +668,21 @@ public final class ProviderLoginCoordinator: ObservableObject {
     }
 
     public func stop() async {
-        let activeProviders = Array(tasks.keys)
+        let activeProviders = tasks.keys.filter { !stoppingProviders.contains($0) }
         for provider in activeProviders {
+            stoppingProviders.insert(provider)
             _ = nextGeneration(for: provider)
-            tasks.removeValue(forKey: provider)?.cancel()
+            tasks[provider]?.cancel()
             updateState(.idle, for: provider)
         }
         await runner.stop()
+        for provider in activeProviders {
+            let runner = runner
+            Task.detached { [weak self] in
+                await runner.waitForReaping(for: provider)
+                await self?.completeStoppedAdmission(for: provider)
+            }
+        }
     }
 
     private func run(_ command: ProviderLoginCommand, provider: ProviderID, generation: UInt64) async {
@@ -680,30 +691,33 @@ public final class ProviderLoginCoordinator: ObservableObject {
             Task { await observer(provider) }
         }
         await beforeProcessStart(provider)
-        guard isCurrent(generation, for: provider), !Task.isCancelled else { return }
+        guard isCurrent(generation, for: provider), !Task.isCancelled else {
+            finishAdmission(for: provider, generation: generation)
+            return
+        }
         updateState(.awaitingBrowser, for: provider)
         let outcome = await runner.run(command)
-        guard isCurrent(generation, for: provider) else { return }
 
-        switch outcome {
-        case let .exited(status) where status == 0:
-            updateState(.refreshingQuota, for: provider)
-            let verified = await refreshQuota(provider)
-            guard isCurrent(generation, for: provider) else { return }
-            updateState(verified ? .connected : .failed(.verificationFailed), for: provider)
-        case .exited:
-            updateState(.failed(.providerRejected), for: provider)
-        case .launchFailed:
-            updateState(.failed(.launchFailed), for: provider)
-        case .timedOut:
-            updateState(.failed(.timedOut), for: provider)
-        case .cancelled:
-            updateState(.failed(.cancelled), for: provider)
+        if isCurrent(generation, for: provider) {
+            switch outcome {
+            case let .exited(status) where status == 0:
+                updateState(.refreshingQuota, for: provider)
+                let verified = await refreshQuota(provider)
+                if isCurrent(generation, for: provider) {
+                    updateState(verified ? .connected : .failed(.verificationFailed), for: provider)
+                }
+            case .exited:
+                updateState(.failed(.providerRejected), for: provider)
+            case .launchFailed:
+                updateState(.failed(.launchFailed), for: provider)
+            case .timedOut:
+                updateState(.failed(.timedOut), for: provider)
+            case .cancelled:
+                updateState(.failed(.cancelled), for: provider)
+            }
         }
         if outcome == .launchFailed { await runner.waitForReaping(for: provider) }
-        if isCurrent(generation, for: provider) {
-            tasks[provider] = nil
-        }
+        finishAdmission(for: provider, generation: generation, didReap: outcome == .launchFailed)
     }
 
     private func nextGeneration(for provider: ProviderID) -> UInt64 {
@@ -714,6 +728,21 @@ public final class ProviderLoginCoordinator: ObservableObject {
 
     private func isCurrent(_ generation: UInt64, for provider: ProviderID) -> Bool {
         generations[provider] == generation
+    }
+
+    private func finishAdmission(for provider: ProviderID, generation: UInt64, didReap: Bool = false) {
+        if taskGenerations[provider] == generation {
+            tasks[provider] = nil
+            taskGenerations[provider] = nil
+        } else if didReap {
+            completeStoppedAdmission(for: provider)
+        }
+    }
+
+    private func completeStoppedAdmission(for provider: ProviderID) {
+        guard stoppingProviders.remove(provider) != nil else { return }
+        tasks[provider] = nil
+        taskGenerations[provider] = nil
     }
 
     private func updateState(_ state: ProviderLoginState, for provider: ProviderID) {

@@ -218,12 +218,6 @@ import Testing
         stateObserver: { provider, state in await states.record(provider, state) },
         runFinished: { provider in await finished.record(provider) }
     )
-    defer {
-        Task {
-            await runner.completeNaturalExitAndReap(for: .claude)
-            await runner.completeNaturalExitAndReap(for: .codex)
-        }
-    }
 
     #expect(coordinator.connect(.claude))
     #expect(coordinator.connect(.codex))
@@ -242,6 +236,8 @@ import Testing
     #expect(coordinator.connect(.claude))
     await runner.waitForInvocation(of: .claude, count: 2)
     #expect(await runner.invocationCount(for: .claude) == 2)
+    await runner.completeNaturalExitAndReap(for: .codex)
+    await finished.wait(for: .codex)
 }
 
 @MainActor
@@ -311,6 +307,48 @@ import Testing
 }
 
 @MainActor
+@Test func coordinatorRetainsStoppedProvidersAdmissionThroughTerminationAndBackgroundReaping() async {
+    let runner = StopAndReapLoginRunner()
+    let finished = RunCompletionRecorder()
+    let coordinator = ProviderLoginCoordinator(
+        resolver: FixedLoginResolver(),
+        runner: runner,
+        refreshQuota: { _ in true },
+        runFinished: { provider in await finished.record(provider) }
+    )
+
+    #expect(coordinator.connect(.claude))
+    await runner.waitForStart(.claude)
+
+    let stop = Task { await coordinator.stop() }
+    await runner.waitForStopStart()
+
+    #expect(!coordinator.connect(.claude))
+    #expect(await runner.invocationCount(for: .claude) == 1)
+
+    #expect(coordinator.connect(.codex))
+    await runner.waitForStart(.codex)
+    #expect(await runner.invocationCount(for: .codex) == 1)
+
+    await runner.releaseTerminationGrace()
+    await stop.value
+    await runner.waitForReapingWaiterCount(for: .claude, count: 2)
+
+    #expect(!coordinator.connect(.claude))
+    #expect(await runner.invocationCount(for: .claude) == 1)
+
+    await runner.completeNaturalExitAndReap(for: .claude)
+    await finished.wait(for: .claude)
+
+    #expect(coordinator.connect(.claude))
+    await runner.waitForInvocation(of: .claude, count: 2)
+    await runner.complete(.claude, with: .cancelled)
+    await finished.wait(for: .claude, count: 2)
+    await runner.complete(.codex, with: .cancelled)
+    await finished.wait(for: .codex)
+}
+
+@MainActor
 @Test func coordinatorStopBeforeTheSpawnedTaskPassesItsStartBarrierNeverLaunchesOrMutates() async {
     let startGate = SuspensionGate()
     let runner = CountingLoginRunner()
@@ -349,7 +387,7 @@ private struct ProviderLoginProcessRunnerTests {
         preLaunch: { await prelaunch.wait() },
         processStarted: { pid in await starts.recordStart(pid) }
     )
-    let task = Task { await runner.run(fixture.command(readyFile: fixture.directory.appendingPathComponent("unused-ready"))) }
+    let task = Task.detached { await runner.run(fixture.command(readyFile: fixture.directory.appendingPathComponent("unused-ready"))) }
 
     await prelaunch.waitForEntry()
     await runner.stop()
@@ -373,7 +411,7 @@ private struct ProviderLoginProcessRunnerTests {
     )
     let readyFile = fixture.directory.appendingPathComponent("ready")
     let termFile = fixture.directory.appendingPathComponent("term")
-    let task = Task { await runner.run(fixture.command(readyFile: readyFile, termFile: termFile)) }
+    let task = Task.detached { await runner.run(fixture.command(readyFile: readyFile, termFile: termFile)) }
     let pid = await recorder.waitForStart()
     try await waitForFixtureReady(at: readyFile)
 
@@ -397,12 +435,12 @@ private struct ProviderLoginProcessRunnerTests {
         processStarted: { pid in await recorder.recordStart(pid) }
     )
     let readyFile = fixture.directory.appendingPathComponent("ready")
-    let task = Task { await runner.run(fixture.command(arguments: ["ignore-term"], readyFile: readyFile)) }
+    let task = Task.detached { await runner.run(fixture.command(arguments: ["ignore-term"], readyFile: readyFile)) }
     let pid = await recorder.waitForStart()
     try await waitForFixtureReady(at: readyFile)
     #expect(Darwin.kill(pid, 0) == 0)
 
-    let stop = Task { await runner.stop() }
+    let stop = Task.detached { await runner.stop() }
     await recorder.waitForTERM()
     #expect(Darwin.kill(pid, 0) == 0)
     await recorder.releaseTERM()
@@ -428,11 +466,11 @@ private struct ProviderLoginProcessRunnerTests {
         processFinished: { pid in await recorder.recordFinish(pid) }
     )
     let readyFile = fixture.directory.appendingPathComponent("ready")
-    let task = Task { await runner.run(fixture.command(arguments: ["ignore-term"], readyFile: readyFile)) }
+    let task = Task.detached { await runner.run(fixture.command(arguments: ["ignore-term"], readyFile: readyFile)) }
     let pid = await recorder.waitForStart()
     try await waitForFixtureReady(at: readyFile)
 
-    let stop = Task { await runner.stop() }
+    let stop = Task.detached { await runner.stop() }
     await recorder.waitForTERM()
     task.cancel()
     await recorder.releaseTERM()
@@ -460,7 +498,7 @@ private struct ProviderLoginProcessRunnerTests {
         processFinished: { pid in await recorder.recordFinish(pid) }
     )
     let readyFile = fixture.directory.appendingPathComponent("ready")
-    let task = Task { await runner.run(fixture.command(readyFile: readyFile)) }
+    let task = Task.detached { await runner.run(fixture.command(readyFile: readyFile)) }
     let pid = await recorder.waitForStart()
     try await waitForFixtureReady(at: readyFile)
 
@@ -488,7 +526,7 @@ private struct ProviderLoginProcessRunnerTests {
         processFinished: { pid in await recorder.recordFinish(pid) }
     )
     let readyFile = fixture.directory.appendingPathComponent("ready")
-    let task = Task { await runner.run(fixture.command(readyFile: readyFile)) }
+    let task = Task.detached { await runner.run(fixture.command(readyFile: readyFile)) }
     let pid = await recorder.waitForStart()
     try await waitForFixtureReady(at: readyFile)
     await timeoutGate.release()
@@ -530,10 +568,10 @@ private struct ProviderLoginProcessRunnerTests {
         pollSleeper: { _ in await normalPoll.wait() },
         system: system
     )
-    let task = Task { await runner.run(scriptedCommand()) }
+    let task = Task.detached { await runner.run(scriptedCommand()) }
 
     await system.waitForNormalPoll()
-    let stop = Task { await runner.stop() }
+    let stop = Task.detached { await runner.stop() }
     await system.waitForTERM()
     await stop.value
     await normalPoll.release()
@@ -560,10 +598,10 @@ private struct ProviderLoginProcessRunnerTests {
         pollSleeper: { duration in if duration != .zero { await normalPoll.wait() } },
         system: system
     )
-    let task = Task { await runner.run(scriptedCommand()) }
+    let task = Task.detached { await runner.run(scriptedCommand()) }
 
     await system.waitForNormalPoll()
-    let stop = Task { await runner.stop() }
+    let stop = Task.detached { await runner.stop() }
     await system.waitForTERM()
     await stop.value
     await normalPoll.release()
@@ -592,11 +630,11 @@ private struct ProviderLoginProcessRunnerTests {
     )
     let sleeper = SuspensionGate()
     let runner = ProviderLoginProcessRunner(timeout: .seconds(30), pollSleeper: { _ in await sleeper.wait() }, system: system)
-    let task = Task { await runner.run(scriptedCommand()) }
+    let task = Task.detached { await runner.run(scriptedCommand()) }
 
     await system.waitForSpawn()
     await sleeper.waitForEntry()
-    let stop = Task { await runner.stop() }
+    let stop = Task.detached { await runner.stop() }
     await system.waitForSignal()
     await sleeper.release()
     await stop.value
@@ -643,7 +681,7 @@ private struct ProviderLoginProcessRunnerTests {
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
     let recorder = ProcessSignalRecorder()
     let runner = ProviderLoginProcessRunner(processStarted: { pid in await recorder.recordStart(pid) }, processFinished: { pid in await recorder.recordFinish(pid) })
-    let task = Task { await runner.run(fixture.command(arguments: ["exit"], readyFile: fixture.directory.appendingPathComponent("ready"))) }
+    let task = Task.detached { await runner.run(fixture.command(arguments: ["exit"], readyFile: fixture.directory.appendingPathComponent("ready"))) }
     let pid = await recorder.waitForStart()
 
     #expect(await task.value == .exited(status: 0))
@@ -658,7 +696,7 @@ private struct ProviderLoginProcessRunnerTests {
     let recorder = ProcessSignalRecorder()
     let ready = fixture.directory.appendingPathComponent("descendant-ready")
     let runner = ProviderLoginProcessRunner(terminationGrace: .milliseconds(100), signalObserved: { pid, signal in await recorder.send(pid, signal) }, processStarted: { pid in await recorder.recordStart(pid) })
-    let task = Task { await runner.run(fixture.command(arguments: ["descendant"], readyFile: ready)) }
+    let task = Task.detached { await runner.run(fixture.command(arguments: ["descendant"], readyFile: ready)) }
     let directPID = await recorder.waitForStart()
     let pids = try await fixture.pids(at: ready)
     defer { _ = Darwin.kill(pids.child, SIGKILL) }
@@ -849,6 +887,105 @@ private actor DeferredReapingLoginRunner: ProviderLoginProcessRunning {
     }
 }
 
+private actor StopAndReapLoginRunner: ProviderLoginProcessRunning {
+    private var invocations: [ProviderID: Int] = [:]
+    private var invocationWaiters: [ProviderID: [(Int, CheckedContinuation<Void, Never>)]] = [:]
+    private var active: [ProviderID: CheckedContinuation<ProviderLoginProcessOutcome, Never>] = [:]
+    private var starts: Set<ProviderID> = []
+    private var startWaiters: [ProviderID: [CheckedContinuation<Void, Never>]] = [:]
+    private var stopStarted = false
+    private var stopStartWaiters: [CheckedContinuation<Void, Never>] = []
+    private var terminationGraceWaiters: [CheckedContinuation<Void, Never>] = []
+    private var terminationGraceReleased = false
+    private var reapedProviders: Set<ProviderID> = []
+    private var reapingWaiters: [ProviderID: [CheckedContinuation<Void, Never>]] = [:]
+    private var reapingWaiterObservers: [ProviderID: [(Int, CheckedContinuation<Void, Never>)]] = [:]
+
+    func run(_ command: ProviderLoginCommand) async -> ProviderLoginProcessOutcome {
+        let provider = command.provider
+        invocations[provider, default: 0] += 1
+        let count = invocations[provider, default: 0]
+        resumeInvocationWaiters(for: provider, count: count)
+        starts.insert(provider)
+        let startWaiters = startWaiters.removeValue(forKey: provider) ?? []
+        startWaiters.forEach { $0.resume() }
+        return await withCheckedContinuation { active[provider] = $0 }
+    }
+
+    func stop() async {
+        stopStarted = true
+        let waiters = stopStartWaiters
+        stopStartWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        let stopping = active
+        active.removeAll()
+        if !terminationGraceReleased {
+            await withCheckedContinuation { terminationGraceWaiters.append($0) }
+        }
+        stopping.values.forEach { $0.resume(returning: .launchFailed) }
+    }
+
+    func waitForReaping(for provider: ProviderID) async {
+        if reapedProviders.contains(provider) { return }
+        observeReapingWaiter(for: provider)
+        await withCheckedContinuation { reapingWaiters[provider, default: []].append($0) }
+    }
+
+    func waitForStart(_ provider: ProviderID) async {
+        if starts.contains(provider) { return }
+        await withCheckedContinuation { startWaiters[provider, default: []].append($0) }
+    }
+
+    func waitForStopStart() async {
+        if stopStarted { return }
+        await withCheckedContinuation { stopStartWaiters.append($0) }
+    }
+
+    func releaseTerminationGrace() {
+        terminationGraceReleased = true
+        let waiters = terminationGraceWaiters
+        terminationGraceWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+
+    func waitForInvocation(of provider: ProviderID, count: Int) async {
+        if invocations[provider, default: 0] >= count { return }
+        await withCheckedContinuation { invocationWaiters[provider, default: []].append((count, $0)) }
+    }
+
+    func invocationCount(for provider: ProviderID) -> Int { invocations[provider, default: 0] }
+
+    func waitForReapingWaiterCount(for provider: ProviderID, count: Int) async {
+        if reapingWaiters[provider, default: []].count >= count { return }
+        await withCheckedContinuation { reapingWaiterObservers[provider, default: []].append((count, $0)) }
+    }
+
+    func completeNaturalExitAndReap(for provider: ProviderID) {
+        reapedProviders.insert(provider)
+        let waiters = reapingWaiters.removeValue(forKey: provider) ?? []
+        waiters.forEach { $0.resume() }
+    }
+
+    func complete(_ provider: ProviderID, with outcome: ProviderLoginProcessOutcome) {
+        active.removeValue(forKey: provider)?.resume(returning: outcome)
+    }
+
+    private func resumeInvocationWaiters(for provider: ProviderID, count: Int) {
+        let matching = (invocationWaiters[provider] ?? []).enumerated().filter { count >= $0.element.0 }
+        for match in matching.reversed() {
+            invocationWaiters[provider]?.remove(at: match.offset).1.resume()
+        }
+    }
+
+    private func observeReapingWaiter(for provider: ProviderID) {
+        let currentCount = reapingWaiters[provider, default: []].count
+        let matching = (reapingWaiterObservers[provider] ?? []).enumerated().filter { currentCount + 1 >= $0.element.0 }
+        for match in matching.reversed() {
+            reapingWaiterObservers[provider]?.remove(at: match.offset).1.resume()
+        }
+    }
+}
+
 private actor CountingLoginRunner: ProviderLoginProcessRunning {
     private var calls = 0
 
@@ -862,18 +999,21 @@ private actor CountingLoginRunner: ProviderLoginProcessRunning {
 }
 
 private actor RunCompletionRecorder {
-    private var providers: Set<ProviderID> = []
-    private var waiters: [ProviderID: [CheckedContinuation<Void, Never>]] = [:]
+    private var completions: [ProviderID: Int] = [:]
+    private var waiters: [ProviderID: [(Int, CheckedContinuation<Void, Never>)]] = [:]
 
     func record(_ provider: ProviderID) {
-        providers.insert(provider)
-        let providerWaiters = waiters.removeValue(forKey: provider) ?? []
-        providerWaiters.forEach { $0.resume() }
+        completions[provider, default: 0] += 1
+        let count = completions[provider, default: 0]
+        let matching = (waiters[provider] ?? []).enumerated().filter { count >= $0.element.0 }
+        for match in matching.reversed() {
+            waiters[provider]?.remove(at: match.offset).1.resume()
+        }
     }
 
-    func wait(for provider: ProviderID) async {
-        if providers.contains(provider) { return }
-        await withCheckedContinuation { continuation in waiters[provider, default: []].append(continuation) }
+    func wait(for provider: ProviderID, count: Int = 1) async {
+        if completions[provider, default: 0] >= count { return }
+        await withCheckedContinuation { continuation in waiters[provider, default: []].append((count, continuation)) }
     }
 }
 
