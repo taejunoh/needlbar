@@ -6,9 +6,9 @@ import Testing
     let fixtureHome = try makeFixtureHome()
     defer { try? FileManager.default.removeItem(at: fixtureHome) }
 
-    let installed = fixtureHome.path.withCString { needlbar_test_install_fixture_runtime($0) }
-    #expect(installed)
-    defer { needlbar_test_clear_runtime() }
+    let fixtureSession = fixtureHome.path.withCString { needlbar_test_install_fixture_runtime($0) }
+    #expect(fixtureSession != 0)
+    defer { #expect(needlbar_test_clear_fixture_runtime(fixtureSession)) }
 
     let bridge = RustBridge()
     let usage = try RustUsageRepository(bridge: bridge).refresh()
@@ -47,10 +47,10 @@ import Testing
 }
 
 @_silgen_name("needlbar_test_install_fixture_runtime")
-private func needlbar_test_install_fixture_runtime(_ fixtureHome: UnsafePointer<CChar>) -> Bool
+private func needlbar_test_install_fixture_runtime(_ fixtureHome: UnsafePointer<CChar>) -> UInt64
 
-@_silgen_name("needlbar_test_clear_runtime")
-private func needlbar_test_clear_runtime()
+@_silgen_name("needlbar_test_clear_fixture_runtime")
+private func needlbar_test_clear_fixture_runtime(_ session: UInt64) -> Bool
 
 private func makeFixtureHome() throws -> URL {
     let home = FileManager.default.temporaryDirectory

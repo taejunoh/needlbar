@@ -1,9 +1,11 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use needlbar_quota::{
-    ClaudeCredentialAccess, ClaudeQuotaProvider, CodexQuotaProvider, CursorQuotaProvider,
-    ProviderId, ProviderQuotaSnapshot, QuotaAction, QuotaError, QuotaErrorCode, QuotaProvider,
+    ClaudeCredentialAccess, ClaudeQuotaProvider, ProviderId, ProviderQuotaSnapshot, QuotaAction,
+    QuotaError, QuotaErrorCode, QuotaProvider,
 };
+#[cfg(not(feature = "bridge-test-runtime"))]
+use needlbar_quota::{CodexQuotaProvider, CursorQuotaProvider};
 use serde::Serialize;
 
 use crate::envelope::{BridgeError, Envelope, SCHEMA_VERSION};
@@ -47,12 +49,17 @@ pub async fn collect_quota() -> QuotaCollection {
     if let Some((claude, codex, cursor)) = crate::test_runtime::all_quota_providers() {
         return collect_quota_with_providers(claude, codex, cursor).await;
     }
-    collect_quota_with_providers(
-        Arc::new(ClaudeQuotaProvider::new()),
-        Arc::new(CodexQuotaProvider::new()),
-        Arc::new(CursorQuotaProvider::new()),
-    )
-    .await
+    #[cfg(feature = "bridge-test-runtime")]
+    return test_runtime_unavailable_collection();
+    #[cfg(not(feature = "bridge-test-runtime"))]
+    {
+        collect_quota_with_providers(
+            Arc::new(ClaudeQuotaProvider::new()),
+            Arc::new(CodexQuotaProvider::new()),
+            Arc::new(CursorQuotaProvider::new()),
+        )
+        .await
+    }
 }
 
 /// Runs only the explicit Claude verification flow. Production construction is
@@ -63,7 +70,12 @@ pub async fn collect_claude_user_initiated() -> QuotaCollection {
     if let Some(source) = crate::test_runtime::claude_user_initiated_source() {
         return collect_claude_user_initiated_with_source(source).await;
     }
-    collect_claude_user_initiated_with_source(Arc::new(ClaudeQuotaProvider::new())).await
+    #[cfg(feature = "bridge-test-runtime")]
+    return test_runtime_unavailable_collection();
+    #[cfg(not(feature = "bridge-test-runtime"))]
+    {
+        collect_claude_user_initiated_with_source(Arc::new(ClaudeQuotaProvider::new())).await
+    }
 }
 
 pub async fn collect_claude_user_initiated_with_source(
@@ -81,7 +93,12 @@ pub async fn collect_codex_only() -> QuotaCollection {
     if let Some(provider) = crate::test_runtime::codex_quota_provider() {
         return collect_codex_with_provider(provider).await;
     }
-    collect_codex_with_provider(Arc::new(CodexQuotaProvider::new())).await
+    #[cfg(feature = "bridge-test-runtime")]
+    return test_runtime_unavailable_collection();
+    #[cfg(not(feature = "bridge-test-runtime"))]
+    {
+        collect_codex_with_provider(Arc::new(CodexQuotaProvider::new())).await
+    }
 }
 
 pub async fn collect_codex_with_provider(provider: Arc<dyn QuotaProvider>) -> QuotaCollection {
@@ -111,6 +128,17 @@ fn collection_from_results(
     }
 
     QuotaCollection { providers, errors }
+}
+
+#[cfg(feature = "bridge-test-runtime")]
+fn test_runtime_unavailable_collection() -> QuotaCollection {
+    collection_from_results([Err(QuotaError {
+        provider: None,
+        code: QuotaErrorCode::ProviderUnavailable,
+        message: "Bridge test fixture runtime was not installed.",
+        retry_after: None,
+        action: None,
+    })])
 }
 
 pub fn envelope_from_collection(collection: QuotaCollection) -> Envelope<QuotaPayload> {

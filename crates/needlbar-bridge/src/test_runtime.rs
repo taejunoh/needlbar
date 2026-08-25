@@ -5,8 +5,10 @@
 use std::{
     ffi::{c_char, CStr},
     path::PathBuf,
-    sync::{Arc, LazyLock, Mutex, MutexGuard},
-    thread,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, LazyLock, Mutex, MutexGuard,
+    },
 };
 
 use async_trait::async_trait;
@@ -16,7 +18,7 @@ use needlbar_quota::{
 
 use crate::{
     envelope::{BridgeError, Envelope},
-    quota::{self, QuotaCollection, QuotaPayload},
+    quota::{self},
     usage::{self, UsagePayload},
 };
 
@@ -28,6 +30,7 @@ type AllQuotaProviders = (
 
 #[derive(Clone)]
 struct FixtureRuntime {
+    session: u64,
     home: PathBuf,
     mode: FixtureMode,
 }
@@ -48,6 +51,7 @@ enum FixtureMode {
 static FIXTURE_RUNTIME: LazyLock<Mutex<Option<FixtureRuntime>>> =
     LazyLock::new(|| Mutex::new(None));
 static FIXTURE_SERIAL: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static NEXT_FIXTURE_SESSION: AtomicU64 = AtomicU64::new(1);
 
 /// Keeps feature-gated integration fixtures isolated despite Rust's parallel
 /// test execution. Production bridge code never observes this lock.
@@ -76,7 +80,7 @@ impl ProviderVerificationScope {
         install_provider_verification_fixture(claude, codex)
     }
     pub fn clear(&self) {
-        needlbar_test_clear_runtime();
+        clear_runtime_for_rust_tests();
     }
     pub fn install_blocking_claude_fixture(&self) -> BlockingClaudeFixture {
         let fixture = install_provider_verification_fixture(
@@ -84,10 +88,11 @@ impl ProviderVerificationScope {
             Ok(fixture_snapshot(ProviderId::Codex, "codex.primary", 50.0)),
         );
         let blocking = BlockingClaudeFixture::new(fixture);
-        install_runtime(FixtureRuntime {
+        assert!(install_runtime(FixtureRuntime {
+            session: 0,
             home: PathBuf::new(),
             mode: FixtureMode::ProviderVerificationBlocking(blocking.clone()),
-        });
+        }));
         blocking
     }
 }
@@ -247,18 +252,20 @@ pub fn install_provider_verification_fixture(
         codex_result,
         observations: Arc::new(Mutex::new(ProviderVerificationObservations::default())),
     };
-    install_runtime(FixtureRuntime {
+    assert!(install_runtime(FixtureRuntime {
+        session: 0,
         home: PathBuf::new(),
         mode: FixtureMode::ProviderVerification(fixture.clone()),
-    });
+    }));
     fixture
 }
 
 pub fn install_provider_verification_panic_fixture() {
-    install_runtime(FixtureRuntime {
+    assert!(install_runtime(FixtureRuntime {
+        session: 0,
         home: PathBuf::new(),
         mode: FixtureMode::ProviderVerificationPanic,
-    });
+    }));
 }
 
 pub fn reset_ffi_allocation_counts() {
@@ -272,22 +279,35 @@ pub fn ffi_allocation_counts() -> (usize, usize, usize) {
 /// Test-only fixture setup. This symbol is intentionally not declared in the
 /// public C header and exists only with the `bridge-test-runtime` Cargo feature.
 #[no_mangle]
-pub unsafe extern "C" fn needlbar_test_install_fixture_runtime(home: *const c_char) -> bool {
+pub unsafe extern "C" fn needlbar_test_install_fixture_runtime(home: *const c_char) -> u64 {
     if home.is_null() {
-        return false;
+        return 0;
     }
     let home = match unsafe { CStr::from_ptr(home) }.to_str() {
         Ok(value) if !value.is_empty() => PathBuf::from(value),
-        _ => return false,
+        _ => return 0,
     };
     if !home.is_dir() {
-        return false;
+        return 0;
     }
-    install_runtime(FixtureRuntime {
+    let mut slot = FIXTURE_RUNTIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if slot.is_some() {
+        return 0;
+    }
+    let session = loop {
+        let candidate = NEXT_FIXTURE_SESSION.fetch_add(1, Ordering::Relaxed);
+        if candidate != 0 {
+            break candidate;
+        }
+    };
+    *slot = Some(FixtureRuntime {
+        session,
         home,
         mode: FixtureMode::Integration,
     });
-    true
+    session
 }
 
 /// Installs a Rust-only fixture runtime that carries deliberately unsafe fake
@@ -303,28 +323,50 @@ pub fn install_redaction_fixture(
         return false;
     }
     install_runtime(FixtureRuntime {
+        session: 0,
         home,
         mode: FixtureMode::Redaction {
             claude_failure,
             codex_failure,
             cursor_failure,
         },
-    });
+    })
+}
+
+fn install_runtime(runtime: FixtureRuntime) -> bool {
+    let mut slot = FIXTURE_RUNTIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if slot.as_ref().is_some_and(|existing| existing.session != 0) {
+        return false;
+    }
+    *slot = Some(runtime);
     true
 }
 
-fn install_runtime(runtime: FixtureRuntime) {
-    *FIXTURE_RUNTIME
+pub fn clear_runtime_for_rust_tests() {
+    let mut slot = FIXTURE_RUNTIME
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(runtime);
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if slot.as_ref().is_some_and(|runtime| runtime.session == 0) {
+        *slot = None;
+    }
 }
 
-/// Clears the feature-gated fixture runtime after a Swift integration test.
 #[no_mangle]
-pub extern "C" fn needlbar_test_clear_runtime() {
-    *FIXTURE_RUNTIME
+pub extern "C" fn needlbar_test_clear_fixture_runtime(session: u64) -> bool {
+    let mut slot = FIXTURE_RUNTIME
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if slot
+        .as_ref()
+        .is_some_and(|runtime| runtime.session == session)
+    {
+        *slot = None;
+        true
+    } else {
+        false
+    }
 }
 
 pub fn usage_envelope() -> Option<Envelope<UsagePayload>> {
@@ -366,24 +408,6 @@ pub fn usage_envelope() -> Option<Envelope<UsagePayload>> {
         }
     }
     Some(envelope)
-}
-
-pub fn quota_envelope() -> Option<Envelope<QuotaPayload>> {
-    fixture_runtime()?;
-    let collection = collect_fixture_quota(FixtureQuotaRequest::All);
-    Some(quota::envelope_from_collection(collection))
-}
-
-pub fn claude_user_initiated_quota_envelope() -> Option<Envelope<QuotaPayload>> {
-    fixture_runtime()?;
-    let collection = collect_fixture_quota(FixtureQuotaRequest::ClaudeUserInitiated);
-    Some(quota::envelope_from_collection(collection))
-}
-
-pub fn codex_quota_envelope() -> Option<Envelope<QuotaPayload>> {
-    fixture_runtime()?;
-    let collection = collect_fixture_quota(FixtureQuotaRequest::CodexOnly);
-    Some(quota::envelope_from_collection(collection))
 }
 
 /// Factory-level fixture injection. The exported ABI still runs its normal
@@ -553,180 +577,6 @@ fn fixture_runtime() -> Option<FixtureRuntime> {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .clone()
-}
-
-#[derive(Clone, Copy)]
-enum FixtureQuotaRequest {
-    All,
-    ClaudeUserInitiated,
-    CodexOnly,
-}
-
-fn collect_fixture_quota(request: FixtureQuotaRequest) -> QuotaCollection {
-    let mode = fixture_runtime()
-        .expect("fixture quota only runs while a fixture runtime is installed")
-        .mode;
-    let worker = thread::Builder::new()
-        .name("needlbar-test-fixture-quota".to_owned())
-        .spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("test quota runtime");
-            runtime.block_on(async move {
-                match (mode, request) {
-                    (FixtureMode::Integration, FixtureQuotaRequest::All) => {
-                        quota::collect_quota_with_providers(
-                            Arc::new(FixtureQuotaProvider::success(
-                                ProviderId::Claude,
-                                "claude.session",
-                                20.0,
-                            )),
-                            Arc::new(FixtureQuotaProvider::success(
-                                ProviderId::Codex,
-                                "codex.primary",
-                                50.0,
-                            )),
-                            Arc::new(FixtureQuotaProvider::success(
-                                ProviderId::Cursor,
-                                "cursor.plan",
-                                90.0,
-                            )),
-                        )
-                        .await
-                    }
-                    (FixtureMode::Integration, FixtureQuotaRequest::ClaudeUserInitiated) => {
-                        quota::collect_claude_user_initiated_with_source(Arc::new(
-                            FixtureClaudeUserInitiatedSource::success("claude.session", 20.0),
-                        ))
-                        .await
-                    }
-                    (FixtureMode::Integration, FixtureQuotaRequest::CodexOnly) => {
-                        quota::collect_codex_with_provider(Arc::new(FixtureQuotaProvider::success(
-                            ProviderId::Codex,
-                            "codex.primary",
-                            50.0,
-                        )))
-                        .await
-                    }
-                    (
-                        FixtureMode::Redaction {
-                            claude_failure,
-                            codex_failure,
-                            cursor_failure,
-                        },
-                        FixtureQuotaRequest::All,
-                    ) => {
-                        quota::collect_quota_with_providers(
-                            Arc::new(FixtureQuotaProvider::failure(
-                                ProviderId::Claude,
-                                QuotaErrorCode::RequiresAuthentication,
-                                None,
-                                claude_failure,
-                            )),
-                            Arc::new(FixtureQuotaProvider::failure(
-                                ProviderId::Codex,
-                                QuotaErrorCode::NetworkUnavailable,
-                                None,
-                                codex_failure,
-                            )),
-                            Arc::new(FixtureQuotaProvider::failure(
-                                ProviderId::Cursor,
-                                QuotaErrorCode::RequiresAuthentication,
-                                Some(needlbar_quota::QuotaAction::ConnectCursor),
-                                cursor_failure,
-                            )),
-                        )
-                        .await
-                    }
-                    (
-                        FixtureMode::Redaction { claude_failure, .. },
-                        FixtureQuotaRequest::ClaudeUserInitiated,
-                    ) => {
-                        quota::collect_claude_user_initiated_with_source(Arc::new(
-                            FixtureClaudeUserInitiatedSource::failure(
-                                QuotaErrorCode::RequiresAuthentication,
-                                claude_failure,
-                            ),
-                        ))
-                        .await
-                    }
-                    (
-                        FixtureMode::Redaction { codex_failure, .. },
-                        FixtureQuotaRequest::CodexOnly,
-                    ) => {
-                        quota::collect_codex_with_provider(Arc::new(FixtureQuotaProvider::failure(
-                            ProviderId::Codex,
-                            QuotaErrorCode::NetworkUnavailable,
-                            None,
-                            codex_failure,
-                        )))
-                        .await
-                    }
-                    (FixtureMode::ProviderVerification(fixture), FixtureQuotaRequest::All) => {
-                        fixture.record_creation(ProviderId::Claude);
-                        fixture.record_creation(ProviderId::Codex);
-                        fixture.record_creation(ProviderId::Cursor);
-                        quota::collect_quota_with_providers(
-                            Arc::new(ProviderVerificationQuotaProvider::new(
-                                ProviderId::Claude,
-                                fixture.claude_result.clone(),
-                                fixture.clone(),
-                            )),
-                            Arc::new(ProviderVerificationQuotaProvider::new(
-                                ProviderId::Codex,
-                                fixture.codex_result.clone(),
-                                fixture.clone(),
-                            )),
-                            Arc::new(ProviderVerificationQuotaProvider::new(
-                                ProviderId::Cursor,
-                                Err(QuotaError {
-                                    provider: Some(ProviderId::Cursor),
-                                    code: QuotaErrorCode::RequiresAuthentication,
-                                    message: "Cursor authentication was not available.",
-                                    retry_after: None,
-                                    action: None,
-                                }),
-                                fixture,
-                            )),
-                        )
-                        .await
-                    }
-                    (
-                        FixtureMode::ProviderVerification(fixture),
-                        FixtureQuotaRequest::ClaudeUserInitiated,
-                    ) => {
-                        fixture.record_creation(ProviderId::Claude);
-                        quota::collect_claude_user_initiated_with_source(Arc::new(
-                            ProviderVerificationClaudeSource::new(fixture),
-                        ))
-                        .await
-                    }
-                    (
-                        FixtureMode::ProviderVerification(fixture),
-                        FixtureQuotaRequest::CodexOnly,
-                    ) => {
-                        fixture.record_creation(ProviderId::Codex);
-                        quota::collect_codex_with_provider(Arc::new(
-                            ProviderVerificationQuotaProvider::new(
-                                ProviderId::Codex,
-                                fixture.codex_result.clone(),
-                                fixture,
-                            ),
-                        ))
-                        .await
-                    }
-                    (FixtureMode::ProviderVerificationPanic, _) => {
-                        panic!("provider verification fixture panic")
-                    }
-                    (FixtureMode::ProviderVerificationBlocking(_), _) => {
-                        panic!("blocking fixture uses factory injection")
-                    }
-                }
-            })
-        })
-        .expect("test quota worker starts");
-    worker.join().expect("test quota worker joins")
 }
 
 struct FixtureClaudeUserInitiatedSource {

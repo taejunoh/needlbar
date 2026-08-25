@@ -1,8 +1,9 @@
 use std::{
-    ffi::CStr,
+    ffi::{CStr, CString},
     fs,
     os::raw::c_char,
     path::{Path, PathBuf},
+    sync::{Arc, Barrier},
 };
 
 use needlbar_bridge::{
@@ -253,6 +254,72 @@ fn provider_verification_fixture_is_scoped_through_worker_and_tracks_real_ffi_al
     assert_eq!(value["data"]["providers"][0]["provider"], "claude");
 }
 
+#[test]
+fn c_fixture_sessions_reject_cross_client_clear_and_never_fall_back_to_production() {
+    // This exercises the feature-only C session protocol used by Swift. A
+    // competing client cannot replace or clear the owner's fixture, and an
+    // absent fixture produces a deterministic bridge error instead of making
+    // a real provider/Keychain/network call.
+    let _serial = test_runtime::serial_guard();
+    let _clear = RuntimeCleanup;
+    let owner_home = fixture_home();
+    let owner_path = CString::new(owner_home.path().to_string_lossy().as_bytes())
+        .expect("fixture path is a C string");
+    let owner_session =
+        unsafe { test_runtime::needlbar_test_install_fixture_runtime(owner_path.as_ptr()) };
+    assert_ne!(owner_session, 0);
+    assert!(
+        !test_runtime::install_redaction_fixture(
+            owner_home.path().to_path_buf(),
+            "ignored".to_owned(),
+            "ignored".to_owned(),
+            "ignored".to_owned(),
+        ),
+        "a Rust fixture helper cannot replace an active C session"
+    );
+
+    let competing_home = fixture_home();
+    let competing_path = CString::new(competing_home.path().to_string_lossy().as_bytes())
+        .expect("fixture path is a C string");
+    let barrier = Arc::new(Barrier::new(2));
+    let competing_barrier = Arc::clone(&barrier);
+    let competing = std::thread::spawn(move || {
+        competing_barrier.wait();
+        let replacement =
+            unsafe { test_runtime::needlbar_test_install_fixture_runtime(competing_path.as_ptr()) };
+        let cross_clear = test_runtime::needlbar_test_clear_fixture_runtime(owner_session + 1);
+        (replacement, cross_clear)
+    });
+
+    barrier.wait();
+    let owner_json = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let owner_value: serde_json::Value = serde_json::from_str(&owner_json).expect("owner JSON");
+    assert_eq!(owner_value["data"]["providers"][0]["provider"], "claude");
+
+    let (replacement, cross_clear) = competing.join().expect("competing client joins");
+    assert_eq!(replacement, 0, "a second C client cannot replace a session");
+    assert!(
+        !cross_clear,
+        "a C client cannot clear a session it did not install"
+    );
+    assert!(test_runtime::needlbar_test_clear_fixture_runtime(
+        owner_session
+    ));
+
+    let unavailable = ffi_json(needlbar_codex_quota_snapshot_json);
+    let unavailable_value: serde_json::Value =
+        serde_json::from_str(&unavailable).expect("unavailable JSON");
+    assert_eq!(
+        unavailable_value["data"]["providers"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        unavailable_value["errors"][0]["code"],
+        "providerUnavailable"
+    );
+    assert!(unavailable_value["errors"][0]["provider"].is_null());
+}
+
 fn ffi_json(call: unsafe extern "C" fn() -> *const c_char) -> String {
     let pointer = unsafe { call() };
     assert!(
@@ -312,7 +379,7 @@ struct RuntimeCleanup;
 
 impl Drop for RuntimeCleanup {
     fn drop(&mut self) {
-        test_runtime::needlbar_test_clear_runtime();
+        test_runtime::clear_runtime_for_rust_tests();
     }
 }
 

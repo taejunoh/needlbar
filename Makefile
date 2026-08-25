@@ -48,7 +48,7 @@ swift-test:
 	./scripts/build-rust.sh --features bridge-test-runtime; \
 	strings target/release/libneedlbar_bridge.a > "$$symbols_file"; \
 	grep -F 'needlbar_test_install_fixture_runtime' "$$symbols_file" >/dev/null; \
-	grep -F 'needlbar_test_clear_runtime' "$$symbols_file" >/dev/null; \
+	grep -F 'needlbar_test_clear_fixture_runtime' "$$symbols_file" >/dev/null; \
 	swift package clean; \
 	swift test
 
