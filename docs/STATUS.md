@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 credentialed acceptance is complete; hosted CI confirmation through a PR/merge path and the remaining release gates are pending
-**Next action:** Verify hosted CI through a PR or merge path, then complete the Cursor explicit-session gate (user-provided token required) and the notarization-secrets gate
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 credentialed acceptance is complete; PR #1 is open and hosted CI is queued with zero jobs during a GitHub Actions major outage, while the remaining release gates are pending
+**Next action:** Wait for the GitHub Actions outage to resolve, then confirm hosted CI on the current PR head and record the result; next product gates remain Cursor explicit-session acceptance and notarization secrets
 
 ## Source of Truth
 
@@ -634,13 +634,14 @@ Fresh verification evidence:
 - Strict workspace Clippy passed. `make test` passed with the pinned `tokscale-core` suite at 1372 passed, 0 failed, 1 ignored, and Swift at 124 passed.
 - The packaging regression passed through `make test`; codesign verification, zip creation, and packaged-app smoke passed. `vendor/tokscale-core` remained clean at the approved pinned revision.
 - Specification and code-quality reviews were approved after the `package-test` CI linkage was added.
-- Branch commit `5b1d6fb` was pushed successfully to `origin/codex/provider-browser-login`. The CI workflow creates runs for pushes to `main`/`feat/**`; this branch push created no hosted run because no PR exists. Hosted CI must be confirmed through a PR or merge path.
+- Branch commit `5b1d6fb` was pushed successfully to `origin/codex/provider-browser-login`. Provider-login acceptance and status commit `9ed317a` is included in open PR #1 ([github.com/taejunoh/needlbar/pull/1](https://github.com/taejunoh/needlbar/pull/1)).
+- Hosted CI run `32984248738` is queued with zero jobs. GitHub's official Actions status reported `major_outage` as of `2026-08-26T15:11:58Z`; hosted CI has not passed and its result remains pending until the outage resolves and the run completes.
 
 Release remains unreleased: no tag or GitHub Release was created, and notarization/stapling/publication were not run.
 
 ## Required Next Action
 
-Verify hosted CI through a PR or merge path, then complete the Cursor explicit-session gate (user-provided token required) and the notarization-secrets gate. Preserve unreleased status, make no notarization or release claim, and record any blocker before the final user-authorized release acceptance.
+Wait for the GitHub Actions outage to resolve, then confirm hosted CI on the current PR head and record the result; next product gates remain Cursor explicit-session acceptance (user-provided token required) and the notarization-secrets gate. Preserve unreleased status, make no notarization or release claim, and record any blocker before the final user-authorized release acceptance.
 
 ## v0.1 Constraints to Preserve
 
