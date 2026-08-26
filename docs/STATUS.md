@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** The approved Cursor local-usage/dashboard amendment is in the final Task 5 fix-round gate; the branch remains unreleased and unmerged.
-**Next action:** Run the final fix-round exact-head CI, then return to the separate notarization/release-secrets gate. Do not request, record, or handle a Cursor credential; do not create a tag or release.
+**Current phase:** The approved Cursor local-usage/dashboard amendment has passed the Task 5 fix-round gate; the branch remains unreleased and unmerged.
+**Next action:** Complete the replacement exact-head CI for the documentation/CI cleanup, then return to the separate notarization/release-secrets gate. Do not request, record, or handle a Cursor credential; do not create a tag or release.
 
 ## Source of Truth
 
@@ -734,9 +734,13 @@ tested and linted through its manifest in Makefile/CI, with no vendor source or 
 change. The live packaged UI was re-attempted through Orca,
 macOS System Events AXPress/AXPick, and the public Settings window seam; the status item's
 AX frame remains zero-sized/off-screen and no Settings window is exposed, so visual
-click-through remains an environment limitation. The fix-round commit is the final exact-head
-CI gate; its resulting run/head will be recorded in the Task 5 report after CI, with no tag
-or release action authorized here.
+click-through remains an environment limitation. Fix-round commit `dc7e29a44b521fa417b0ca20e5036e9afc2df7e`
+passed exact-head CI run [33018740992](https://github.com/taejunoh/needlbar/actions/runs/33018740992),
+including owned workspace tests, explicit vendored tokscale-core test and clippy, full
+Swift/package verification, and packaged-app smoke checks. The follow-up cleanup restores the
+existing CI workspace test's original feature scope while retaining bridge-test runtime
+coverage in Makefile and the explicit vendor checks; its replacement exact-head result will
+be recorded only in the Task 5 report, with no tag or release action authorized here.
 
 ## v0.1 Constraints to Preserve
 

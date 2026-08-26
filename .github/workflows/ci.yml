@@ -42,7 +42,7 @@ jobs:
           swift --version
 
       - name: Test Rust workspace
-        run: cargo test --workspace --features bridge-test-runtime
+        run: cargo test --workspace
 
       - name: Test vendored tokscale-core
         run: cargo test --manifest-path vendor/tokscale-core/Cargo.toml
