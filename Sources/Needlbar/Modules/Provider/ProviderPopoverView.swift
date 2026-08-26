@@ -1,6 +1,11 @@
 import SwiftUI
 import NeedlbarCore
 
+public enum ProviderAuthenticationAction: Equatable, Sendable {
+    case browserLogin(title: String)
+    case openSettings(title: String)
+}
+
 public struct ProviderPopoverPresentation: Equatable, Sendable {
     public let provider: ProviderID
     public let tokensToday: String?
@@ -32,15 +37,33 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
     public var requiresProviderSignIn: Bool {
         quotaFreshness == .requiresAuthentication
     }
+
+    public var authenticationAction: ProviderAuthenticationAction? {
+        guard requiresProviderSignIn else { return nil }
+        switch provider {
+        case .claude:
+            return .browserLogin(title: "Sign in with Claude")
+        case .codex:
+            return .browserLogin(title: "Sign in with ChatGPT")
+        case .cursor:
+            return .openSettings(title: "Open Settings")
+        }
+    }
 }
 
 public struct ProviderPopoverView: View {
     private let presentation: ProviderPopoverPresentation
     private let onRetry: () -> Void
+    private let onAuthenticationAction: (ProviderAuthenticationAction) -> Void
 
-    public init(snapshot: ProviderSnapshot, onRetry: @escaping () -> Void = {}) {
+    public init(
+        snapshot: ProviderSnapshot,
+        onRetry: @escaping () -> Void = {},
+        onAuthenticationAction: @escaping (ProviderAuthenticationAction) -> Void = { _ in }
+    ) {
         presentation = ProviderPopoverPresentation(snapshot: snapshot)
         self.onRetry = onRetry
+        self.onAuthenticationAction = onAuthenticationAction
     }
 
     public var body: some View {
@@ -78,10 +101,11 @@ public struct ProviderPopoverView: View {
                 }
             }
 
-            if presentation.requiresProviderSignIn {
-                Text("Sign in with the \(presentation.provider.displayName) app or CLI, then retry.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if let authenticationAction = presentation.authenticationAction {
+                Button(authenticationAction.title) {
+                    onAuthenticationAction(authenticationAction)
+                }
+            } else if presentation.requiresProviderSignIn {
                 Button("Retry", action: onRetry)
             }
         }
@@ -102,6 +126,14 @@ public struct ProviderPopoverView: View {
         GridRow {
             Text(title).foregroundStyle(.secondary)
             Text(value ?? "—").monospacedDigit()
+        }
+    }
+}
+
+private extension ProviderAuthenticationAction {
+    var title: String {
+        switch self {
+        case let .browserLogin(title), let .openSettings(title): title
         }
     }
 }

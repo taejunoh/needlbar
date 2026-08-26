@@ -4,7 +4,7 @@ import SwiftUI
 
 @MainActor
 public final class SettingsWindowController: NSWindowController {
-    public init(configuration: ModuleConfiguration) {
+    public init(configuration: ModuleConfiguration, loginCoordinator: ProviderLoginCoordinator) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 440, height: 420),
             styleMask: [.titled, .closable, .miniaturizable],
@@ -12,7 +12,10 @@ public final class SettingsWindowController: NSWindowController {
             defer: false
         )
         window.title = "Needlbar Settings"
-        window.contentView = NSHostingView(rootView: SettingsView(configuration: configuration))
+        window.contentView = NSHostingView(rootView: SettingsView(
+            configuration: configuration,
+            loginCoordinator: loginCoordinator
+        ))
         window.isReleasedWhenClosed = false
         super.init(window: window)
     }

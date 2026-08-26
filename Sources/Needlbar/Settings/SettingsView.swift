@@ -6,13 +6,15 @@ import SwiftUI
 
 public struct SettingsView: View {
     private let configuration: ModuleConfiguration
+    @ObservedObject private var loginCoordinator: ProviderLoginCoordinator
     private let cursorConnection = CursorSessionConnectionController()
     @State private var cursorSessionToken = ""
     @State private var connectionStatus: String?
     @State private var isCursorConnectionOperationInFlight = false
 
-    public init(configuration: ModuleConfiguration) {
+    public init(configuration: ModuleConfiguration, loginCoordinator: ProviderLoginCoordinator) {
         self.configuration = configuration
+        _loginCoordinator = ObservedObject(wrappedValue: loginCoordinator)
     }
 
     public var body: some View {
@@ -34,9 +36,8 @@ public struct SettingsView: View {
             }
 
             Section("Connections") {
-                Text("Claude and Codex use their provider-native app or CLI sign-in.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                providerLoginRow(provider: .claude, title: "Claude", actionTitle: "Sign in with Claude")
+                providerLoginRow(provider: .codex, title: "Codex", actionTitle: "Sign in with ChatGPT")
                 SecureField("Cursor session token", text: $cursorSessionToken)
                     .onSubmit(connectCursor)
                     .disabled(isCursorConnectionOperationInFlight)
@@ -58,6 +59,58 @@ public struct SettingsView: View {
         .formStyle(.grouped)
         .padding()
         .frame(width: 420)
+    }
+
+    @ViewBuilder
+    private func providerLoginRow(provider: ProviderID, title: String, actionTitle: String) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(loginStatusCopy(for: provider))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button(actionTitle) {
+                _ = loginCoordinator.connect(provider)
+            }
+            .disabled(isLoginInFlight(for: provider))
+        }
+    }
+
+    private func isLoginInFlight(for provider: ProviderID) -> Bool {
+        switch loginCoordinator.state(for: provider) {
+        case .launching, .awaitingBrowser, .refreshingQuota:
+            true
+        case .idle, .connected, .failed:
+            false
+        }
+    }
+
+    private func loginStatusCopy(for provider: ProviderID) -> String {
+        switch loginCoordinator.state(for: provider) {
+        case .idle:
+            "Sign in opens the provider's browser flow."
+        case .launching:
+            "Starting sign-in…"
+        case .awaitingBrowser:
+            "Continue sign-in in your browser."
+        case .refreshingQuota:
+            provider == .claude
+                ? "macOS may request access to Claude Code credentials."
+                : "Verifying quota…"
+        case .connected:
+            "Connected."
+        case let .failed(failure):
+            switch failure {
+            case .cliNotInstalled: "CLI not found."
+            case .launchFailed: "Login could not start."
+            case .cancelled: "Login cancelled."
+            case .timedOut: "Login timed out."
+            case .providerRejected, .unsupportedProvider: "Login incomplete."
+            case .verificationFailed: "Sign-in completed but quota could not be verified."
+            }
+        }
     }
 
     private func enabledBinding(for module: MenuModuleID) -> Binding<Bool> {

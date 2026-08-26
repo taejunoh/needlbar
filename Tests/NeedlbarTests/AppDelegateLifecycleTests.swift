@@ -3,8 +3,9 @@ import Testing
 @testable import NeedlbarApp
 
 @MainActor
-@Test func terminationWaitsForRefreshCleanupAndRepliesExactlyOnce() async {
-    let shutdown = TerminationShutdownGate()
+@Test func terminationWaitsForLoginAndRefreshCleanupAndRepliesExactlyOnce() async {
+    let loginShutdown = TerminationShutdownGate()
+    let refreshShutdown = TerminationShutdownGate()
     let termination = AccessoryTerminationController()
     var startupCancellationCount = 0
     var observationStopCount = 0
@@ -14,7 +15,8 @@ import Testing
         termination.requestTermination(
             cancelStartup: { startupCancellationCount += 1 },
             stopMenuBarObservation: { observationStopCount += 1 },
-            stopRefreshCoordinator: { await shutdown.waitForRelease() },
+            stopLoginCoordinator: { await loginShutdown.waitForRelease() },
+            stopRefreshCoordinator: { await refreshShutdown.waitForRelease() },
             reply: { replyCount += 1 }
         )
     }
@@ -27,9 +29,15 @@ import Testing
     #expect(requestTermination() == .terminateLater)
     #expect(startupCancellationCount == 1)
     #expect(observationStopCount == 1)
-    #expect(await eventually { await shutdown.callCount() == 1 })
+    #expect(await eventually { await loginShutdown.callCount() == 1 })
+    #expect(await loginShutdown.callCount() == 1)
+    #expect(await refreshShutdown.callCount() == 0)
 
-    await shutdown.release()
+    await loginShutdown.release()
+    #expect(await eventually { await refreshShutdown.callCount() == 1 })
+    #expect(replyCount == 0)
+
+    await refreshShutdown.release()
 
     #expect(await eventually { replyCount == 1 })
     #expect(replyCount == 1)

@@ -5,6 +5,7 @@ import NeedlbarCore
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let snapshotStore: ProviderSnapshotStore
     private let refreshCoordinator: RefreshCoordinator
+    private let loginCoordinator: ProviderLoginCoordinator
     private let moduleConfiguration: ModuleConfiguration
     private let menuBarController: MenuBarController
     private let terminationController = AccessoryTerminationController()
@@ -24,9 +25,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             usageFileWatcher: usageFileWatcher
         )
         self.refreshCoordinator = refreshCoordinator
+        let loginCoordinator = ProviderLoginCoordinator(
+            refreshQuota: { provider in
+                await refreshCoordinator.refreshQuota(afterUserAuthenticationFor: provider)
+            }
+        )
+        self.loginCoordinator = loginCoordinator
         self.menuBarController = MenuBarController(
             configuration: moduleConfiguration,
             snapshotStore: snapshotStore,
+            loginCoordinator: loginCoordinator,
             onModuleActivated: { _ in
                 Task {
                     await refreshCoordinator.popoverOpened()
@@ -36,6 +44,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task {
                     await refreshCoordinator.manualRefresh()
                 }
+            },
+            onProviderLoginRequested: { provider in
+                _ = loginCoordinator.connect(provider)
             }
         )
         super.init()
@@ -62,6 +73,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         terminationController.requestTermination(
             cancelStartup: { [weak self] in self?.cancelLifecycleTask() },
             stopMenuBarObservation: { [weak self] in self?.menuBarController.stopObserving() },
+            stopLoginCoordinator: { [weak self] in
+                await self?.loginCoordinator.stop()
+            },
             stopRefreshCoordinator: { [weak self] in
                 await self?.refreshCoordinator.stop()
             },
@@ -86,6 +100,7 @@ final class AccessoryTerminationController {
     func requestTermination(
         cancelStartup: @escaping @MainActor () -> Void,
         stopMenuBarObservation: @escaping @MainActor () -> Void,
+        stopLoginCoordinator: @escaping @MainActor () async -> Void,
         stopRefreshCoordinator: @escaping @MainActor () async -> Void,
         reply: @escaping @MainActor () -> Void
     ) -> NSApplication.TerminateReply {
@@ -96,6 +111,7 @@ final class AccessoryTerminationController {
             stopMenuBarObservation: stopMenuBarObservation
         )
         terminationTask = Task { [weak self] in
+            await stopLoginCoordinator()
             await stopRefreshCoordinator()
             guard let self, self.isTerminating else { return }
             reply()

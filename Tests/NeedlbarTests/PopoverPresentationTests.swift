@@ -36,6 +36,54 @@ import Testing
     #expect(presentation.cacheWriteTokens == "0")
 }
 
+@Test func authenticationRequiredQuotaSelectsTheProviderOwnedAction() {
+    #expect(ProviderPopoverPresentation(snapshot: snapshot(
+        provider: .claude,
+        usage: nil,
+        quota: nil,
+        usageStatus: .unavailable,
+        quotaStatus: .requiresAuthentication
+    )).authenticationAction == .browserLogin(title: "Sign in with Claude"))
+
+    #expect(ProviderPopoverPresentation(snapshot: snapshot(
+        provider: .codex,
+        usage: nil,
+        quota: nil,
+        usageStatus: .unavailable,
+        quotaStatus: .requiresAuthentication
+    )).authenticationAction == .browserLogin(title: "Sign in with ChatGPT"))
+
+    #expect(ProviderPopoverPresentation(snapshot: snapshot(
+        provider: .cursor,
+        usage: nil,
+        quota: nil,
+        usageStatus: .unavailable,
+        quotaStatus: .requiresAuthentication
+    )).authenticationAction == .openSettings(title: "Open Settings"))
+}
+
+@Test func nonAuthenticationQuotaStatesDoNotInventAuthenticationActions() {
+    let statuses: [DataStatus] = [
+        .fresh,
+        .stale(lastSuccessfulAt: .distantPast),
+        .unavailable,
+        .error(message: "rate limited", lastSuccessfulAt: nil),
+        .error(message: "network unavailable", lastSuccessfulAt: nil),
+        .error(message: "schema changed", lastSuccessfulAt: nil),
+    ]
+
+    for status in statuses {
+        let presentation = ProviderPopoverPresentation(snapshot: snapshot(
+            provider: .claude,
+            usage: nil,
+            quota: nil,
+            usageStatus: .unavailable,
+            quotaStatus: status
+        ))
+        #expect(presentation.authenticationAction == nil)
+    }
+}
+
 @Test func staleUsageKeepsTheLastKnownUsageWhileFreshQuotaRendersNormally() throws {
     let presentation = ProviderPopoverPresentation(snapshot: snapshot(
         provider: .cursor,
