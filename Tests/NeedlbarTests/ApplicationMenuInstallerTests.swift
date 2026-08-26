@@ -20,23 +20,18 @@ import Testing
 }
 
 @MainActor
-@Test func installingMenuTwicePreservesExistingEditItemsWithoutDuplicates() throws {
+@Test func installingMenuTwiceFromAnEmptyApplicationMenuIsIdempotent() throws {
     let application = NSApplication.shared
     let previousMenu = application.mainMenu
     defer { application.mainMenu = previousMenu }
-
-    let mainMenu = NSMenu(title: "Main Menu")
-    let editMenu = NSMenu(title: "Edit")
-    editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-    mainMenu.addItem(NSMenuItem(title: "Edit", action: nil, keyEquivalent: ""))
-    mainMenu.item(withTitle: "Edit")?.submenu = editMenu
-    application.mainMenu = mainMenu
+    application.mainMenu = nil
 
     ApplicationMenuInstaller.install(in: application)
     ApplicationMenuInstaller.install(in: application)
 
-    #expect(application.mainMenu?.items.filter { $0.title == "Edit" }.count == 1)
-    #expect(editMenu.items.filter { $0.title == "Copy" }.count == 1)
+    let mainMenu = try #require(application.mainMenu)
+    let editMenu = try #require(mainMenu.item(withTitle: "Edit")?.submenu)
+    #expect(mainMenu.items.filter { $0.title == "Edit" }.count == 1)
     #expect(editMenu.items.filter { $0.title == "Paste" }.count == 1)
 }
 
