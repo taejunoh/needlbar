@@ -493,7 +493,7 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
             case .idle:
                 running.terminationState = .terminating([])
                 sessions[identifier] = .running(running)
-                switch await send(SIGTERM, to: running.pid) {
+                switch await send(SIGTERM, for: identifier, pid: running.pid) {
                 case .sent:
                     await waitForTerminationGrace()
                     guard isTerminating(identifier, pid: running.pid) else { return }
@@ -507,7 +507,7 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
                     case .running, .interrupted, .failed:
                         break
                     }
-                    switch await send(SIGKILL, to: running.pid) {
+                    switch await send(SIGKILL, for: identifier, pid: running.pid) {
                     case .sent, .noSuchProcess:
                         return
                     case .failed, .interrupted:
@@ -541,6 +541,11 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
     private func isTerminating(_ identifier: UUID, pid: Int32) -> Bool {
         guard case let .running(running)? = sessions[identifier], running.pid == pid else { return false }
         guard case .terminating = running.terminationState else { return false }
+        return true
+    }
+
+    private func ownsRunningSession(_ identifier: UUID, pid: Int32) -> Bool {
+        guard case let .running(running)? = sessions[identifier], running.pid == pid else { return false }
         return true
     }
 
@@ -587,24 +592,40 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
             if ContinuousClock.now >= deadline {
                 await beginTermination(identifier, reason: .timedOut)
             }
-            switch system.waitForChild(running.pid) {
+            // `beginTermination` can suspend while another foreground owner observes exit and
+            // removes this session. Never use the captured numeric PID after that boundary.
+            guard case let .running(current)? = sessions[identifier], current.pid == running.pid else {
+                return finished[identifier] ?? .cancelled
+            }
+            if case .backgroundReaping = current.terminationState {
+                return handOffToBackgroundReaper(identifier, pid: current.pid)
+            }
+            switch system.waitForChild(current.pid) {
             case .running:
                 try? await pollSleeper(.milliseconds(5))
             case .interrupted:
                 continue
             case let .exited(status):
-                await complete(identifier, pid: running.pid, outcome: running.stopReason.map(outcome(for:)) ?? .exited(status: status))
+                await complete(identifier, pid: current.pid, outcome: current.stopReason.map(outcome(for:)) ?? .exited(status: status))
             case .noChild:
-                await complete(identifier, pid: running.pid, outcome: .launchFailed)
+                await complete(identifier, pid: current.pid, outcome: .launchFailed)
             case .failed:
-                beginBackgroundReaping(identifier, pid: running.pid)
+                beginBackgroundReaping(identifier, pid: current.pid)
             }
         }
     }
 
-    private func send(_ signal: Int32, to pid: Int32) async -> ProviderLoginSignalResult {
+    private func send(
+        _ signal: Int32,
+        for identifier: UUID,
+        pid: Int32
+    ) async -> ProviderLoginSignalResult {
         for _ in 0..<3 {
             await beforeSignal(pid, signal)
+            // A signal is directed at a bare numeric PID. The await above permits the original
+            // child to be reaped and that PID to be reused, so re-establish exact ownership
+            // before issuing a side-effecting syscall.
+            guard ownsRunningSession(identifier, pid: pid) else { return .noSuchProcess }
             let result = system.sendSignal(signal, to: pid)
             if result == .sent { await signalObserved(pid, signal) }
             if result != .interrupted && result != .failed { return result }

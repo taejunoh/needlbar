@@ -669,12 +669,8 @@ private struct ProviderLoginProcessRunnerTests {
     #expect(await system.sentSignals().isEmpty)
 
     await reaperPoll.release()
-    while !coordinator.connect(.claude) {
-        await Task.yield()
-    }
-    while await system.spawnCount() < 2 {
-        await Task.yield()
-    }
+    #expect(await eventually { coordinator.connect(.claude) })
+    #expect(await eventually { await system.spawnCount() >= 2 })
     #expect(await system.spawnCount() == 2)
     #expect(await system.sentSignals().isEmpty)
     await states.wait(for: .claude, state: .failed(.providerRejected))
@@ -711,6 +707,73 @@ private struct ProviderLoginProcessRunnerTests {
     #expect(system.sentSignals.allSatisfy { $0.pid == 52 && $0.signal == SIGTERM })
     #expect(system.normalWaitCount == 1)
     #expect(system.terminationWaitCount == 5)
+}
+
+@Test func processRunnerDoesNotSignalAReusedPIDAfterTheOriginalSessionCompletesDuringBeforeSignal() async {
+    let system = PIDReusePOSIXSystem(waits: [.running, .exited(status: 0), .exited(status: 0)])
+    let poll = SuspensionGate()
+    let signalBarrier = SuspensionGate()
+    let starts = SecondStartBarrier()
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        pollSleeper: { _ in await poll.wait() },
+        system: system,
+        beforeSignal: { _, _ in await signalBarrier.wait() },
+        processStarted: { _ in await starts.recordAndHoldSecond() }
+    )
+
+    let first = Task.detached { await runner.run(scriptedCommand()) }
+    await starts.waitForCount(1)
+    await poll.waitForEntry()
+
+    let stop = Task.detached { await runner.stop() }
+    await signalBarrier.waitForEntry()
+    await poll.release()
+    #expect(await first.value == .cancelled)
+
+    let second = Task.detached {
+        await runner.run(ProviderLoginCommand(
+            provider: .codex,
+            executableURL: URL(fileURLWithPath: "/tmp/needlbar-pid-reuse"),
+            arguments: [],
+            environment: [:]
+        ))
+    }
+    await starts.waitForCount(2)
+
+    await signalBarrier.release()
+    #expect(await stop.value == .complete)
+    #expect(await system.sentSignals().isEmpty)
+
+    await starts.releaseSecond()
+    #expect(await second.value == .exited(status: 0))
+}
+
+@Test func processRunnerDoesNotWaitAgainAfterTerminationAlreadyReapedTheSession() async {
+    let system = ScriptedPOSIXSystem(
+        spawn: .spawned(pid: 83),
+        waits: [.running, .exited(status: 0)],
+        signals: [.sent]
+    )
+    let poll = SuspensionGate()
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        terminationGrace: .zero,
+        pollSleeper: { _ in await poll.wait() },
+        system: system
+    )
+    let task = Task.detached { await runner.run(scriptedCommand()) }
+
+    await system.waitForSpawn()
+    await poll.waitForEntry()
+    task.cancel()
+    await poll.release()
+
+    #expect(await task.value == .cancelled)
+    #expect(system.waitCount == 2)
+    #expect(system.sentSignals.count == 1)
+    #expect(system.sentSignals.first?.0 == 83)
+    #expect(system.sentSignals.first?.1 == SIGTERM)
 }
 
 @Test func processRunnerBoundsPersistentKILLFailureAndLetsItsSoleReaperObserveNaturalExit() async {
@@ -1268,6 +1331,35 @@ private actor SuspensionGate {
     }
 }
 
+private actor SecondStartBarrier {
+    private var starts = 0
+    private var countWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+    private var secondReleased = false
+    private var secondWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func recordAndHoldSecond() async {
+        starts += 1
+        let matching = countWaiters.enumerated().filter { starts >= $0.element.0 }
+        for match in matching.reversed() {
+            countWaiters.remove(at: match.offset).1.resume()
+        }
+        guard starts == 2, !secondReleased else { return }
+        await withCheckedContinuation { secondWaiters.append($0) }
+    }
+
+    func waitForCount(_ count: Int) async {
+        if starts >= count { return }
+        await withCheckedContinuation { countWaiters.append((count, $0)) }
+    }
+
+    func releaseSecond() {
+        secondReleased = true
+        let waiters = secondWaiters
+        secondWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+}
+
 private actor ProcessSignalRecorder {
     struct Signal: Equatable, Sendable {
         let pid: Int32
@@ -1406,6 +1498,36 @@ private final class ScriptedPOSIXSystem: ProviderLoginProcessSystem, @unchecked 
     }
 }
 
+private final class PIDReusePOSIXSystem: ProviderLoginProcessSystem, @unchecked Sendable {
+    private let lock = NSLock()
+    private var waits: [ProviderLoginWaitResult]
+    private var signals: [(Int32, Int32)] = []
+
+    init(waits: [ProviderLoginWaitResult]) {
+        self.waits = waits
+    }
+
+    func spawn(_ command: ProviderLoginCommand) -> ProviderLoginSpawnResult {
+        .spawned(pid: 82)
+    }
+
+    func waitForChild(_ pid: Int32) -> ProviderLoginWaitResult {
+        lock.lock(); defer { lock.unlock() }
+        return waits.isEmpty ? .running : waits.removeFirst()
+    }
+
+    func sendSignal(_ signal: Int32, to pid: Int32) -> ProviderLoginSignalResult {
+        lock.lock(); defer { lock.unlock() }
+        signals.append((pid, signal))
+        return .sent
+    }
+
+    func sentSignals() -> [(Int32, Int32)] {
+        lock.lock(); defer { lock.unlock() }
+        return signals
+    }
+}
+
 private final class StagedPOSIXSystem: ProviderLoginProcessSystem, @unchecked Sendable {
     struct Signal: Equatable { let pid: Int32; let signal: Int32 }
     private let lock = NSLock()
@@ -1525,6 +1647,15 @@ private func scriptedCommand() -> ProviderLoginCommand {
         arguments: [],
         environment: [:]
     )
+}
+
+@MainActor
+private func eventually(_ condition: @escaping @MainActor () async -> Bool) async -> Bool {
+    for _ in 0..<100 {
+        if await condition() { return true }
+        await Task.yield()
+    }
+    return false
 }
 
 private struct SignalFixture {
