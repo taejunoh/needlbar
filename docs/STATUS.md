@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-25
 **Branch:** `codex/provider-browser-login`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 4 is complete; the approved direct `posix_spawn` deviation is documented, automated and non-TTY compatibility gates passed, and release acceptance remains paused
-**Next action:** Continue with Task 5 — wire Settings, popovers, and app termination from the approved provider-managed browser-login plan
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 5 is complete; the approved direct `posix_spawn` deviation and termination-degraded behavior are documented, automated and non-TTY compatibility gates passed, and release acceptance remains paused
+**Next action:** Continue with Task 6 — update public contracts and run the final verification plan for the provider-managed browser-login amendment
 
 ## Source of Truth
 
@@ -583,15 +583,36 @@ The single session actor is the sole waitpid owner. The runner resolves an exact
 
 Task 4 verification included harmless real-child normal and TERM-only exits, TERM-to-KILL, cancellation, timeout, cancel-plus-stop coalescing, pre/post-spawn cancellation, syscall-seam `WNOHANG`/exit/`EINTR`/`ECHILD`/`ESRCH`/KILL-failure cases, exact argv/env/fd/CLOEXEC assertions, descendant isolation, and the user-authorized non-TTY provider command compatibility gate.
 
-### Task 5 termination-degraded behavior
+### Task 5 Verification
 
-Task 5 implementation exists in `6f0a5fc` (`feat: expose Claude and Codex browser login`), but final spec review identified an approved termination-degraded behavior amendment before Task 5 can be accepted. A bounded persistent signal or `waitpid` failure must deny AppKit termination with one negative reply, keep the app/coordinator and same-provider admission alive while the actor background-reaps the exact child, and allow a later termination request to re-evaluate cleanup. A successful termination reply remains conditional on every login child having been reaped, followed by refresh shutdown.
+Task 5 is complete and final spec-compliance and code-quality reviews passed with no open findings. Settings and provider popovers expose the approved Claude/Codex browser-login actions, and app termination now preserves the required direct-child cleanup and retry semantics.
 
-Next: implement and test the approved `allChildrenReaped` / `backgroundReaping` termination result, including negative-reply, post-reap retry, refresh-sequencing, and exactly-once decision coverage; then re-run Task 5 spec and quality review.
+Implementation commits:
+
+- `6f0a5fc` — expose Claude and Codex browser login.
+- `fd5935c` — document the approved degraded termination behavior.
+- `12cacf8` — report bounded login cleanup state.
+- `a308b29` — keep the app alive while a login child is reaped.
+- `675a713` — revalidate login process ownership.
+- `c14cc39` — close login admission during termination.
+- `3fdff59` — reopen login admission after a negative termination reply.
+- `4eca8b5` — avoid nested task polling in the login runner.
+
+Behavior and contract evidence:
+
+- Login cleanup reports either `allChildrenReaped` or `backgroundReaping`. A persistent signal or `waitpid` failure sends exactly one negative AppKit reply, does not stop refresh, keeps the app/coordinator and affected provider admission alive while the actor reaps the exact child, and permits a later termination request to retry cleanup.
+- Successful termination remains conditional on all login children being reaped before refresh shutdown. Concurrent termination requests coalesce, and admission closes during cleanup so no new login can race termination.
+- The coordinator retains exact PID ownership through background reaping and resumes admission only after a denied termination decision; no credentials, account identifiers, or provider output are persisted.
+
+Verification evidence:
+
+- Repeated `make swift-test` runs were green, and the latest agent-reported `make test` completed successfully; final root verification remains the next verification step.
+- Final Task 5 spec-compliance and code-quality reviews passed with no Critical, Important, or Minor findings.
+- The Task 4 non-TTY compatibility gate remains accepted for Claude Code and Codex; no additional provider login was run during Task 5 implementation.
 
 ## Required Next Action
 
-Continue Task 5 with the approved termination-degraded behavior implementation and tests. Task 4 is accepted as complete; release acceptance remains paused.
+Continue with Task 6: update `README.md`, `docs/architecture.md`, `docs/privacy.md`, and the Claude/Codex/Cursor provider documents; then run the exact narrow and full verification commands, bounded non-credentialed UI smoke, and the remaining credentialed acceptance checks from the approved plan. Preserve unreleased status, make no notarization or release claim, and record any blocker before the final user-authorized release acceptance.
 
 ## v0.1 Constraints to Preserve
 
