@@ -702,6 +702,13 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
 
 @MainActor
 public final class ProviderLoginCoordinator: ObservableObject {
+    private enum TerminationAdmission {
+        case open
+        case closing
+        case awaitingDeniedTerminationReply
+        case permanentlyClosed
+    }
+
     @Published private var states: [ProviderID: ProviderLoginState] = [:]
 
     private let resolver: any ProviderLoginCommandResolving
@@ -714,6 +721,9 @@ public final class ProviderLoginCoordinator: ObservableObject {
     private var taskGenerations: [ProviderID: UInt64] = [:]
     private var stoppingGenerations: [ProviderID: UInt64] = [:]
     private var generations: [ProviderID: UInt64] = [:]
+    private var terminationAdmission: TerminationAdmission = .open
+    private var terminationInFlight = false
+    private var terminationWaiters: [CheckedContinuation<ProviderLoginCleanupResult, Never>] = []
 
     public init(
         resolver: any ProviderLoginCommandResolving = ProviderLoginCommandResolver(),
@@ -733,6 +743,7 @@ public final class ProviderLoginCoordinator: ObservableObject {
 
     @discardableResult
     public func connect(_ provider: ProviderID) -> Bool {
+        guard case .open = terminationAdmission else { return false }
         guard tasks[provider] == nil else { return false }
         updateState(.launching, for: provider)
 
@@ -759,7 +770,19 @@ public final class ProviderLoginCoordinator: ObservableObject {
         states[provider] ?? .idle
     }
 
+    /// Reopens provider admission only after AppKit has rejected termination for `.pendingReap`.
+    /// Per-provider reaping admissions remain in `tasks` until their exact child is reaped.
+    public func resumeAfterDeniedTermination() {
+        guard case .awaitingDeniedTerminationReply = terminationAdmission else { return }
+        terminationAdmission = .open
+    }
+
     public func stop() async -> ProviderLoginCleanupResult {
+        guard !terminationInFlight else {
+            return await withCheckedContinuation { terminationWaiters.append($0) }
+        }
+        terminationAdmission = .closing
+        terminationInFlight = true
         let activeProviders = tasks.keys.filter { stoppingGenerations[$0] != taskGenerations[$0] }
         var stoppedGenerations: [ProviderID: UInt64] = [:]
         for provider in activeProviders {
@@ -771,6 +794,7 @@ public final class ProviderLoginCoordinator: ObservableObject {
             updateState(.idle, for: provider)
         }
         let cleanupResult = await runner.stop()
+        terminationAdmission = cleanupResult == .complete ? .permanentlyClosed : .awaitingDeniedTerminationReply
         for provider in activeProviders {
             guard let stoppedGeneration = stoppedGenerations[provider] else { continue }
             let runner = runner
@@ -779,6 +803,10 @@ public final class ProviderLoginCoordinator: ObservableObject {
                 await self?.completeStoppedAdmission(for: provider, generation: stoppedGeneration)
             }
         }
+        terminationInFlight = false
+        let waiters = terminationWaiters
+        terminationWaiters.removeAll()
+        waiters.forEach { $0.resume(returning: cleanupResult) }
         return cleanupResult
     }
 

@@ -324,6 +324,7 @@ import Testing
     #expect(!coordinator.connect(.claude))
     #expect(await runner.stopCallCount() == 1)
 
+    coordinator.resumeAfterDeniedTermination()
     await runner.completeBackgroundReap(for: .claude)
     var reconnected = false
     for _ in 0..<100 {
@@ -360,13 +361,17 @@ import Testing
     #expect(!coordinator.connect(.claude))
     #expect(await runner.invocationCount(for: .claude) == 1)
 
-    #expect(coordinator.connect(.codex))
-    await runner.waitForStart(.codex)
-    #expect(await runner.invocationCount(for: .codex) == 1)
+    #expect(!coordinator.connect(.codex))
+    #expect(await runner.invocationCount(for: .codex) == 0)
 
     await runner.releaseTerminationGrace()
     await stop.value
     await runner.waitForReapingWaiterCount(for: .claude, count: 2)
+
+    coordinator.resumeAfterDeniedTermination()
+    #expect(coordinator.connect(.codex))
+    await runner.waitForStart(.codex)
+    #expect(await runner.invocationCount(for: .codex) == 1)
 
     #expect(!coordinator.connect(.claude))
     #expect(await runner.invocationCount(for: .claude) == 1)
@@ -404,6 +409,8 @@ import Testing
     await stop.value
     await runner.waitForReapingWaiterCount(for: .claude, count: 2)
 
+    coordinator.resumeAfterDeniedTermination()
+
     await runner.completeOneReapingWaiter(for: .claude)
     await finished.wait(for: .claude)
 
@@ -419,6 +426,79 @@ import Testing
 
     await runner.completeAll(.claude, with: .cancelled)
     await finished.wait(for: .claude, count: secondReconnect ? 3 : 2)
+}
+
+@MainActor
+@Test func coordinatorClosesAllAdmissionsBeforeAwaitingStopAndKeepsCompleteTerminationClosed() async {
+    let resolver = CountingLoginResolver()
+    let runner = TerminationAdmissionRunner(results: [.complete])
+    let states = LoginStateRecorder()
+    let coordinator = ProviderLoginCoordinator(
+        resolver: resolver,
+        runner: runner,
+        refreshQuota: { _ in true },
+        stateObserver: { provider, state in await states.record(provider, state) }
+    )
+
+    #expect(coordinator.connect(.claude))
+    await runner.waitForStart(.claude, count: 1)
+    let firstStop = Task { await coordinator.stop() }
+    await runner.waitForStopStart(count: 1)
+
+    #expect(!coordinator.connect(.codex))
+    #expect(resolver.commandCount() == 1)
+    #expect(await runner.invocationCount(for: .codex) == 0)
+    #expect(coordinator.state(for: .codex) == .idle)
+
+    let concurrentStop = Task { await coordinator.stop() }
+    await Task.yield()
+    #expect(await runner.stopCallCount() == 1)
+    await runner.releaseNextStop()
+
+    #expect(await firstStop.value == .complete)
+    #expect(await concurrentStop.value == .complete)
+    #expect(!coordinator.connect(.codex))
+    #expect(resolver.commandCount() == 1)
+    #expect(await runner.invocationCount(for: .codex) == 0)
+}
+
+@MainActor
+@Test func coordinatorReopensOnlyAfterDeniedTerminationAndRetainsPendingProviderAdmission() async {
+    let resolver = CountingLoginResolver()
+    let runner = TerminationAdmissionRunner(results: [.pendingReap, .complete], pendingReap: [.claude])
+    let coordinator = ProviderLoginCoordinator(
+        resolver: resolver,
+        runner: runner,
+        refreshQuota: { _ in true }
+    )
+
+    #expect(coordinator.connect(.claude))
+    await runner.waitForStart(.claude, count: 1)
+    let firstStop = Task { await coordinator.stop() }
+    await runner.waitForStopStart(count: 1)
+
+    #expect(!coordinator.connect(.codex))
+    #expect(resolver.commandCount() == 1)
+    await runner.releaseNextStop()
+    #expect(await firstStop.value == .pendingReap)
+    await runner.waitForReapingWaiter(for: .claude)
+
+    #expect(!coordinator.connect(.codex))
+    coordinator.resumeAfterDeniedTermination()
+    #expect(!coordinator.connect(.claude))
+    #expect(coordinator.connect(.codex))
+    await runner.waitForStart(.codex, count: 1)
+    #expect(resolver.commandCount() == 2)
+
+    await runner.completeBackgroundReap(for: .claude)
+    await Task.yield()
+
+    let laterStop = Task { await coordinator.stop() }
+    await runner.waitForStopStart(count: 2)
+    #expect(!coordinator.connect(.codex))
+    await runner.releaseNextStop()
+    #expect(await laterStop.value == .complete)
+    #expect(!coordinator.connect(.codex))
 }
 
 @MainActor
@@ -922,6 +1002,29 @@ private struct MissingLoginResolver: ProviderLoginCommandResolving {
     }
 }
 
+private final class CountingLoginResolver: ProviderLoginCommandResolving, @unchecked Sendable {
+    private let lock = NSLock()
+    private var commands = 0
+
+    func command(for provider: ProviderID) throws -> ProviderLoginCommand {
+        lock.lock()
+        commands += 1
+        lock.unlock()
+        guard provider != .cursor else { throw ProviderLoginCommandResolutionError.unsupportedProvider }
+        return ProviderLoginCommand(
+            provider: provider,
+            executableURL: URL(fileURLWithPath: "/tmp/needlbar-login-tests/bin/\(provider.rawValue)"),
+            arguments: provider == .claude ? ["auth", "login", "--claudeai"] : ["login"],
+            environment: [:]
+        )
+    }
+
+    func commandCount() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        return commands
+    }
+}
+
 private actor LoginStateRecorder {
     private var recorded: [(ProviderID, ProviderLoginState)] = []
     private var waiters: [(ProviderID, ProviderLoginState, CheckedContinuation<Void, Never>)] = []
@@ -1281,6 +1384,91 @@ private actor CleanupResultLoginRunner: ProviderLoginProcessRunning {
         waiters.forEach { $0.resume() }
     }
 
+    func stopCallCount() -> Int { stopCalls }
+}
+
+private actor TerminationAdmissionRunner: ProviderLoginProcessRunning {
+    private var results: [ProviderLoginCleanupResult]
+    private var pendingReap: Set<ProviderID>
+    private var active: [ProviderID: [CheckedContinuation<ProviderLoginProcessOutcome, Never>]] = [:]
+    private var starts: [ProviderID: Int] = [:]
+    private var startWaiters: [ProviderID: [(Int, CheckedContinuation<Void, Never>)]] = [:]
+    private var stopCalls = 0
+    private var stopStartWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+    private var stopReleaseWaiters: [CheckedContinuation<Void, Never>] = []
+    private var reapingWaiters: [ProviderID: [CheckedContinuation<Void, Never>]] = [:]
+    private var reapingWaiterObservers: [ProviderID: [CheckedContinuation<Void, Never>]] = [:]
+
+    init(results: [ProviderLoginCleanupResult], pendingReap: Set<ProviderID> = []) {
+        self.results = results
+        self.pendingReap = pendingReap
+    }
+
+    func run(_ command: ProviderLoginCommand) async -> ProviderLoginProcessOutcome {
+        let provider = command.provider
+        starts[provider, default: 0] += 1
+        let count = starts[provider, default: 0]
+        let matching = (startWaiters[provider] ?? []).enumerated().filter { count >= $0.element.0 }
+        for match in matching.reversed() {
+            startWaiters[provider]?.remove(at: match.offset).1.resume()
+        }
+        return await withCheckedContinuation { continuation in
+            active[provider, default: []].append(continuation)
+        }
+    }
+
+    func stop() async -> ProviderLoginCleanupResult {
+        stopCalls += 1
+        let count = stopCalls
+        let matching = stopStartWaiters.enumerated().filter { count >= $0.element.0 }
+        for match in matching.reversed() {
+            stopStartWaiters.remove(at: match.offset).1.resume()
+        }
+        await withCheckedContinuation { stopReleaseWaiters.append($0) }
+        let result = results.isEmpty ? .complete : results.removeFirst()
+        let outcome: ProviderLoginProcessOutcome = result == .pendingReap ? .launchFailed : .cancelled
+        let continuations = active
+        active.removeAll()
+        for providerContinuations in continuations.values {
+            providerContinuations.forEach { $0.resume(returning: outcome) }
+        }
+        return result
+    }
+
+    func waitForReaping(for provider: ProviderID) async {
+        guard pendingReap.contains(provider) else { return }
+        let observers = reapingWaiterObservers.removeValue(forKey: provider) ?? []
+        observers.forEach { $0.resume() }
+        await withCheckedContinuation { reapingWaiters[provider, default: []].append($0) }
+    }
+
+    func waitForStart(_ provider: ProviderID, count: Int) async {
+        if starts[provider, default: 0] >= count { return }
+        await withCheckedContinuation { startWaiters[provider, default: []].append((count, $0)) }
+    }
+
+    func waitForStopStart(count: Int) async {
+        if stopCalls >= count { return }
+        await withCheckedContinuation { stopStartWaiters.append((count, $0)) }
+    }
+
+    func releaseNextStop() {
+        guard !stopReleaseWaiters.isEmpty else { return }
+        stopReleaseWaiters.removeFirst().resume()
+    }
+
+    func waitForReapingWaiter(for provider: ProviderID) async {
+        if !reapingWaiters[provider, default: []].isEmpty { return }
+        await withCheckedContinuation { reapingWaiterObservers[provider, default: []].append($0) }
+    }
+
+    func completeBackgroundReap(for provider: ProviderID) {
+        pendingReap.remove(provider)
+        let waiters = reapingWaiters.removeValue(forKey: provider) ?? []
+        waiters.forEach { $0.resume() }
+    }
+
+    func invocationCount(for provider: ProviderID) -> Int { starts[provider, default: 0] }
     func stopCallCount() -> Int { stopCalls }
 }
 
