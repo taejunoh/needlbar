@@ -74,13 +74,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             cancelStartup: { [weak self] in self?.cancelLifecycleTask() },
             stopMenuBarObservation: { [weak self] in self?.menuBarController.stopObserving() },
             stopLoginCoordinator: { [weak self] in
-                await self?.loginCoordinator.stop()
+                guard let self else { return .complete }
+                return await self.loginCoordinator.stop()
             },
             stopRefreshCoordinator: { [weak self] in
                 await self?.refreshCoordinator.stop()
             },
-            reply: {
-                sender.reply(toApplicationShouldTerminate: true)
+            reply: { shouldTerminate in
+                sender.reply(toApplicationShouldTerminate: shouldTerminate)
             }
         )
     }
@@ -100,9 +101,9 @@ final class AccessoryTerminationController {
     func requestTermination(
         cancelStartup: @escaping @MainActor () -> Void,
         stopMenuBarObservation: @escaping @MainActor () -> Void,
-        stopLoginCoordinator: @escaping @MainActor () async -> Void,
+        stopLoginCoordinator: @escaping @MainActor () async -> ProviderLoginCleanupResult,
         stopRefreshCoordinator: @escaping @MainActor () async -> Void,
-        reply: @escaping @MainActor () -> Void
+        reply: @escaping @MainActor (Bool) -> Void
     ) -> NSApplication.TerminateReply {
         guard !isTerminating else { return .terminateLater }
         isTerminating = true
@@ -111,11 +112,19 @@ final class AccessoryTerminationController {
             stopMenuBarObservation: stopMenuBarObservation
         )
         terminationTask = Task { [weak self] in
-            await stopLoginCoordinator()
-            await stopRefreshCoordinator()
+            let loginCleanup = await stopLoginCoordinator()
             guard let self, self.isTerminating else { return }
-            reply()
-            self.terminationTask = nil
+            switch loginCleanup {
+            case .complete:
+                await stopRefreshCoordinator()
+                guard self.isTerminating else { return }
+                reply(true)
+                self.terminationTask = nil
+            case .pendingReap:
+                self.isTerminating = false
+                self.terminationTask = nil
+                reply(false)
+            }
         }
         return .terminateLater
     }
