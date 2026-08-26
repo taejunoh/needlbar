@@ -94,7 +94,7 @@ import Testing
     ))
 
     #expect(presentation.tokensToday == "900")
-    #expect(presentation.headlineQuotaRemaining == "26%")
+    #expect(presentation.headlineQuotaRemaining == nil)
     #expect(presentation.usageFreshness == .stale)
     #expect(presentation.quotaFreshness == .fresh)
 }

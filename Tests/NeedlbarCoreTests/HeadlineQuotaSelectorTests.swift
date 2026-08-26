@@ -13,6 +13,19 @@ import Testing
     #expect(selected?.remainingPercent == 19)
 }
 
+@Test func mostConstrainedIgnoresRetainedCursorQuotaWindows() throws {
+    let snapshots = [
+        makeQuotaSnapshot(provider: .claude, usedPercent: 68),
+        makeQuotaSnapshot(provider: .codex, usedPercent: 81),
+        makeQuotaSnapshot(provider: .cursor, usedPercent: 99),
+    ]
+
+    let selected = HeadlineQuotaSelector.mostConstrained(snapshots)
+
+    #expect(selected?.id == "codex.window")
+    #expect(selected?.remainingPercent == 19)
+}
+
 @Test func mostConstrainedIgnoresProvidersWithoutQuotaWindows() throws {
     let snapshots = [
         makeQuotaSnapshot(provider: .claude, usedPercent: 68),

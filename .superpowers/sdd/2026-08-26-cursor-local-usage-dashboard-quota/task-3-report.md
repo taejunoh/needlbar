@@ -80,3 +80,59 @@ and the package-app relink regression passed.
 ## Commit
 
 `refactor: remove forced Cursor refresh state`
+
+## Fix Round 1: exclude Cursor quota from headline selection
+
+### RED
+
+The new retained-snapshot regression was added before the selector change:
+
+```text
+PATH=/Users/taejunoh/.cargo/bin:$PATH ./scripts/build-rust.sh --features bridge-test-runtime && swift package clean && swift test --filter HeadlineQuotaSelectorTests
+```
+
+The command exited 1 as expected. `mostConstrainedIgnoresRetainedCursorQuotaWindows`
+received `cursor.window` with `1%` remaining instead of the eligible Codex
+window with `19%` remaining. The bridge rebuild was necessary because the
+preceding full project gate restores the production static library, which does
+not export the test fixture symbols.
+
+### Implementation
+
+- `HeadlineQuotaSelector` now admits only Claude and Codex snapshots before
+  flattening quota windows, so a retained Cursor quota cannot win a global,
+  overview, or provider headline.
+- The regression contains a lowest-remaining retained Cursor window and
+  asserts that Codex is selected instead.
+- The existing stale Cursor popover expectation now asserts a `nil` headline
+  quota while retaining the visible stale local usage and quota freshness
+  assertions. This was the direct presentation consequence of the selector
+  contract and was updated with controller authorization.
+
+### GREEN verification
+
+All commands exited 0:
+
+```text
+swift test --filter HeadlineQuotaSelectorTests
+swift test --filter BridgeIntegrationSmokeTests
+swift test --filter staleUsageKeepsTheLastKnownUsageWhileFreshQuotaRendersNormally
+PATH=/Users/taejunoh/.cargo/bin:$PATH make test
+git diff --check
+```
+
+The final project gate reported Rust workspace success, Swift 128 tests
+passed, and the package-app relink regression passed.
+
+### Self-review
+
+- The filter is applied before quota flattening and changes no ordering,
+  remaining-percent calculation, or tie behavior among eligible providers.
+- The regression specifically covers retained Cursor data, the reachable state
+  in which a newly unavailable Cursor quota still has its prior value.
+- The app-side expectation only removes the Cursor headline; local usage and
+  freshness presentation remain covered.
+
+### Fix Round 1 commit
+
+`fix: exclude Cursor quota from headlines`
