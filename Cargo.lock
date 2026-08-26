@@ -893,7 +893,6 @@ dependencies = [
  "chrono",
  "core-foundation",
  "core-foundation-sys",
- "needlbar-source-sync",
  "reqwest",
  "security-framework",
  "security-framework-sys",

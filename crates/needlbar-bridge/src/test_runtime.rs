@@ -456,8 +456,8 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
             )),
             Arc::new(FixtureQuotaProvider::failure(
                 ProviderId::Cursor,
-                QuotaErrorCode::RequiresAuthentication,
-                Some(needlbar_quota::QuotaAction::ConnectCursor),
+                QuotaErrorCode::ProviderUnavailable,
+                None,
                 cursor_failure,
             )),
         ),
@@ -480,8 +480,8 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
                     ProviderId::Cursor,
                     Err(QuotaError {
                         provider: Some(ProviderId::Cursor),
-                        code: QuotaErrorCode::RequiresAuthentication,
-                        message: "Cursor authentication was not available.",
+                        code: QuotaErrorCode::ProviderUnavailable,
+                        message: "Cursor personal quota is available in Cursor Spending.",
                         retry_after: None,
                         action: None,
                     }),
@@ -504,8 +504,8 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
                 ProviderId::Cursor,
                 Err(QuotaError {
                     provider: Some(ProviderId::Cursor),
-                    code: QuotaErrorCode::RequiresAuthentication,
-                    message: "Cursor authentication was not available.",
+                    code: QuotaErrorCode::ProviderUnavailable,
+                    message: "Cursor personal quota is available in Cursor Spending.",
                     retry_after: None,
                     action: None,
                 }),

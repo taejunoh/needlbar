@@ -16,5 +16,5 @@ pub use providers::claude_credentials::{
     FileClaudeCredentialResolver,
 };
 pub use providers::codex::{CodexQuotaProvider, CodexQuotaSource};
-pub use providers::cursor::{CursorQuotaProvider, CursorQuotaSource};
+pub use providers::cursor::CursorQuotaProvider;
 pub use providers::QuotaProvider;

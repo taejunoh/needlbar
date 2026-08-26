@@ -66,7 +66,8 @@ fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
     assert_error_shape(&quota_value["errors"], "requiresAuthentication");
     assert_eq!(quota_value["errors"][1]["code"], "networkUnavailable");
     assert_eq!(quota_value["errors"][2]["provider"], "cursor");
-    assert_eq!(quota_value["errors"][2]["action"], "connectCursor");
+    assert_eq!(quota_value["errors"][2]["code"], "providerUnavailable");
+    assert!(quota_value["errors"][2].get("action").is_none());
 
     let diagnostics_value: serde_json::Value =
         serde_json::from_str(&diagnostics).expect("diagnostics JSON");

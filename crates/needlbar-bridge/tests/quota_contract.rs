@@ -11,8 +11,8 @@ use needlbar_bridge::quota::{
 };
 use needlbar_quota::{
     ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver, ClaudeOAuthSecret,
-    ClaudeQuotaProvider, ProviderId, ProviderQuotaSnapshot, QuotaAction, QuotaError,
-    QuotaErrorCode, QuotaProvider, QuotaWindow, RedactingHttpClient,
+    ClaudeQuotaProvider, ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode,
+    QuotaProvider, QuotaWindow, RedactingHttpClient,
 };
 
 struct FakeProvider {
@@ -230,10 +230,10 @@ async fn quota_collection_with_only_provider_errors_is_a_successful_bridge_respo
         Arc::new(FakeProvider {
             result: Err(QuotaError {
                 provider: Some(ProviderId::Cursor),
-                code: QuotaErrorCode::RequiresAuthentication,
-                message: "Cursor authentication was not available.",
+                code: QuotaErrorCode::ProviderUnavailable,
+                message: "Cursor personal quota is unavailable.",
                 retry_after: None,
-                action: Some(QuotaAction::ConnectCursor),
+                action: None,
             }),
         }),
     )
@@ -247,5 +247,6 @@ async fn quota_collection_with_only_provider_errors_is_a_successful_bridge_respo
     assert_eq!(value["errors"][0]["provider"], "claude");
     assert_eq!(value["errors"][1]["provider"], "codex");
     assert_eq!(value["errors"][2]["provider"], "cursor");
-    assert_eq!(value["errors"][2]["action"], "connectCursor");
+    assert_eq!(value["errors"][2]["code"], "providerUnavailable");
+    assert!(value["errors"][2].get("action").is_none());
 }

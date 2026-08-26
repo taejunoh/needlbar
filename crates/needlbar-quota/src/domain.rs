@@ -120,6 +120,7 @@ impl QuotaError {
         self
     }
 
+    #[allow(dead_code)]
     pub(crate) const fn with_action(mut self, action: QuotaAction) -> Self {
         self.action = Some(action);
         self
