@@ -462,6 +462,22 @@ private struct ProviderLoginProcessRunnerTests {
     #expect(Darwin.kill(pid, 0) == -1)
 }
 
+@Test func processRunnerStopsACompliantFixtureWithoutLifecycleObservers() async throws {
+    let fixture = try SignalFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+
+    let runner = ProviderLoginProcessRunner(
+        timeout: .seconds(30),
+        terminationGrace: .seconds(1)
+    )
+    let readyFile = fixture.directory.appendingPathComponent("ready")
+    let task = Task.detached { await runner.run(fixture.command(readyFile: readyFile)) }
+    try await waitForFixtureReady(at: readyFile)
+
+    await runner.stop()
+    #expect(await task.value == .cancelled)
+}
+
 @Test func processRunnerEscalatesOnlyTheTermIgnoringExactFixturePIDThenReapsIt() async throws {
     let fixture = try SignalFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
@@ -555,11 +571,9 @@ private struct ProviderLoginProcessRunnerTests {
     defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
     let recorder = ProcessSignalRecorder()
-    let timeoutGate = SuspensionGate()
     let runner = ProviderLoginProcessRunner(
-        timeout: .milliseconds(10),
+        timeout: .seconds(2),
         terminationGrace: .milliseconds(100),
-        timeoutSleeper: { _ in await timeoutGate.wait() },
         signalObserved: { pid, signal in await recorder.send(pid, signal) },
         processStarted: { pid in await recorder.recordStart(pid) },
         processFinished: { pid in await recorder.recordFinish(pid) }
@@ -568,7 +582,6 @@ private struct ProviderLoginProcessRunnerTests {
     let task = Task.detached { await runner.run(fixture.command(readyFile: readyFile)) }
     let pid = await recorder.waitForStart()
     try await waitForFixtureReady(at: readyFile)
-    await timeoutGate.release()
 
     #expect(await task.value == .timedOut)
     let signals = await recorder.signals()
@@ -685,6 +698,7 @@ private struct ProviderLoginProcessRunnerTests {
     await normalPoll.release()
 
     let killOutcome = await task.value
+    await runner.waitForReaping(for: .claude)
     #expect(killOutcome == .launchFailed, "actual outcome: \(killOutcome)")
     #expect(system.sentSignals == [.init(pid: 53, signal: SIGTERM), .init(pid: 53, signal: SIGKILL), .init(pid: 53, signal: SIGKILL), .init(pid: 53, signal: SIGKILL)])
     #expect(system.normalWaitCount == 1)

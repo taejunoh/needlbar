@@ -295,7 +295,38 @@ public extension ProviderLoginProcessRunning {
     func waitForReaping(for provider: ProviderID) async {}
 }
 
+/// The process runner must not create a nested Swift task merely to poll a child.
+/// Dispatch owns this one-shot timer and resumes the existing runner task directly.
+private func waitForProcessPollingInterval(_ duration: Duration) async {
+    let components = duration.components
+    let seconds = components.seconds.multipliedReportingOverflow(by: 1_000_000_000)
+    let nanoseconds = components.attoseconds / 1_000_000_000
+    let totalWithNanoseconds = seconds.partialValue.addingReportingOverflow(nanoseconds)
+    let total = seconds.overflow || totalWithNanoseconds.overflow ? Int64.max : totalWithNanoseconds.partialValue
+    let delay = DispatchTimeInterval.nanoseconds(Int(clamping: max(0, total)))
+    await withCheckedContinuation { continuation in
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+            continuation.resume()
+        }
+    }
+}
+
 public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
+    private final class CancellationSignal: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cancelled = false
+
+        func cancel() {
+            lock.lock(); defer { lock.unlock() }
+            cancelled = true
+        }
+
+        func isCancelled() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            return cancelled
+        }
+    }
+
     private enum StopReason {
         case timedOut
         case cancelled
@@ -327,7 +358,6 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
 
     private let timeout: Duration
     private let terminationGrace: Duration
-    private let timeoutSleeper: @Sendable (Duration) async throws -> Void
     private let pollSleeper: @Sendable (Duration) async throws -> Void
     private let preLaunch: @Sendable () async -> Void
     private let system: any ProviderLoginProcessSystem
@@ -343,8 +373,7 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
     public init(
         timeout: Duration = .seconds(300),
         terminationGrace: Duration = .seconds(1),
-        timeoutSleeper: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
-        pollSleeper: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+        pollSleeper: (@Sendable (Duration) async throws -> Void)? = nil,
         preLaunch: @escaping @Sendable () async -> Void = {},
         system: any ProviderLoginProcessSystem = ProviderLoginPOSIXSystem(),
         beforeSignal: @escaping @Sendable (Int32, Int32) async -> Void = { _, _ in },
@@ -354,8 +383,9 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
     ) {
         self.timeout = timeout
         self.terminationGrace = terminationGrace
-        self.timeoutSleeper = timeoutSleeper
-        self.pollSleeper = pollSleeper
+        self.pollSleeper = pollSleeper ?? { duration in
+            await waitForProcessPollingInterval(duration)
+        }
         self.preLaunch = preLaunch
         self.system = system
         self.beforeSignal = beforeSignal
@@ -372,23 +402,14 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
             completePendingSession(identifier)
             return .cancelled
         }
-        let processRunner = self
+        let cancellation = CancellationSignal()
+        let deadline = ContinuousClock.now.advanced(by: timeout)
         return await withTaskCancellationHandler(operation: {
-            let timeoutTask = Task.detached { [timeout, timeoutSleeper, processRunner] in
-                do {
-                    try await timeoutSleeper(timeout)
-                } catch {
-                    return
-                }
-                await processRunner.requestTermination(identifier, reason: .timedOut)
-            }
-            let outcome = await waitForProcess(command, identifier: identifier)
-            timeoutTask.cancel()
-            await timeoutTask.value
+            let outcome = await waitForProcess(command, identifier: identifier, deadline: deadline, cancellation: cancellation)
             finished.removeValue(forKey: identifier)
             return outcome
         }, onCancel: {
-            Task.detached { await processRunner.requestTermination(identifier, reason: .cancelled) }
+            cancellation.cancel()
         })
     }
 
@@ -411,7 +432,12 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         }
     }
 
-    private func waitForProcess(_ command: ProviderLoginCommand, identifier: UUID) async -> ProviderLoginProcessOutcome {
+    private func waitForProcess(
+        _ command: ProviderLoginCommand,
+        identifier: UUID,
+        deadline: ContinuousClock.Instant,
+        cancellation: CancellationSignal
+    ) async -> ProviderLoginProcessOutcome {
         await preLaunch()
         guard case let .pending(reason)? = sessions[identifier] else { return .cancelled }
         if let reason {
@@ -419,7 +445,7 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
             return outcome(for: reason)
         }
 
-        guard !Task.isCancelled else {
+        guard !Task.isCancelled, !cancellation.isCancelled() else {
             completePendingSession(identifier)
             return .cancelled
         }
@@ -431,10 +457,17 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         // there is no suspension until this exact PID is represented by the session.
         sessions[identifier] = .running(.init(pid: pid, stopReason: nil, terminationState: .idle))
         await processStarted(pid)
-        return await waitForCompletion(identifier)
+        return await waitForCompletion(identifier, deadline: deadline, cancellation: cancellation)
     }
 
     private func requestTermination(_ identifier: UUID, reason: StopReason) async {
+        await beginTermination(identifier, reason: reason)
+        guard case let .running(running)? = sessions[identifier],
+              case .terminating = running.terminationState else { return }
+        await waitForTermination(identifier, pid: running.pid)
+    }
+
+    private func beginTermination(_ identifier: UUID, reason: StopReason) async {
         guard let session = sessions[identifier] else { return }
         switch session {
         case .pending(let existingReason):
@@ -448,23 +481,32 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
                 return
             case .terminating:
                 sessions[identifier] = .running(running)
-                await waitForTermination(identifier, pid: running.pid)
                 return
             case .idle:
                 running.terminationState = .terminating([])
                 sessions[identifier] = .running(running)
                 switch await send(SIGTERM, to: running.pid) {
                 case .sent:
-                    try? await pollSleeper(terminationGrace)
+                    await waitForTerminationGrace()
                     guard isTerminating(identifier, pid: running.pid) else { return }
+                    switch system.waitForChild(running.pid) {
+                    case let .exited(status):
+                        await complete(identifier, pid: running.pid, outcome: running.stopReason.map(outcome(for:)) ?? .exited(status: status))
+                        return
+                    case .noChild:
+                        await complete(identifier, pid: running.pid, outcome: .launchFailed)
+                        return
+                    case .running, .interrupted, .failed:
+                        break
+                    }
                     switch await send(SIGKILL, to: running.pid) {
                     case .sent, .noSuchProcess:
-                        await waitForTermination(identifier, pid: running.pid)
+                        return
                     case .failed, .interrupted:
                         beginBackgroundReaping(identifier, pid: running.pid)
                     }
                 case .noSuchProcess:
-                    await waitForTermination(identifier, pid: running.pid)
+                    return
                 case .failed, .interrupted:
                     beginBackgroundReaping(identifier, pid: running.pid)
                 }
@@ -494,6 +536,10 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         return true
     }
 
+    private func waitForTerminationGrace() async {
+        await waitForProcessPollingInterval(terminationGrace)
+    }
+
     private func beginBackgroundReaping(_ identifier: UUID, pid: Int32) {
         guard case var .running(running)? = sessions[identifier], running.pid == pid else { return }
         let waiters: [CheckedContinuation<Void, Never>]
@@ -510,12 +556,22 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         waiters.forEach { $0.resume() }
     }
 
-    private func waitForCompletion(_ identifier: UUID) async -> ProviderLoginProcessOutcome {
+    private func waitForCompletion(
+        _ identifier: UUID,
+        deadline: ContinuousClock.Instant,
+        cancellation: CancellationSignal
+    ) async -> ProviderLoginProcessOutcome {
         while true {
             if let outcome = finished[identifier] { return outcome }
             guard case let .running(running)? = sessions[identifier] else { return .cancelled }
             if case .backgroundReaping = running.terminationState {
                 return handOffToBackgroundReaper(identifier, pid: running.pid)
+            }
+            if cancellation.isCancelled() || Task.isCancelled {
+                await beginTermination(identifier, reason: .cancelled)
+            }
+            if ContinuousClock.now >= deadline {
+                await beginTermination(identifier, reason: .timedOut)
             }
             switch system.waitForChild(running.pid) {
             case .running:
