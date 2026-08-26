@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
-**Updated:** 2026-08-25
+**Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 5 is complete; the approved direct `posix_spawn` deviation and termination-degraded behavior are documented, automated and non-TTY compatibility gates passed, and release acceptance remains paused
-**Next action:** Continue with Task 6 — update public contracts and run the final verification plan for the provider-managed browser-login amendment
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 final verification is in progress; Claude credentialed acceptance passed, while explicit Codex button acceptance and the remaining release gates are still pending
+**Next action:** Finish explicit Codex button acceptance and record Task 6 final status/CI, then return to the remaining Cursor and notarization release gates
 
 ## Source of Truth
 
@@ -610,9 +610,35 @@ Verification evidence:
 - Final Task 5 spec-compliance and code-quality reviews passed with no Critical, Important, or Minor findings.
 - The Task 4 non-TTY compatibility gate remains accepted for Claude Code and Codex; no additional provider login was run during Task 5 implementation.
 
+### Task 6 Final Verification and Claude Credentialed Acceptance — 2026-08-26
+
+Task 6 implementation and Claude credentialed acceptance are complete for the exercised path. The following focused fixes were applied and reviewed:
+
+- `3202474` — split the Claude Keychain lookup into reference and data phases while retaining the exact `Claude Code-credentials` service.
+- `fe88442` — select the single accepted macOS Keychain item from the returned item list.
+- `61e2d5f` — force the Swift release executable to relink during packaging without clearing SwiftPM caches.
+- `226bda5` — accept explicit `null` Claude reset timestamps.
+- `7d43804` — run the packaging relink regression through the default `make test` path.
+
+Credentialed acceptance evidence:
+
+- With Claude Code 2.1.238, the user-authorized `/Users/taejunoh/.local/bin/claude auth login --claudeai` flow completed successfully through the provider-owned browser.
+- The exact Keychain service returned exactly one parseable item. No Keychain UI prompt appeared because access was already allowed; a prompt is not required when exact-item access succeeds.
+- The live packaged app produced fresh Claude quota and fresh Codex quota. Login-child completion was observed; the visual `Connected` text itself was not directly observed and is not claimed here.
+- Raw credentials and account data were never printed, persisted, or copied.
+
+Fresh verification evidence:
+
+- Claude integration: 17 tests passed; FFI contract: 3 passed; quota contract: 6 passed; redaction contract: 6 passed.
+- Strict workspace Clippy passed. `make test` passed with the pinned `tokscale-core` suite at 1372 passed, 0 failed, 1 ignored, and Swift at 124 passed.
+- The packaging regression passed through `make test`; codesign verification, zip creation, and packaged-app smoke passed. `vendor/tokscale-core` remained clean at the approved pinned revision.
+- Specification and code-quality reviews were approved after the `package-test` CI linkage was added.
+
+Release remains unreleased: no tag or GitHub Release was created, and notarization/stapling/publication were not run.
+
 ## Required Next Action
 
-Continue with Task 6: update `README.md`, `docs/architecture.md`, `docs/privacy.md`, and the Claude/Codex/Cursor provider documents; then run the exact narrow and full verification commands, bounded non-credentialed UI smoke, and the remaining credentialed acceptance checks from the approved plan. Preserve unreleased status, make no notarization or release claim, and record any blocker before the final user-authorized release acceptance.
+Finish explicit Codex button acceptance and record Task 6 final status/CI, then return to the remaining Cursor and notarization release gates. Preserve unreleased status, make no notarization or release claim, and record any blocker before the final user-authorized release acceptance.
 
 ## v0.1 Constraints to Preserve
 
