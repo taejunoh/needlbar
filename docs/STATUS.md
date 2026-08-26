@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 final verification is in progress; Claude credentialed acceptance passed, while explicit Codex button acceptance and the remaining release gates are still pending
-**Next action:** Finish explicit Codex button acceptance and record Task 6 final status/CI, then return to the remaining Cursor and notarization release gates
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 credentialed acceptance is complete; hosted CI confirmation through a PR/merge path and the remaining release gates are pending
+**Next action:** Verify hosted CI through a PR or merge path, then complete the Cursor explicit-session gate (user-provided token required) and the notarization-secrets gate
 
 ## Source of Truth
 
@@ -624,7 +624,8 @@ Credentialed acceptance evidence:
 
 - With Claude Code 2.1.238, the user-authorized `/Users/taejunoh/.local/bin/claude auth login --claudeai` flow completed successfully through the provider-owned browser.
 - The exact Keychain service returned exactly one parseable item. No Keychain UI prompt appeared because access was already allowed; a prompt is not required when exact-item access succeeds.
-- The live packaged app produced fresh Claude quota and fresh Codex quota. Login-child completion was observed; the visual `Connected` text itself was not directly observed and is not claimed here.
+- The live packaged app produced fresh Claude quota and fresh Codex quota. Claude Settings showed `Connected.` directly. The first Codex button attempt showed `Login incomplete.` because a new provider-auth tab was left incomplete and an already-successful tab was mistakenly treated as the current flow; this was an acceptance procedure error, not a product change.
+- The exact `/opt/homebrew/bin/codex login` non-TTY revalidation completed the current provider flow for the account/workspace and exited 0. The Needlbar Codex button was then run again through a newly completed provider flow; Settings showed Codex `Connected.` and fresh Codex quota. Login-child completion was observed.
 - Raw credentials and account data were never printed, persisted, or copied.
 
 Fresh verification evidence:
@@ -633,12 +634,13 @@ Fresh verification evidence:
 - Strict workspace Clippy passed. `make test` passed with the pinned `tokscale-core` suite at 1372 passed, 0 failed, 1 ignored, and Swift at 124 passed.
 - The packaging regression passed through `make test`; codesign verification, zip creation, and packaged-app smoke passed. `vendor/tokscale-core` remained clean at the approved pinned revision.
 - Specification and code-quality reviews were approved after the `package-test` CI linkage was added.
+- Branch commit `5b1d6fb` was pushed successfully to `origin/codex/provider-browser-login`. The CI workflow creates runs for pushes to `main`/`feat/**`; this branch push created no hosted run because no PR exists. Hosted CI must be confirmed through a PR or merge path.
 
 Release remains unreleased: no tag or GitHub Release was created, and notarization/stapling/publication were not run.
 
 ## Required Next Action
 
-Finish explicit Codex button acceptance and record Task 6 final status/CI, then return to the remaining Cursor and notarization release gates. Preserve unreleased status, make no notarization or release claim, and record any blocker before the final user-authorized release acceptance.
+Verify hosted CI through a PR or merge path, then complete the Cursor explicit-session gate (user-provided token required) and the notarization-secrets gate. Preserve unreleased status, make no notarization or release claim, and record any blocker before the final user-authorized release acceptance.
 
 ## v0.1 Constraints to Preserve
 
