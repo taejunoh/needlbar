@@ -2,7 +2,7 @@
 
 **Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** The approved Cursor local-usage/dashboard amendment Tasks 1–5 are complete through exact-head CI at `b4ab7be`; the branch remains unreleased and unmerged.
+**Current phase:** The approved Cursor local-usage/dashboard amendment Tasks 1–5 are complete through replacement exact-head CI at `cc8ab22`; the branch remains unreleased and unmerged.
 **Next action:** Return to the separate notarization/release-secrets gate. Do not request, record, or handle a Cursor credential; do not create a tag or release.
 
 ## Source of Truth
