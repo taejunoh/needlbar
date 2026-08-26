@@ -54,6 +54,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        ApplicationMenuInstaller.install(in: NSApp)
         lifecycleTask = Task { [weak self] in
             guard let self else { return }
             await self.menuBarController.startObserving()
