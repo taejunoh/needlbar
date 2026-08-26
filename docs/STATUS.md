@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 credentialed acceptance and hosted CI verification are complete; PR #1 remains open and mergeable, while the remaining release gates are pending
-**Next action:** Perform Cursor explicit-session live acceptance with a user-provided token, then complete the notarization-secrets gate; preserve the unreleased, unmerged status
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 credentialed acceptance and hosted CI verification are complete; Cursor explicit-session acceptance is blocked after a safe generic connection failure; PR #1 remains open and mergeable
+**Next action:** Enter a fresh current Cursor session token obtained through the documented supported route and retry once, then complete the notarization-secrets gate; preserve the unreleased, unmerged status
 
 ## Source of Truth
 
@@ -473,7 +473,7 @@ Release acceptance intentionally not claimed:
 - A standalone usage scan completed in approximately 89 seconds on the large local history during the second controlled run. The UI stayed responsive and displayed last-known-good data; this is a non-blocking performance observation unless the approved specification changes.
 - Gatekeeper rejected an unstapled/unnotarized copy as expected after the local Developer ID sign/strict-verification/hardened-runtime check. The GitHub repository secret list is empty, so the stable notarization workflow cannot run. No Cursor session was available.
 
-Remaining release acceptance: explicitly connect Cursor and run its usage/quota flow with a user-provided token; then configure the required GitHub notarization/release secrets and run the notarize/staple/Gatekeeper gate. The Codex CLI fallback remains unforced. Only after those gates may the user authorize a v0.1 tag/release.
+Remaining release acceptance: retry Cursor explicit-session connection once with a fresh current session token obtained through the documented supported route, without broadening to browser crawling; then configure the required GitHub notarization/release secrets and run the notarize/staple/Gatekeeper gate. The Codex CLI fallback remains unforced. Only after those gates may the user authorize a v0.1 tag/release.
 
 ## Final v0.1 Continuation
 
@@ -638,6 +638,13 @@ Fresh verification evidence:
 - The provider implementation/status head validated by hosted CI is `b3d116071d0ed3200b4ea431e2d65657329987ab`; run [32987657091](https://github.com/taejunoh/needlbar/actions/runs/32987657091) for that exact head completed `SUCCESS` at `2026-08-26T16:26:20Z`; the `test` job passed.
 - The following status update is docs-only and changes no product code.
 - Historical outage evidence: hosted CI run [32984248738](https://github.com/taejunoh/needlbar/actions/runs/32984248738) was queued with zero jobs while GitHub's official Actions status reported `major_outage` at `2026-08-26T15:11:58Z`.
+
+### Cursor Explicit-Session Acceptance — 2026-08-26
+
+- Packaged-app Settings showed Claude and Codex `Connected`; the Cursor session store was absent before the attempt.
+- After the user's approved Connect action, the secure field was not read or exposed. The UI returned exactly the safe generic message `Cursor could not be connected.`, and the Cursor session store remained absent.
+- This result does not establish a product bug or prove remote verification failure: input validation, network/provider verification, ABI/runtime, and post-verification save failures converge to the same safe generic UI, and success is returned only after save.
+- Blocker/next action: the user must enter a fresh current Cursor session token obtained through the documented supported route, without whitespace or newlines, and retry once. Do not broaden the flow to browser crawling, and do not record or request the token in project documentation or chat.
 
 Release remains unreleased: no tag or GitHub Release was created, and notarization/stapling/publication were not run.
 
