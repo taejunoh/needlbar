@@ -583,9 +583,15 @@ The single session actor is the sole waitpid owner. The runner resolves an exact
 
 Task 4 verification included harmless real-child normal and TERM-only exits, TERM-to-KILL, cancellation, timeout, cancel-plus-stop coalescing, pre/post-spawn cancellation, syscall-seam `WNOHANG`/exit/`EINTR`/`ECHILD`/`ESRCH`/KILL-failure cases, exact argv/env/fd/CLOEXEC assertions, descendant isolation, and the user-authorized non-TTY provider command compatibility gate.
 
+### Task 5 termination-degraded behavior
+
+Task 5 implementation exists in `6f0a5fc` (`feat: expose Claude and Codex browser login`), but final spec review identified an approved termination-degraded behavior amendment before Task 5 can be accepted. A bounded persistent signal or `waitpid` failure must deny AppKit termination with one negative reply, keep the app/coordinator and same-provider admission alive while the actor background-reaps the exact child, and allow a later termination request to re-evaluate cleanup. A successful termination reply remains conditional on every login child having been reaped, followed by refresh shutdown.
+
+Next: implement and test the approved `allChildrenReaped` / `backgroundReaping` termination result, including negative-reply, post-reap retry, refresh-sequencing, and exactly-once decision coverage; then re-run Task 5 spec and quality review.
+
 ## Required Next Action
 
-Continue with Task 5: wire Settings, popovers, and app termination from the approved provider-managed browser-login plan. Task 4 is accepted as complete; release acceptance remains paused.
+Continue Task 5 with the approved termination-degraded behavior implementation and tests. Task 4 is accepted as complete; release acceptance remains paused.
 
 ## v0.1 Constraints to Preserve
 

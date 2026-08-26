@@ -12,9 +12,9 @@
 
 ### Approved implementation deviation: direct POSIX spawn
 
-The approved Task 4 implementation uses direct macOS `posix_spawn` with parent-owned nonblocking `waitpid`, while AppKit remains the application/lifecycle owner. Foundation Process was rejected because it can reap asynchronously and exposes only a numeric PID; direct spawn/waitpid preserves PID identity until Needlbar itself reaps the child. The session actor is the sole waitpid owner, with no asynchronous reaper or independently reaped child.
+The approved Task 4 implementation uses direct macOS `posix_spawn` with parent-owned nonblocking `waitpid`, while AppKit remains the application/lifecycle owner. Foundation Process was rejected because it can reap asynchronously and exposes only a numeric PID; direct spawn/waitpid preserves PID identity until Needlbar itself reaps the child. The session actor is the sole waitpid owner. On a bounded persistent signal or wait failure, it hands the exact still-owned child from foreground polling to actor-owned background reaping; no independent task reaps or signals that child.
 
-The runner must use the exact executable URL/path (never `posix_spawnp`), pass the executable path as `argv[0]` followed by fixed arguments, build a NUL-validated allowlisted `envp`, and use no shell. `posix_spawn_file_actions` connects stdin to `/dev/null` read and stdout/stderr to `/dev/null` write, with `POSIX_SPAWN_CLOEXEC_DEFAULT`. Cleanup polls `waitpid(WNOHANG)`, retries `EINTR`, treats `ECHILD` as an invariant violation with no further signal, treats `ESRCH` as requiring reap confirmation, and bounds all other signal failures. TERM, bounded grace, KILL, and final reap are coalesced against the direct child PID only.
+The runner must use the exact executable URL/path (never `posix_spawnp`), pass the executable path as `argv[0]` followed by fixed arguments, build a NUL-validated allowlisted `envp`, and use no shell. `posix_spawn_file_actions` connects stdin to `/dev/null` read and stdout/stderr to `/dev/null` write, with `POSIX_SPAWN_CLOEXEC_DEFAULT`. Cleanup polls `waitpid(WNOHANG)`, retries `EINTR`, treats `ECHILD` as an invariant violation with no further signal, treats `ESRCH` as requiring reap confirmation, and bounds all other signal failures. TERM, bounded grace, KILL, and final reap are coalesced against the direct child PID only. A stop attempt reports `allChildrenReaped` only after every active child is reaped; a persistent signal or wait failure reports `backgroundReaping` while the actor retains its exact PID and same-provider admission.
 
 ## Global Constraints
 
@@ -447,7 +447,7 @@ With suspended fake runners, prove:
 - verification `true` becomes `.connected`; `false` becomes `.failed(.verificationFailed)`,
 - CLI missing, launch failure, nonzero exit, timeout, and cancellation map to fixed safe failures,
 - Cursor never launches,
-- `stop()` cancels/reaps both children and late completion cannot refresh or mutate state,
+- `stop()` reports `allChildrenReaped` only after it cancels/reaps both children; persistent signal/wait failure reports `backgroundReaping`, retains same-provider admission, and late completion cannot refresh or mutate state,
 - no child output field exists in the result/state model,
 - harmless real children cover normal exit and TERM-only exit,
 - a never-finishing child receives coalesced `SIGTERM`, then `SIGKILL` after the bounded grace period, and is finally reaped,
@@ -527,7 +527,7 @@ git commit -m "feat: add provider-managed login coordinator"
 
 **Interfaces:**
 - Consumes the application-lifetime login coordinator and `refreshQuota(afterUserAuthenticationFor:)`.
-- Produces Claude/Codex browser-login rows, provider-popover CTAs, and exactly-once child cleanup on termination.
+- Produces Claude/Codex browser-login rows, provider-popover CTAs, and a login-stop cleanup result: `allChildrenReaped` or `backgroundReaping`.
 - Preserves the existing Cursor transient-token clearing and serialized Connect/Reconnect/Disconnect controller.
 
 - [ ] **Step 1: Add RED presentation and routing tests**
@@ -547,7 +547,7 @@ In `MenuBarControllerTests`, assert Claude/Codex call `onProviderLoginRequested(
 
 - [ ] **Step 2: Add RED termination tests**
 
-Extend `AccessoryTerminationController` tests with suspended login and refresh shutdown gates. The AppKit reply must remain pending until both finish, repeated requests must not duplicate cleanup, and the reply count must be exactly one.
+Extend `AccessoryTerminationController` tests with suspended login and refresh shutdown gates. The successful AppKit reply must remain pending until login cleanup reports `allChildrenReaped` and refresh shutdown finishes. Repeated requests while that decision is in flight must coalesce without duplicate cleanup or reply. Add a persistent signal/wait-failure case: the login stop reports `backgroundReaping`, AppKit receives one negative reply, the app/coordinator and same-provider admission remain alive through background reap, refresh shutdown is not started, and a later new termination request rechecks cleanup then sends one successful reply after reaping and refresh shutdown.
 
 - [ ] **Step 3: Run UI/lifecycle suites and verify RED**
 
@@ -581,7 +581,7 @@ No login begins in app launch, refresh start, file watcher, popover open, or Set
 
 - [ ] **Step 6: Stop login children before termination reply**
 
-Extend the termination task to await `loginCoordinator.stop()` and `refreshCoordinator.stop()` before replying. Preserve synchronous cancellation/observer cleanup and exactly-once semantics.
+Extend the termination task to await `loginCoordinator.stop()`. If it reports `allChildrenReaped`, await `refreshCoordinator.stop()` and send one successful AppKit reply. If it reports `backgroundReaping`, send one negative AppKit reply without stopping refresh, keep the app and coordinator alive, and preserve affected provider admission until reaping. Reset the termination decision after that negative reply so a later request performs a fresh bounded cleanup attempt. Preserve synchronous cancellation/observer cleanup, direct-PID-only termination, and exactly-once semantics for each decision.
 
 - [ ] **Step 7: Run UI/lifecycle verification and commit**
 

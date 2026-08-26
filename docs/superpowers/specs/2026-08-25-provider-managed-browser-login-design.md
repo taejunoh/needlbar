@@ -135,7 +135,7 @@ The chosen path is standardized, must pass the executable check, and may remain 
 
 The child receives a minimal allowlisted `envp`: `HOME`, `USER`, `LOGNAME`, `TMPDIR`, locale variables, proxy/certificate variables, and the selected provider's `CLAUDE_CONFIG_DIR` or `CODEX_HOME` when present. Its `PATH` is the inherited path with the selected executable's parent directory prepended so version-managed Node wrappers can resolve their runtime. `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, and other credential environment variables are not forwarded. Needlbar does not synthesize or inject tokens. `posix_spawn_file_actions` connects stdin to `/dev/null` opened read-only and stdout/stderr to `/dev/null` opened write-only; `POSIX_SPAWN_CLOEXEC_DEFAULT` is set. Login URLs, device codes, and account information therefore cannot enter Needlbar logs or state.
 
-The operation timeout is five minutes. A single session actor is the sole owner of each child PID and its `waitpid` calls; no other task reaps or signals that child. It polls nonblocking `waitpid(pid, &status, WNOHANG)`, retrying `EINTR`. Until the child is reaped, its PID cannot be reused by the process table. Timeout, app termination, or explicit cancellation coalesces into `SIGTERM`, a short bounded grace period, `SIGKILL` if the exact direct child is still running, and a final reap of that same PID. `ECHILD` is an invariant violation and stops further signaling; `ESRCH` switches to reap confirmation; other signal failures produce a bounded safe failure and never an infinite wait. Needlbar never signals the browser process opened by the provider.
+The operation timeout is five minutes. A single session actor is the sole owner of each child PID and its `waitpid` calls; no other task reaps or signals that child. It polls nonblocking `waitpid(pid, &status, WNOHANG)`, retrying `EINTR`. Until the child is reaped, its PID cannot be reused by the process table. Timeout, app termination, or explicit cancellation coalesces into `SIGTERM`, a short bounded grace period, `SIGKILL` if the exact direct child is still running, and a final reap of that same PID. `ECHILD` is an invariant violation and stops further signaling; `ESRCH` switches to reap confirmation; other signal failures produce a bounded safe failure and never an infinite wait. A persistent signal or wait failure transfers the exact PID to actor-owned background reaping and retains that provider's admission; it does not permit a shell, process-group signal, browser signal, descendant scan, or a new same-provider login. Needlbar never signals the browser process opened by the provider.
 
 The supported Claude Code and Codex CLI versions must pass a separate, user-authorized manual compatibility gate proving these exact commands can start their browser flow from a non-TTY direct `posix_spawn` child with stdin connected to `/dev/null`. That gate is still pending and must not be claimed as run by implementation work. If either CLI requires terminal input or depends on parsing login output, the feature is blocked; Needlbar does not fall back to Terminal automation, stdout parsing, or a shell.
 
@@ -195,7 +195,7 @@ The existing local-first policy remains authoritative.
 - Closing Settings does not cancel an application-owned login; reopening Settings observes the same transient state.
 - Repeated clicks for the same provider while a login is active are ignored.
 - Claude and Codex may each have one simultaneous login.
-- App termination cancels all login timeouts, terminates active children, and completes child cleanup before the application replies to AppKit termination.
+- App termination attempts bounded direct-child termination and reap for every active login. The runner and coordinator report either `allChildrenReaped` or `backgroundReaping` for that attempt. With `allChildrenReaped`, termination next awaits refresh shutdown and sends exactly one successful AppKit reply. With `backgroundReaping`, termination sends exactly one negative AppKit reply, keeps the application and coordinator alive, preserves the affected provider admission, and does not proceed to refresh shutdown. A later termination request is a new bounded attempt and may succeed after background reaping has completed. Repeated requests while one decision is in flight coalesce and must not duplicate cleanup or either reply.
 - A late child completion from an older generation cannot overwrite newer state or request another refresh.
 - Quota refresh failure after a successful CLI exit uses the existing quota/last-known-good state. The login UI reports that sign-in completed but verification failed, without replacing the quota error with invented success.
 
@@ -216,7 +216,7 @@ Required coverage:
 - nonzero, timeout, cancellation, and launch failure mapping,
 - stdout/stderr exclusion and safe UI copy,
 - generation protection against late completion,
-- app-termination child cleanup,
+- app termination: successful reply only after all login children are reaped and refresh shutdown completes; persistent signal/wait failure gives one negative reply, retains background reaping/admission, and permits a later successful retry,
 - provider-popover CTA policy,
 - Cursor session workflow regression coverage,
 - refresh coalescing without usage refresh,
