@@ -735,8 +735,9 @@ change. The live packaged UI was then verified on display 2: Settings showed Cla
 the Cursor local-cache explanation, one Spending button, and no Cursor credential controls;
 the Settings action and Cursor popover action each opened the exact
 `https://cursor.com/dashboard/spending` URL. Evidence is retained in
-`task5-settings-connections.png`, `task5-cursor-popover.png`, and
-`task5-cursor-popover-dismissed.png` under the Task 5 SDD directory. Fix-round commit
+the local-only cropped/redacted `task5-settings-connections.png` and
+`task5-cursor-popover.png` under the Task 5 SDD directory (also retained in its
+`local-only/` evidence directory). Fix-round commit
 `dc7e29a44b521fa417b0ca20e5036e9afc2df7e`
 passed exact-head CI run [33018740992](https://github.com/taejunoh/needlbar/actions/runs/33018740992),
 including owned workspace tests, explicit vendored tokscale-core test and clippy, full
@@ -749,6 +750,10 @@ successful, including the packaged visual-acceptance build path. This status-onl
 records that completed run/head; any exact-head CI generated for this status-only commit will
 be recorded only in the untracked Task 5 report, not through another STATUS commit, with no
 tag or release action authorized here.
+
+The follow-up nested-worktree review fix `893309a` excludes the `.worktrees` prefix
+from Cargo workspace discovery and verifies the pinned vendor through a portable
+detached-worktree helper; no vendor source or revision changed.
 
 ## v0.1 Constraints to Preserve
 
