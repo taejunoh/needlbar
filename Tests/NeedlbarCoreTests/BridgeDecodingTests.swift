@@ -59,6 +59,16 @@ import Testing
     #expect(envelope.data?.providers.first?.usage.last7DaysDaily == [])
 }
 
+@Test func bridgeErrorsTreatRetiredCursorConnectActionAsUnknown() throws {
+    let payload = """
+    {"schemaVersion":"needlbar.v1","ok":false,"generatedAt":"2026-08-26T12:00:00Z","data":null,"errors":[{"provider":"cursor","code":"providerUnavailable","message":"Unavailable","action":"connectCursor"}]}
+    """
+
+    let envelope = try BridgeDecoder().decodeUsageEnvelope(Data(payload.utf8))
+
+    #expect(envelope.errors.first?.action == .unknown("connectCursor"))
+}
+
 @Test func quotaEnvelopeRejectsOutOfRangePercentages() throws {
     let payload = """
     {
@@ -107,6 +117,23 @@ import Testing
         _ = try bridge.usageEnvelope()
     }
     #expect(recorder.count == 1)
+}
+
+@Test func rustUsageRepositoryUsesTheSingleUsageBridgeCall() throws {
+    let calls = CallRecorder()
+    let frees = FreeRecorder()
+    let returnedPointer = try CStringPointer(usageCString(provider: "claude"))
+    let bridge = RustBridge(
+        usageCall: { calls.record("usage"); return returnedPointer.pointer },
+        free: { frees.release($0) }
+    )
+
+    let result = try RustUsageRepository(bridge: bridge).refresh()
+
+    #expect(calls.values == ["usage"])
+    #expect(Set(result.snapshots.keys) == [.claude])
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
 }
 
 @Test func backgroundQuotaRefreshUsesOnlyTheAggregateBridgeCall() throws {
@@ -344,6 +371,13 @@ private func pointerIdentity(_ pointer: UnsafePointer<CChar>) -> UInt {
 private func quotaCString(provider: String) -> UnsafePointer<CChar>? {
     let json = """
     {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-08-25T12:00:00Z","data":{"providers":[{"provider":"\(provider)","windows":[]}]},"errors":[]}
+    """
+    return makeCString(Array(json.utf8).map(CChar.init) + [0])
+}
+
+private func usageCString(provider: String) -> UnsafePointer<CChar>? {
+    let json = """
+    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-08-26T12:00:00Z","data":{"providers":[{"provider":"\(provider)","inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0,"totalTokens":0,"estimatedCostUSD":0,"today":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0,"totalTokens":0,"estimatedCostUSD":0},"last7Days":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0,"totalTokens":0,"estimatedCostUSD":0},"last30Days":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0,"totalTokens":0,"estimatedCostUSD":0}}]},"errors":[]}
     """
     return makeCString(Array(json.utf8).map(CChar.init) + [0])
 }

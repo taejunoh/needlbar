@@ -32,8 +32,8 @@ import Testing
     }
 
     let snapshots = await store.snapshots()
-    #expect(snapshots.allSatisfy { $0.usage != nil && $0.quota != nil })
-    #expect(HeadlineQuotaSelector.mostConstrained(snapshots)?.id == "cursor.plan")
+    #expect(snapshots.allSatisfy { $0.usage != nil })
+    #expect(HeadlineQuotaSelector.mostConstrained(snapshots)?.id == "codex.primary")
 
     let codex = try #require(snapshots.first(where: { $0.provider == .codex }))
     #expect(codex.usage?.totalTokens == 1_300)
@@ -44,7 +44,8 @@ import Testing
     let cursor = try #require(snapshots.first(where: { $0.provider == .cursor }))
     #expect(claude.usage?.totalTokens == 1_750)
     #expect(cursor.usage?.totalTokens ?? 0 > 0)
-    #expect(cursor.quotaStatus == .fresh)
+    #expect(cursor.quota == nil)
+    #expect(cursor.quotaStatus == .unavailable)
 }
 
 @_silgen_name("needlbar_test_install_fixture_runtime")

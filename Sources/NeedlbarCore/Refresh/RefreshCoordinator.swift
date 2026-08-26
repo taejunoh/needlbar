@@ -54,9 +54,7 @@ public actor RefreshCoordinator {
     private var lastBackgroundQuotaSuccessfulAt: Date?
     private var isRunning = false
     private var usageRefreshRequestedWhileInFlight = false
-    private var forceCursorSyncRequestedWhileInFlight = false
     private var usageQueuedGeneration: UInt64?
-    private var usageTaskIsForced = false
     private var runGeneration: UInt64 = 0
     private var activeQuotaIntent: QuotaRefreshIntent?
     private var activeQuotaUserWaiterBatch: UserQuotaWaiterBatch?
@@ -142,7 +140,7 @@ public actor RefreshCoordinator {
             usageQueuedGeneration = runGeneration
             return
         }
-        beginUsageRefresh(forceCursorSync: false)
+        beginUsageRefresh()
     }
 
     public func popoverOpened() {
@@ -159,22 +157,11 @@ public actor RefreshCoordinator {
     public func manualRefresh() async {
         let generation = runGeneration
         if let usageTask {
-            var forceRequirementIsSatisfiedOrQueued = usageTaskIsForced || forceCursorSyncRequestedWhileInFlight
-            if !forceRequirementIsSatisfiedOrQueued {
-                forceCursorSyncRequestedWhileInFlight = true
-                usageQueuedGeneration = generation
-                forceRequirementIsSatisfiedOrQueued = true
-            }
+            requestUsageRefresh(generation: generation)
             await usageTask.value
             guard generation == runGeneration, isRunning else { return }
-            // A manual caller that observed or queued the shared forced cycle has
-            // met its usage requirement. The shared cycle may have completed while
-            // this caller awaited the normal refresh, so it must not start another.
-            if !forceRequirementIsSatisfiedOrQueued {
-                beginUsageRefresh(forceCursorSync: true)
-            }
         } else {
-            beginUsageRefresh(forceCursorSync: true)
+            beginUsageRefresh()
         }
 
         if let quotaTask {
@@ -235,7 +222,6 @@ public actor RefreshCoordinator {
         usageSafetyTask = nil
         quotaSafetyTask = nil
         usageRefreshRequestedWhileInFlight = false
-        forceCursorSyncRequestedWhileInFlight = false
         usageQueuedGeneration = nil
         queuedBackgroundQuotaRefresh = false
         queuedUserInitiatedProviders.removeAll()
@@ -302,13 +288,12 @@ public actor RefreshCoordinator {
         beginQuotaRefresh(intent: .backgroundAll)
     }
 
-    private func beginUsageRefresh(forceCursorSync: Bool) {
+    private func beginUsageRefresh() {
         guard usageTask == nil else { return }
-        usageTaskIsForced = forceCursorSync
         let repository = usageRepository
         let generation = runGeneration
         usageTask = Task { [weak self, repository] in
-            let result = Result { try repository.refresh(forceCursorSync: forceCursorSync) }
+            let result = Result { try repository.refresh() }
             await self?.finishUsageRefresh(result, applyResult: !Task.isCancelled, generation: generation)
         }
     }
@@ -339,15 +324,12 @@ public actor RefreshCoordinator {
     ) async {
         defer {
             usageTask = nil
-            usageTaskIsForced = false
             let requested = usageRefreshRequestedWhileInFlight
-            let forceCursorSync = forceCursorSyncRequestedWhileInFlight
             let queuedGeneration = usageQueuedGeneration
             usageRefreshRequestedWhileInFlight = false
-            forceCursorSyncRequestedWhileInFlight = false
             usageQueuedGeneration = nil
-            if isRunning, queuedGeneration == runGeneration, (requested || forceCursorSync) {
-                beginUsageRefresh(forceCursorSync: forceCursorSync)
+            if isRunning, queuedGeneration == runGeneration, requested {
+                beginUsageRefresh()
             }
         }
         guard applyResult, generation == runGeneration else { return }

@@ -6,7 +6,6 @@ import Testing
     let snapshots = [
         makeQuotaSnapshot(provider: .claude, usedPercent: 68),
         makeQuotaSnapshot(provider: .codex, usedPercent: 81),
-        makeQuotaSnapshot(provider: .cursor, usedPercent: 36),
     ]
 
     let selected = HeadlineQuotaSelector.mostConstrained(snapshots)

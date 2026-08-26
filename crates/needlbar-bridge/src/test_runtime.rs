@@ -428,10 +428,10 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
                 "codex.primary",
                 50.0,
             )),
-            Arc::new(FixtureQuotaProvider::success(
+            Arc::new(FixtureQuotaProvider::failure(
                 ProviderId::Cursor,
-                "cursor.plan",
-                90.0,
+                QuotaErrorCode::ProviderUnavailable,
+                "Cursor quota is unavailable in Needlbar.".to_owned(),
             )),
         ),
         FixtureMode::Redaction {

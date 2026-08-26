@@ -7,7 +7,6 @@ public typealias BridgeStringFree = @Sendable (UnsafePointer<CChar>?) -> Void
 
 public struct RustBridge: Sendable {
     private let usageCall: BridgeJSONCall
-    private let forcedUsageCall: BridgeJSONCall
     private let quotaCall: BridgeJSONCall
     private let claudeUserInitiatedQuotaCall: BridgeJSONCall
     private let codexQuotaCall: BridgeJSONCall
@@ -16,7 +15,6 @@ public struct RustBridge: Sendable {
 
     public init(
         usageCall: @escaping BridgeJSONCall = { needlbar_usage_snapshot_json() },
-        forcedUsageCall: @escaping BridgeJSONCall = { needlbar_forced_usage_snapshot_json() },
         quotaCall: @escaping BridgeJSONCall = { needlbar_quota_snapshot_json() },
         claudeUserInitiatedQuotaCall: @escaping BridgeJSONCall = { needlbar_claude_user_initiated_quota_snapshot_json() },
         codexQuotaCall: @escaping BridgeJSONCall = { needlbar_codex_quota_snapshot_json() },
@@ -24,7 +22,6 @@ public struct RustBridge: Sendable {
         decoder: BridgeDecoder = BridgeDecoder()
     ) {
         self.usageCall = usageCall
-        self.forcedUsageCall = forcedUsageCall
         self.quotaCall = quotaCall
         self.claudeUserInitiatedQuotaCall = claudeUserInitiatedQuotaCall
         self.codexQuotaCall = codexQuotaCall
@@ -32,8 +29,8 @@ public struct RustBridge: Sendable {
         self.decoder = decoder
     }
 
-    public func usageEnvelope(forceCursorSync: Bool = false) throws -> BridgeEnvelope<BridgeUsagePayload> {
-        try decodeCString(forceCursorSync ? forcedUsageCall : usageCall, decode: decoder.decodeUsageEnvelope)
+    public func usageEnvelope() throws -> BridgeEnvelope<BridgeUsagePayload> {
+        try decodeCString(usageCall, decode: decoder.decodeUsageEnvelope)
     }
 
     public func quotaEnvelope() throws -> BridgeEnvelope<BridgeQuotaPayload> {
