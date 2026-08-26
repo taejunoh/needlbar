@@ -30,6 +30,11 @@ fi
 MACOSX_DEPLOYMENT_TARGET=14.0 NEEDLBAR_RUST_TARGET="aarch64-apple-darwin" make -C "$ROOT" rust
 [[ -f "$BRIDGE_ARCHIVE" ]] || fail "Rust bridge archive was not produced: $BRIDGE_ARCHIVE"
 
+# SwiftPM does not track the unsafe linker archive as a build input. Remove only
+# the stale release executable so the next build relinks without discarding the
+# Swift object and module caches.
+rm -f -- "$EXECUTABLE_SOURCE"
+
 swift build --package-path "$ROOT" -c release --arch arm64
 [[ -f "$EXECUTABLE_SOURCE" ]] || fail "release executable was not produced: $EXECUTABLE_SOURCE"
 
