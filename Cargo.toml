@@ -4,7 +4,7 @@ members = [
   "crates/needlbar-bridge",
   "crates/needlbar-quota",
 ]
-exclude = ["vendor/tokscale-core", ".worktrees/*/vendor/tokscale-core"]
+exclude = ["vendor/tokscale-core", ".worktrees"]
 
 [workspace.package]
 edition = "2021"
