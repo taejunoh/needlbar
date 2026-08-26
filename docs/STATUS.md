@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 credentialed acceptance and hosted CI verification are complete; Cursor explicit-session acceptance is blocked after a safe generic connection failure; PR #1 remains open and mergeable
-**Next action:** Enter a fresh current Cursor session token obtained through the documented supported route and retry once, then complete the notarization-secrets gate; preserve the unreleased, unmerged status
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 credentialed acceptance and hosted CI verification are complete; the Cursor Settings `Command-V` regression is fixed and manually verified, while Cursor explicit-session acceptance remains blocked after the earlier safe generic connection failure; PR #1 remains open and mergeable
+**Next action:** Paste a fresh current Cursor session token obtained through the documented supported route and retry Connect once, then complete the notarization-secrets gate; preserve the unreleased, unmerged status
 
 ## Source of Truth
 
@@ -644,13 +644,17 @@ Fresh verification evidence:
 - Packaged-app Settings showed Claude and Codex `Connected`; the Cursor session store was absent before the attempt.
 - After the user's approved Connect action, the secure field was not read or exposed. The UI returned exactly the safe generic message `Cursor could not be connected.`, and the Cursor session store remained absent.
 - This result does not establish a product bug or prove remote verification failure: input validation, network/provider verification, ABI/runtime, and post-verification save failures converge to the same safe generic UI, and success is returned only after save.
-- Blocker/next action: the user must enter a fresh current Cursor session token obtained through the documented supported route, without whitespace or newlines, and retry once. Do not broaden the flow to browser crawling, and do not record or request the token in project documentation or chat.
+- The Settings secure field initially accepted typed input but not `Command-V` because the programmatic accessory app did not install a native Edit/Paste command. `ApplicationMenuInstaller` now installs or repairs `NSText.paste(_:)` with a `nil` target and the Command-`V` key equivalent so AppKit routes paste through the current first responder. Repeated installation does not create app-owned duplicates, and pre-existing external menu content is not deleted.
+- TDD covered the missing installer, native selector/target/key contract, normal-path idempotence, malformed Paste repair, and preservation of pre-existing same-title menu content. The focused suite passed 3 tests; specification and code-quality reviews approved the final contract and implementation.
+- Fresh root verification passed: `swift test --filter ApplicationMenuInstallerTests` ran 3 tests with 0 failures; `make test` exited 0 with the pinned `tokscale-core` suite at 1372 passed, 0 failed, 1 ignored and Swift at 127 passed; the package-app relink regression passed; `make package` produced the packaged app successfully.
+- A packaged-app manual smoke copied only the harmless fixture `NEEDLBAR-PASTE-SMOKE`, focused the Cursor secure field, and pressed `Command-V`. Masked input appeared. The field and clipboard were immediately cleared, and Connect was not pressed. No provider token or clipboard contents were printed, logged, persisted, or exposed.
+- Blocker/next action: the user must paste a fresh current Cursor session token obtained through the documented supported route, without whitespace or newlines, and retry Connect once. Do not broaden the flow to browser crawling, and do not record or request the token in project documentation or chat.
 
 Release remains unreleased: no tag or GitHub Release was created, and notarization/stapling/publication were not run.
 
 ## Required Next Action
 
-Hosted CI is green for the provider implementation/status head `b3d116071d0ed3200b4ea431e2d65657329987ab`; this status update changes no product code. The exact next product gate is Cursor explicit-session live acceptance (user-provided token required), followed by the notarization-secrets gate. Preserve the unreleased and unmerged status, make no notarization or release claim, and record any blocker before final user-authorized release acceptance.
+Hosted CI is green for the provider implementation/status head `b3d116071d0ed3200b4ea431e2d65657329987ab`; the later Cursor paste regression fix is locally verified but still requires hosted CI after push. The exact next product gate is Cursor explicit-session live acceptance (user-provided token required), followed by the notarization-secrets gate. Preserve the unreleased and unmerged status, make no notarization or release claim, and record any blocker before final user-authorized release acceptance.
 
 ## v0.1 Constraints to Preserve
 
