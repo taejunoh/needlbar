@@ -1,6 +1,6 @@
 # Needlbar Cursor Local Usage and Dashboard Quota Design
 
-**Status:** Approved in conversation on 2026-08-26; written-spec review pending
+**Status:** Approved on 2026-08-26
 **Scope:** Post-v0.1 amendment replacing Cursor session-token authentication, remote usage hydration, and personal quota retrieval
 **Base contracts:**
 
