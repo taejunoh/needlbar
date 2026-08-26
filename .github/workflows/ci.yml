@@ -42,10 +42,16 @@ jobs:
           swift --version
 
       - name: Test Rust workspace
-        run: cargo test --workspace
+        run: cargo test --workspace --features bridge-test-runtime
+
+      - name: Test vendored tokscale-core
+        run: cargo test --manifest-path vendor/tokscale-core/Cargo.toml
 
       - name: Lint Rust workspace
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Lint vendored tokscale-core
+        run: cargo clippy --manifest-path vendor/tokscale-core/Cargo.toml --all-targets --all-features -- -D warnings
 
       - name: Test complete project
         run: make test

@@ -59,14 +59,14 @@ import Testing
     #expect(envelope.data?.providers.first?.usage.last7DaysDaily == [])
 }
 
-@Test func bridgeErrorsTreatRetiredCursorConnectActionAsUnknown() throws {
+@Test func bridgeErrorsTreatUnknownActionsAsUnknown() throws {
     let payload = """
-    {"schemaVersion":"needlbar.v1","ok":false,"generatedAt":"2026-08-26T12:00:00Z","data":null,"errors":[{"provider":"cursor","code":"providerUnavailable","message":"Unavailable","action":"connectCursor"}]}
+    {"schemaVersion":"needlbar.v1","ok":false,"generatedAt":"2026-08-26T12:00:00Z","data":null,"errors":[{"provider":"cursor","code":"providerUnavailable","message":"Unavailable","action":"futureCursorAction"}]}
     """
 
     let envelope = try BridgeDecoder().decodeUsageEnvelope(Data(payload.utf8))
 
-    #expect(envelope.errors.first?.action == .unknown("connectCursor"))
+    #expect(envelope.errors.first?.action == .unknown("futureCursorAction"))
 }
 
 @Test func quotaEnvelopeRejectsOutOfRangePercentages() throws {

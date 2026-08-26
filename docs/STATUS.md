@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** The approved Cursor local-usage/dashboard amendment Tasks 1–5 are complete through replacement exact-head CI at `cc8ab22`; the branch remains unreleased and unmerged.
-**Next action:** Return to the separate notarization/release-secrets gate. Do not request, record, or handle a Cursor credential; do not create a tag or release.
+**Current phase:** The approved Cursor local-usage/dashboard amendment is in the final Task 5 fix-round gate; the branch remains unreleased and unmerged.
+**Next action:** Run the final fix-round exact-head CI, then return to the separate notarization/release-secrets gate. Do not request, record, or handle a Cursor credential; do not create a tag or release.
 
 ## Source of Truth
 
@@ -725,11 +725,18 @@ state and deliberately supersedes the older Cursor records above.
   credential material were inspected. The packaged process was only inspected by exact path
   and was terminated after the smoke attempt.
 
-Task 5 is complete. Exact-head CI run [33014944925](https://github.com/taejunoh/needlbar/actions/runs/33014944925)
-passed all jobs in 8m04s at head `b4ab7be7dfc9958e247fad1adbdfbfdd76c0580d`. The live UI
-click-through limitation is recorded as an environment concern only; no product behavior
-change is inferred from it. The next continuation point is the separate notarization/
-release-secrets gate, with no tag or release action authorized here.
+Task 5's fix round replaces a stale positive `connectCursor` decoding fixture with a generic
+future-action unknown-value assertion, so the retired action appears only in approved
+historical or redaction-negative records. The workspace formatting boundary now excludes
+the vendored path dependency, so literal stable `cargo fmt --check` covers the owned
+workspace and passes; tokscale-core remains a pinned transitive dependency and is explicitly
+tested and linted through its manifest in Makefile/CI, with no vendor source or revision
+change. The live packaged UI was re-attempted through Orca,
+macOS System Events AXPress/AXPick, and the public Settings window seam; the status item's
+AX frame remains zero-sized/off-screen and no Settings window is exposed, so visual
+click-through remains an environment limitation. The fix-round commit is the final exact-head
+CI gate; its resulting run/head will be recorded in the Task 5 report after CI, with no tag
+or release action authorized here.
 
 ## v0.1 Constraints to Preserve
 
