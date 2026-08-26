@@ -1,5 +1,10 @@
 # Cursor Session Token Paste Command Implementation Plan
 
+> **SUPERSEDED — 2026-08-26:** This plan is retained as historical implementation record
+> only. The approved Cursor local-usage/dashboard amendment removes the Cursor token field
+> and connection workflow, so this paste behavior is no longer active work. See
+> [`2026-08-26-cursor-local-usage-dashboard-quota-design.md`](../specs/2026-08-26-cursor-local-usage-dashboard-quota-design.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Restore native `⌘V` paste into Needlbar's Cursor session-token `SecureField` by installing a standard AppKit Edit menu while preserving all existing token handling.

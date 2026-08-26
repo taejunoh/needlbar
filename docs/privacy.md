@@ -5,11 +5,14 @@ Needlbar v0.1 is local-first.
 - There is no Needlbar backend, account, hosted sync service, or telemetry.
 - Needlbar does not upload token history, prompts, assistant responses, source code, file paths, account identifiers, or provider credentials.
 - It does not display prompt/response text or source-code content. The local usage engine reads known provider sources only to derive token metadata and cost information.
-- Quota network requests go directly to the relevant provider. Needlbar does not proxy or relay those requests.
+- Claude and Codex quota requests go directly to their providers. Needlbar does not proxy or relay those requests.
 - Claude and Codex browser sign-in is explicit. Their buttons launch the installed provider
   CLI, which owns browser navigation, OAuth callbacks, refresh, and credential storage.
   Needlbar never implements a duplicate OAuth flow or silently crawls browser profiles for
   cookies.
+- Cursor has no Needlbar credential integration, private endpoint, or remote usage hydration.
+  Its usage is local-only, and its quota action opens the fixed provider-owned Spending
+  dashboard URL.
 
 ## Local reads
 
@@ -19,9 +22,14 @@ The following are the documented v0.1 boundaries. Paths are examples relative to
 | --- | --- | --- |
 | Claude | `~/.claude/projects` and `~/.claude/transcripts`, delegated to the pinned `tokscale-core` engine | Background refresh uses existing file evidence from `CLAUDE_CONFIG_DIR/.credentials.json` when set, otherwise `~/.claude/.credentials.json`. After an explicit provider sign-in, macOS may authorize one exact `Claude Code-credentials` Keychain item for Claude quota verification. |
 | Codex | `~/.codex/sessions` and archived sessions when available, delegated to `tokscale-core` | `$CODEX_HOME/auth.json` when `CODEX_HOME` is set; otherwise `~/.codex/auth.json` |
-| Cursor | Cursor usage export hydrated into `~/.config/tokscale/cursor-cache/usage.csv`; sync attempt marker is stored beside it | Needlbar-owned `~/Library/Application Support/Needlbar/cursor-session.json`, created only by explicit Settings connection |
+| Cursor | An existing compatible local cache at `~/.config/tokscale/cursor-cache/usage.csv`, read by `tokscale-core` | None. Cursor quota is unavailable inside Needlbar and is represented by the fixed Spending dashboard action. |
 
-Reads are bounded to these known provider locations. Needlbar does not copy raw credentials into Swift or UserDefaults, and diagnostics expose fixed source labels rather than paths. Cursor's session and cache files are private local files; the session file is removed by Cursor Disconnect, while provider account access is not revoked by Needlbar.
+Needlbar does not create or refresh the Cursor cache and does not read Cursor.app credentials,
+browser profiles, or browser cookies. The bridge migration may remove only the obsolete
+Needlbar-owned `~/Library/Application Support/Needlbar/cursor-session.json` file without
+reading it; an absent file is success, and the local usage cache is never removed. Raw
+credentials are never copied into Swift or UserDefaults, and diagnostics expose fixed source
+labels rather than paths.
 
 ## Network requests
 
@@ -31,9 +39,16 @@ Usage and quota have separate network behavior:
   Background Keychain access is interaction-forbidden and never prompts. Only the explicit
   post-login Claude verification path may allow a macOS Keychain permission prompt.
 - Codex quota tries the provider usage API first and can use the installed Codex CLI app-server RPC fallback when the API credential route is unavailable.
-- Cursor usage export and quota use direct Cursor HTTPS endpoints. The Cursor session is sent only to Cursor's endpoint in the required cookie header.
+- Cursor makes no authentication, usage-export, or personal-quota request. Clicking
+  `Open Cursor Spending` hands only `https://cursor.com/dashboard/spending` to the macOS
+  workspace URL opener.
 
-Requests are bounded and errors are redacted. Needlbar does not log authorization headers, cookies, response bodies, prompt text, response text, or source code. Raw Claude credential material is held only ephemerally inside the Rust quota adapter, with zeroizing storage where Needlbar owns the buffer; it is not persisted by Needlbar, copied into Swift, or exposed through the C ABI. A failed request leaves the previous valid local usage cache or snapshot available where the subsystem supports last-known-good behavior.
+Requests are bounded and errors are redacted. Needlbar does not log authorization headers,
+cookies, response bodies, prompt text, response text, or source code. Raw Claude credential
+material is held only ephemerally inside the Rust quota adapter, with zeroizing storage where
+Needlbar owns the buffer; it is not persisted by Needlbar, copied into Swift, or exposed
+through the C ABI. A failed request leaves the previous valid snapshot available where the
+subsystem supports last-known-good behavior.
 
 ## User controls and recovery
 
@@ -42,11 +57,19 @@ credentials and has no separate disconnect action; sign out or revoke access thr
 provider's supported app/CLI controls, then retry in Needlbar. If the CLI is not installed,
 Needlbar reports a provider-scoped failure and leaves other providers available. If Claude
 Keychain access is denied or cancelled, grant access in macOS when appropriate or complete
-provider re-authentication, then retry; Needlbar does not broaden the Keychain query or
-fall back to browser-cookie crawling.
+provider re-authentication, then retry; Needlbar does not broaden the Keychain query or fall
+back to browser-cookie crawling.
 
-Cursor Connect/Reconnect is an explicit Settings action. The entered session value is submitted directly to the Rust bridge for verification and is cleared from the form immediately. Cursor Disconnect removes Needlbar's stored session evidence; it does not revoke a Cursor account or imply deletion of the local usage cache. Connect again with a current provider-supported session when quota needs authentication.
+Cursor Settings contains one `Open Cursor Spending` action and no credential field or
+connection controls. The provider popover offers the same action when Cursor quota is
+unavailable. The action opens exactly `https://cursor.com/dashboard/spending`; a failure to
+open it is transient UI state and does not mutate usage or quota snapshots.
 
 ## What may leave the machine
 
-Only the minimum normalized data needed for direct provider quota requests leaves the machine: provider-authenticated quota requests and Cursor's explicit usage export. Needlbar has no destination to receive telemetry or content uploads. The app presents normalized counts, estimated cost, quota percentages, reset timestamps, freshness, and safe error states—not conversation or source content.
+Only the minimum normalized data needed for Claude and Codex quota requests leaves the machine,
+and those requests go directly to their providers. Opening Cursor Spending navigates the
+user's browser to Cursor's provider-owned page; Needlbar sends no Cursor credential, local
+usage cache, or private endpoint request. Needlbar has no destination to receive telemetry or
+content uploads. The app presents normalized counts, estimated costs, quota percentages, reset
+timestamps, freshness, and safe error states—not conversation or source content.

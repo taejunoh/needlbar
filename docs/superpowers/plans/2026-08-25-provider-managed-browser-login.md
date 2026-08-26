@@ -1,5 +1,12 @@
 # Provider-Managed Browser Login Implementation Plan
 
+> **SUPERSEDED FOR CURSOR — 2026-08-26:** This plan is retained as historical implementation
+> record only. Its Cursor session-token, remote usage/quota, and connection requirements are
+> not active work. Follow the approved
+> [`2026-08-26-cursor-local-usage-dashboard-quota-design.md`](../specs/2026-08-26-cursor-local-usage-dashboard-quota-design.md)
+> and plan for all Cursor behavior. Claude and Codex tasks remain active unless explicitly
+> changed by that amendment.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add explicit provider-managed browser login for Claude and Codex, including user-approved Claude Keychain quota verification, while preserving Cursor's validated session-token connection and Needlbar's local-first privacy boundary.

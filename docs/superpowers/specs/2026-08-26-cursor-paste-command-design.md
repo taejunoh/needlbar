@@ -1,5 +1,10 @@
 # Cursor Session Token Paste Command Design
 
+> **SUPERSEDED — 2026-08-26:** This document is retained as historical regression/design
+> record only. The approved Cursor local-usage/dashboard amendment removes the Cursor token
+> field and connection workflow, so this paste behavior is no longer an active requirement.
+> See [`2026-08-26-cursor-local-usage-dashboard-quota-design.md`](2026-08-26-cursor-local-usage-dashboard-quota-design.md).
+
 **Status:** Approved on 2026-08-26
 **Scope:** Regression fix for the Cursor session-token field in Needlbar Settings
 **Base contracts:** `docs/superpowers/specs/2026-08-13-needlbar-v0.1-design.md` and `docs/superpowers/specs/2026-08-25-provider-managed-browser-login-design.md`

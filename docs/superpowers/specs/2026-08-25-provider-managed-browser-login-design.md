@@ -1,5 +1,12 @@
 # Needlbar Provider-Managed Browser Login Design
 
+> **SUPERSEDED FOR CURSOR — 2026-08-26:** This document is retained as historical design
+> record only. Its Cursor session-token, remote usage/quota, and paste/connection
+> requirements are inactive. The approved amendment
+> [`2026-08-26-cursor-local-usage-dashboard-quota-design.md`](2026-08-26-cursor-local-usage-dashboard-quota-design.md)
+> is authoritative for Cursor. Claude and Codex requirements below remain active unless
+> that amendment explicitly changes them.
+
 **Status:** Approved on 2026-08-25
 **Scope:** Post-v0.1 design amendment for Claude and Codex authentication UX
 **Base contract:** `docs/superpowers/specs/2026-08-13-needlbar-v0.1-design.md`

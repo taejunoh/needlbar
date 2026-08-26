@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 credentialed acceptance and hosted CI verification are complete; the Cursor Settings `Command-V` regression fix is manually and remotely verified, while Cursor explicit-session acceptance remains blocked after the earlier safe generic connection failure; PR #1 remains open and mergeable
-**Next action:** Paste a fresh current Cursor session token obtained through the documented supported route and retry Connect once, then complete the notarization-secrets gate; preserve the unreleased, unmerged status
+**Current phase:** The approved Cursor local-usage/dashboard amendment Tasks 1–4 are implemented at `5c79f49`; Task 5 documentation, full acceptance, packaged UI review, and exact-head CI are in progress. The branch remains unreleased and unmerged.
+**Next action:** Finish the Task 5 documentation and acceptance record, push the docs commit, and verify the exact-head GitHub Actions run. Then return to the separate notarization/release-secrets gate; do not request, record, or handle a Cursor token.
 
 ## Source of Truth
 
@@ -481,6 +481,11 @@ The original fifteen-task implementation plan and hosted CI/artifact verificatio
 
 ## Approved Authentication Amendment — 2026-08-25
 
+> The provider-managed browser-login and Cursor-paste records below are historical records
+> from before the approved 2026-08-26 Cursor local-usage/dashboard amendment. Their Claude
+> and Codex requirements remain active; every Cursor session-token, private-endpoint, and
+> connection requirement is superseded by the amendment and is not an active instruction.
+
 The user approved a deliberate post-plan design change before release acceptance:
 
 - Claude gains `Sign in with Claude`, launching `claude auth login --claudeai` as an explicit user action.
@@ -655,7 +660,74 @@ Release remains unreleased: no tag or GitHub Release was created, and notarizati
 
 ## Required Next Action
 
-Hosted CI is green for the Cursor paste implementation head `6c6f494d1fc66c0772dbae2ea4905dc245291bc8` in run [32996703404](https://github.com/taejunoh/needlbar/actions/runs/32996703404). The exact next product gate is Cursor explicit-session live acceptance (user-provided token required), followed by the notarization-secrets gate. Preserve the unreleased and unmerged status, make no notarization or release claim, and record any blocker before final user-authorized release acceptance.
+The Cursor paste implementation is historical and superseded. The exact current gate is
+Task 5 documentation, fresh full verification, packaged-app UI acceptance, and exact-head
+CI for the local-only Cursor behavior. Preserve the unreleased and unmerged status. After
+this gate, return to the separate notarization-secrets gate; never request or record a
+Cursor session token.
+
+## Cursor Local Usage and Dashboard Amendment — 2026-08-26
+
+The approved amendment replaces Cursor session-token authentication, remote usage hydration,
+and personal quota retrieval with local-cache usage and a fixed Spending dashboard action.
+The implementation is complete through Task 4; this section records the Task 5 acceptance
+state and deliberately supersedes the older Cursor records above.
+
+### Task 1–4 implementation commits
+
+- `ec18fcd` — retire Cursor personal quota integration.
+- `ebc6175` — make Cursor usage local-cache only and add the no-read cleanup migration.
+- `b6251f5` — remove forced Cursor refresh state.
+- `4b38fc7` — exclude retained Cursor quota windows from headlines.
+- `5c79f49` — link Cursor quota-unavailable actions to the Spending dashboard.
+
+### Task 1–4 verification summary
+
+- Task 1 RED: the Cursor provider returned `RequiresAuthentication` with the old session
+  path; GREEN: the provider and bridge contracts returned Cursor-scoped
+  `providerUnavailable` with no action, and strict quota/bridge tests passed.
+- Task 2 RED: the cleanup module was absent; GREEN: local-cache usage, no-read descriptor-
+  relative cleanup, ABI removal, diagnostics, redaction, workspace Clippy, and bridge
+  contracts passed.
+- Task 3 RED: Swift still referenced the removed forced usage export and integration still
+  expected a Cursor quota window; GREEN: one normal usage path, local Cursor usage, and
+  unavailable Cursor quota passed the focused Core/presentation and full project gates.
+- Task 4 RED: the typed Spending action and opener seam were absent; GREEN: popover,
+  Settings, routing, packaging, smoke, and full project tests passed.
+
+### Task 5 acceptance state
+
+- Active documentation states that Cursor usage reads only an existing compatible
+  `~/.config/tokscale/cursor-cache/usage.csv`; Needlbar does not create, refresh, or claim
+  freshness for it.
+- Cursor quota is unavailable inside Needlbar. Settings and the Cursor popover expose one
+  typed `Open Cursor Spending` action to exactly `https://cursor.com/dashboard/spending`.
+- Needlbar does not use Cursor credentials, browser cookies, private endpoints, or remote
+  usage hydration. The one-shot migration removes only the obsolete Needlbar-owned
+  `cursor-session.json` file without reading it and preserves the local usage cache.
+- Safe existence-only preflight found no obsolete session file and no local cache in the
+  acceptance home (`legacy_session_exists=false`, `cursor_cache_exists=false`). No file
+  contents, clipboard, cookies, browser storage, or credential material were inspected.
+- Fresh `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `make test`,
+  `make package`, `make smoke`, and `git diff --check` exited 0. `make test` reported 1372
+  pinned-core tests passed with 1 ignored, 128 Swift tests passed, and package-test passed.
+- The required exact `cargo fmt --check` was run and exited 1 solely on pre-existing formatting
+  differences throughout the non-owned `vendor/tokscale-core` submodule. The owned packages
+  pass `cargo fmt -p needlbar-bridge -p needlbar-quota -- --check`; the submodule was not
+  changed or reverted.
+- Packaged-app launch was confirmed. In this GUI session, the LSUIElement status item had no
+  Orca-accessible window and the status-bar surface is unavailable to the computer-use
+  provider, so a live Settings/popover click-through could not be completed. Structural
+  Swift tests passed for Claude/Codex login rows, the Cursor local-cache explanation, the
+  single Spending action, no credential controls, both routes, and the exact URL.
+- Existence-only post-launch checks remained `legacy_session_exists=false` and
+  `cursor_cache_exists=false`; no file contents, clipboard, cookies, browser storage, or
+  credential material were inspected. The packaged process was only inspected by exact path
+  and was terminated after the smoke attempt.
+
+Task 5 remains the exact continuation point until its documentation commit, push, and
+exact-head CI run are recorded here. The live UI click-through limitation is the only
+acceptance concern; no product behavior change is inferred from it.
 
 ## v0.1 Constraints to Preserve
 
@@ -665,7 +737,8 @@ Hosted CI is green for the Cursor paste implementation head `6c6f494d1fc66c0772d
 - Swift/AppKit owns the shell and presentation.
 - `NeedlbarCore` owns normalized state, refresh scheduling, and last-known-good behavior.
 - `tokscale-core` owns usage discovery/parsing/deduplication/aggregation/pricing.
-- `needlbar-source-sync` hydrates Cursor usage data only.
+- Cursor usage has no Needlbar-owned hydration layer; the pinned engine reads an existing
+  local compatible cache only.
 - `needlbar-quota` owns quota/auth/reset logic only.
 - Usage and quota failures must not erase each other's valid last-known-good values.
 - No backend/account system/telemetry or prompt/response/source-code upload.
