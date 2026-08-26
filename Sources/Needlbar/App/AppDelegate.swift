@@ -82,6 +82,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             reply: { shouldTerminate in
                 sender.reply(toApplicationShouldTerminate: shouldTerminate)
+            },
+            resumeLoginAdmission: { [weak self] in
+                self?.loginCoordinator.resumeAfterDeniedTermination()
             }
         )
     }
@@ -103,7 +106,8 @@ final class AccessoryTerminationController {
         stopMenuBarObservation: @escaping @MainActor () -> Void,
         stopLoginCoordinator: @escaping @MainActor () async -> ProviderLoginCleanupResult,
         stopRefreshCoordinator: @escaping @MainActor () async -> Void,
-        reply: @escaping @MainActor (Bool) -> Void
+        reply: @escaping @MainActor (Bool) -> Void,
+        resumeLoginAdmission: @escaping @MainActor () -> Void
     ) -> NSApplication.TerminateReply {
         guard !isTerminating else { return .terminateLater }
         isTerminating = true
@@ -121,9 +125,10 @@ final class AccessoryTerminationController {
                 reply(true)
                 self.terminationTask = nil
             case .pendingReap:
+                reply(false)
+                resumeLoginAdmission()
                 self.isTerminating = false
                 self.terminationTask = nil
-                reply(false)
             }
         }
         return .terminateLater

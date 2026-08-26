@@ -10,6 +10,7 @@ import Testing
     var startupCancellationCount = 0
     var observationStopCount = 0
     var replyCount = 0
+    var loginAdmissionResumeCount = 0
 
     func requestTermination() -> NSApplication.TerminateReply {
         termination.requestTermination(
@@ -20,7 +21,8 @@ import Testing
                 return .complete
             },
             stopRefreshCoordinator: { await refreshShutdown.waitForRelease() },
-            reply: { _ in replyCount += 1 }
+            reply: { _ in replyCount += 1 },
+            resumeLoginAdmission: { loginAdmissionResumeCount += 1 }
         )
     }
 
@@ -44,6 +46,7 @@ import Testing
 
     #expect(await eventually { replyCount == 1 })
     #expect(replyCount == 1)
+    #expect(loginAdmissionResumeCount == 0)
 }
 
 @MainActor
@@ -54,14 +57,26 @@ import Testing
     var startupCancellationCount = 0
     var observationStopCount = 0
     var replies: [Bool] = []
+    var events: [String] = []
 
     func requestTermination() -> NSApplication.TerminateReply {
         termination.requestTermination(
             cancelStartup: { startupCancellationCount += 1 },
             stopMenuBarObservation: { observationStopCount += 1 },
-            stopLoginCoordinator: { await loginShutdown.waitForRelease() },
-            stopRefreshCoordinator: { await refreshShutdown.waitForRelease() },
-            reply: { replies.append($0) }
+            stopLoginCoordinator: {
+                let result = await loginShutdown.waitForRelease()
+                events.append("loginStop")
+                return result
+            },
+            stopRefreshCoordinator: {
+                events.append("refreshStop")
+                await refreshShutdown.waitForRelease()
+            },
+            reply: {
+                replies.append($0)
+                events.append("reply:\($0)")
+            },
+            resumeLoginAdmission: { events.append("resumeLoginAdmission") }
         )
     }
 
@@ -74,6 +89,7 @@ import Testing
     await loginShutdown.releaseNext()
     #expect(await eventually { replies == [false] })
     #expect(await refreshShutdown.callCount() == 0)
+    #expect(events == ["loginStop", "reply:false", "resumeLoginAdmission"])
 
     #expect(requestTermination() == .terminateLater)
     #expect(await eventually { await loginShutdown.callCount() == 2 })
@@ -83,6 +99,10 @@ import Testing
 
     await refreshShutdown.release()
     #expect(await eventually { replies == [false, true] })
+    #expect(events == [
+        "loginStop", "reply:false", "resumeLoginAdmission",
+        "loginStop", "refreshStop", "reply:true",
+    ])
     #expect(startupCancellationCount == 1)
     #expect(observationStopCount == 1)
     #expect(await loginShutdown.callCount() == 2)
