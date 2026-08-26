@@ -731,10 +731,13 @@ historical or redaction-negative records. The workspace formatting boundary now 
 the vendored path dependency, so literal stable `cargo fmt --check` covers the owned
 workspace and passes; tokscale-core remains a pinned transitive dependency and is explicitly
 tested and linted through its manifest in Makefile/CI, with no vendor source or revision
-change. The live packaged UI was re-attempted through Orca,
-macOS System Events AXPress/AXPick, and the public Settings window seam; the status item's
-AX frame remains zero-sized/off-screen and no Settings window is exposed, so visual
-click-through remains an environment limitation. Fix-round commit `dc7e29a44b521fa417b0ca20e5036e9afc2df7e`
+change. The live packaged UI was then verified on display 2: Settings showed Claude and Codex rows,
+the Cursor local-cache explanation, one Spending button, and no Cursor credential controls;
+the Settings action and Cursor popover action each opened the exact
+`https://cursor.com/dashboard/spending` URL. Evidence is retained in
+`task5-settings-connections.png`, `task5-cursor-popover.png`, and
+`task5-cursor-popover-dismissed.png` under the Task 5 SDD directory. Fix-round commit
+`dc7e29a44b521fa417b0ca20e5036e9afc2df7e`
 passed exact-head CI run [33018740992](https://github.com/taejunoh/needlbar/actions/runs/33018740992),
 including owned workspace tests, explicit vendored tokscale-core test and clippy, full
 Swift/package verification, and packaged-app smoke checks. The follow-up cleanup restores the
