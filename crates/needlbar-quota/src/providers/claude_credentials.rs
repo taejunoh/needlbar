@@ -205,63 +205,26 @@ impl ClaudeCredentialResolver for MacClaudeCredentialResolver {
 fn resolve_keychain(
     access: ClaudeCredentialAccess,
 ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
-    use std::{ffi::c_void, ptr};
+    use std::ptr;
 
-    use core_foundation::{
-        array::CFArray,
-        base::{TCFType, ToVoid},
-        boolean::CFBoolean,
-        data::CFData,
-        dictionary::CFMutableDictionary,
-        string::CFString,
-    };
-    use core_foundation_sys::{
-        base::{CFGetTypeID, CFTypeRef},
-        string::CFStringRef,
-    };
-    use security_framework_sys::{
-        base::errSecSuccess,
-        item::{
-            kSecAttrService, kSecClass, kSecClassGenericPassword, kSecMatchLimit,
-            kSecMatchLimitAll, kSecReturnData, kSecUseAuthenticationUI,
-        },
-        keychain_item::SecItemCopyMatching,
-    };
-
-    unsafe extern "C" {
-        static kSecUseAuthenticationUIAllow: CFStringRef;
-        static kSecUseAuthenticationUIFail: CFStringRef;
-    }
+    use core_foundation::base::TCFType;
+    use core_foundation::string::CFString;
+    use core_foundation_sys::base::CFTypeRef;
+    use security_framework_sys::{base::errSecSuccess, keychain_item::SecItemCopyMatching};
 
     let service = CFString::new("Claude Code-credentials");
-    let true_value = CFBoolean::true_value();
     let ui_mode = unsafe {
         match access {
             ClaudeCredentialAccess::BackgroundNoUI => kSecUseAuthenticationUIFail,
             ClaudeCredentialAccess::UserInitiatedAllowUI => kSecUseAuthenticationUIAllow,
         }
     };
-    let mut query = CFMutableDictionary::<*const c_void, *const c_void>::from_CFType_pairs(&[]);
-    unsafe {
-        query.add(
-            &(kSecClass as *const c_void),
-            &(kSecClassGenericPassword as *const c_void),
-        );
-        query.add(
-            &(kSecAttrService as *const c_void),
-            &(service.as_concrete_TypeRef() as *const c_void),
-        );
-        query.add(
-            &(kSecMatchLimit as *const c_void),
-            &(kSecMatchLimitAll as *const c_void),
-        );
-        query.add(&(kSecReturnData as *const c_void), &true_value.to_void());
-        query.add(
-            &(kSecUseAuthenticationUI as *const c_void),
-            &(ui_mode as *const c_void),
-        );
-    }
-
+    let query = build_keychain_query(
+        &service,
+        ui_mode,
+        KeychainQueryPhase::PersistentReference,
+        None,
+    );
     let mut result: CFTypeRef = ptr::null();
     let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut result) };
     if status != errSecSuccess {
@@ -269,32 +232,164 @@ fn resolve_keychain(
             security_framework::base::Error::from_code(status),
         ));
     }
+
+    let persistent_ref = single_persistent_ref(result)?;
+    let query = build_keychain_query(
+        &service,
+        ui_mode,
+        KeychainQueryPhase::Data,
+        Some(&persistent_ref),
+    );
+    let mut result: CFTypeRef = ptr::null();
+    let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut result) };
+    if status != errSecSuccess {
+        return Err(map_security_error(
+            security_framework::base::Error::from_code(status),
+        ));
+    }
+
+    let payload = single_keychain_data(result)?;
+    parse_credential_payload(&payload)
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeychainQueryPhase {
+    PersistentReference,
+    Data,
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    static kSecUseAuthenticationUIAllow: core_foundation_sys::string::CFStringRef;
+    static kSecUseAuthenticationUIFail: core_foundation_sys::string::CFStringRef;
+    #[link_name = "kSecValuePersistentRef"]
+    static K_SEC_VALUE_PERSISTENT_REF: core_foundation_sys::string::CFStringRef;
+}
+
+#[cfg(target_os = "macos")]
+fn build_keychain_query(
+    service: &core_foundation::string::CFString,
+    ui_mode: core_foundation_sys::string::CFStringRef,
+    phase: KeychainQueryPhase,
+    persistent_ref: Option<&core_foundation::data::CFData>,
+) -> core_foundation::dictionary::CFMutableDictionary<
+    *const std::ffi::c_void,
+    *const std::ffi::c_void,
+> {
+    use core_foundation::{
+        base::{TCFType, ToVoid},
+        boolean::CFBoolean,
+        dictionary::CFMutableDictionary,
+    };
+    use security_framework_sys::item::{
+        kSecAttrService, kSecClass, kSecClassGenericPassword, kSecMatchLimit, kSecMatchLimitAll,
+        kSecReturnData, kSecReturnPersistentRef, kSecUseAuthenticationUI,
+    };
+
+    let true_value = CFBoolean::true_value();
+    let mut query = CFMutableDictionary::<*const std::ffi::c_void, *const std::ffi::c_void>::new();
+    unsafe {
+        query.add(
+            &(kSecClass as *const std::ffi::c_void),
+            &(kSecClassGenericPassword as *const std::ffi::c_void),
+        );
+        query.add(
+            &(kSecAttrService as *const std::ffi::c_void),
+            &(service.as_concrete_TypeRef() as *const std::ffi::c_void),
+        );
+        query.add(
+            &(kSecUseAuthenticationUI as *const std::ffi::c_void),
+            &(ui_mode as *const std::ffi::c_void),
+        );
+        match phase {
+            KeychainQueryPhase::PersistentReference => {
+                query.add(
+                    &(kSecMatchLimit as *const std::ffi::c_void),
+                    &(kSecMatchLimitAll as *const std::ffi::c_void),
+                );
+                query.add(
+                    &(kSecReturnPersistentRef as *const std::ffi::c_void),
+                    &true_value.to_void(),
+                );
+            }
+            KeychainQueryPhase::Data => {
+                if let Some(persistent_ref) = persistent_ref {
+                    query.add(
+                        &(K_SEC_VALUE_PERSISTENT_REF as *const std::ffi::c_void),
+                        &persistent_ref.to_void(),
+                    );
+                }
+                query.add(
+                    &(kSecReturnData as *const std::ffi::c_void),
+                    &true_value.to_void(),
+                );
+            }
+        }
+    }
+    query
+}
+
+#[cfg(target_os = "macos")]
+fn single_persistent_ref(
+    result: core_foundation_sys::base::CFTypeRef,
+) -> Result<core_foundation::data::CFData, ClaudeCredentialError> {
+    use core_foundation::{
+        array::CFArray,
+        base::{CFType, TCFType},
+        data::CFData,
+    };
+    use core_foundation_sys::base::{CFGetTypeID, CFRelease};
+
     if result.is_null() {
         return Err(ClaudeCredentialError::NotFound);
     }
 
-    let payload = unsafe {
-        if CFGetTypeID(result) == CFArray::<CFData>::type_id() {
-            let values = CFArray::<CFData>::wrap_under_create_rule(result as *mut _);
+    unsafe {
+        if CFGetTypeID(result) == CFArray::<CFType>::type_id() {
+            let values = CFArray::<CFType>::wrap_under_create_rule(result as *mut _);
             if values.len() != 1 {
                 return Err(ClaudeCredentialError::Malformed);
             }
             let value = values.get(0).ok_or(ClaudeCredentialError::Malformed)?;
-            Zeroizing::new(value.bytes().to_vec())
+            value
+                .downcast::<CFData>()
+                .ok_or(ClaudeCredentialError::Malformed)
         } else if CFGetTypeID(result) == CFData::type_id() {
-            let value = CFData::wrap_under_create_rule(result as *mut _);
-            Zeroizing::new(value.bytes().to_vec())
+            Ok(CFData::wrap_under_create_rule(result as *mut _))
         } else {
+            CFRelease(result);
+            Err(ClaudeCredentialError::Malformed)
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn single_keychain_data(
+    result: core_foundation_sys::base::CFTypeRef,
+) -> Result<Zeroizing<Vec<u8>>, ClaudeCredentialError> {
+    use core_foundation::{base::TCFType, data::CFData};
+    use core_foundation_sys::base::{CFGetTypeID, CFRelease};
+
+    if result.is_null() {
+        return Err(ClaudeCredentialError::NotFound);
+    }
+
+    unsafe {
+        if CFGetTypeID(result) != CFData::type_id() {
+            CFRelease(result);
             return Err(ClaudeCredentialError::Malformed);
         }
-    };
-    parse_credential_payload(&payload)
+        let value = CFData::wrap_under_create_rule(result as *mut _);
+        Ok(Zeroizing::new(value.bytes().to_vec()))
+    }
 }
 
 #[cfg(target_os = "macos")]
 fn map_security_error(error: security_framework::base::Error) -> ClaudeCredentialError {
     use security_framework_sys::base::{errSecAuthFailed, errSecItemNotFound};
 
+    const ERR_SEC_PARAM: i32 = -50;
     const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25_308;
     const ERR_SEC_USER_CANCELED: i32 = -128;
     const ERR_SEC_NOT_AVAILABLE: i32 = -25_291;
@@ -302,6 +397,7 @@ fn map_security_error(error: security_framework::base::Error) -> ClaudeCredentia
     const ERR_SEC_AUTH_FAILED: i32 = errSecAuthFailed;
 
     match error.code() {
+        ERR_SEC_PARAM => ClaudeCredentialError::Malformed,
         ERR_SEC_ITEM_NOT_FOUND => ClaudeCredentialError::NotFound,
         ERR_SEC_INTERACTION_NOT_ALLOWED => ClaudeCredentialError::InteractionNotAllowed,
         ERR_SEC_USER_CANCELED => ClaudeCredentialError::Cancelled,
@@ -352,5 +448,94 @@ mod tests {
         };
 
         assert_eq!(error, ClaudeCredentialError::Malformed);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn invalid_keychain_query_is_reported_as_malformed() {
+        let error = super::map_security_error(security_framework::base::Error::from_code(-50));
+
+        assert_eq!(error, ClaudeCredentialError::Malformed);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn keychain_queries_keep_match_all_separate_from_return_data() {
+        use core_foundation::string::CFString;
+        use security_framework_sys::item::{
+            kSecMatchLimit, kSecReturnData, kSecReturnPersistentRef,
+        };
+        use std::ffi::c_void;
+
+        let service = CFString::new("Claude Code-credentials");
+        let first = super::build_keychain_query(
+            &service,
+            unsafe { super::kSecUseAuthenticationUIFail },
+            super::KeychainQueryPhase::PersistentReference,
+            None,
+        );
+        unsafe {
+            assert!(first.contains_key(kSecMatchLimit as *const c_void));
+            assert!(first.contains_key(kSecReturnPersistentRef as *const c_void));
+            assert!(!first.contains_key(kSecReturnData as *const c_void));
+        }
+
+        let persistent_ref = core_foundation::data::CFData::from_buffer(b"persistent-ref");
+        let second = super::build_keychain_query(
+            &service,
+            unsafe { super::kSecUseAuthenticationUIFail },
+            super::KeychainQueryPhase::Data,
+            Some(&persistent_ref),
+        );
+        unsafe {
+            assert!(!second.contains_key(kSecMatchLimit as *const c_void));
+            assert!(second.contains_key(kSecReturnData as *const c_void));
+            assert!(second.contains_key(super::K_SEC_VALUE_PERSISTENT_REF as *const c_void));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn persistent_reference_result_requires_exactly_one_data_value() {
+        use core_foundation::{
+            array::CFArray,
+            base::{CFType, TCFType},
+            data::CFData,
+            string::CFString,
+        };
+        use std::mem;
+
+        fn resolve_owned(value: CFType) -> Result<CFData, ClaudeCredentialError> {
+            let raw = value.as_CFTypeRef();
+            mem::forget(value);
+            super::single_persistent_ref(raw)
+        }
+
+        let data = CFData::from_buffer(b"persistent-ref");
+        assert!(resolve_owned(data.into_CFType()).is_ok());
+
+        let data = CFData::from_buffer(b"persistent-ref");
+        let array = CFArray::from_CFTypes(&[data]);
+        assert!(resolve_owned(array.into_CFType()).is_ok());
+
+        let empty = CFArray::<CFData>::from_CFTypes(&[]);
+        assert_eq!(
+            resolve_owned(empty.into_CFType()),
+            Err(ClaudeCredentialError::Malformed)
+        );
+
+        let first = CFData::from_buffer(b"first");
+        let second = CFData::from_buffer(b"second");
+        let multiple = CFArray::from_CFTypes(&[first, second]);
+        assert_eq!(
+            resolve_owned(multiple.into_CFType()),
+            Err(ClaudeCredentialError::Malformed)
+        );
+
+        let wrong_type = CFString::new("not-data");
+        assert_eq!(
+            resolve_owned(wrong_type.into_CFType()),
+            Err(ClaudeCredentialError::Malformed)
+        );
     }
 }
