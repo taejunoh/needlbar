@@ -4,14 +4,10 @@ import AppKit
 enum ApplicationMenuInstaller {
     static func install(in application: NSApplication) {
         let mainMenu = application.mainMenu ?? NSMenu(title: "Main Menu")
-        let editItems = mainMenu.items.filter { $0.title == "Edit" }
         let editItem: NSMenuItem
 
-        if let existingEditItem = editItems.first {
+        if let existingEditItem = mainMenu.items.first(where: { $0.title == "Edit" }) {
             editItem = existingEditItem
-            for duplicate in editItems.dropFirst() {
-                mainMenu.removeItem(duplicate)
-            }
         } else {
             editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
             mainMenu.addItem(editItem)
@@ -20,13 +16,9 @@ enum ApplicationMenuInstaller {
         let editMenu = editItem.submenu ?? NSMenu(title: "Edit")
         editItem.submenu = editMenu
 
-        let pasteItems = editMenu.items.filter { $0.title == "Paste" }
         let pasteItem: NSMenuItem
-        if let existingPasteItem = pasteItems.first {
+        if let existingPasteItem = editMenu.items.first(where: { $0.title == "Paste" }) {
             pasteItem = existingPasteItem
-            for duplicate in pasteItems.dropFirst() {
-                editMenu.removeItem(duplicate)
-            }
         } else {
             pasteItem = NSMenuItem(
                 title: "Paste",
