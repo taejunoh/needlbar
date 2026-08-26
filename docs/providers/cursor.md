@@ -1,6 +1,9 @@
 # Cursor provider
 
-Cursor is the only v0.1 provider with a Needlbar-owned explicit session connection. Its usage export and quota are still separate refresh streams.
+Cursor remains the only v0.1 provider with a Needlbar-owned explicit session-token
+connection. Its usage export and quota are still separate refresh streams. Unlike Claude
+and Codex, no compatible personal quota credential handoff/browser-login contract is
+documented for Needlbar, so Cursor does not gain a provider CLI browser button.
 
 ## Usage source and local storage
 
@@ -36,7 +39,7 @@ Cursor quota uses the stored session for a direct bounded HTTPS request to:
 https://cursor.com/api/usage-summary
 ```
 
-The provider reports its plan and on-demand windows when enabled, including reset information when supplied. Missing, invalid, or rejected session evidence returns a structured `connectCursor` action so Settings can offer Connect/Retry. Browser/session import is an explicit user action, not an automatic fallback.
+The provider reports its plan and on-demand windows when enabled, including reset information when supplied. Missing, invalid, or rejected session evidence returns a structured `connectCursor` action so Settings can offer Connect/Retry. Browser/session import is an explicit user action, not an automatic fallback. Needlbar does not crawl browser cookies or infer a session from a browser profile.
 
 ## Recovery and disconnect
 

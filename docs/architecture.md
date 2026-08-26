@@ -31,6 +31,11 @@ Needlbar.app
                         └── pinned local usage discovery/parsing/aggregation
 ```
 
+Needlbar's AppKit layer also owns `ProviderLoginCoordinator`. It launches only the fixed
+provider commands through the installed executable's direct path, while the provider CLI
+owns browser navigation, OAuth callbacks, refresh, and credential storage. The coordinator
+does not capture provider stdout or stderr and reports only safe login states to SwiftUI.
+
 ### Ownership
 
 `tokscale-core` owns local session discovery, parsing, deduplication, aggregation, model pricing, cost estimation, and normalized usage values. Needlbar passes it the selected home and client scope; it does not duplicate provider token-history parsers.
@@ -65,6 +70,13 @@ Cursor Needlbar session -> Cursor usage API ───────┘
 
 Quota collection runs providers independently and preserves usable partial results and provider-scoped safe errors. Cursor source synchronization runs before the usage scan; a failed sync can still leave a previous valid Cursor cache available to `tokscale-core`.
 
+Claude and Codex login are explicit user actions. After a successful provider CLI exit,
+`NeedlbarCore` requests a quota-only refresh for that provider. Claude's dedicated
+post-authentication bridge path may allow the exact provider-owned macOS Keychain item to
+be read; ordinary background refresh always uses interaction-forbidden access. Codex uses
+its provider-specific quota path. A failed verification preserves the last-known-good
+quota state and does not mark all-provider background refresh fresh.
+
 ## Bridge contract
 
 The stable C surface is:
@@ -73,6 +85,8 @@ The stable C surface is:
 const char *needlbar_usage_snapshot_json(void);
 const char *needlbar_forced_usage_snapshot_json(void);
 const char *needlbar_quota_snapshot_json(void);
+const char *needlbar_claude_user_initiated_quota_snapshot_json(void);
+const char *needlbar_codex_quota_snapshot_json(void);
 const char *needlbar_diagnostics_json(void);
 const char *needlbar_cursor_import_session_json(const char *session_token);
 const char *needlbar_cursor_clear_session_json(void);
@@ -85,6 +99,15 @@ Diagnostics use fixed subsystem/provider status and source labels. They do not i
 
 ## Local and network boundaries
 
-Known local provider roots are read only for usage token metadata or authentication evidence. Provider quota calls go directly to the relevant provider endpoint; there is no Needlbar relay or backend. Credential resolution and provider responses stay in Rust and are redacted before any error crosses the bridge. Cursor session import is an explicit Settings action, not a silent browser-cookie scan.
+Known local provider roots are read only for usage token metadata or authentication evidence. Provider quota calls go directly to the relevant provider endpoint; there is no Needlbar relay or backend.
+
+Credential resolution and provider responses stay in Rust and are redacted before any error crosses the bridge. The raw Claude credential is ephemeral and zeroizing inside
+`needlbar-quota`; it is never persisted by Needlbar or exported through the C ABI. Cursor
+session import is an explicit Settings action, not a silent browser-cookie scan.
+
+If an active provider login child cannot be reaped within the bounded cleanup policy, the
+application can reject termination while the coordinator retains that exact child for
+background reaping. A later termination request retries cleanup; the app does not report
+successful shutdown before its provider child has been reaped.
 
 See [`docs/privacy.md`](privacy.md) and the provider runbooks for exact documented locations and recovery behavior.

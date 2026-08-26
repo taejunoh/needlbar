@@ -29,7 +29,7 @@ Each enabled module can show one of three title metrics: quota remaining, tokens
 
 Click Overview to see today’s combined tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status rows, and Settings. Click an enabled provider module to see today’s usage and cost, input/output/cache token counts, quota windows, reset information, freshness, and safe recovery states. Usage and quota failures are shown independently and do not replace a previously valid value with zero.
 
-Settings controls which modules are visible and which title metric each module uses. It also provides explicit Cursor Connect, Reconnect, and Disconnect actions. Cursor connection input is cleared immediately and connection operations are serialized; Needlbar never silently imports browser cookies.
+Settings controls which modules are visible and which title metric each module uses. It also provides provider-native sign-in actions for Claude and Codex, plus explicit Cursor Connect, Reconnect, and Disconnect actions. Claude and Codex buttons launch the installed provider CLI's browser flow; Needlbar does not implement a second OAuth flow. Cursor connection input is cleared immediately and connection operations are serialized; Needlbar never silently imports browser cookies.
 
 ## Provider authentication and recovery
 
@@ -37,9 +37,9 @@ Needlbar reuses provider-native authentication for Claude and Codex. It does not
 
 | Provider | Local usage | Quota authentication and recovery |
 | --- | --- | --- |
-| Claude | `~/.claude/projects` and `~/.claude/transcripts`, parsed by the pinned `tokscale-core` engine | Existing file-based OAuth evidence from `CLAUDE_CONFIG_DIR/.credentials.json`, or `~/.claude/.credentials.json` when the variable is not set. Sign in or refresh through Claude Code, then choose Retry. |
-| Codex | `~/.codex/sessions` and archived sessions when available, parsed by `tokscale-core` | Existing OAuth evidence from `$CODEX_HOME/auth.json`, or `~/.codex/auth.json`. Needlbar tries the provider API first and can use the installed Codex CLI read-only app-server fallback. Sign in or refresh through Codex/OpenAI-supported controls, then retry. |
-| Cursor | Cursor’s token usage export is validated into `~/.config/tokscale/cursor-cache/usage.csv`, then parsed by `tokscale-core` | An explicit Settings connection stores the verified session at `~/Library/Application Support/Needlbar/cursor-session.json`. Use Connect or Reconnect when authentication is required; Disconnect removes Needlbar’s local session evidence but does not revoke the Cursor account. |
+| Claude | `~/.claude/projects` and `~/.claude/transcripts`, parsed by the pinned `tokscale-core` engine | **Sign in with Claude** launches `claude auth login --claudeai` and opens Claude Code's provider-owned browser flow. After an explicit sign-in, Needlbar may request access to the exact macOS `Claude Code-credentials` Keychain item to verify quota. Background refresh is interaction-forbidden and never prompts. |
+| Codex | `~/.codex/sessions` and archived sessions when available, parsed by `tokscale-core` | **Sign in with ChatGPT** launches `codex login` and opens Codex's provider-owned browser flow. Quota uses existing Codex auth, the provider API first, and the installed Codex CLI read-only app-server fallback. |
+| Cursor | Cursor’s token usage export is validated into `~/.config/tokscale/cursor-cache/usage.csv`, then parsed by `tokscale-core` | Cursor remains an explicit session-token flow in Settings: Connect, Reconnect, or Disconnect. Needlbar does not crawl browser cookies because no compatible personal quota handoff is documented. |
 
 Provider-local paths and authentication behavior are documented in the [Claude](docs/providers/claude.md), [Codex](docs/providers/codex.md), and [Cursor](docs/providers/cursor.md) runbooks.
 
