@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** The approved Cursor local-usage/dashboard amendment Tasks 1–4 are implemented at `5c79f49`; Task 5 documentation, full acceptance, packaged UI review, and exact-head CI are in progress. The branch remains unreleased and unmerged.
-**Next action:** Finish the Task 5 documentation and acceptance record, push the docs commit, and verify the exact-head GitHub Actions run. Then return to the separate notarization/release-secrets gate; do not request, record, or handle a Cursor token.
+**Current phase:** The approved Cursor local-usage/dashboard amendment Tasks 1–5 are complete through exact-head CI at `b4ab7be`; the branch remains unreleased and unmerged.
+**Next action:** Return to the separate notarization/release-secrets gate. Do not request, record, or handle a Cursor credential; do not create a tag or release.
 
 ## Source of Truth
 
@@ -725,9 +725,11 @@ state and deliberately supersedes the older Cursor records above.
   credential material were inspected. The packaged process was only inspected by exact path
   and was terminated after the smoke attempt.
 
-Task 5 remains the exact continuation point until its documentation commit, push, and
-exact-head CI run are recorded here. The live UI click-through limitation is the only
-acceptance concern; no product behavior change is inferred from it.
+Task 5 is complete. Exact-head CI run [33014944925](https://github.com/taejunoh/needlbar/actions/runs/33014944925)
+passed all jobs in 8m04s at head `b4ab7be7dfc9958e247fad1adbdfbfdd76c0580d`. The live UI
+click-through limitation is recorded as an environment concern only; no product behavior
+change is inferred from it. The next continuation point is the separate notarization/
+release-secrets gate, with no tag or release action authorized here.
 
 ## v0.1 Constraints to Preserve
 
