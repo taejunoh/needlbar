@@ -219,12 +219,7 @@ fn resolve_keychain(
             ClaudeCredentialAccess::UserInitiatedAllowUI => kSecUseAuthenticationUIAllow,
         }
     };
-    let query = build_keychain_query(
-        &service,
-        ui_mode,
-        KeychainQueryPhase::PersistentReference,
-        None,
-    );
+    let query = build_keychain_query(&service, ui_mode, KeychainQueryPhase::PersistentReference);
     let mut result: CFTypeRef = ptr::null();
     let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut result) };
     if status != errSecSuccess {
@@ -234,12 +229,7 @@ fn resolve_keychain(
     }
 
     let persistent_ref = single_persistent_ref(result)?;
-    let query = build_keychain_query(
-        &service,
-        ui_mode,
-        KeychainQueryPhase::Data,
-        Some(&persistent_ref),
-    );
+    let query = build_keychain_query(&service, ui_mode, KeychainQueryPhase::Data(&persistent_ref));
     let mut result: CFTypeRef = ptr::null();
     let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut result) };
     if status != errSecSuccess {
@@ -254,31 +244,31 @@ fn resolve_keychain(
 
 #[cfg(target_os = "macos")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum KeychainQueryPhase {
+enum KeychainQueryPhase<'a> {
     PersistentReference,
-    Data,
+    Data(&'a core_foundation::data::CFData),
 }
 
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     static kSecUseAuthenticationUIAllow: core_foundation_sys::string::CFStringRef;
     static kSecUseAuthenticationUIFail: core_foundation_sys::string::CFStringRef;
-    #[link_name = "kSecValuePersistentRef"]
-    static K_SEC_VALUE_PERSISTENT_REF: core_foundation_sys::string::CFStringRef;
+    #[link_name = "kSecMatchItemList"]
+    static K_SEC_MATCH_ITEM_LIST: core_foundation_sys::string::CFStringRef;
 }
 
 #[cfg(target_os = "macos")]
 fn build_keychain_query(
     service: &core_foundation::string::CFString,
     ui_mode: core_foundation_sys::string::CFStringRef,
-    phase: KeychainQueryPhase,
-    persistent_ref: Option<&core_foundation::data::CFData>,
+    phase: KeychainQueryPhase<'_>,
 ) -> core_foundation::dictionary::CFMutableDictionary<
     *const std::ffi::c_void,
     *const std::ffi::c_void,
 > {
     use core_foundation::{
-        base::{TCFType, ToVoid},
+        array::CFArray,
+        base::{CFType, TCFType, ToVoid},
         boolean::CFBoolean,
         dictionary::CFMutableDictionary,
     };
@@ -313,13 +303,13 @@ fn build_keychain_query(
                     &true_value.to_void(),
                 );
             }
-            KeychainQueryPhase::Data => {
-                if let Some(persistent_ref) = persistent_ref {
-                    query.add(
-                        &(K_SEC_VALUE_PERSISTENT_REF as *const std::ffi::c_void),
-                        &persistent_ref.to_void(),
-                    );
-                }
+            KeychainQueryPhase::Data(persistent_ref) => {
+                let item_list = CFArray::from_CFTypes(&[persistent_ref.as_CFType()]);
+                let item_list_value: CFType = item_list.as_CFType();
+                query.add(
+                    &(K_SEC_MATCH_ITEM_LIST as *const std::ffi::c_void),
+                    &item_list_value.to_void(),
+                );
                 query.add(
                     &(kSecReturnData as *const std::ffi::c_void),
                     &true_value.to_void(),
@@ -461,18 +451,29 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn keychain_queries_keep_match_all_separate_from_return_data() {
-        use core_foundation::string::CFString;
+        use core_foundation::{
+            array::CFArray,
+            base::{CFType, TCFType},
+            string::CFString,
+        };
+        use core_foundation_sys::base::{CFGetTypeID, CFTypeRef};
         use security_framework_sys::item::{
             kSecMatchLimit, kSecReturnData, kSecReturnPersistentRef,
         };
         use std::ffi::c_void;
+
+        unsafe extern "C" {
+            #[link_name = "kSecMatchItemList"]
+            static K_SEC_MATCH_ITEM_LIST_TEST: core_foundation_sys::string::CFStringRef;
+            #[link_name = "kSecValuePersistentRef"]
+            static K_SEC_VALUE_PERSISTENT_REF_TEST: core_foundation_sys::string::CFStringRef;
+        }
 
         let service = CFString::new("Claude Code-credentials");
         let first = super::build_keychain_query(
             &service,
             unsafe { super::kSecUseAuthenticationUIFail },
             super::KeychainQueryPhase::PersistentReference,
-            None,
         );
         unsafe {
             assert!(first.contains_key(kSecMatchLimit as *const c_void));
@@ -484,13 +485,25 @@ mod tests {
         let second = super::build_keychain_query(
             &service,
             unsafe { super::kSecUseAuthenticationUIFail },
-            super::KeychainQueryPhase::Data,
-            Some(&persistent_ref),
+            super::KeychainQueryPhase::Data(&persistent_ref),
         );
         unsafe {
             assert!(!second.contains_key(kSecMatchLimit as *const c_void));
             assert!(second.contains_key(kSecReturnData as *const c_void));
-            assert!(second.contains_key(super::K_SEC_VALUE_PERSISTENT_REF as *const c_void));
+            assert!(second.contains_key(K_SEC_MATCH_ITEM_LIST_TEST as *const c_void));
+            assert!(!second.contains_key(K_SEC_VALUE_PERSISTENT_REF_TEST as *const c_void));
+
+            let item_list_key = K_SEC_MATCH_ITEM_LIST_TEST as *const c_void;
+            let item_list_ref = *second
+                .to_immutable()
+                .find(item_list_key)
+                .expect("phase 2 must provide an item list");
+            assert_eq!(
+                CFGetTypeID(item_list_ref as CFTypeRef),
+                CFArray::<CFType>::type_id()
+            );
+            let item_list = CFArray::<CFType>::wrap_under_get_rule(item_list_ref as *mut _);
+            assert_eq!(item_list.len(), 1);
         }
     }
 
