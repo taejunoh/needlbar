@@ -377,7 +377,15 @@ fn diagnostics_by_provider(json: &str) -> std::collections::BTreeMap<String, ser
 }
 
 fn assert_safe_output(json: &str) {
-    for forbidden in [CLAUDE_CANARY, CODEX_CANARY, CURSOR_CANARY, RAW_PATH, EMAIL] {
+    for forbidden in [
+        CLAUDE_CANARY,
+        CODEX_CANARY,
+        CURSOR_CANARY,
+        RAW_PATH,
+        EMAIL,
+        "connectCursor",
+        "cursorSyncFailed",
+    ] {
         assert!(
             !json.contains(forbidden),
             "unsafe upstream value crossed the bridge boundary: {forbidden}"
@@ -396,7 +404,6 @@ fn assert_error_shape(errors: &serde_json::Value, code: &str) {
     assert!(error["message"]
         .as_str()
         .is_some_and(|message| !message.is_empty()));
-    assert!(error.get("action").is_none());
 }
 
 struct RuntimeCleanup;

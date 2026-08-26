@@ -39,7 +39,6 @@ fn authentication_error() -> QuotaError {
         code: QuotaErrorCode::RequiresAuthentication,
         message: "Codex authentication was not available.",
         retry_after: None,
-        action: None,
     }
 }
 
@@ -165,7 +164,6 @@ async fn claude_permission_denial_uses_safe_bridge_copy_without_token_data() {
             code: QuotaErrorCode::PermissionDenied,
             message: Box::leak(format!("denied {canary}").into_boxed_str()),
             retry_after: None,
-            action: None,
         }),
     }))
     .await;
@@ -233,7 +231,6 @@ async fn quota_collection_with_only_provider_errors_is_a_successful_bridge_respo
                 code: QuotaErrorCode::ProviderUnavailable,
                 message: "Cursor personal quota is unavailable.",
                 retry_after: None,
-                action: None,
             }),
         }),
     )
@@ -248,5 +245,4 @@ async fn quota_collection_with_only_provider_errors_is_a_successful_bridge_respo
     assert_eq!(value["errors"][1]["provider"], "codex");
     assert_eq!(value["errors"][2]["provider"], "cursor");
     assert_eq!(value["errors"][2]["code"], "providerUnavailable");
-    assert!(value["errors"][2].get("action").is_none());
 }

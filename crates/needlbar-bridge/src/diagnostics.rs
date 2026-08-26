@@ -24,15 +24,13 @@ impl DiagnosticProvider {
     }
 
     fn usage_source(self) -> UsageSource {
-        match self {
-            Self::Cursor => UsageSource::CursorExport,
-            Self::Claude | Self::Codex => UsageSource::Local,
-        }
+        let _ = self;
+        UsageSource::Local
     }
 
     fn quota_source(self) -> QuotaSource {
         match self {
-            Self::Cursor => QuotaSource::Session,
+            Self::Cursor => QuotaSource::Unavailable,
             Self::Claude | Self::Codex => QuotaSource::OAuth,
         }
     }
@@ -51,14 +49,13 @@ pub enum SubsystemStatus {
 #[serde(rename_all = "camelCase")]
 pub enum UsageSource {
     Local,
-    CursorExport,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum QuotaSource {
     OAuth,
-    Session,
+    Unavailable,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -73,7 +70,6 @@ pub enum SafeErrorCode {
     ProviderUnavailable,
     SchemaChanged,
     NoUsageData,
-    CursorSyncFailed,
     UsageRuntimeUnavailable,
     UsageReportUnavailable,
     InvalidUsageDate,
@@ -93,7 +89,6 @@ impl SafeErrorCode {
             "providerUnavailable" => Self::ProviderUnavailable,
             "schemaChanged" => Self::SchemaChanged,
             "noUsageData" => Self::NoUsageData,
-            "cursorSyncFailed" => Self::CursorSyncFailed,
             "usageRuntimeUnavailable" => Self::UsageRuntimeUnavailable,
             "usageReportUnavailable" => Self::UsageReportUnavailable,
             "invalidUsageDate" => Self::InvalidUsageDate,

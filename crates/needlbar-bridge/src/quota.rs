@@ -1,8 +1,8 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use needlbar_quota::{
-    ClaudeCredentialAccess, ClaudeQuotaProvider, ProviderId, ProviderQuotaSnapshot, QuotaAction,
-    QuotaError, QuotaErrorCode, QuotaProvider,
+    ClaudeCredentialAccess, ClaudeQuotaProvider, ProviderId, ProviderQuotaSnapshot, QuotaError,
+    QuotaErrorCode, QuotaProvider,
 };
 #[cfg(not(feature = "bridge-test-runtime"))]
 use needlbar_quota::{CodexQuotaProvider, CursorQuotaProvider};
@@ -137,7 +137,6 @@ fn test_runtime_unavailable_collection() -> QuotaCollection {
         code: QuotaErrorCode::ProviderUnavailable,
         message: "Bridge test fixture runtime was not installed.",
         retry_after: None,
-        action: None,
     })])
 }
 
@@ -172,7 +171,6 @@ fn bridge_error_from_quota(error: QuotaError) -> BridgeError {
         provider,
         code: code.to_owned(),
         message: safe_quota_message(code).to_owned(),
-        action: error.action.map(action_name).map(str::to_owned),
     }
 }
 
@@ -195,11 +193,5 @@ fn provider_name(provider: ProviderId) -> &'static str {
         ProviderId::Claude => "claude",
         ProviderId::Codex => "codex",
         ProviderId::Cursor => "cursor",
-    }
-}
-
-fn action_name(action: QuotaAction) -> &'static str {
-    match action {
-        QuotaAction::ConnectCursor => "connectCursor",
     }
 }

@@ -6,8 +6,7 @@ mod http;
 pub mod providers;
 
 pub use domain::{
-    normalize_percent, ProviderId, ProviderQuotaSnapshot, QuotaAction, QuotaError, QuotaErrorCode,
-    QuotaWindow,
+    normalize_percent, ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaWindow,
 };
 pub use http::RedactingHttpClient;
 pub use providers::claude::ClaudeQuotaProvider;

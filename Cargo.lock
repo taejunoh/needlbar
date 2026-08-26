@@ -875,8 +875,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "libc",
  "needlbar-quota",
- "needlbar-source-sync",
  "serde",
  "serde_json",
  "tempfile",
@@ -902,21 +902,6 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "zeroize",
-]
-
-[[package]]
-name = "needlbar-source-sync"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "libc",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
 ]
 
 [[package]]

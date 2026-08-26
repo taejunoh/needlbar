@@ -12,11 +12,17 @@ fn provider_verification_exports_are_declared_in_the_public_c_header() {
     assert!(header.contains("needlbar_claude_user_initiated_quota_snapshot_json(void)"));
     assert!(header.contains("needlbar_codex_quota_snapshot_json(void)"));
 
+    let usage: unsafe extern "C" fn() -> *const std::os::raw::c_char =
+        needlbar_bridge::needlbar_usage_snapshot_json;
+    let quota: unsafe extern "C" fn() -> *const std::os::raw::c_char =
+        needlbar_bridge::needlbar_quota_snapshot_json;
     let claude: unsafe extern "C" fn() -> *const std::os::raw::c_char =
         needlbar_bridge::needlbar_claude_user_initiated_quota_snapshot_json;
     let codex: unsafe extern "C" fn() -> *const std::os::raw::c_char =
         needlbar_bridge::needlbar_codex_quota_snapshot_json;
-    let _ = (claude, codex);
+    let diagnostics: unsafe extern "C" fn() -> *const std::os::raw::c_char =
+        needlbar_bridge::needlbar_diagnostics_json;
+    let _ = (usage, quota, claude, codex, diagnostics);
 }
 
 #[test]

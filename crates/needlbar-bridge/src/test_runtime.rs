@@ -241,7 +241,6 @@ pub fn fixture_permission_denied(canary: &str) -> QuotaError {
         code: QuotaErrorCode::PermissionDenied,
         message: Box::leak(format!("credential {canary}").into_boxed_str()),
         retry_after: None,
-        action: None,
     }
 }
 
@@ -383,7 +382,6 @@ pub fn usage_envelope() -> Option<Envelope<UsagePayload>> {
                 provider: None,
                 code: "usageReportUnavailable".to_owned(),
                 message: "Usage data could not be collected.".to_owned(),
-                action: None,
             }));
         }
     };
@@ -393,7 +391,6 @@ pub fn usage_envelope() -> Option<Envelope<UsagePayload>> {
             provider: Some("codex".to_owned()),
             code: "providerUnavailable".to_owned(),
             message: "Usage data is unavailable.".to_owned(),
-            action: None,
         }),
         FixtureMode::Redaction {
             claude_failure,
@@ -445,19 +442,16 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
             Arc::new(FixtureQuotaProvider::failure(
                 ProviderId::Claude,
                 QuotaErrorCode::RequiresAuthentication,
-                None,
                 claude_failure,
             )),
             Arc::new(FixtureQuotaProvider::failure(
                 ProviderId::Codex,
                 QuotaErrorCode::NetworkUnavailable,
-                None,
                 codex_failure,
             )),
             Arc::new(FixtureQuotaProvider::failure(
                 ProviderId::Cursor,
                 QuotaErrorCode::ProviderUnavailable,
-                None,
                 cursor_failure,
             )),
         ),
@@ -483,7 +477,6 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
                         code: QuotaErrorCode::ProviderUnavailable,
                         message: "Cursor personal quota is available in Cursor Spending.",
                         retry_after: None,
-                        action: None,
                     }),
                     fixture,
                 )),
@@ -507,7 +500,6 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
                     code: QuotaErrorCode::ProviderUnavailable,
                     message: "Cursor personal quota is available in Cursor Spending.",
                     retry_after: None,
-                    action: None,
                 }),
                 blocking.fixture,
             )),
@@ -555,7 +547,6 @@ pub fn codex_quota_provider() -> Option<Arc<dyn QuotaProvider>> {
         FixtureMode::Redaction { codex_failure, .. } => Arc::new(FixtureQuotaProvider::failure(
             ProviderId::Codex,
             QuotaErrorCode::NetworkUnavailable,
-            None,
             codex_failure,
         )),
         FixtureMode::ProviderVerification(fixture) => {
@@ -606,7 +597,6 @@ impl FixtureClaudeUserInitiatedSource {
                 code,
                 message: Box::leak(source_detail.into_boxed_str()),
                 retry_after: None,
-                action: None,
             }),
         }
     }
@@ -743,12 +733,7 @@ impl FixtureQuotaProvider {
         }
     }
 
-    fn failure(
-        provider: ProviderId,
-        code: QuotaErrorCode,
-        action: Option<needlbar_quota::QuotaAction>,
-        source_detail: String,
-    ) -> Self {
+    fn failure(provider: ProviderId, code: QuotaErrorCode, source_detail: String) -> Self {
         Self {
             result: Err(QuotaError {
                 provider: Some(provider),
@@ -757,7 +742,6 @@ impl FixtureQuotaProvider {
                 // This feature-only fake emulates an unsafe upstream transport.
                 message: Box::leak(source_detail.into_boxed_str()),
                 retry_after: None,
-                action,
             }),
         }
     }

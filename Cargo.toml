@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
   "crates/needlbar-bridge",
-  "crates/needlbar-source-sync",
   "crates/needlbar-quota",
 ]
 
