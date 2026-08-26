@@ -1,4 +1,4 @@
-.PHONY: rust swift swift-test test run package smoke
+.PHONY: rust swift swift-test package-test test run package smoke
 
 rust:
 	./scripts/build-rust.sh
@@ -52,9 +52,13 @@ swift-test:
 	swift package clean; \
 	swift test
 
+package-test:
+	./scripts/tests/package-app-tests.sh
+
 test:
 	cargo test --workspace --features bridge-test-runtime
 	$(MAKE) swift-test
+	$(MAKE) package-test
 
 run: rust
 	swift run Needlbar
