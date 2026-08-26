@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** The approved Cursor local-usage/dashboard amendment has passed the Task 5 fix-round gate; the branch remains unreleased and unmerged.
-**Next action:** Complete the replacement exact-head CI for the documentation/CI cleanup, then return to the separate notarization/release-secrets gate. Do not request, record, or handle a Cursor credential; do not create a tag or release.
+**Current phase:** The approved Cursor local-usage/dashboard amendment and Task 5 acceptance are complete; the branch remains unreleased and unmerged.
+**Next action:** Return to the separate notarization/release-secrets gate. Do not request, record, or handle a Cursor credential; do not create a tag or release.
 
 ## Source of Truth
 
@@ -742,8 +742,13 @@ passed exact-head CI run [33018740992](https://github.com/taejunoh/needlbar/acti
 including owned workspace tests, explicit vendored tokscale-core test and clippy, full
 Swift/package verification, and packaged-app smoke checks. The follow-up cleanup restores the
 existing CI workspace test's original feature scope while retaining bridge-test runtime
-coverage in Makefile and the explicit vendor checks; its replacement exact-head result will
-be recorded only in the Task 5 report, with no tag or release action authorized here.
+coverage in Makefile and the explicit vendor checks. The live-acceptance commit
+`4ec1081ae982e3b03759230ace6ccc38d7e32934` passed exact-head CI run
+[33019798610](https://github.com/taejunoh/needlbar/actions/runs/33019798610), with every step
+successful, including the packaged visual-acceptance build path. This status-only update
+records that completed run/head; any exact-head CI generated for this status-only commit will
+be recorded only in the untracked Task 5 report, not through another STATUS commit, with no
+tag or release action authorized here.
 
 ## v0.1 Constraints to Preserve
 
