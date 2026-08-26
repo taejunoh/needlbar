@@ -2,7 +2,7 @@
 
 **Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 credentialed acceptance and hosted CI verification are complete; the Cursor Settings `Command-V` regression is fixed and manually verified, while Cursor explicit-session acceptance remains blocked after the earlier safe generic connection failure; PR #1 remains open and mergeable
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 credentialed acceptance and hosted CI verification are complete; the Cursor Settings `Command-V` regression fix is manually and remotely verified, while Cursor explicit-session acceptance remains blocked after the earlier safe generic connection failure; PR #1 remains open and mergeable
 **Next action:** Paste a fresh current Cursor session token obtained through the documented supported route and retry Connect once, then complete the notarization-secrets gate; preserve the unreleased, unmerged status
 
 ## Source of Truth
@@ -648,13 +648,14 @@ Fresh verification evidence:
 - TDD covered the missing installer, native selector/target/key contract, normal-path idempotence, malformed Paste repair, and preservation of pre-existing same-title menu content. The focused suite passed 3 tests; specification and code-quality reviews approved the final contract and implementation.
 - Fresh root verification passed: `swift test --filter ApplicationMenuInstallerTests` ran 3 tests with 0 failures; `make test` exited 0 with the pinned `tokscale-core` suite at 1372 passed, 0 failed, 1 ignored and Swift at 127 passed; the package-app relink regression passed; `make package` produced the packaged app successfully.
 - A packaged-app manual smoke copied only the harmless fixture `NEEDLBAR-PASTE-SMOKE`, focused the Cursor secure field, and pressed `Command-V`. Masked input appeared. The field and clipboard were immediately cleared, and Connect was not pressed. No provider token or clipboard contents were printed, logged, persisted, or exposed.
+- Hosted CI run [32996703404](https://github.com/taejunoh/needlbar/actions/runs/32996703404) passed at Cursor paste implementation head `6c6f494d1fc66c0772dbae2ea4905dc245291bc8`: Rust tests and strict lint, complete project tests, arm64 packaging, cleanup regression, packaged-app smoke, and artifact upload all completed successfully.
 - Blocker/next action: the user must paste a fresh current Cursor session token obtained through the documented supported route, without whitespace or newlines, and retry Connect once. Do not broaden the flow to browser crawling, and do not record or request the token in project documentation or chat.
 
 Release remains unreleased: no tag or GitHub Release was created, and notarization/stapling/publication were not run.
 
 ## Required Next Action
 
-Hosted CI is green for the provider implementation/status head `b3d116071d0ed3200b4ea431e2d65657329987ab`; the later Cursor paste regression fix is locally verified but still requires hosted CI after push. The exact next product gate is Cursor explicit-session live acceptance (user-provided token required), followed by the notarization-secrets gate. Preserve the unreleased and unmerged status, make no notarization or release claim, and record any blocker before final user-authorized release acceptance.
+Hosted CI is green for the Cursor paste implementation head `6c6f494d1fc66c0772dbae2ea4905dc245291bc8` in run [32996703404](https://github.com/taejunoh/needlbar/actions/runs/32996703404). The exact next product gate is Cursor explicit-session live acceptance (user-provided token required), followed by the notarization-secrets gate. Preserve the unreleased and unmerged status, make no notarization or release claim, and record any blocker before final user-authorized release acceptance.
 
 ## v0.1 Constraints to Preserve
 
