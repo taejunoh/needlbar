@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-26
 **Branch:** `codex/provider-browser-login`
-**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 credentialed acceptance is complete; PR #1 is open and hosted CI is queued with zero jobs during a GitHub Actions major outage, while the remaining release gates are pending
-**Next action:** Wait for the GitHub Actions outage to resolve, then confirm hosted CI on the current PR head and record the result; next product gates remain Cursor explicit-session acceptance and notarization secrets
+**Current phase:** Provider-managed Claude/Codex browser-login amendment Task 6 credentialed acceptance and hosted CI verification are complete; PR #1 remains open and mergeable, while the remaining release gates are pending
+**Next action:** Perform Cursor explicit-session live acceptance with a user-provided token, then complete the notarization-secrets gate; preserve the unreleased, unmerged status
 
 ## Source of Truth
 
@@ -473,7 +473,7 @@ Release acceptance intentionally not claimed:
 - A standalone usage scan completed in approximately 89 seconds on the large local history during the second controlled run. The UI stayed responsive and displayed last-known-good data; this is a non-blocking performance observation unless the approved specification changes.
 - Gatekeeper rejected an unstapled/unnotarized copy as expected after the local Developer ID sign/strict-verification/hardened-runtime check. The GitHub repository secret list is empty, so the stable notarization workflow cannot run. No Cursor session was available.
 
-Remaining release acceptance: refresh Claude authentication and wait out the rate limit; explicitly connect Cursor and run its usage/quota flow; exercise the Codex CLI fallback if feasible; configure GitHub release secrets; notarize/staple and verify with Gatekeeper; then create the user-authorized v0.1 tag/release.
+Remaining release acceptance: explicitly connect Cursor and run its usage/quota flow with a user-provided token; then configure the required GitHub notarization/release secrets and run the notarize/staple/Gatekeeper gate. The Codex CLI fallback remains unforced. Only after those gates may the user authorize a v0.1 tag/release.
 
 ## Final v0.1 Continuation
 
@@ -634,14 +634,16 @@ Fresh verification evidence:
 - Strict workspace Clippy passed. `make test` passed with the pinned `tokscale-core` suite at 1372 passed, 0 failed, 1 ignored, and Swift at 124 passed.
 - The packaging regression passed through `make test`; codesign verification, zip creation, and packaged-app smoke passed. `vendor/tokscale-core` remained clean at the approved pinned revision.
 - Specification and code-quality reviews were approved after the `package-test` CI linkage was added.
-- Branch commit `5b1d6fb` was pushed successfully to `origin/codex/provider-browser-login`. Provider-login acceptance and status commit `9ed317a` is included in open PR #1 ([github.com/taejunoh/needlbar/pull/1](https://github.com/taejunoh/needlbar/pull/1)).
-- Hosted CI run `32984248738` is queued with zero jobs. GitHub's official Actions status reported `major_outage` as of `2026-08-26T15:11:58Z`; hosted CI has not passed and its result remains pending until the outage resolves and the run completes.
+- Open PR #1 ([github.com/taejunoh/needlbar/pull/1](https://github.com/taejunoh/needlbar/pull/1)) remains open, unmerged, and currently `MERGEABLE`.
+- The provider implementation/status head validated by hosted CI is `b3d116071d0ed3200b4ea431e2d65657329987ab`; run [32987657091](https://github.com/taejunoh/needlbar/actions/runs/32987657091) for that exact head completed `SUCCESS` at `2026-08-26T16:26:20Z`; the `test` job passed.
+- The following status update is docs-only and changes no product code.
+- Historical outage evidence: hosted CI run [32984248738](https://github.com/taejunoh/needlbar/actions/runs/32984248738) was queued with zero jobs while GitHub's official Actions status reported `major_outage` at `2026-08-26T15:11:58Z`.
 
 Release remains unreleased: no tag or GitHub Release was created, and notarization/stapling/publication were not run.
 
 ## Required Next Action
 
-Wait for the GitHub Actions outage to resolve, then confirm hosted CI on the current PR head and record the result; next product gates remain Cursor explicit-session acceptance (user-provided token required) and the notarization-secrets gate. Preserve unreleased status, make no notarization or release claim, and record any blocker before the final user-authorized release acceptance.
+Hosted CI is green for the provider implementation/status head `b3d116071d0ed3200b4ea431e2d65657329987ab`; this status update changes no product code. The exact next product gate is Cursor explicit-session live acceptance (user-provided token required), followed by the notarization-secrets gate. Preserve the unreleased and unmerged status, make no notarization or release claim, and record any blocker before final user-authorized release acceptance.
 
 ## v0.1 Constraints to Preserve
 
