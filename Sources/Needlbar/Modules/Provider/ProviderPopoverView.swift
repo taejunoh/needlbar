@@ -3,7 +3,7 @@ import NeedlbarCore
 
 public enum ProviderAuthenticationAction: Equatable, Sendable {
     case browserLogin(title: String)
-    case openSettings(title: String)
+    case openCursorSpending(title: String)
 }
 
 public struct ProviderPopoverPresentation: Equatable, Sendable {
@@ -39,6 +39,10 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
     }
 
     public var authenticationAction: ProviderAuthenticationAction? {
+        if provider == .cursor, quotaWindows.isEmpty, quotaFreshness != .fresh {
+            return .openCursorSpending(title: "Open Cursor Spending")
+        }
+
         guard requiresProviderSignIn else { return nil }
         switch provider {
         case .claude:
@@ -46,7 +50,7 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
         case .codex:
             return .browserLogin(title: "Sign in with ChatGPT")
         case .cursor:
-            return .openSettings(title: "Open Settings")
+            return nil
         }
     }
 }
@@ -133,7 +137,7 @@ public struct ProviderPopoverView: View {
 private extension ProviderAuthenticationAction {
     var title: String {
         switch self {
-        case let .browserLogin(title), let .openSettings(title): title
+        case let .browserLogin(title), let .openCursorSpending(title): title
         }
     }
 }

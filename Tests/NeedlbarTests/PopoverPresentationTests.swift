@@ -55,11 +55,11 @@ import Testing
 
     #expect(ProviderPopoverPresentation(snapshot: snapshot(
         provider: .cursor,
-        usage: nil,
+        usage: usage(totalTokens: 900),
         quota: nil,
-        usageStatus: .unavailable,
-        quotaStatus: .requiresAuthentication
-    )).authenticationAction == .openSettings(title: "Open Settings"))
+        usageStatus: .fresh,
+        quotaStatus: .unavailable
+    )).authenticationAction == .openCursorSpending(title: "Open Cursor Spending"))
 }
 
 @Test func nonAuthenticationQuotaStatesDoNotInventAuthenticationActions() {

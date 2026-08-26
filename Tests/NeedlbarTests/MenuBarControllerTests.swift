@@ -177,22 +177,30 @@ import Testing
 }
 
 @MainActor
-@Test func cursorAuthenticationActionOpensSettingsWithoutRequestingBrowserLogin() {
+@Test func cursorSpendingActionOpensFixedDashboardWithoutLoginOrSettings() {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     var requestedProviders: [ProviderID] = []
     var settingsRequests = 0
+    var openedURLs: [URL] = []
     let controller = MenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
         loginCoordinator: testLoginCoordinator(),
         onProviderLoginRequested: { requestedProviders.append($0) },
-        onSettingsRequested: { settingsRequests += 1 }
+        onSettingsRequested: { settingsRequests += 1 },
+        openCursorSpending: {
+            _ = CursorSpendingAction.open { url in
+                openedURLs.append(url)
+                return true
+            }
+        }
     )
 
     controller.performAuthenticationAction(for: .cursor)
 
     #expect(requestedProviders.isEmpty)
-    #expect(settingsRequests == 1)
+    #expect(settingsRequests == 0)
+    #expect(openedURLs == [URL(string: "https://cursor.com/dashboard/spending")!])
 }
 
 private func freshMenuBarDefaults() -> UserDefaults {

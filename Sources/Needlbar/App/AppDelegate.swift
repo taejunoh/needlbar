@@ -31,6 +31,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
         self.loginCoordinator = loginCoordinator
+        let openCursorSpending: @MainActor () -> Void = {
+            _ = CursorSpendingAction.open()
+        }
         self.menuBarController = MenuBarController(
             configuration: moduleConfiguration,
             snapshotStore: snapshotStore,
@@ -47,7 +50,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onProviderLoginRequested: { provider in
                 _ = loginCoordinator.connect(provider)
-            }
+            },
+            openCursorSpending: openCursorSpending
         )
         super.init()
     }

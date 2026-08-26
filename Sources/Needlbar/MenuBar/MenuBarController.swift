@@ -28,6 +28,7 @@ public final class MenuBarController {
     private let onRetryRequested: @MainActor () -> Void
     private let onProviderLoginRequested: @MainActor (ProviderID) -> Void
     private let onSettingsRequested: @MainActor () -> Void
+    private let openCursorSpending: @MainActor () -> Void
     private let settingsWindowController: SettingsWindowController
     private let popover = NSPopover()
     private var statusItems: [MenuModuleID: any StatusItemHandle] = [:]
@@ -44,7 +45,8 @@ public final class MenuBarController {
         onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
         onRetryRequested: @escaping @MainActor () -> Void = {},
         onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
-        onSettingsRequested: @escaping @MainActor () -> Void = {}
+        onSettingsRequested: @escaping @MainActor () -> Void = {},
+        openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() }
     ) {
         self.configuration = configuration
         self.snapshotStore = snapshotStore
@@ -53,9 +55,11 @@ public final class MenuBarController {
         self.onRetryRequested = onRetryRequested
         self.onProviderLoginRequested = onProviderLoginRequested
         self.onSettingsRequested = onSettingsRequested
+        self.openCursorSpending = openCursorSpending
         self.settingsWindowController = SettingsWindowController(
             configuration: configuration,
-            loginCoordinator: loginCoordinator
+            loginCoordinator: loginCoordinator,
+            openCursorSpending: openCursorSpending
         )
     }
 
@@ -187,7 +191,7 @@ public final class MenuBarController {
         case .codex:
             action = .browserLogin(title: "Sign in with ChatGPT")
         case .cursor:
-            action = .openSettings(title: "Open Settings")
+            action = .openCursorSpending(title: "Open Cursor Spending")
         }
         performAuthenticationAction(action, for: provider)
     }
@@ -196,8 +200,8 @@ public final class MenuBarController {
         switch action {
         case .browserLogin:
             onProviderLoginRequested(provider)
-        case .openSettings:
-            showSettings()
+        case .openCursorSpending:
+            _ = openCursorSpending()
         }
     }
 

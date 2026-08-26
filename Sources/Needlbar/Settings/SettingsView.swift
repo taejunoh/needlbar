@@ -3,10 +3,16 @@ import SwiftUI
 
 public struct SettingsView: View {
     private let configuration: ModuleConfiguration
+    private let openCursorSpending: () -> Void
     @ObservedObject private var loginCoordinator: ProviderLoginCoordinator
 
-    public init(configuration: ModuleConfiguration, loginCoordinator: ProviderLoginCoordinator) {
+    public init(
+        configuration: ModuleConfiguration,
+        loginCoordinator: ProviderLoginCoordinator,
+        openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() }
+    ) {
         self.configuration = configuration
+        self.openCursorSpending = openCursorSpending
         _loginCoordinator = ObservedObject(wrappedValue: loginCoordinator)
     }
 
@@ -31,11 +37,15 @@ public struct SettingsView: View {
             Section("Connections") {
                 providerLoginRow(provider: .claude, title: "Claude", actionTitle: "Sign in with Claude")
                 providerLoginRow(provider: .codex, title: "Codex", actionTitle: "Sign in with ChatGPT")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Cursor")
-                    Text("Usage is read from an existing local cache. Quota is available in Cursor Spending.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Cursor")
+                        Text("Usage is read from an existing local cache. Quota is available in Cursor Spending.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Open Cursor Spending", action: openCursorSpending)
                 }
             }
         }
