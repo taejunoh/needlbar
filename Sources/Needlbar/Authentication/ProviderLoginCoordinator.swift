@@ -150,6 +150,13 @@ public enum ProviderLoginProcessOutcome: Equatable, Sendable {
     case cancelled
 }
 
+/// The bounded result of asking the login runner to clean up its direct children.
+/// `.pendingReap` means an exact PID remains actor-owned by background reaping.
+public enum ProviderLoginCleanupResult: Equatable, Sendable {
+    case complete
+    case pendingReap
+}
+
 public enum ProviderLoginSpawnResult: Equatable, Sendable {
     case spawned(pid: Int32)
     case failed
@@ -285,7 +292,7 @@ public struct ProviderLoginPOSIXSystem: ProviderLoginProcessSystem, Sendable {
 
 public protocol ProviderLoginProcessRunning: Sendable {
     func run(_ command: ProviderLoginCommand) async -> ProviderLoginProcessOutcome
-    func stop() async
+    func stop() async -> ProviderLoginCleanupResult
     /// The coordinator holds this provider's admission until its failed child is reaped.
     /// The coordinator permits one session per provider, so this is a session-specific boundary.
     func waitForReaping(for provider: ProviderID) async
@@ -413,11 +420,12 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
         })
     }
 
-    public func stop() async {
+    public func stop() async -> ProviderLoginCleanupResult {
         let active = Array(sessions.keys)
         for identifier in active {
             await requestTermination(identifier, reason: .cancelled)
         }
+        return sessions.values.contains(where: hasBackgroundReaping) ? .pendingReap : .complete
     }
 
     public func waitForReaping(for provider: ProviderID) async {
@@ -533,6 +541,12 @@ public actor ProviderLoginProcessRunner: ProviderLoginProcessRunning {
     private func isTerminating(_ identifier: UUID, pid: Int32) -> Bool {
         guard case let .running(running)? = sessions[identifier], running.pid == pid else { return false }
         guard case .terminating = running.terminationState else { return false }
+        return true
+    }
+
+    private func hasBackgroundReaping(_ session: Session) -> Bool {
+        guard case let .running(running) = session else { return false }
+        guard case .backgroundReaping = running.terminationState else { return false }
         return true
     }
 
@@ -724,7 +738,7 @@ public final class ProviderLoginCoordinator: ObservableObject {
         states[provider] ?? .idle
     }
 
-    public func stop() async {
+    public func stop() async -> ProviderLoginCleanupResult {
         let activeProviders = tasks.keys.filter { stoppingGenerations[$0] != taskGenerations[$0] }
         var stoppedGenerations: [ProviderID: UInt64] = [:]
         for provider in activeProviders {
@@ -735,7 +749,7 @@ public final class ProviderLoginCoordinator: ObservableObject {
             tasks[provider]?.cancel()
             updateState(.idle, for: provider)
         }
-        await runner.stop()
+        let cleanupResult = await runner.stop()
         for provider in activeProviders {
             guard let stoppedGeneration = stoppedGenerations[provider] else { continue }
             let runner = runner
@@ -744,6 +758,7 @@ public final class ProviderLoginCoordinator: ObservableObject {
                 await self?.completeStoppedAdmission(for: provider, generation: stoppedGeneration)
             }
         }
+        return cleanupResult
     }
 
     private func run(_ command: ProviderLoginCommand, provider: ProviderID, generation: UInt64) async {
