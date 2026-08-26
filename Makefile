@@ -57,7 +57,7 @@ package-test:
 
 test:
 	cargo test --workspace --features bridge-test-runtime
-	cargo test --manifest-path vendor/tokscale-core/Cargo.toml
+	sh ./scripts/tests/vendor-tokscale-test.sh
 	$(MAKE) swift-test
 	$(MAKE) package-test
 
