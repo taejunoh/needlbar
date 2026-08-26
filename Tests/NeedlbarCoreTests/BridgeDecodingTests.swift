@@ -192,7 +192,7 @@ import Testing
     #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
 }
 
-@Test func cursorUserInitiatedQuotaRefreshFailsClosedWithoutAnyBridgeCall() throws {
+@Test func cursorUserInitiatedQuotaRefreshReportsLocalOnlyUnavailabilityWithoutAnyBridgeCall() throws {
     let calls = CallRecorder()
     let bridge = RustBridge(
         quotaCall: { calls.record("background"); return quotaCString(provider: "cursor") },
@@ -200,8 +200,20 @@ import Testing
         codexQuotaCall: { calls.record("codex"); return quotaCString(provider: "codex") }
     )
 
-    #expect(throws: BridgeFailure.self) {
+    do {
         _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .cursor))
+        Issue.record("Cursor user-initiated quota refresh must fail closed.")
+    } catch let BridgeFailure.bridgeFailed(errors) {
+        #expect(errors == [
+            BridgeError(
+                provider: "cursor",
+                code: "unsupportedProvider",
+                message: "Cursor quota is unavailable in Needlbar. Use Cursor Spending for quota details.",
+                action: nil
+            )
+        ])
+    } catch {
+        Issue.record("Expected the Cursor local-only quota failure, got \(error).")
     }
     #expect(calls.values.isEmpty)
 }

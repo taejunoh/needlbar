@@ -72,6 +72,32 @@ struct RefreshCoordinatorTests {
     await coordinator.stop()
 }
 
+@Test func cursorProviderUnavailableQuotaIsUnavailableWhileClaudeRemainsAnError() async throws {
+    let now = try #require(BridgeDecoder.date("2026-08-26T12:00:00Z"))
+    let quota = QuotaRefreshSpy(result: .init(
+        snapshots: [:],
+        errors: [
+            .claude: BridgeError(provider: "claude", code: "providerUnavailable", message: "Claude unavailable", action: nil),
+            .cursor: BridgeError(provider: "cursor", code: "providerUnavailable", message: "Cursor unavailable", action: nil)
+        ]
+    ))
+    let store = ProviderSnapshotStore()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota,
+        store: store,
+        clock: ManualClock(now: now)
+    )
+
+    await coordinator.popoverOpened()
+    await quota.waitUntilCallCount(1)
+    await eventuallyAsync { await store.snapshot(for: .cursor).quotaStatus == .unavailable }
+
+    #expect(await store.snapshot(for: .cursor).quotaStatus == .unavailable)
+    #expect(await store.snapshot(for: .claude).quotaStatus == .error(message: "Claude unavailable", lastSuccessfulAt: nil))
+    await coordinator.stop()
+}
+
 @Test func manualRefreshQueuesOneNormalUsageFollowUpDuringAnInflightCycle() async throws {
     let now = try #require(BridgeDecoder.date("2026-08-14T10:00:00Z"))
     let clock = ManualClock(now: now)

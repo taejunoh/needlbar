@@ -94,6 +94,30 @@ fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
 }
 
 #[test]
+fn diagnostics_marks_cursor_provider_unavailable_as_unavailable_without_changing_other_failures() {
+    let _serial = test_runtime::serial_guard();
+    let home = fixture_home();
+    assert!(test_runtime::install_redaction_fixture(
+        home.path().to_path_buf(),
+        "Claude unavailable".to_owned(),
+        "Codex unavailable".to_owned(),
+        "Cursor unavailable".to_owned(),
+    ));
+    let _clear = RuntimeCleanup;
+
+    let _ = ffi_json(needlbar_quota_snapshot_json);
+    let diagnostics = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
+
+    assert_eq!(diagnostics["cursor"]["quotaStatus"], "unavailable");
+    assert_eq!(
+        diagnostics["cursor"]["quotaErrorCode"],
+        "providerUnavailable"
+    );
+    assert_eq!(diagnostics["codex"]["quotaStatus"], "error");
+    assert_eq!(diagnostics["codex"]["quotaErrorCode"], "networkUnavailable");
+}
+
+#[test]
 fn provider_verification_exports_are_isolated_redacted_panic_contained_and_freed() {
     // This catches FFI exports that construct production providers under the
     // fixture hook, fan out to another provider, leak Keychain detail, or let

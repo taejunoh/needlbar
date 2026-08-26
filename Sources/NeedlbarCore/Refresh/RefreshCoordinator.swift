@@ -404,7 +404,7 @@ public actor RefreshCoordinator {
             }
             for (provider, error) in refresh.errors {
                 guard generation == runGeneration, applyResult else { return }
-                await store.markQuotaFailure(for: provider, status: status(for: error), at: refreshedAt)
+                await store.markQuotaFailure(for: provider, status: quotaStatus(for: error), at: refreshedAt)
             }
             if case .userInitiated(let provider) = intent {
                 verificationSucceeded = refresh.snapshots[provider] != nil
@@ -426,7 +426,7 @@ public actor RefreshCoordinator {
                 if !matchingErrors.isEmpty {
                     for error in matchingErrors {
                         guard let provider = error.providerID, generation == runGeneration, applyResult else { return }
-                        await store.markQuotaFailure(for: provider, status: status(for: error), at: clock.now)
+                        await store.markQuotaFailure(for: provider, status: quotaStatus(for: error), at: clock.now)
                     }
                     break
                 }
@@ -527,5 +527,12 @@ public actor RefreshCoordinator {
         default:
             return .error(message: error.message, lastSuccessfulAt: nil)
         }
+    }
+
+    private func quotaStatus(for error: BridgeError) -> DataStatus {
+        if error.provider == ProviderID.cursor.rawValue, error.code == "providerUnavailable" {
+            return .unavailable
+        }
+        return status(for: error)
     }
 }

@@ -219,7 +219,11 @@ impl DiagnosticsSnapshot {
         ProviderDiagnostic::new(
             provider,
             status(usage_present, usage_error.map(|error| error.code.as_str())),
-            status(quota_present, quota_error.map(|error| error.code.as_str())),
+            quota_status(
+                provider,
+                quota_present,
+                quota_error.map(|error| error.code.as_str()),
+            ),
             provider.usage_source(),
             provider.quota_source(),
             usage_present.then_some(usage.generated_at.as_str()),
@@ -286,11 +290,11 @@ pub fn record_quota(envelope: &Envelope<QuotaPayload>) {
                 .errors
                 .iter()
                 .find(|error| error.provider.as_deref() == Some(name));
-            stream_observation(
-                present,
-                envelope.generated_at.as_str(),
-                error.map(|error| error.code.as_str()),
-            )
+            StreamObservation {
+                status: quota_status(provider, present, error.map(|error| error.code.as_str())),
+                observed_at: present.then(|| envelope.generated_at.to_owned()),
+                error_code: error.and_then(|error| SafeErrorCode::parse(&error.code)),
+            }
         })
         .collect();
     RECORDED_OUTCOMES
@@ -324,11 +328,11 @@ pub fn record_partial_quota(envelope: &Envelope<QuotaPayload>) {
             .iter()
             .find(|error| error.provider.as_deref() == Some(name));
         if present || error.is_some() {
-            entries[index] = stream_observation(
-                present,
-                envelope.generated_at.as_str(),
-                error.map(|error| error.code.as_str()),
-            );
+            entries[index] = StreamObservation {
+                status: quota_status(provider, present, error.map(|error| error.code.as_str())),
+                observed_at: present.then(|| envelope.generated_at.to_owned()),
+                error_code: error.and_then(|error| SafeErrorCode::parse(&error.code)),
+            };
         }
     }
 }
@@ -364,4 +368,15 @@ fn status(present: bool, error_code: Option<&str>) -> SubsystemStatus {
         Some(_) => SubsystemStatus::Error,
         None => SubsystemStatus::Unavailable,
     }
+}
+
+fn quota_status(
+    provider: DiagnosticProvider,
+    present: bool,
+    error_code: Option<&str>,
+) -> SubsystemStatus {
+    if provider == DiagnosticProvider::Cursor && error_code == Some("providerUnavailable") {
+        return SubsystemStatus::Unavailable;
+    }
+    status(present, error_code)
 }

@@ -43,7 +43,7 @@ public struct RustQuotaRepository: QuotaRepository, Sendable {
         case .userInitiated(provider: .codex):
             return try refreshDedicated(bridge.codexQuotaEnvelope(), for: .codex)
         case .userInitiated(provider: .cursor):
-            throw safeFailure(provider: .cursor, code: "unsupportedProvider", message: "Cursor quota verification is managed by its connection controller.")
+            throw safeFailure(provider: .cursor, code: "unsupportedProvider", message: "Cursor quota is unavailable in Needlbar. Use Cursor Spending for quota details.")
         }
     }
 
