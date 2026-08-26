@@ -38,7 +38,7 @@ After this change:
 
 `NeedlbarApp` owns menu installation because it owns application lifecycle. A small testable installer, for example `ApplicationMenuInstaller`, builds or updates `NSApp.mainMenu` and is called from `AppDelegate.applicationDidFinishLaunching(_:)` before the app begins its normal observation and refresh tasks.
 
-The installer must be idempotent. Repeated calls must not create duplicate `Edit` menus or duplicate Paste items. If an application menu already exists, it may be preserved and amended; the resulting `Edit` submenu must contain one native Paste item with this exact contract:
+The installer must be idempotent in Needlbar's normal launch path. Needlbar starts with no main menu, so repeated installer calls must not add duplicate `Edit` menus or duplicate Paste items in that app-owned path. If a host or test supplies an application menu that already contains multiple same-title `Edit` or `Paste` items, the installer cannot prove which entries it owns and must preserve them all. It selects the first `Edit` item and, within that submenu, the first `Paste` item; it repairs only that Paste item to this exact native contract and never deletes arbitrary pre-existing menu content. Thus, exactly one `Edit` menu and one Paste item are guaranteed only for the clean app-owned path, not for arbitrary pre-existing duplicate state:
 
 | Property | Required value |
 | --- | --- |
@@ -78,7 +78,7 @@ The installer must not:
 
 ### Automated regression
 
-The test suite creates the application's actual menu structure through the installer, locates the `Edit` submenu and its Paste item, and asserts the four required properties. It also calls the installer twice and asserts that the resulting menu still has one Edit submenu and one Paste item. The test must pass without accessing a real clipboard or token.
+The test suite creates the application's actual menu structure through the installer, locates the `Edit` submenu and its Paste item, and asserts the four required properties. It calls the installer twice from a nil main-menu state and asserts that the normal app-owned path still has one `Edit` submenu and one Paste item. A separate test seeds multiple same-title `Edit` and `Paste` entries, verifies that all pre-existing entries remain, and asserts that only the first `Edit`/first `Paste` selection is repaired to the native contract. The tests must pass without accessing a real clipboard or token.
 
 ### Manual UI smoke
 

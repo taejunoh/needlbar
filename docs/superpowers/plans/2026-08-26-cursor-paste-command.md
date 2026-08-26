@@ -4,7 +4,7 @@
 
 **Goal:** Restore native `⌘V` paste into Needlbar's Cursor session-token `SecureField` by installing a standard AppKit Edit menu while preserving all existing token handling.
 
-**Architecture:** A small main-actor `ApplicationMenuInstaller` owns an idempotent `NSApp.mainMenu` Edit submenu. Its Paste item uses `#selector(NSText.paste(_:))`, a `nil` target, key equivalent `v`, and the Command modifier so AppKit dispatches through the current first responder. `AppDelegate` invokes the installer at launch; Settings, Cursor session storage, and the Rust bridge remain untouched.
+**Architecture:** A small main-actor `ApplicationMenuInstaller` owns an idempotent `NSApp.mainMenu` Edit submenu. Needlbar's normal launch starts with no main menu, so repeated calls in that app-owned path do not add duplicate Edit/Paste items. If a host or test supplies multiple pre-existing same-title Edit or Paste items, ownership cannot be proven: the installer preserves all of them, selects the first Edit and first Paste in that Edit submenu, and repairs only that Paste item. Its Paste item uses `#selector(NSText.paste(_:))`, a `nil` target, key equivalent `v`, and the Command modifier so AppKit dispatches through the current first responder. `AppDelegate` invokes the installer at launch; Settings, Cursor session storage, and the Rust bridge remain untouched.
 
 **Tech Stack:** Swift 6, AppKit, SwiftUI, Swift Testing, macOS 14+
 
@@ -52,7 +52,7 @@ import Testing
 }
 ```
 
-Add a second test that calls `ApplicationMenuInstaller.install(in:)` twice and asserts that the main menu contains one Edit item and the Edit submenu contains one Paste item. Do not put a token, clipboard payload, or credential canary in either test.
+Add a second normal-path test that starts with no main menu, calls `ApplicationMenuInstaller.install(in:)` twice, and asserts that the main menu contains one Edit item and the Edit submenu contains one Paste item. Add a preservation/repair test that seeds the main menu with multiple same-title Edit items and multiple Paste items in the first Edit submenu, invokes the installer, asserts that all pre-existing Edit/Paste entries remain, and checks that only the first Edit/first Paste selection has the native action, nil target, `v` key equivalent, and Command modifier. Do not put a token, clipboard payload, or credential canary in any test.
 
 - [ ] **Step 2: Run the focused test and verify RED**
 
@@ -73,7 +73,7 @@ Expected: FAIL at compilation because `ApplicationMenuInstaller` has not been de
 
 - [ ] **Step 1: Add the idempotent installer**
 
-Create `Sources/Needlbar/App/ApplicationMenuInstaller.swift` with the following complete implementation. It reuses an existing main menu, removes duplicate Edit/Paste entries created by earlier calls, and repairs the Paste item to the exact native command contract:
+Create `Sources/Needlbar/App/ApplicationMenuInstaller.swift` with the following complete implementation. It reuses an existing main menu, creates missing app-owned Edit/Paste entries, preserves all pre-existing same-title entries because their ownership cannot be proven, and repairs the first Paste item selected within the first Edit submenu to the exact native command contract:
 
 ```swift
 import AppKit
@@ -82,14 +82,10 @@ import AppKit
 enum ApplicationMenuInstaller {
     static func install(in application: NSApplication) {
         let mainMenu = application.mainMenu ?? NSMenu(title: "Main Menu")
-        let editItems = mainMenu.items.filter { $0.title == "Edit" }
         let editItem: NSMenuItem
 
-        if let existingEditItem = editItems.first {
+        if let existingEditItem = mainMenu.items.first(where: { $0.title == "Edit" }) {
             editItem = existingEditItem
-            for duplicate in editItems.dropFirst() {
-                mainMenu.removeItem(duplicate)
-            }
         } else {
             editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
             mainMenu.addItem(editItem)
@@ -98,13 +94,9 @@ enum ApplicationMenuInstaller {
         let editMenu = editItem.submenu ?? NSMenu(title: "Edit")
         editItem.submenu = editMenu
 
-        let pasteItems = editMenu.items.filter { $0.title == "Paste" }
         let pasteItem: NSMenuItem
-        if let existingPasteItem = pasteItems.first {
+        if let existingPasteItem = editMenu.items.first(where: { $0.title == "Paste" }) {
             pasteItem = existingPasteItem
-            for duplicate in pasteItems.dropFirst() {
-                editMenu.removeItem(duplicate)
-            }
         } else {
             pasteItem = NSMenuItem(
                 title: "Paste",
@@ -135,7 +127,7 @@ pasteItem.target = nil
 pasteItem.keyEquivalentModifierMask = [.command]
 ```
 
-Do not add a key monitor, pasteboard read, token transformation, logging, or custom responder. If the existing application menu already has ordinary Edit items, preserve them; the regression fix only requires the native Paste item.
+Do not add a key monitor, pasteboard read, token transformation, logging, or custom responder. Preserve all existing menu content, including multiple same-title Edit or Paste entries supplied by a host/test; the regression fix only requires repairing the first Paste item selected within the first Edit submenu.
 
 - [ ] **Step 2: Call the installer during app launch**
 
@@ -195,7 +187,7 @@ Report the focused test, `make test`, diff check, and manual smoke results. The 
 ## Plan Self-Review Checklist
 
 - [x] Paste uses exactly `NSText.paste(_:)`, target `nil`, key equivalent `v`, and Command modifier.
-- [x] The menu is installed at application launch and is idempotent.
+- [x] The menu is installed at application launch and is idempotent in the clean app-owned path; pre-existing duplicate Edit/Paste entries are preserved, with only the first selected Paste repaired.
 - [x] Regression coverage inspects a real generated AppKit menu rather than a fake paste path.
 - [x] Cursor SecureField/session storage/bridge behavior remains unchanged.
 - [x] No clipboard or token contents are read, logged, persisted, or placed in tests.
