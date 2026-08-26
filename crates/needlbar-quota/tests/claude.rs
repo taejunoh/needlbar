@@ -204,6 +204,26 @@ fn parses_claude_session_and_weekly_windows_from_fixture() {
 }
 
 #[test]
+fn accepts_null_session_reset_while_preserving_weekly_reset() {
+    let snapshot = ClaudeQuotaProvider::parse_usage_payload(
+        r#"{
+          "five_hour": { "utilization": 42.5, "resets_at": null },
+          "seven_day": { "utilization": 80.0, "resets_at": "2026-08-18T00:00:00Z" }
+        }"#,
+    )
+    .unwrap();
+
+    assert_eq!(snapshot.windows.len(), 2);
+    assert_eq!(snapshot.windows[0].id(), "claude.session");
+    assert_eq!(snapshot.windows[0].resets_at(), None);
+    assert_eq!(snapshot.windows[1].id(), "claude.weekly");
+    assert_eq!(
+        snapshot.windows[1].resets_at(),
+        Some(Utc.with_ymd_and_hms(2026, 8, 18, 0, 0, 0).unwrap())
+    );
+}
+
+#[test]
 fn rejects_malformed_or_out_of_range_claude_payloads() {
     let error = ClaudeQuotaProvider::parse_usage_payload(MALFORMED_FIXTURE).unwrap_err();
 

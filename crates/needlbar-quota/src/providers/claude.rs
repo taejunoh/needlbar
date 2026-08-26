@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{de::Deserializer, Deserialize};
 
 use super::claude_credentials::{
     production_resolver, ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver,
@@ -158,12 +158,21 @@ struct UsageResponse {
 #[derive(Deserialize)]
 struct UsageWindow {
     utilization: f64,
-    resets_at: DateTime<Utc>,
+    #[serde(deserialize_with = "deserialize_required_optional_timestamp")]
+    resets_at: Option<DateTime<Utc>>,
+}
+
+fn deserialize_required_optional_timestamp<'de, D>(
+    deserializer: D,
+) -> Result<Option<DateTime<Utc>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<DateTime<Utc>>::deserialize(deserializer)
 }
 
 fn parse_window(source: UsageWindow, id: &str, title: &str) -> Result<QuotaWindow, QuotaError> {
-    QuotaWindow::new(id, title, source.utilization, Some(source.resets_at))
-        .map_err(|_| schema_error())
+    QuotaWindow::new(id, title, source.utilization, source.resets_at).map_err(|_| schema_error())
 }
 
 fn credential_error_to_quota_error(error: ClaudeCredentialError) -> QuotaError {
