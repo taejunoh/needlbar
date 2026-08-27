@@ -303,20 +303,63 @@ assert_no_value() {
     fail "sensitive value surfaced: $value"
 }
 
+release_validation_status_contract_is_valid() {
+  local status_file="$1"
+  ruby - "$status_file" <<'RUBY'
+status_path = ARGV.fetch(0)
+document = File.read(status_path)
+match = document.match(/^## Release Validation Continuation — 2026-08-27\n(.*?)(?=^## |\z)/m)
+abort 'documentation contract: missing release validation continuation section' unless match
+
+section = match[1].gsub(/\s+/, ' ').strip
+required_facts = [
+  'The reusable fake-tested `scripts/notarize-app.sh` and split `.github/workflows/release.yml` validate/publish workflow are implemented.',
+  'Manual dispatch is tagless and produces only an Actions artifact',
+  '`validate` is read-only, while `publish` is write-enabled only for future `v*` push tags',
+  'This implementation did not configure or read a protected GitHub Environment secret.',
+  'No real notarization, stapling, Gatekeeper acceptance, merge to `main`, tag, public GitHub Release, or distribution is claimed here.',
+  'The next gate is merge to `main`, authorized protected Environment setup outside chat, then tagless manual validation.'
+]
+
+required_facts.each do |fact|
+  abort "documentation contract: continuation is missing #{fact.inspect}" unless section.include?(fact)
+end
+RUBY
+}
+
 test_documentation_contract() {
   local readme_file="$ROOT/README.md"
   local status_file="$ROOT/docs/STATUS.md"
+  local decoy_status="$temp_root/status-release-validation-decoy.md"
+  local decoy_output decoy_rc
 
   grep -F 'No public GitHub Release or notarized download is available yet.' "$readme_file" >/dev/null ||
     fail 'README must retain the unreleased/no-public-download statement'
   grep -F 'tagless' "$readme_file" >/dev/null ||
     fail 'README must describe bounded tagless validation'
-  grep -F 'no tag or release action is authorized' "$status_file" >/dev/null ||
-    fail 'STATUS must state that no tag or release action is authorized'
   grep -F 'Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration.' "$readme_file" >/dev/null ||
     fail 'README must retain Cursor privacy boundary'
   grep -F 'Cursor usage has no Needlbar-owned hydration layer' "$status_file" >/dev/null ||
     fail 'STATUS must retain Cursor local-cache boundary'
+
+  release_validation_status_contract_is_valid "$status_file" ||
+    fail 'STATUS release-validation continuation contract is invalid'
+  grep -F 'no tag or release action is authorized' "$status_file" >/dev/null ||
+    fail 'STATUS must state that no tag or release action is authorized'
+
+  ruby - "$status_file" "$decoy_status" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document.sub!(/^## Release Validation Continuation — 2026-08-27\n.*?(?=^## |\z)/m, '')
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(release_validation_status_contract_is_valid "$decoy_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'STATUS decoy without the current continuation was accepted'
+  [[ "$decoy_output" == *'missing release validation continuation section'* ]] ||
+    fail 'STATUS decoy failed for an unexpected reason'
 }
 
 test_documentation_contract
