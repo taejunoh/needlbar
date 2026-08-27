@@ -303,6 +303,73 @@ assert_no_value() {
     fail "sensitive value surfaced: $value"
 }
 
+test_release_workflow_contract() {
+  # This catches a release workflow regression that lets a manual run publish,
+  # grants write permission before the publish job, or bypasses validation.
+  local release_workflow="$ROOT/.github/workflows/release.yml"
+  local ci_workflow="$ROOT/.github/workflows/ci.yml"
+  local publish_body
+
+  rg -F 'workflow_dispatch:' "$release_workflow" >/dev/null ||
+    fail 'release workflow does not support manual validation dispatch'
+  rg -F 'tags: ["v*"]' "$release_workflow" >/dev/null ||
+    fail 'release workflow does not restrict pushes to v* tags'
+  rg -F 'concurrency:' "$release_workflow" >/dev/null ||
+    fail 'release workflow does not configure concurrency'
+  rg -F 'cancel-in-progress: false' "$release_workflow" >/dev/null ||
+    fail 'release workflow cancels an in-progress validation'
+  rg -q '^[[:space:]]{2}validate:' "$release_workflow" ||
+    fail 'release workflow has no validate job'
+  rg -F 'environment: release' "$release_workflow" >/dev/null ||
+    fail 'validate job does not use the release environment'
+  rg -F 'contents: read' "$release_workflow" >/dev/null ||
+    fail 'release workflow does not default to read-only contents'
+  rg -q '^[[:space:]]{2}publish:' "$release_workflow" ||
+    fail 'release workflow has no publish job'
+  rg -F "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')" "$release_workflow" >/dev/null ||
+    fail 'publish is not restricted to v* tag pushes'
+
+  awk '
+    BEGIN { in_jobs = 0; bad = 0 }
+    /^jobs:/ { in_jobs = 1 }
+    !in_jobs && /^[[:space:]]*contents:[[:space:]]*write[[:space:]]*$/ { bad = 1 }
+    END { exit bad }
+  ' "$release_workflow" || fail 'release workflow grants top-level write permission'
+  awk '
+    BEGIN { publish_seen = 0; bad = 0 }
+    /^[[:space:]]{2}publish:[[:space:]]*$/ { publish_seen = 1 }
+    /^[[:space:]]*contents:[[:space:]]*write[[:space:]]*$/ && !publish_seen { bad = 1 }
+    END { exit bad }
+  ' "$release_workflow" || fail 'contents write permission appears before publish'
+
+  rg -F 'run: make test' "$release_workflow" >/dev/null ||
+    fail 'validate does not run make test'
+  rg -F 'run: make package' "$release_workflow" >/dev/null ||
+    fail 'validate does not run make package'
+  rg -F 'run: make smoke' "$release_workflow" >/dev/null ||
+    fail 'validate does not run make smoke'
+  rg -F 'run: ./scripts/notarize-app.sh' "$release_workflow" >/dev/null ||
+    fail 'validate does not run the notarization script'
+  rg -F 'name: Needlbar-macos-arm64-notarized' "$release_workflow" >/dev/null ||
+    fail 'release workflow does not route the notarized artifact'
+
+  publish_body="$(awk '/^[[:space:]]{2}publish:[[:space:]]*$/ { found = 1 } found { print }' "$release_workflow")"
+  [[ "$publish_body" == *'actions/download-artifact@'* ]] ||
+    fail 'publish does not download the validated artifact'
+  [[ "$publish_body" == *'name: Needlbar-macos-arm64-notarized'* ]] ||
+    fail 'publish downloads an unexpected artifact'
+  [[ "$publish_body" != *'make package'* && "$publish_body" != *'make smoke'* &&
+     "$publish_body" != *'notarize-app.sh'* && "$publish_body" != *'codesign '* &&
+     "$publish_body" != *'notarytool '* ]] ||
+    fail 'publish performs packaging, signing, or notarization'
+
+  while IFS= read -r uses_line; do
+    [[ "$uses_line" =~ @[0-9a-f]{40}$ ]] || fail "action is not commit pinned: $uses_line"
+  done < <(rg '^[[:space:]]*uses:' "$ci_workflow" "$release_workflow")
+}
+
+test_release_workflow_contract
+
 for missing_name in \
   DEVELOPER_ID_APPLICATION \
   DEVELOPER_ID_APPLICATION_CERTIFICATE \
