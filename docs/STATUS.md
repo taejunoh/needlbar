@@ -660,11 +660,10 @@ Release remains unreleased: no tag or GitHub Release was created, and notarizati
 
 ## Required Next Action
 
-The Cursor paste implementation is historical and superseded. The exact current gate is
-Task 5 documentation, fresh full verification, packaged-app UI acceptance, and exact-head
-CI for the local-only Cursor behavior. Preserve the unreleased and unmerged status. After
-this gate, return to the separate notarization-secrets gate; never request or record a
-Cursor session token.
+Cursor amendment Tasks 1–5 are complete, the final whole-branch review is clean, and PR #1
+remains open and `MERGEABLE`. The next external gate is the notarization/release-secrets
+gate. Preserve the unreleased and unmerged status; no merge, tag, or release action is
+authorized here, and never request or record a Cursor session token.
 
 ## Cursor Local Usage and Dashboard Amendment — 2026-08-26
 
@@ -753,6 +752,18 @@ tag or release action authorized here.
 The follow-up nested-worktree review fix `893309a` excludes the `.worktrees` prefix
 from Cargo workspace discovery and verifies the pinned vendor through a portable
 detached-worktree helper; no vendor source or revision changed.
+
+### Final whole-branch review and closeout
+
+The final review is clean. Fix `bed1037` makes Cursor `providerUnavailable` render as
+unavailable in NeedlbarCore and the bridge, and removes the stale controller copy. Exact-head
+CI run [33025188508](https://github.com/taejunoh/needlbar/actions/runs/33025188508) completed
+successfully. Independent verification also passed: `cargo fmt --check`, workspace Clippy,
+`make test`, `make package`, `make smoke`, and `git diff --check`; the pinned
+`tokscale-core` revision remains `53f9eefffd3278fd430076531548f7b1f5861f9a`. A direct
+pre-merge vendor-Clippy invocation from this nested worktree can discover the outer Cargo
+workspace; fresh-checkout CI vendor Clippy passed, and the portable detached-worktree helper
+preserves local verification without changing the vendor.
 
 ## v0.1 Constraints to Preserve
 
