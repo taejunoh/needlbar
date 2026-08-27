@@ -1,4 +1,4 @@
-.PHONY: rust swift swift-test package-test test run package smoke
+.PHONY: rust swift swift-test package-test notarize-test test run package smoke
 
 rust:
 	./scripts/build-rust.sh
@@ -55,11 +55,15 @@ swift-test:
 package-test:
 	./scripts/tests/package-app-tests.sh
 
+notarize-test:
+	./scripts/tests/notarize-app-tests.sh
+
 test:
 	cargo test --workspace --features bridge-test-runtime
 	sh ./scripts/tests/vendor-tokscale-test.sh
 	$(MAKE) swift-test
 	$(MAKE) package-test
+	$(MAKE) notarize-test
 
 run: rust
 	swift run Needlbar
