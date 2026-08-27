@@ -710,10 +710,11 @@ state and deliberately supersedes the older Cursor records above.
 - Fresh `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `make test`,
   `make package`, `make smoke`, and `git diff --check` exited 0. `make test` reported 1372
   pinned-core tests passed with 1 ignored, 128 Swift tests passed, and package-test passed.
-- The required exact `cargo fmt --check` was run and exited 1 solely on pre-existing formatting
-  differences throughout the non-owned `vendor/tokscale-core` submodule. The owned packages
-  pass `cargo fmt -p needlbar-bridge -p needlbar-quota -- --check`; the submodule was not
-  changed or reverted.
+- The initial Task 5 run, before `dc7e29a`, recorded the required exact `cargo fmt --check`
+  exiting 1 solely on pre-existing formatting differences throughout the non-owned
+  `vendor/tokscale-core` submodule. The owned packages passed
+  `cargo fmt -p needlbar-bridge -p needlbar-quota -- --check`; the submodule was not changed
+  or reverted.
 - Packaged-app launch was confirmed. In this GUI session, the LSUIElement status item had no
   Orca-accessible window and the status-bar surface is unavailable to the computer-use
   provider, so a live Settings/popover click-through could not be completed. Structural
