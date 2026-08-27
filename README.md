@@ -8,6 +8,8 @@ Needlbar v0.1 is local-first. It requires no Needlbar account, backend, hosted s
 
 Needlbar v0.1 is currently unreleased. No public GitHub Release or notarized download is available yet. The source tree can be built and tested locally, and `make package` creates a local Apple Silicon bundle for evaluation. That pre-release bundle is ad-hoc signed and is not a substitute for the future Developer ID-signed, notarized release.
 
+Maintainer-only release validation is performed through a protected, tagless GitHub Actions workflow. It can sign, notarize, staple, and validate a workflow artifact without creating a public release; it does not make a release available for download. Creating a version tag or public GitHub Release requires separate explicit authorization.
+
 ## Requirements
 
 - macOS 14 or later

@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
-**Updated:** 2026-08-26
+**Updated:** 2026-08-27
 **Branch:** `codex/provider-browser-login`
 **Current phase:** The approved Cursor local-usage/dashboard amendment and Task 5 acceptance are complete; the branch remains unreleased and unmerged.
-**Next action:** Return to the separate notarization/release-secrets gate. Do not request, record, or handle a Cursor credential; do not create a tag or release.
+**Next action:** Merge to `main`, complete authorized protected Environment setup outside chat, then run tagless manual validation. Do not request, record, or handle a Cursor credential; no tag or release action is authorized here.
 
 ## Source of Truth
 
@@ -765,6 +765,21 @@ successfully. Independent verification also passed: `cargo fmt --check`, workspa
 pre-merge vendor-Clippy invocation from this nested worktree can discover the outer Cargo
 workspace; fresh-checkout CI vendor Clippy passed, and the portable detached-worktree helper
 preserves local verification without changing the vendor.
+
+## Release Validation Continuation — 2026-08-27
+
+Task 5 of tagless release validation is documented and contract-checked. The reusable
+fake-tested `scripts/notarize-app.sh` and split `.github/workflows/release.yml`
+validate/publish workflow are implemented. Manual dispatch is tagless and produces only an
+Actions artifact; `validate` is read-only, while `publish` is write-enabled only for future
+`v*` push tags. This implementation did not configure or read a protected GitHub Environment
+secret. No real notarization, stapling, Gatekeeper acceptance, merge to `main`, tag, public
+GitHub Release, or distribution is claimed here.
+
+The next gate is merge to `main`, authorized protected Environment setup outside chat, then
+tagless manual validation. No tag or release action is authorized here. The older credentialed
+release and Cursor-session records above remain historical; the active Cursor contract is
+local-cache-only and never requests or records a Cursor session token.
 
 ## v0.1 Constraints to Preserve
 

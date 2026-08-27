@@ -303,6 +303,24 @@ assert_no_value() {
     fail "sensitive value surfaced: $value"
 }
 
+test_documentation_contract() {
+  local readme_file="$ROOT/README.md"
+  local status_file="$ROOT/docs/STATUS.md"
+
+  grep -F 'No public GitHub Release or notarized download is available yet.' "$readme_file" >/dev/null ||
+    fail 'README must retain the unreleased/no-public-download statement'
+  grep -F 'tagless' "$readme_file" >/dev/null ||
+    fail 'README must describe bounded tagless validation'
+  grep -F 'no tag or release action is authorized' "$status_file" >/dev/null ||
+    fail 'STATUS must state that no tag or release action is authorized'
+  grep -F 'Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration.' "$readme_file" >/dev/null ||
+    fail 'README must retain Cursor privacy boundary'
+  grep -F 'Cursor usage has no Needlbar-owned hydration layer' "$status_file" >/dev/null ||
+    fail 'STATUS must retain Cursor local-cache boundary'
+}
+
+test_documentation_contract
+
 release_workflow_contract_is_valid() {
   local release_workflow="$1"
   local ci_workflow="$2"
