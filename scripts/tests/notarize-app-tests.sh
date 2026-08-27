@@ -42,7 +42,10 @@ case "$1" in
     if [[ "${FAKE_EMPTY_KEYCHAIN_LIST:-}" == 1 ]]; then exit 0; fi
     if [[ " $* " == *' -s '* && " $* " == *'signing.keychain-db'* ]]; then record_stage security:set-list
     elif [[ " $* " == *' -s '* ]]; then record_stage security:restore-list
-    else printf '    "/fake/original.keychain-db"\n'; fi ;;
+    else
+      printf '    "/fake/original.keychain-db"\n'
+      [[ "${FAKE_MALFORMED_KEYCHAIN_LIST:-}" != 1 ]] || printf 'malformed keychain record\n'
+    fi ;;
   create-keychain) record_stage security:create-keychain ;;
   import) record_stage security:import ;;
   delete-keychain) record_stage security:delete-keychain ;;
@@ -371,6 +374,28 @@ assert_original_zip
 ! find "$(dirname "$case_root/repo/dist/Needlbar-macos-arm64.zip")" -maxdepth 1 \
   -name '.needlbar-final.*.zip' -print -quit | grep -q . ||
   fail 'empty keychain list preflight left candidate ZIP'
+assert_no_canary "$case_root"
+
+new_case
+export FAKE_MALFORMED_KEYCHAIN_LIST=1
+if invoke_case; then
+  fail 'malformed keychain list case unexpectedly succeeded'
+fi
+unset FAKE_MALFORMED_KEYCHAIN_LIST
+[[ "$status" -ne 0 ]] || fail 'malformed keychain list case must fail'
+grep -F 'could not parse caller keychain search list' "$case_root/output.txt" >/dev/null ||
+  fail 'malformed keychain list was not rejected safely'
+assert_stage_absent "$case_root" security:create-keychain
+assert_stage_absent "$case_root" security:set-list
+assert_stage_absent "$case_root" security:restore-list
+assert_stage_absent "$case_root" codesign:sign
+assert_stage_absent "$case_root" xcrun:notarytool-submit
+assert_original_zip
+! find "$case_root/private-temp" -mindepth 1 -print -quit | grep -q . ||
+  fail 'malformed keychain list preflight left private temp child'
+! find "$(dirname "$case_root/repo/dist/Needlbar-macos-arm64.zip")" -maxdepth 1 \
+  -name '.needlbar-final.*.zip' -print -quit | grep -q . ||
+  fail 'malformed keychain list preflight left candidate ZIP'
 assert_no_canary "$case_root"
 
 run_notary_failure_case() {

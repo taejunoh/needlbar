@@ -70,9 +70,17 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-while IFS= read -r keychain; do
-  original_keychains+=("$keychain")
-done < <(security list-keychains -d user | sed -E 's/^[[:space:]]*"(.*)"$/\1/')
+if ! keychain_list="$(security list-keychains -d user)"; then
+  fail "could not capture caller keychain search list"
+fi
+while IFS= read -r keychain_record; do
+  [[ -z "$keychain_record" ]] && continue
+  if [[ "$keychain_record" =~ ^[[:space:]]*\"(.*)\"[[:space:]]*$ ]]; then
+    original_keychains+=("${BASH_REMATCH[1]}")
+  else
+    fail "could not parse caller keychain search list"
+  fi
+done <<< "$keychain_list"
 [[ ${#original_keychains[@]} -gt 0 ]] || fail "could not capture caller keychain search list"
 
 printf '%s' "$DEVELOPER_ID_APPLICATION_CERTIFICATE" | base64 -D > "$p12_path"
