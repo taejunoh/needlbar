@@ -303,69 +303,184 @@ assert_no_value() {
     fail "sensitive value surfaced: $value"
 }
 
+release_workflow_contract_is_valid() {
+  local release_workflow="$1"
+  local ci_workflow="$2"
+  ruby - "$release_workflow" "$ci_workflow" <<'RUBY'
+require 'yaml'
+
+release_path, ci_path = ARGV
+
+def assert_contract(condition, message)
+  abort "release workflow contract: #{message}" unless condition
+end
+
+def mapping(value, label)
+  assert_contract(value.is_a?(Hash), "#{label} must be a mapping")
+  value
+end
+
+def sequence(value, label)
+  assert_contract(value.is_a?(Array), "#{label} must be a sequence")
+  value
+end
+
+def scalar_strings(value)
+  case value
+  when Hash then value.values.flat_map { |child| scalar_strings(child) }
+  when Array then value.flat_map { |child| scalar_strings(child) }
+  when String then [value]
+  else []
+  end
+end
+
+def uses_values(value)
+  case value
+  when Hash
+    value.flat_map do |key, child|
+      (key == 'uses' ? [child] : []) + uses_values(child)
+    end
+  when Array then value.flat_map { |child| uses_values(child) }
+  else []
+  end
+end
+
+release = mapping(YAML.safe_load(File.read(release_path), aliases: false), 'release workflow')
+ci = mapping(YAML.safe_load(File.read(ci_path), aliases: false), 'CI workflow')
+events = release['on'] || release[true]
+events = mapping(events, 'release on')
+assert_contract(events.key?('workflow_dispatch'), 'workflow_dispatch is missing')
+assert_contract(!mapping(events['workflow_dispatch'] || {}, 'workflow_dispatch').key?('inputs'), 'workflow_dispatch must not define inputs')
+push = mapping(events['push'], 'push trigger')
+assert_contract(push['tags'] == ['v*'], 'push trigger must be exactly v* tags')
+
+concurrency = mapping(release['concurrency'], 'concurrency')
+assert_contract(concurrency['group'] == 'release-${{ github.workflow }}-${{ github.ref }}', 'concurrency group is wrong')
+assert_contract(concurrency['cancel-in-progress'] == false, 'concurrency must preserve in-progress validation')
+assert_contract(mapping(release['permissions'], 'workflow permissions')['contents'] == 'read', 'workflow contents permission must be read')
+
+jobs = mapping(release['jobs'], 'jobs')
+assert_contract(jobs.keys.sort == %w[publish validate], 'release must contain exactly validate and publish jobs')
+validate = mapping(jobs['validate'], 'validate job')
+publish = mapping(jobs['publish'], 'publish job')
+assert_contract(validate['environment'] == 'release', 'validate must use the release environment')
+assert_contract(jobs.all? { |name, job| name == 'validate' ? job['environment'] == 'release' : !job.key?('environment') }, 'release environment belongs only to validate')
+assert_contract(mapping(validate['permissions'], 'validate permissions')['contents'] == 'read', 'validate contents permission must be read')
+assert_contract(publish['needs'] == 'validate', 'publish must need validate')
+assert_contract(publish['if'] == "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')", 'publish condition is wrong')
+assert_contract(mapping(publish['permissions'], 'publish permissions')['contents'] == 'write', 'publish contents permission must be write')
+
+jobs.each do |name, job|
+  permissions = job['permissions']
+  next unless permissions
+
+  contents = mapping(permissions, "#{name} permissions")['contents']
+  assert_contract(contents != 'write' || name == 'publish', 'contents write is outside publish')
+end
+
+validate_steps = sequence(validate['steps'], 'validate steps').map { |step| mapping(step, 'validate step') }
+publish_steps = sequence(publish['steps'], 'publish steps').map { |step| mapping(step, 'publish step') }
+required_runs = ['make test', 'make package', 'make smoke', './scripts/notarize-app.sh']
+run_indices = required_runs.map do |command|
+  indices = validate_steps.each_index.select { |index| validate_steps[index]['run'] == command }
+  assert_contract(indices.length == 1, "validate must run #{command} exactly once")
+  indices.first
+end
+assert_contract(run_indices == run_indices.sort, 'validate commands must run test, package, smoke, then notarize in order')
+notarize_index = run_indices.last
+notarize_step = validate_steps[notarize_index]
+
+expected_secret_names = %w[
+  DEVELOPER_ID_APPLICATION
+  DEVELOPER_ID_APPLICATION_CERTIFICATE
+  DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD
+  APPLE_ID
+  APPLE_TEAM_ID
+  APPLE_APP_SPECIFIC_PASSWORD
+]
+expected_secrets = expected_secret_names.to_h { |name| [name, "${{ secrets.#{name} }}"] }
+assert_contract(mapping(notarize_step['env'], 'notarize env') == expected_secrets, 'notarize step must receive exactly the six expected secrets')
+secret_strings = scalar_strings(release).select { |value| value.include?('secrets.') }
+assert_contract(secret_strings.sort == expected_secrets.values.sort, 'secret references must exist exactly once and only on the notarize step')
+
+all_steps = jobs.flat_map do |job_name, job|
+  sequence(job['steps'], "#{job_name} steps").each_with_index.map do |step, index|
+    [job_name, index, mapping(step, "#{job_name} step")]
+  end
+end
+uploads = all_steps.select { |_, _, step| step['uses'].to_s.start_with?('actions/upload-artifact@') }
+assert_contract(uploads.length == 1 && uploads.first[0] == 'validate', 'only validate may upload the artifact')
+upload_index = uploads.first[1]
+upload = uploads.first[2]
+upload_with = mapping(upload['with'], 'upload artifact settings')
+assert_contract(upload_index > notarize_index, 'upload must follow notarization')
+assert_contract(upload_with['name'] == 'Needlbar-macos-arm64-notarized', 'upload artifact name is wrong')
+assert_contract(upload_with['path'] == 'dist/Needlbar-macos-arm64.zip', 'upload artifact path is wrong')
+assert_contract(upload_with['if-no-files-found'] == 'error', 'upload must fail for a missing artifact')
+
+downloads = all_steps.select { |_, _, step| step['uses'].to_s.start_with?('actions/download-artifact@') }
+assert_contract(downloads.length == 1 && downloads.first[0] == 'publish', 'only publish may download the validated artifact')
+download_with = mapping(downloads.first[2]['with'], 'download artifact settings')
+assert_contract(download_with['name'] == 'Needlbar-macos-arm64-notarized', 'download artifact name is wrong')
+assert_contract(download_with['path'] == 'dist', 'download artifact path is wrong')
+
+publish_steps.each do |step|
+  command = step['run'].to_s
+  assert_contract(command !~ /(?:make (?:package|smoke)|notarize-app\.sh|codesign|notarytool|xcrun|security)/, 'publish must not package, sign, or notarize')
+end
+publish_uses = publish_steps.filter_map { |step| step['uses'] }
+assert_contract(publish_uses.length == 2 && publish_uses.any? { |value| value.start_with?('actions/download-artifact@') } && publish_uses.any? { |value| value.start_with?('softprops/action-gh-release@') }, 'publish may only download and release the validated artifact')
+
+all_runs = all_steps.map { |_, _, step| step['run'].to_s }
+assert_contract(all_runs.none? { |command| command.match?(/(?:^|\s)(?:git\s+(?:tag|push)|gh\s+(?:release|api))/) }, 'workflow must not create tags or releases directly')
+assert_contract(scalar_strings(release).none? { |value| value.include?('Documents') }, 'workflow must not use Documents paths')
+
+uses_values(release).concat(uses_values(ci)).each do |uses|
+  assert_contract(uses.is_a?(String) && uses.match?(/\A[^@\s]+@[0-9a-f]{40}\z/), "action is not commit pinned: #{uses}")
+end
+RUBY
+}
+
 test_release_workflow_contract() {
-  # This catches a release workflow regression that lets a manual run publish,
-  # grants write permission before the publish job, or bypasses validation.
+  # This regression is intentionally malformed: the required predicate and
+  # environment survive only as comments while write permission moves to a
+  # post-publish job. A correct contract checker must reject it.
   local release_workflow="$ROOT/.github/workflows/release.yml"
   local ci_workflow="$ROOT/.github/workflows/ci.yml"
-  local publish_body
+  local decoy_workflow="$temp_root/release-scope-decoy.yml"
+  local decoy_output decoy_status
 
-  rg -F 'workflow_dispatch:' "$release_workflow" >/dev/null ||
-    fail 'release workflow does not support manual validation dispatch'
-  rg -F 'tags: ["v*"]' "$release_workflow" >/dev/null ||
-    fail 'release workflow does not restrict pushes to v* tags'
-  rg -F 'concurrency:' "$release_workflow" >/dev/null ||
-    fail 'release workflow does not configure concurrency'
-  rg -F 'cancel-in-progress: false' "$release_workflow" >/dev/null ||
-    fail 'release workflow cancels an in-progress validation'
-  rg -q '^[[:space:]]{2}validate:' "$release_workflow" ||
-    fail 'release workflow has no validate job'
-  rg -F 'environment: release' "$release_workflow" >/dev/null ||
-    fail 'validate job does not use the release environment'
-  rg -F 'contents: read' "$release_workflow" >/dev/null ||
-    fail 'release workflow does not default to read-only contents'
-  rg -q '^[[:space:]]{2}publish:' "$release_workflow" ||
-    fail 'release workflow has no publish job'
-  rg -F "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')" "$release_workflow" >/dev/null ||
-    fail 'publish is not restricted to v* tag pushes'
+  release_workflow_contract_is_valid "$release_workflow" "$ci_workflow" ||
+    fail 'release workflow contract is unexpectedly invalid'
+  ruby - "$release_workflow" "$decoy_workflow" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document.sub!(/    environment: release\n/, '')
+document.sub!(
+  "    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')\n",
+  "    if: always()\n",
+)
+document.sub!(/      contents: write\n/, "      contents: read\n")
+document << <<~YAML
 
-  awk '
-    BEGIN { in_jobs = 0; bad = 0 }
-    /^jobs:/ { in_jobs = 1 }
-    !in_jobs && /^[[:space:]]*contents:[[:space:]]*write[[:space:]]*$/ { bad = 1 }
-    END { exit bad }
-  ' "$release_workflow" || fail 'release workflow grants top-level write permission'
-  awk '
-    BEGIN { publish_seen = 0; bad = 0 }
-    /^[[:space:]]{2}publish:[[:space:]]*$/ { publish_seen = 1 }
-    /^[[:space:]]*contents:[[:space:]]*write[[:space:]]*$/ && !publish_seen { bad = 1 }
-    END { exit bad }
-  ' "$release_workflow" || fail 'contents write permission appears before publish'
-
-  rg -F 'run: make test' "$release_workflow" >/dev/null ||
-    fail 'validate does not run make test'
-  rg -F 'run: make package' "$release_workflow" >/dev/null ||
-    fail 'validate does not run make package'
-  rg -F 'run: make smoke' "$release_workflow" >/dev/null ||
-    fail 'validate does not run make smoke'
-  rg -F 'run: ./scripts/notarize-app.sh' "$release_workflow" >/dev/null ||
-    fail 'validate does not run the notarization script'
-  rg -F 'name: Needlbar-macos-arm64-notarized' "$release_workflow" >/dev/null ||
-    fail 'release workflow does not route the notarized artifact'
-
-  publish_body="$(awk '/^[[:space:]]{2}publish:[[:space:]]*$/ { found = 1 } found { print }' "$release_workflow")"
-  [[ "$publish_body" == *'actions/download-artifact@'* ]] ||
-    fail 'publish does not download the validated artifact'
-  [[ "$publish_body" == *'name: Needlbar-macos-arm64-notarized'* ]] ||
-    fail 'publish downloads an unexpected artifact'
-  [[ "$publish_body" != *'make package'* && "$publish_body" != *'make smoke'* &&
-     "$publish_body" != *'notarize-app.sh'* && "$publish_body" != *'codesign '* &&
-     "$publish_body" != *'notarytool '* ]] ||
-    fail 'publish performs packaging, signing, or notarization'
-
-  while IFS= read -r uses_line; do
-    [[ "$uses_line" =~ @[0-9a-f]{40}$ ]] || fail "action is not commit pinned: $uses_line"
-  done < <(rg '^[[:space:]]*uses:' "$ci_workflow" "$release_workflow")
+  postpublish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # environment: release
+    # github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+YAML
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(release_workflow_contract_is_valid "$decoy_workflow" "$ci_workflow" 2>&1)"
+  decoy_status=$?
+  set -e
+  if [[ "$decoy_status" -eq 0 ]]; then
+    fail 'release workflow contract accepts a scoped-field decoy'
+  fi
+  [[ "$decoy_output" == *'validate must use the release environment'* ]] ||
+    fail 'scoped-field decoy failed for an unexpected reason'
 }
 
 test_release_workflow_contract
