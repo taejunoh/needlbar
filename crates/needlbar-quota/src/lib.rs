@@ -6,11 +6,14 @@ mod http;
 pub mod providers;
 
 pub use domain::{
-    normalize_percent, ProviderId, ProviderQuotaSnapshot, QuotaAction, QuotaError, QuotaErrorCode,
-    QuotaWindow,
+    normalize_percent, ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaWindow,
 };
 pub use http::RedactingHttpClient;
 pub use providers::claude::ClaudeQuotaProvider;
+pub use providers::claude_credentials::{
+    ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver, ClaudeOAuthSecret,
+    FileClaudeCredentialResolver,
+};
 pub use providers::codex::{CodexQuotaProvider, CodexQuotaSource};
-pub use providers::cursor::{CursorQuotaProvider, CursorQuotaSource};
+pub use providers::cursor::CursorQuotaProvider;
 pub use providers::QuotaProvider;

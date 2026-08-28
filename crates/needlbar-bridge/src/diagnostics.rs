@@ -24,15 +24,13 @@ impl DiagnosticProvider {
     }
 
     fn usage_source(self) -> UsageSource {
-        match self {
-            Self::Cursor => UsageSource::CursorExport,
-            Self::Claude | Self::Codex => UsageSource::Local,
-        }
+        let _ = self;
+        UsageSource::Local
     }
 
     fn quota_source(self) -> QuotaSource {
         match self {
-            Self::Cursor => QuotaSource::Session,
+            Self::Cursor => QuotaSource::Unavailable,
             Self::Claude | Self::Codex => QuotaSource::OAuth,
         }
     }
@@ -51,14 +49,13 @@ pub enum SubsystemStatus {
 #[serde(rename_all = "camelCase")]
 pub enum UsageSource {
     Local,
-    CursorExport,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum QuotaSource {
     OAuth,
-    Session,
+    Unavailable,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -67,12 +64,12 @@ pub enum SafeErrorCode {
     NotInstalled,
     RequiresAuthentication,
     AuthenticationExpired,
+    PermissionDenied,
     RateLimited,
     NetworkUnavailable,
     ProviderUnavailable,
     SchemaChanged,
     NoUsageData,
-    CursorSyncFailed,
     UsageRuntimeUnavailable,
     UsageReportUnavailable,
     InvalidUsageDate,
@@ -86,12 +83,12 @@ impl SafeErrorCode {
             "notInstalled" => Self::NotInstalled,
             "requiresAuthentication" => Self::RequiresAuthentication,
             "authenticationExpired" => Self::AuthenticationExpired,
+            "permissionDenied" => Self::PermissionDenied,
             "rateLimited" => Self::RateLimited,
             "networkUnavailable" => Self::NetworkUnavailable,
             "providerUnavailable" => Self::ProviderUnavailable,
             "schemaChanged" => Self::SchemaChanged,
             "noUsageData" => Self::NoUsageData,
-            "cursorSyncFailed" => Self::CursorSyncFailed,
             "usageRuntimeUnavailable" => Self::UsageRuntimeUnavailable,
             "usageReportUnavailable" => Self::UsageReportUnavailable,
             "invalidUsageDate" => Self::InvalidUsageDate,
@@ -222,7 +219,11 @@ impl DiagnosticsSnapshot {
         ProviderDiagnostic::new(
             provider,
             status(usage_present, usage_error.map(|error| error.code.as_str())),
-            status(quota_present, quota_error.map(|error| error.code.as_str())),
+            quota_status(
+                provider,
+                quota_present,
+                quota_error.map(|error| error.code.as_str()),
+            ),
             provider.usage_source(),
             provider.quota_source(),
             usage_present.then_some(usage.generated_at.as_str()),
@@ -289,17 +290,51 @@ pub fn record_quota(envelope: &Envelope<QuotaPayload>) {
                 .errors
                 .iter()
                 .find(|error| error.provider.as_deref() == Some(name));
-            stream_observation(
-                present,
-                envelope.generated_at.as_str(),
-                error.map(|error| error.code.as_str()),
-            )
+            StreamObservation {
+                status: quota_status(provider, present, error.map(|error| error.code.as_str())),
+                observed_at: present.then(|| envelope.generated_at.to_owned()),
+                error_code: error.and_then(|error| SafeErrorCode::parse(&error.code)),
+            }
         })
         .collect();
     RECORDED_OUTCOMES
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .quota = Some(entries);
+}
+
+/// Records only the provider outcomes represented by a provider-specific quota
+/// envelope, preserving last-known outcomes for omitted providers.
+pub fn record_partial_quota(envelope: &Envelope<QuotaPayload>) {
+    let mut outcomes = RECORDED_OUTCOMES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let entries = outcomes.quota.get_or_insert_with(|| {
+        DiagnosticProvider::ALL
+            .into_iter()
+            .map(|_| stream_observation(false, envelope.generated_at.as_str(), None))
+            .collect()
+    });
+    for (index, provider) in DiagnosticProvider::ALL.into_iter().enumerate() {
+        let name = provider.name();
+        let present = envelope.data.as_ref().is_some_and(|payload| {
+            payload
+                .providers
+                .iter()
+                .any(|entry| provider_name(entry.provider) == name)
+        });
+        let error = envelope
+            .errors
+            .iter()
+            .find(|error| error.provider.as_deref() == Some(name));
+        if present || error.is_some() {
+            entries[index] = StreamObservation {
+                status: quota_status(provider, present, error.map(|error| error.code.as_str())),
+                observed_at: present.then(|| envelope.generated_at.to_owned()),
+                error_code: error.and_then(|error| SafeErrorCode::parse(&error.code)),
+            };
+        }
+    }
 }
 
 fn stream_observation(
@@ -333,4 +368,15 @@ fn status(present: bool, error_code: Option<&str>) -> SubsystemStatus {
         Some(_) => SubsystemStatus::Error,
         None => SubsystemStatus::Unavailable,
     }
+}
+
+fn quota_status(
+    provider: DiagnosticProvider,
+    present: bool,
+    error_code: Option<&str>,
+) -> SubsystemStatus {
+    if provider == DiagnosticProvider::Cursor && error_code == Some("providerUnavailable") {
+        return SubsystemStatus::Unavailable;
+    }
+    status(present, error_code)
 }

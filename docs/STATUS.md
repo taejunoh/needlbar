@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
-**Updated:** 2026-08-15
-**Branch:** `main`
-**Current phase:** Task 15 packaging and final v0.1 implementation gate complete
-**Next action:** Complete remaining credentialed acceptance and configure notarization secrets before a user-authorized v0.1 tag/release
+**Updated:** 2026-08-27
+**Branch:** `codex/provider-browser-login`
+**Current phase:** The approved Cursor local-usage/dashboard amendment and Task 5 acceptance are complete; the branch remains unreleased and unmerged.
+**Next action:** Merge to `main`, complete authorized protected Environment setup outside chat, then run tagless manual validation. Do not request, record, or handle a Cursor credential; no tag or release action is authorized here.
 
 ## Source of Truth
 
@@ -11,6 +11,8 @@ The v0.1 work is governed by:
 
 - `docs/superpowers/specs/2026-08-13-needlbar-v0.1-design.md` — approved architecture and product scope.
 - `docs/superpowers/plans/2026-08-13-needlbar-v0.1.md` — ordered implementation plan.
+- `docs/superpowers/specs/2026-08-25-provider-managed-browser-login-design.md` — approved authentication UX amendment.
+- `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md` — ordered follow-up implementation plan.
 - `AGENTS.md` — continuation rules for Codex/agentic workers.
 
 ## What Is Already Implemented
@@ -471,15 +473,313 @@ Release acceptance intentionally not claimed:
 - A standalone usage scan completed in approximately 89 seconds on the large local history during the second controlled run. The UI stayed responsive and displayed last-known-good data; this is a non-blocking performance observation unless the approved specification changes.
 - Gatekeeper rejected an unstapled/unnotarized copy as expected after the local Developer ID sign/strict-verification/hardened-runtime check. The GitHub repository secret list is empty, so the stable notarization workflow cannot run. No Cursor session was available.
 
-Remaining release acceptance: refresh Claude authentication and wait out the rate limit; explicitly connect Cursor and run its usage/quota flow; exercise the Codex CLI fallback if feasible; configure GitHub release secrets; notarize/staple and verify with Gatekeeper; then create the user-authorized v0.1 tag/release.
+Remaining release acceptance: retry Cursor explicit-session connection once with a fresh current session token obtained through the documented supported route, without broadening to browser crawling; then configure the required GitHub notarization/release secrets and run the notarize/staple/Gatekeeper gate. The Codex CLI fallback remains unforced. Only after those gates may the user authorize a v0.1 tag/release.
 
 ## Final v0.1 Continuation
 
-The implementation plan and hosted CI/artifact verification are complete. The only remaining work is credentialed/manual release acceptance on a supported macOS 14 arm64 machine, followed by a user-authorized v0.1 tag/release; this is not a Task 16 implementation task.
+The original fifteen-task implementation plan and hosted CI/artifact verification are complete. Release acceptance is now paused by the approved authentication amendment below; complete its separate follow-up plan and verification before returning to credentialed/manual release acceptance and a user-authorized v0.1 tag/release.
+
+## Approved Authentication Amendment — 2026-08-25
+
+> The provider-managed browser-login and Cursor-paste records below are historical records
+> from before the approved 2026-08-26 Cursor local-usage/dashboard amendment. Their Claude
+> and Codex requirements remain active; every Cursor session-token, private-endpoint, and
+> connection requirement is superseded by the amendment and is not an active instruction.
+
+The user approved a deliberate post-plan design change before release acceptance:
+
+- Claude gains `Sign in with Claude`, launching `claude auth login --claudeai` as an explicit user action.
+- Codex gains `Sign in with ChatGPT`, launching `codex login` as an explicit user action.
+- The provider CLIs continue to own browser navigation, OAuth callbacks, token refresh, and credential storage.
+- Needlbar does not add an OAuth client, persist or expose Claude/Codex tokens, read browser profiles, or retain child-process output.
+- The user explicitly approved access to Claude Code's exact provider-owned macOS Keychain item after clicking Connect. Raw credentials remain ephemeral inside Rust quota code and never cross the C ABI; background refresh uses interaction-forbidden access and never displays Keychain UI.
+- Cursor retains the current explicit validated session-token Connect/Reconnect/Disconnect path. Cursor's documented CLI browser login does not expose the personal usage/quota handoff required by Needlbar.
+- AppKit owns login-process lifecycle; `NeedlbarCore` gains typed background/user-initiated quota intents; Rust adds dedicated Claude-only and Codex-only post-authentication quota exports but no login/OAuth callback API.
+
+The approved delta spec is `docs/superpowers/specs/2026-08-25-provider-managed-browser-login-design.md`. The test-first execution plan is `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md`.
+
+### Task 1 Follow-Up Verification
+
+Task 1 of the provider-managed browser-login follow-up is complete and review-approved. The implementation was delivered in focused commits:
+
+- `6611ac0` — add prompt-safe Claude credential resolution.
+- `35cecf0` — cover Claude bearer canary redaction.
+- `57331fa` — confine the Claude test endpoint seam.
+
+TDD RED was observed for the missing credential-access API and the follow-up test seams before implementation. Final verification passed: Claude integration — 16 tests; full `needlbar-quota` — 46 tests; formatting check; Clippy with `-D warnings`; default Cargo check; and `git diff --check`.
+
+No real Keychain access, UI interaction, or external provider call was performed. The spec-compliance review passed, and the code-quality review passed with no issues. The pre-existing Task 15 verification remains valid for the current code, but release acceptance remains paused; the full authentication amendment is not complete.
+
+### Task 2 Follow-Up Verification
+
+Task 2 of the provider-managed browser-login follow-up is complete and review-approved. The implementation was delivered in focused commits:
+
+- `fc76d64` — map `PermissionDenied` through the bridge integration path, restoring the full workspace green after Task 1.
+- `ca80091` — add provider-specific Claude/Codex quota ABI exports.
+- `8b6fd5c` — resolve diagnostics/runtime review fixes.
+- `09112dc` — scope fixture sessions and remove production fallback behavior.
+- `7adc458` — harden zero-session handling.
+
+The provider-specific exports are `needlbar_claude_user_initiated_quota_snapshot_json` and `needlbar_codex_quota_snapshot_json`. Claude's explicit login path uses `UserInitiatedAllowUI`; the all-provider path remains `BackgroundNoUI`; and the Codex-only path does not invoke unrelated providers.
+
+Verification evidence:
+
+- FFI contract — 3 tests; quota contract — 6 tests; redaction contract — 6 tests; full bridge suite passed.
+- Clippy with `-D warnings` passed; full `make test` exited 0 with Swift 55 tests and pinned `tokscale-core` 1372 passed, 0 failed, 1 ignored.
+- No real Keychain, network, or UI interaction was performed; only pre-existing linker warnings remain.
+- Final spec-compliance and code-quality reviews approved with no Critical, Important, or Minor findings.
+
+Release acceptance remains paused, and the full authentication amendment is not complete.
+
+### Task 3 Follow-Up Verification
+
+Task 3 of the provider-managed browser-login follow-up is complete and review-approved. Typed quota refresh intents, dedicated provider calls, and generation-scoped coordinator fairness are implemented without browser, Keychain, or network interaction.
+
+Implementation and contract evidence:
+
+- Typed background and user-initiated quota intents are carried through the bridge/repository/coordinator path; Claude and Codex use dedicated provider calls, while Cursor is explicitly unsupported for typed provider refresh.
+- Rust-owned C strings are freed exactly once by exact pointer, and generation-scoped waiters complete exactly once. Requested-provider failures remain scoped to the requested provider.
+- Background freshness gates and ticket fairness preserve the approved refresh behavior, and quota refresh has no usage side effects.
+
+Task 3 implementation commits:
+
+- `843d588` — initial typed quota refresh implementation.
+- `0095163` — fix waiter generation and protocol behavior.
+- `f910e9a` — add dedicated validation and fairness coverage.
+
+Verification evidence:
+
+- Final Bridge suite: 15 tests passed.
+- Final coordinator suite: 23 tests passed.
+- Final Swift suite: 80 tests passed.
+- `make swift-test` and `make test` exited 0.
+- The implementation is spec-compliant; the quality review found no Critical, Important, or Minor findings.
+- No browser, Keychain, or network interaction was performed, and no provider login command was launched.
+
+Release acceptance remains paused. Task 4's non-TTY manual gate is complete; continue with Task 5 before returning to the remaining release-acceptance checks.
+
+### Task 4 Automated Verification
+
+Task 4's automated implementation is complete and final spec-compliance and code-quality reviews passed with no open Critical or Important findings. The separate user-authorized non-TTY provider compatibility gate also passed, so Task 4 is accepted as complete.
+
+Implementation commits through the current head `3364c3c` include the provider login coordinator, direct POSIX runner, bounded termination/reaping hardening, deterministic syscall seams, admission lifetime fixes, and the documented gate result. No provider credentials, account identifiers, or login URLs are recorded here.
+
+Verification evidence:
+
+- `make swift-test` passed in five consecutive runs, with 113 Swift tests each run.
+- `make test` passed cleanly after the final Task 4 implementation and test hardening.
+- `git diff --check` passed and the working tree is clean.
+- The final automated review evidence covers process lifecycle, signal/reap races, exact executable/argv/env/fd/CLOEXEC contract, cancellation/timeout/stop coalescing, descendant isolation, and failure-path bounds.
+
+### Task 4 Non-TTY Provider Compatibility Gate
+
+The user-authorized non-TTY compatibility gate passed on 2026-08-25 using the implementation runner's exact contract: direct `posix_spawn`, exact executable path and fixed argv, stdin from `/dev/null`, stdout/stderr from `/dev/null`, allowlisted environment, and no shell, PTY, output parsing, or credential capture.
+
+- Claude Code 2.1.238: the resolver selected `/Users/taejunoh/.local/bin/claude`; `auth login --claudeai` opened the provider-owned browser and exited with status 0 after 207.856 seconds. The sanitized status was `loggedIn: true`, `authMethod: claude.ai`.
+- Codex CLI 0.142.5: the resolver selected `/opt/homebrew/bin/codex`; `login` opened the provider-owned browser and exited with status 0 after 17.626 seconds. The sanitized status was `Logged in` / `ChatGPT`.
+
+No provider login child remained after either run. The production Rust archive was restored without test symbols, the temporary manual test was removed, and the worktree remained clean. No account identifiers, URLs, credentials, or provider CLI output were persisted in project files.
+
+### Task 4 approved implementation deviation — direct POSIX spawn
+
+The approved Task 4 implementation keeps AppKit as the application/lifecycle owner but replaces the planned Foundation transport with direct macOS `posix_spawn` and parent-owned nonblocking `waitpid`. Foundation Process was rejected because it can reap asynchronously and exposes only a numeric PID; direct spawn/waitpid preserves PID identity until Needlbar itself reaps the child.
+
+The single session actor is the sole waitpid owner. The runner resolves an exact executable URL/path (never `posix_spawnp`), validates NUL-free executable/argv/envp values, passes the executable path as `argv[0]` followed by fixed arguments, builds an allowlisted `envp`, connects stdin to `/dev/null` read and stdout/stderr to `/dev/null` write through spawn file actions, and sets `POSIX_SPAWN_CLOEXEC_DEFAULT`. It polls `waitpid(WNOHANG)`, retries `EINTR`, treats `ECHILD` as an invariant violation with no further signal, switches to reap confirmation after `ESRCH`, and bounds other signal failures. Timeout, cancellation, and app stop coalesce into TERM, bounded grace, KILL, and final reap of the direct PID only; descendants are never targeted.
+
+Task 4 verification included harmless real-child normal and TERM-only exits, TERM-to-KILL, cancellation, timeout, cancel-plus-stop coalescing, pre/post-spawn cancellation, syscall-seam `WNOHANG`/exit/`EINTR`/`ECHILD`/`ESRCH`/KILL-failure cases, exact argv/env/fd/CLOEXEC assertions, descendant isolation, and the user-authorized non-TTY provider command compatibility gate.
+
+### Task 5 Verification
+
+Task 5 is complete and final spec-compliance and code-quality reviews passed with no open findings. Settings and provider popovers expose the approved Claude/Codex browser-login actions, and app termination now preserves the required direct-child cleanup and retry semantics.
+
+Implementation commits:
+
+- `6f0a5fc` — expose Claude and Codex browser login.
+- `fd5935c` — document the approved degraded termination behavior.
+- `12cacf8` — report bounded login cleanup state.
+- `a308b29` — keep the app alive while a login child is reaped.
+- `675a713` — revalidate login process ownership.
+- `c14cc39` — close login admission during termination.
+- `3fdff59` — reopen login admission after a negative termination reply.
+- `4eca8b5` — avoid nested task polling in the login runner.
+
+Behavior and contract evidence:
+
+- Login cleanup reports either `allChildrenReaped` or `backgroundReaping`. A persistent signal or `waitpid` failure sends exactly one negative AppKit reply, does not stop refresh, keeps the app/coordinator and affected provider admission alive while the actor reaps the exact child, and permits a later termination request to retry cleanup.
+- Successful termination remains conditional on all login children being reaped before refresh shutdown. Concurrent termination requests coalesce, and admission closes during cleanup so no new login can race termination.
+- The coordinator retains exact PID ownership through background reaping and resumes admission only after a denied termination decision; no credentials, account identifiers, or provider output are persisted.
+
+Verification evidence:
+
+- Repeated `make swift-test` runs were green, and the latest agent-reported `make test` completed successfully; final root verification remains the next verification step.
+- Final Task 5 spec-compliance and code-quality reviews passed with no Critical, Important, or Minor findings.
+- The Task 4 non-TTY compatibility gate remains accepted for Claude Code and Codex; no additional provider login was run during Task 5 implementation.
+
+### Task 6 Final Verification and Claude Credentialed Acceptance — 2026-08-26
+
+Task 6 implementation and Claude credentialed acceptance are complete for the exercised path. The following focused fixes were applied and reviewed:
+
+- `3202474` — split the Claude Keychain lookup into reference and data phases while retaining the exact `Claude Code-credentials` service.
+- `fe88442` — select the single accepted macOS Keychain item from the returned item list.
+- `61e2d5f` — force the Swift release executable to relink during packaging without clearing SwiftPM caches.
+- `226bda5` — accept explicit `null` Claude reset timestamps.
+- `7d43804` — run the packaging relink regression through the default `make test` path.
+
+Credentialed acceptance evidence:
+
+- With Claude Code 2.1.238, the user-authorized `/Users/taejunoh/.local/bin/claude auth login --claudeai` flow completed successfully through the provider-owned browser.
+- The exact Keychain service returned exactly one parseable item. No Keychain UI prompt appeared because access was already allowed; a prompt is not required when exact-item access succeeds.
+- The live packaged app produced fresh Claude quota and fresh Codex quota. Claude Settings showed `Connected.` directly. The first Codex button attempt showed `Login incomplete.` because a new provider-auth tab was left incomplete and an already-successful tab was mistakenly treated as the current flow; this was an acceptance procedure error, not a product change.
+- The exact `/opt/homebrew/bin/codex login` non-TTY revalidation completed the current provider flow for the account/workspace and exited 0. The Needlbar Codex button was then run again through a newly completed provider flow; Settings showed Codex `Connected.` and fresh Codex quota. Login-child completion was observed.
+- Raw credentials and account data were never printed, persisted, or copied.
+
+Fresh verification evidence:
+
+- Claude integration: 17 tests passed; FFI contract: 3 passed; quota contract: 6 passed; redaction contract: 6 passed.
+- Strict workspace Clippy passed. `make test` passed with the pinned `tokscale-core` suite at 1372 passed, 0 failed, 1 ignored, and Swift at 124 passed.
+- The packaging regression passed through `make test`; codesign verification, zip creation, and packaged-app smoke passed. `vendor/tokscale-core` remained clean at the approved pinned revision.
+- Specification and code-quality reviews were approved after the `package-test` CI linkage was added.
+- Open PR #1 ([github.com/taejunoh/needlbar/pull/1](https://github.com/taejunoh/needlbar/pull/1)) remains open, unmerged, and currently `MERGEABLE`.
+- The provider implementation/status head validated by hosted CI is `b3d116071d0ed3200b4ea431e2d65657329987ab`; run [32987657091](https://github.com/taejunoh/needlbar/actions/runs/32987657091) for that exact head completed `SUCCESS` at `2026-08-26T16:26:20Z`; the `test` job passed.
+- The following status update is docs-only and changes no product code.
+- Historical outage evidence: hosted CI run [32984248738](https://github.com/taejunoh/needlbar/actions/runs/32984248738) was queued with zero jobs while GitHub's official Actions status reported `major_outage` at `2026-08-26T15:11:58Z`.
+
+### Cursor Explicit-Session Acceptance — 2026-08-26
+
+- Packaged-app Settings showed Claude and Codex `Connected`; the Cursor session store was absent before the attempt.
+- After the user's approved Connect action, the secure field was not read or exposed. The UI returned exactly the safe generic message `Cursor could not be connected.`, and the Cursor session store remained absent.
+- This result does not establish a product bug or prove remote verification failure: input validation, network/provider verification, ABI/runtime, and post-verification save failures converge to the same safe generic UI, and success is returned only after save.
+- The Settings secure field initially accepted typed input but not `Command-V` because the programmatic accessory app did not install a native Edit/Paste command. `ApplicationMenuInstaller` now installs or repairs `NSText.paste(_:)` with a `nil` target and the Command-`V` key equivalent so AppKit routes paste through the current first responder. Repeated installation does not create app-owned duplicates, and pre-existing external menu content is not deleted.
+- TDD covered the missing installer, native selector/target/key contract, normal-path idempotence, malformed Paste repair, and preservation of pre-existing same-title menu content. The focused suite passed 3 tests; specification and code-quality reviews approved the final contract and implementation.
+- Fresh root verification passed: `swift test --filter ApplicationMenuInstallerTests` ran 3 tests with 0 failures; `make test` exited 0 with the pinned `tokscale-core` suite at 1372 passed, 0 failed, 1 ignored and Swift at 127 passed; the package-app relink regression passed; `make package` produced the packaged app successfully.
+- A packaged-app manual smoke copied only the harmless fixture `NEEDLBAR-PASTE-SMOKE`, focused the Cursor secure field, and pressed `Command-V`. Masked input appeared. The field and clipboard were immediately cleared, and Connect was not pressed. No provider token or clipboard contents were printed, logged, persisted, or exposed.
+- Hosted CI run [32996703404](https://github.com/taejunoh/needlbar/actions/runs/32996703404) passed at Cursor paste implementation head `6c6f494d1fc66c0772dbae2ea4905dc245291bc8`: Rust tests and strict lint, complete project tests, arm64 packaging, cleanup regression, packaged-app smoke, and artifact upload all completed successfully.
+- Blocker/next action: the user must paste a fresh current Cursor session token obtained through the documented supported route, without whitespace or newlines, and retry Connect once. Do not broaden the flow to browser crawling, and do not record or request the token in project documentation or chat.
+
+Release remains unreleased: no tag or GitHub Release was created, and notarization/stapling/publication were not run.
 
 ## Required Next Action
 
-Perform credentialed/manual release acceptance, then create a user-authorized v0.1 tag/release. Do not begin a Task 16 implementation.
+Cursor amendment Tasks 1–5 are complete, the final whole-branch review is clean, and PR #1
+remains open and `MERGEABLE`. The next external gate is the notarization/release-secrets
+gate. Preserve the unreleased and unmerged status; no merge, tag, or release action is
+authorized here, and never request or record a Cursor session token.
+
+## Cursor Local Usage and Dashboard Amendment — 2026-08-26
+
+The approved amendment replaces Cursor session-token authentication, remote usage hydration,
+and personal quota retrieval with local-cache usage and a fixed Spending dashboard action.
+The implementation is complete through Task 4; this section records the Task 5 acceptance
+state and deliberately supersedes the older Cursor records above.
+
+### Task 1–4 implementation commits
+
+- `ec18fcd` — retire Cursor personal quota integration.
+- `ebc6175` — make Cursor usage local-cache only and add the no-read cleanup migration.
+- `b6251f5` — remove forced Cursor refresh state.
+- `4b38fc7` — exclude retained Cursor quota windows from headlines.
+- `5c79f49` — link Cursor quota-unavailable actions to the Spending dashboard.
+
+### Task 1–4 verification summary
+
+- Task 1 RED: the Cursor provider returned `RequiresAuthentication` with the old session
+  path; GREEN: the provider and bridge contracts returned Cursor-scoped
+  `providerUnavailable` with no action, and strict quota/bridge tests passed.
+- Task 2 RED: the cleanup module was absent; GREEN: local-cache usage, no-read descriptor-
+  relative cleanup, ABI removal, diagnostics, redaction, workspace Clippy, and bridge
+  contracts passed.
+- Task 3 RED: Swift still referenced the removed forced usage export and integration still
+  expected a Cursor quota window; GREEN: one normal usage path, local Cursor usage, and
+  unavailable Cursor quota passed the focused Core/presentation and full project gates.
+- Task 4 RED: the typed Spending action and opener seam were absent; GREEN: popover,
+  Settings, routing, packaging, smoke, and full project tests passed.
+
+### Task 5 acceptance state
+
+- Active documentation states that Cursor usage reads only an existing compatible
+  `~/.config/tokscale/cursor-cache/usage.csv`; Needlbar does not create, refresh, or claim
+  freshness for it.
+- Cursor quota is unavailable inside Needlbar. Settings and the Cursor popover expose one
+  typed `Open Cursor Spending` action to exactly `https://cursor.com/dashboard/spending`.
+- Needlbar does not use Cursor credentials, browser cookies, private endpoints, or remote
+  usage hydration. The one-shot migration removes only the obsolete Needlbar-owned
+  `cursor-session.json` file without reading it and preserves the local usage cache.
+- Safe existence-only preflight found no obsolete session file and no local cache in the
+  acceptance home (`legacy_session_exists=false`, `cursor_cache_exists=false`). No file
+  contents, clipboard, cookies, browser storage, or credential material were inspected.
+- Fresh `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `make test`,
+  `make package`, `make smoke`, and `git diff --check` exited 0. `make test` reported 1372
+  pinned-core tests passed with 1 ignored, 128 Swift tests passed, and package-test passed.
+- The initial Task 5 run, before `dc7e29a`, recorded the required exact `cargo fmt --check`
+  exiting 1 solely on pre-existing formatting differences throughout the non-owned
+  `vendor/tokscale-core` submodule. The owned packages passed
+  `cargo fmt -p needlbar-bridge -p needlbar-quota -- --check`; the submodule was not changed
+  or reverted.
+- Packaged-app launch was confirmed. In this GUI session, the LSUIElement status item had no
+  Orca-accessible window and the status-bar surface is unavailable to the computer-use
+  provider, so a live Settings/popover click-through could not be completed. Structural
+  Swift tests passed for Claude/Codex login rows, the Cursor local-cache explanation, the
+  single Spending action, no credential controls, both routes, and the exact URL.
+- Existence-only post-launch checks remained `legacy_session_exists=false` and
+  `cursor_cache_exists=false`; no file contents, clipboard, cookies, browser storage, or
+  credential material were inspected. The packaged process was only inspected by exact path
+  and was terminated after the smoke attempt.
+
+Task 5's fix round replaces a stale positive `connectCursor` decoding fixture with a generic
+future-action unknown-value assertion, so the retired action appears only in approved
+historical or redaction-negative records. The workspace formatting boundary now excludes
+the vendored path dependency, so literal stable `cargo fmt --check` covers the owned
+workspace and passes; tokscale-core remains a pinned transitive dependency and is explicitly
+tested and linted through its manifest in Makefile/CI, with no vendor source or revision
+change. The live packaged UI was then verified on display 2: Settings showed Claude and Codex rows,
+the Cursor local-cache explanation, one Spending button, and no Cursor credential controls;
+the Settings action and Cursor popover action each opened the exact
+`https://cursor.com/dashboard/spending` URL. Evidence is retained only as the
+local-only cropped/redacted `local-only/task5-settings-connections.png` and
+`local-only/task5-cursor-popover.png` under the Task 5 SDD directory. Fix-round commit
+`dc7e29a44b521fa417b0ca20e5036e9afc2df7e`
+passed exact-head CI run [33018740992](https://github.com/taejunoh/needlbar/actions/runs/33018740992),
+including owned workspace tests, explicit vendored tokscale-core test and clippy, full
+Swift/package verification, and packaged-app smoke checks. The follow-up cleanup restores the
+existing CI workspace test's original feature scope while retaining bridge-test runtime
+coverage in Makefile and the explicit vendor checks. The live-acceptance commit
+`4ec1081ae982e3b03759230ace6ccc38d7e32934` passed exact-head CI run
+[33019798610](https://github.com/taejunoh/needlbar/actions/runs/33019798610), with every step
+successful, including the packaged visual-acceptance build path. This status-only update
+records that completed run/head; any exact-head CI generated for this status-only commit will
+be recorded only in the untracked Task 5 report, not through another STATUS commit, with no
+tag or release action authorized here.
+
+The follow-up nested-worktree review fix `893309a` excludes the `.worktrees` prefix
+from Cargo workspace discovery and verifies the pinned vendor through a portable
+detached-worktree helper; no vendor source or revision changed.
+
+### Final whole-branch review and closeout
+
+The final review is clean. Fix `bed1037` makes Cursor `providerUnavailable` render as
+unavailable in NeedlbarCore and the bridge, and removes the stale controller copy. Exact-head
+CI run [33025188508](https://github.com/taejunoh/needlbar/actions/runs/33025188508) completed
+successfully. Independent verification also passed: `cargo fmt --check`, workspace Clippy,
+`make test`, `make package`, `make smoke`, and `git diff --check`; the pinned
+`tokscale-core` revision remains `53f9eefffd3278fd430076531548f7b1f5861f9a`. A direct
+pre-merge vendor-Clippy invocation from this nested worktree can discover the outer Cargo
+workspace; fresh-checkout CI vendor Clippy passed, and the portable detached-worktree helper
+preserves local verification without changing the vendor.
+
+## Release Validation Continuation — 2026-08-27
+
+Task 5 of tagless release validation is documented and contract-checked. The reusable
+fake-tested `scripts/notarize-app.sh` and split `.github/workflows/release.yml`
+validate/publish workflow are implemented. Manual dispatch is tagless and produces only an
+Actions artifact; `validate` is read-only, while `publish` is write-enabled only for future
+`v*` push tags. This implementation did not configure or read a protected GitHub Environment
+secret. No real notarization, stapling, Gatekeeper acceptance, merge to `main`, tag, public
+GitHub Release, or distribution is claimed here.
+
+The next gate is merge to `main`, authorized protected Environment setup outside chat, then
+tagless manual validation. No tag or release action is authorized here. The older credentialed
+release and Cursor-session records above remain historical; the active Cursor contract is
+local-cache-only and never requests or records a Cursor session token.
 
 ## v0.1 Constraints to Preserve
 
@@ -489,7 +789,8 @@ Perform credentialed/manual release acceptance, then create a user-authorized v0
 - Swift/AppKit owns the shell and presentation.
 - `NeedlbarCore` owns normalized state, refresh scheduling, and last-known-good behavior.
 - `tokscale-core` owns usage discovery/parsing/deduplication/aggregation/pricing.
-- `needlbar-source-sync` hydrates Cursor usage data only.
+- Cursor usage has no Needlbar-owned hydration layer; the pinned engine reads an existing
+  local compatible cache only.
 - `needlbar-quota` owns quota/auth/reset logic only.
 - Usage and quota failures must not erase each other's valid last-known-good values.
 - No backend/account system/telemetry or prompt/response/source-code upload.

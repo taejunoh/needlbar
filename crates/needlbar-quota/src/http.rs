@@ -7,7 +7,6 @@ use crate::{QuotaError, QuotaErrorCode};
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const ANTHROPIC_USAGE_HOST: &str = "api.anthropic.com";
 const CODEX_USAGE_HOST: &str = "chatgpt.com";
-const CURSOR_USAGE_HOST: &str = "cursor.com";
 /// Quota retry waits longer than one hour are ignored so provider input cannot
 /// suppress Needlbar's normal refresh schedule for an unbounded interval.
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(60 * 60);
@@ -35,10 +34,6 @@ impl RedactingHttpClient {
     /// boundary rather than allowing individual adapters to construct clients.
     pub(crate) fn for_codex_usage() -> Self {
         Self::for_host(CODEX_USAGE_HOST)
-    }
-
-    pub(crate) fn for_cursor_usage() -> Self {
-        Self::for_host(CURSOR_USAGE_HOST)
     }
 
     fn for_host(allowed_host: &str) -> Self {
@@ -145,7 +140,7 @@ impl RedactingHttpClient {
     }
 
     #[cfg(test)]
-    fn for_test(allowed_host: String) -> Self {
+    pub(crate) fn for_test(allowed_host: String) -> Self {
         let client = Client::builder()
             .timeout(REQUEST_TIMEOUT)
             .redirect(reqwest::redirect::Policy::none())

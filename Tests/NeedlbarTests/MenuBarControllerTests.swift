@@ -10,6 +10,7 @@ import Testing
     let controller = MenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
         statusItemFactory: factory
     )
 
@@ -27,6 +28,7 @@ import Testing
     let controller = MenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
         statusItemFactory: factory
     )
     await controller.refresh()
@@ -49,6 +51,7 @@ import Testing
     let controller = MenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
         statusItemFactory: factory
     )
     await controller.refresh()
@@ -75,6 +78,7 @@ import Testing
     let controller = MenuBarController(
         configuration: configuration,
         snapshotStore: store,
+        loginCoordinator: testLoginCoordinator(),
         statusItemFactory: factory,
         onModuleActivated: { activatedModules.append($0) }
     )
@@ -100,6 +104,7 @@ import Testing
     let controller = MenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
         statusItemFactory: factory
     )
     await controller.startObserving()
@@ -122,6 +127,7 @@ import Testing
     let controller = MenuBarController(
         configuration: configuration,
         snapshotStore: store,
+        loginCoordinator: testLoginCoordinator(),
         statusItemFactory: factory
     )
     await controller.startObserving()
@@ -140,6 +146,7 @@ import Testing
     let controller = MenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
         statusItemFactory: factory
     )
     await controller.startObserving()
@@ -152,11 +159,60 @@ import Testing
     #expect(factory.created.count == 1)
 }
 
+@MainActor
+@Test func authenticationActionsRouteClaudeAndCodexToTheLoginCallbackExactlyOnce() {
+    let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+    var requestedProviders: [ProviderID] = []
+    let controller = MenuBarController(
+        configuration: configuration,
+        snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
+        onProviderLoginRequested: { requestedProviders.append($0) }
+    )
+
+    controller.performAuthenticationAction(for: .claude)
+    controller.performAuthenticationAction(for: .codex)
+
+    #expect(requestedProviders == [.claude, .codex])
+}
+
+@MainActor
+@Test func cursorSpendingActionOpensFixedDashboardWithoutLoginOrSettings() {
+    let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+    var requestedProviders: [ProviderID] = []
+    var settingsRequests = 0
+    var openedURLs: [URL] = []
+    let controller = MenuBarController(
+        configuration: configuration,
+        snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
+        onProviderLoginRequested: { requestedProviders.append($0) },
+        onSettingsRequested: { settingsRequests += 1 },
+        openCursorSpending: {
+            _ = CursorSpendingAction.open { url in
+                openedURLs.append(url)
+                return true
+            }
+        }
+    )
+
+    controller.performAuthenticationAction(for: .cursor)
+
+    #expect(requestedProviders.isEmpty)
+    #expect(settingsRequests == 0)
+    #expect(openedURLs == [URL(string: "https://cursor.com/dashboard/spending")!])
+}
+
 private func freshMenuBarDefaults() -> UserDefaults {
     let suiteName = "MenuBarControllerTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suiteName)!
     defaults.removePersistentDomain(forName: suiteName)
     return defaults
+}
+
+@MainActor
+private func testLoginCoordinator() -> ProviderLoginCoordinator {
+    ProviderLoginCoordinator(refreshQuota: { _ in false })
 }
 
 private func menuBarUsage(totalTokens: UInt64) -> UsageSnapshot {

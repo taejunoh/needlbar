@@ -1,4 +1,4 @@
-.PHONY: rust swift swift-test test run package smoke
+.PHONY: rust swift swift-test package-test notarize-test test run package smoke
 
 rust:
 	./scripts/build-rust.sh
@@ -48,13 +48,22 @@ swift-test:
 	./scripts/build-rust.sh --features bridge-test-runtime; \
 	strings target/release/libneedlbar_bridge.a > "$$symbols_file"; \
 	grep -F 'needlbar_test_install_fixture_runtime' "$$symbols_file" >/dev/null; \
-	grep -F 'needlbar_test_clear_runtime' "$$symbols_file" >/dev/null; \
+	grep -F 'needlbar_test_clear_fixture_runtime' "$$symbols_file" >/dev/null; \
 	swift package clean; \
 	swift test
 
+package-test:
+	./scripts/tests/package-app-tests.sh
+
+notarize-test:
+	./scripts/tests/notarize-app-tests.sh
+
 test:
 	cargo test --workspace --features bridge-test-runtime
+	sh ./scripts/tests/vendor-tokscale-test.sh
 	$(MAKE) swift-test
+	$(MAKE) package-test
+	$(MAKE) notarize-test
 
 run: rust
 	swift run Needlbar

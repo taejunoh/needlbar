@@ -1,14 +1,17 @@
 use std::{
-    ffi::CStr,
+    ffi::{CStr, CString},
     fs,
     os::raw::c_char,
     path::{Path, PathBuf},
+    sync::{Arc, Barrier},
 };
 
 use needlbar_bridge::{
+    needlbar_claude_user_initiated_quota_snapshot_json, needlbar_codex_quota_snapshot_json,
     needlbar_diagnostics_json, needlbar_free_string, needlbar_quota_snapshot_json,
     needlbar_usage_snapshot_json, test_runtime,
 };
+use needlbar_quota::ProviderId;
 use tempfile::TempDir;
 
 const CLAUDE_CANARY: &str = "CLAUDE-CANARY-SECRET";
@@ -19,6 +22,7 @@ const EMAIL: &str = "alice@example.com";
 
 #[test]
 fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
+    let _serial = test_runtime::serial_guard();
     let home = fixture_home();
     let claude_failure = format!("credential {CLAUDE_CANARY} at {RAW_PATH} for {EMAIL}");
     let codex_failure = format!("credential {CODEX_CANARY} at {RAW_PATH} for {EMAIL}");
@@ -62,7 +66,8 @@ fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
     assert_error_shape(&quota_value["errors"], "requiresAuthentication");
     assert_eq!(quota_value["errors"][1]["code"], "networkUnavailable");
     assert_eq!(quota_value["errors"][2]["provider"], "cursor");
-    assert_eq!(quota_value["errors"][2]["action"], "connectCursor");
+    assert_eq!(quota_value["errors"][2]["code"], "providerUnavailable");
+    assert!(quota_value["errors"][2].get("action").is_none());
 
     let diagnostics_value: serde_json::Value =
         serde_json::from_str(&diagnostics).expect("diagnostics JSON");
@@ -88,6 +93,281 @@ fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
     assert_error_shape(&error_value["errors"], "providerUnavailable");
 }
 
+#[test]
+fn diagnostics_marks_cursor_provider_unavailable_as_unavailable_without_changing_other_failures() {
+    let _serial = test_runtime::serial_guard();
+    let home = fixture_home();
+    assert!(test_runtime::install_redaction_fixture(
+        home.path().to_path_buf(),
+        "Claude unavailable".to_owned(),
+        "Codex unavailable".to_owned(),
+        "Cursor unavailable".to_owned(),
+    ));
+    let _clear = RuntimeCleanup;
+
+    let _ = ffi_json(needlbar_quota_snapshot_json);
+    let diagnostics = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
+
+    assert_eq!(diagnostics["cursor"]["quotaStatus"], "unavailable");
+    assert_eq!(
+        diagnostics["cursor"]["quotaErrorCode"],
+        "providerUnavailable"
+    );
+    assert_eq!(diagnostics["codex"]["quotaStatus"], "error");
+    assert_eq!(diagnostics["codex"]["quotaErrorCode"], "networkUnavailable");
+}
+
+#[test]
+fn provider_verification_exports_are_isolated_redacted_panic_contained_and_freed() {
+    // This catches FFI exports that construct production providers under the
+    // fixture hook, fan out to another provider, leak Keychain detail, or let
+    // a provider panic escape over C.
+    let _serial = test_runtime::serial_guard();
+    let canary = "CLAUDE-KEYCHAIN-CANARY";
+    let fixture = test_runtime::install_provider_verification_fixture(
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Claude,
+            "claude.session",
+            20.0,
+        )),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+    );
+    let _clear = RuntimeCleanup;
+
+    let claude = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let codex = ffi_json(needlbar_codex_quota_snapshot_json);
+    let claude_value: serde_json::Value = serde_json::from_str(&claude).expect("Claude JSON");
+    let codex_value: serde_json::Value = serde_json::from_str(&codex).expect("Codex JSON");
+    assert_eq!(
+        claude_value["data"]["providers"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(claude_value["data"]["providers"][0]["provider"], "claude");
+    assert_eq!(
+        codex_value["data"]["providers"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(codex_value["data"]["providers"][0]["provider"], "codex");
+    assert_eq!(fixture.claude_accesses(), vec!["userInitiatedAllowUI"]);
+    assert_eq!(fixture.codex_fetches(), 1);
+    assert_eq!(fixture.claude_creations(), 1);
+    assert_eq!(fixture.codex_creations(), 1);
+    assert_eq!(fixture.cursor_creations(), 0);
+
+    let denied = test_runtime::install_provider_verification_fixture(
+        Err(test_runtime::fixture_permission_denied(canary)),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+    );
+    let denied_json = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let diagnostics = ffi_json(needlbar_diagnostics_json);
+    let denied_value: serde_json::Value = serde_json::from_str(&denied_json).expect("denied JSON");
+    assert_eq!(denied_value["data"]["providers"], serde_json::json!([]));
+    assert_eq!(denied_value["errors"][0]["provider"], "claude");
+    assert_eq!(denied_value["errors"][0]["code"], "permissionDenied");
+    assert_eq!(
+        denied_value["errors"][0]["message"],
+        "Provider credential access was denied."
+    );
+    assert!(!denied_json.contains(canary));
+    assert!(!diagnostics.contains(canary));
+    assert_eq!(denied.claude_accesses(), vec!["userInitiatedAllowUI"]);
+
+    test_runtime::install_provider_verification_panic_fixture();
+    for export in [
+        needlbar_claude_user_initiated_quota_snapshot_json,
+        needlbar_codex_quota_snapshot_json,
+    ] {
+        let json = ffi_json(export);
+        let value: serde_json::Value = serde_json::from_str(&json).expect("panic JSON");
+        assert_eq!(value["ok"], false);
+        assert_eq!(value["errors"][0]["code"], "internalError");
+    }
+}
+
+#[test]
+fn provider_verification_preserves_unrelated_diagnostics_and_records_permission_denied() {
+    // This catches provider-only verification overwriting the most recent
+    // diagnostics for omitted providers, or dropping permissionDenied as an
+    // unknown diagnostics code.
+    let _serial = test_runtime::serial_guard();
+    let fixture = test_runtime::install_provider_verification_fixture(
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Claude,
+            "claude.session",
+            20.0,
+        )),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+    );
+    let _clear = RuntimeCleanup;
+
+    let _ = ffi_json(needlbar_quota_snapshot_json);
+    let baseline = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
+    let _ = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let after_claude = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
+    assert_eq!(after_claude["codex"], baseline["codex"]);
+    assert_eq!(after_claude["cursor"], baseline["cursor"]);
+
+    let _ = ffi_json(needlbar_codex_quota_snapshot_json);
+    let after_codex = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
+    assert_eq!(after_codex["claude"], after_claude["claude"]);
+    assert_eq!(after_codex["cursor"], baseline["cursor"]);
+
+    let denied = test_runtime::install_provider_verification_fixture(
+        Err(test_runtime::fixture_permission_denied(
+            "CLAUDE-KEYCHAIN-CANARY",
+        )),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+    );
+    let _ = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let diagnostics = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
+    assert_eq!(diagnostics["claude"]["quotaErrorCode"], "permissionDenied");
+    assert_eq!(denied.claude_accesses(), vec!["userInitiatedAllowUI"]);
+    assert_eq!(fixture.cursor_creations(), 1);
+}
+
+#[test]
+fn provider_verification_fixture_is_scoped_through_worker_and_tracks_real_ffi_allocation() {
+    // This catches a fixture clear racing an already-started exported call,
+    // which would otherwise fall through to production Keychain/network, and
+    // verifies allocation/release bookkeeping on the bridge's real C string
+    // ownership path.
+    let scope = test_runtime::provider_verification_scope();
+    let fixture = scope.install(
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Claude,
+            "claude.session",
+            20.0,
+        )),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+    );
+    test_runtime::reset_ffi_allocation_counts();
+
+    let pointer = unsafe { needlbar_claude_user_initiated_quota_snapshot_json() };
+    assert!(!pointer.is_null());
+    assert_eq!(test_runtime::ffi_allocation_counts(), (1, 0, 0));
+    unsafe { needlbar_free_string(pointer) };
+    assert_eq!(test_runtime::ffi_allocation_counts(), (1, 1, 0));
+    assert_eq!(fixture.claude_accesses(), vec!["userInitiatedAllowUI"]);
+
+    let worker_fixture = scope.install_blocking_claude_fixture();
+    let call = std::thread::spawn(|| ffi_json(needlbar_claude_user_initiated_quota_snapshot_json));
+    worker_fixture.wait_until_fetch_started();
+    scope.clear();
+    worker_fixture.allow_fetch_to_finish();
+    let json = call.join().expect("worker export joins");
+    let value: serde_json::Value = serde_json::from_str(&json).expect("worker JSON");
+    assert_eq!(value["data"]["providers"][0]["provider"], "claude");
+}
+
+#[test]
+fn c_clear_zero_cannot_clear_a_rust_owned_fixture() {
+    let _serial = test_runtime::serial_guard();
+    let _clear = RuntimeCleanup;
+    test_runtime::install_provider_verification_fixture(
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Claude,
+            "claude.session",
+            20.0,
+        )),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+    );
+
+    assert!(!test_runtime::needlbar_test_clear_fixture_runtime(0));
+    let json = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let value: serde_json::Value = serde_json::from_str(&json).expect("Claude JSON");
+    assert_eq!(value["data"]["providers"][0]["provider"], "claude");
+}
+
+#[test]
+fn c_fixture_sessions_reject_cross_client_clear_and_never_fall_back_to_production() {
+    // This exercises the feature-only C session protocol used by Swift. A
+    // competing client cannot replace or clear the owner's fixture, and an
+    // absent fixture produces a deterministic bridge error instead of making
+    // a real provider/Keychain/network call.
+    let _serial = test_runtime::serial_guard();
+    let _clear = RuntimeCleanup;
+    let owner_home = fixture_home();
+    let owner_path = CString::new(owner_home.path().to_string_lossy().as_bytes())
+        .expect("fixture path is a C string");
+    let owner_session =
+        unsafe { test_runtime::needlbar_test_install_fixture_runtime(owner_path.as_ptr()) };
+    assert_ne!(owner_session, 0);
+    assert!(
+        !test_runtime::install_redaction_fixture(
+            owner_home.path().to_path_buf(),
+            "ignored".to_owned(),
+            "ignored".to_owned(),
+            "ignored".to_owned(),
+        ),
+        "a Rust fixture helper cannot replace an active C session"
+    );
+
+    let competing_home = fixture_home();
+    let competing_path = CString::new(competing_home.path().to_string_lossy().as_bytes())
+        .expect("fixture path is a C string");
+    let barrier = Arc::new(Barrier::new(2));
+    let competing_barrier = Arc::clone(&barrier);
+    let competing = std::thread::spawn(move || {
+        competing_barrier.wait();
+        let replacement =
+            unsafe { test_runtime::needlbar_test_install_fixture_runtime(competing_path.as_ptr()) };
+        let cross_clear = test_runtime::needlbar_test_clear_fixture_runtime(owner_session + 1);
+        (replacement, cross_clear)
+    });
+
+    barrier.wait();
+    let owner_json = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let owner_value: serde_json::Value = serde_json::from_str(&owner_json).expect("owner JSON");
+    assert_eq!(owner_value["data"]["providers"][0]["provider"], "claude");
+
+    let (replacement, cross_clear) = competing.join().expect("competing client joins");
+    assert_eq!(replacement, 0, "a second C client cannot replace a session");
+    assert!(
+        !cross_clear,
+        "a C client cannot clear a session it did not install"
+    );
+    assert!(test_runtime::needlbar_test_clear_fixture_runtime(
+        owner_session
+    ));
+
+    let unavailable = ffi_json(needlbar_codex_quota_snapshot_json);
+    let unavailable_value: serde_json::Value =
+        serde_json::from_str(&unavailable).expect("unavailable JSON");
+    assert_eq!(
+        unavailable_value["data"]["providers"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        unavailable_value["errors"][0]["code"],
+        "providerUnavailable"
+    );
+    assert!(unavailable_value["errors"][0]["provider"].is_null());
+}
+
 fn ffi_json(call: unsafe extern "C" fn() -> *const c_char) -> String {
     let pointer = unsafe { call() };
     assert!(
@@ -102,8 +382,34 @@ fn ffi_json(call: unsafe extern "C" fn() -> *const c_char) -> String {
     json
 }
 
+fn diagnostics_by_provider(json: &str) -> std::collections::BTreeMap<String, serde_json::Value> {
+    let value: serde_json::Value = serde_json::from_str(json).expect("diagnostics JSON");
+    value["data"]["providers"]
+        .as_array()
+        .expect("diagnostic providers")
+        .iter()
+        .map(|provider| {
+            (
+                provider["provider"]
+                    .as_str()
+                    .expect("provider name")
+                    .to_owned(),
+                provider.clone(),
+            )
+        })
+        .collect()
+}
+
 fn assert_safe_output(json: &str) {
-    for forbidden in [CLAUDE_CANARY, CODEX_CANARY, CURSOR_CANARY, RAW_PATH, EMAIL] {
+    for forbidden in [
+        CLAUDE_CANARY,
+        CODEX_CANARY,
+        CURSOR_CANARY,
+        RAW_PATH,
+        EMAIL,
+        "connectCursor",
+        "cursorSyncFailed",
+    ] {
         assert!(
             !json.contains(forbidden),
             "unsafe upstream value crossed the bridge boundary: {forbidden}"
@@ -122,14 +428,13 @@ fn assert_error_shape(errors: &serde_json::Value, code: &str) {
     assert!(error["message"]
         .as_str()
         .is_some_and(|message| !message.is_empty()));
-    assert!(error.get("action").is_none());
 }
 
 struct RuntimeCleanup;
 
 impl Drop for RuntimeCleanup {
     fn drop(&mut self) {
-        test_runtime::needlbar_test_clear_runtime();
+        test_runtime::clear_runtime_for_rust_tests();
     }
 }
 

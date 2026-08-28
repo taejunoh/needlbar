@@ -20,21 +20,18 @@ public struct BridgeError: Codable, Sendable, Equatable {
 }
 
 public enum BridgeAction: Sendable, Equatable {
-    case connectCursor
     case unknown(String)
 }
 
 extension BridgeAction: Codable {
     public init(from decoder: Decoder) throws {
         let action = try decoder.singleValueContainer().decode(String.self)
-        self = action == "connectCursor" ? .connectCursor : .unknown(action)
+        self = .unknown(action)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
-        case .connectCursor:
-            try container.encode("connectCursor")
         case .unknown(let action):
             try container.encode(action)
         }

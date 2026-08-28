@@ -1,10 +1,13 @@
-use std::{env, fs, path::PathBuf};
+use std::{path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
-use chrono::{DateTime, TimeZone, Utc};
-use reqwest::header::HeaderValue;
-use serde::Deserialize;
+use chrono::{DateTime, Utc};
+use serde::{de::Deserializer, Deserialize};
 
+use super::claude_credentials::{
+    production_resolver, ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver,
+    FileClaudeCredentialResolver,
+};
 use crate::{
     ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaProvider, QuotaWindow,
     RedactingHttpClient,
@@ -14,91 +17,86 @@ const USAGE_ENDPOINT: &str = "https://api.anthropic.com/api/oauth/usage";
 const OAUTH_BETA_HEADER: &str = "oauth-2025-04-20";
 
 pub struct ClaudeQuotaProvider {
-    config_dir: Option<PathBuf>,
-    home_dir: PathBuf,
+    credentials: Arc<dyn ClaudeCredentialResolver>,
     http: RedactingHttpClient,
+    #[cfg(test)]
+    usage_endpoint: String,
 }
 
 impl ClaudeQuotaProvider {
     pub fn new() -> Self {
-        let config_dir = env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from);
-        let home_dir = env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/nonexistent"));
-        Self::from_paths(config_dir, home_dir, RedactingHttpClient::new())
+        Self::with_resolver(production_resolver(), RedactingHttpClient::new())
     }
 
     /// `config_dir` is the value of `CLAUDE_CONFIG_DIR`, not a credentials
-    /// filename. Keeping it injectable makes the precedence deterministic in
-    /// tests without reading user state.
+    /// filename. This legacy constructor deliberately uses the file resolver,
+    /// keeping fixture and non-macOS behavior deterministic without Keychain
+    /// access.
     pub fn from_paths(
         config_dir: Option<PathBuf>,
         home_dir: PathBuf,
         http: RedactingHttpClient,
     ) -> Self {
-        Self {
-            config_dir: config_dir.filter(|path| !path.as_os_str().is_empty()),
-            home_dir,
+        Self::with_resolver(
+            Arc::new(FileClaudeCredentialResolver::from_paths(
+                config_dir, home_dir,
+            )),
             http,
+        )
+    }
+
+    pub fn with_resolver(
+        credentials: Arc<dyn ClaudeCredentialResolver>,
+        http: RedactingHttpClient,
+    ) -> Self {
+        Self {
+            credentials,
+            http,
+            #[cfg(test)]
+            usage_endpoint: USAGE_ENDPOINT.to_owned(),
         }
     }
 
-    pub fn parse_usage_payload(payload: &str) -> Result<ProviderQuotaSnapshot, QuotaError> {
-        let response: UsageResponse = serde_json::from_str(payload).map_err(|_| schema_error())?;
-        let session = parse_window(response.five_hour, "claude.session", "Session")?;
-        let weekly = parse_window(response.seven_day, "claude.weekly", "Weekly")?;
+    #[cfg(test)]
+    fn with_resolver_and_test_endpoint_for_test(
+        credentials: Arc<dyn ClaudeCredentialResolver>,
+        endpoint: &str,
+    ) -> Result<Self, QuotaError> {
+        let url = reqwest::Url::parse(endpoint).map_err(|_| schema_error())?;
+        if url.scheme() != "http"
+            || !matches!(
+                url.host_str(),
+                Some("127.0.0.1") | Some("::1") | Some("localhost")
+            )
+        {
+            return Err(schema_error());
+        }
+        let host = url.host_str().ok_or_else(schema_error)?.to_owned();
 
-        Ok(ProviderQuotaSnapshot {
-            provider: ProviderId::Claude,
-            windows: vec![session, weekly],
+        Ok(Self {
+            credentials,
+            http: RedactingHttpClient::for_test(host),
+            usage_endpoint: endpoint.to_owned(),
         })
     }
 
-    fn credentials_path(&self) -> PathBuf {
-        match &self.config_dir {
-            Some(config_dir) => config_dir.join(".credentials.json"),
-            None => self.home_dir.join(".claude/.credentials.json"),
-        }
-    }
-
-    fn load_credentials(&self) -> Result<ClaudeOauthEvidence, QuotaError> {
-        let contents = fs::read_to_string(self.credentials_path()).map_err(|_| auth_required())?;
-        let credentials: CredentialsFile =
-            serde_json::from_str(&contents).map_err(|_| auth_required())?;
-        let oauth = credentials.claude_ai_oauth.ok_or_else(auth_required)?;
-        let access_token = oauth
-            .access_token
-            .as_deref()
-            .and_then(normalize_access_token)
-            .ok_or_else(auth_required)?;
-        if let Some(value) = oauth.expires_at.as_ref() {
-            let expires_at = parse_expiry(value).ok_or_else(auth_required)?;
-            if expires_at <= Utc::now() {
-                // A refresh token alone is not enough to safely guess an
-                // undocumented token-refresh exchange in a passive refresh.
-                return Err(auth_expired());
-            }
-        }
-
-        Ok(ClaudeOauthEvidence { access_token })
-    }
-}
-
-impl Default for ClaudeQuotaProvider {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl QuotaProvider for ClaudeQuotaProvider {
-    async fn fetch(&self) -> Result<ProviderQuotaSnapshot, QuotaError> {
-        let credentials = self.load_credentials()?;
+    pub async fn fetch_with_credential_access(
+        &self,
+        access: ClaudeCredentialAccess,
+    ) -> Result<ProviderQuotaSnapshot, QuotaError> {
+        let credentials = self
+            .credentials
+            .resolve(access)
+            .map_err(credential_error_to_quota_error)?;
+        #[cfg(test)]
+        let usage_endpoint = self.usage_endpoint.as_str();
+        #[cfg(not(test))]
+        let usage_endpoint = USAGE_ENDPOINT;
         let request = self
             .http
             .get_bearer(
-                USAGE_ENDPOINT,
-                &credentials.access_token,
+                usage_endpoint,
+                credentials.access_token(),
                 &[("anthropic-beta", OAUTH_BETA_HEADER)],
             )
             .map_err(|error| error.for_provider(ProviderId::Claude))?;
@@ -112,36 +110,43 @@ impl QuotaProvider for ClaudeQuotaProvider {
             .read_limited_body(response)
             .await
             .map_err(|error| error.for_provider(ProviderId::Claude))?;
-        let payload = String::from_utf8(bytes).map_err(|_| {
-            QuotaError::new(
-                Some(ProviderId::Claude),
-                QuotaErrorCode::SchemaChanged,
-                "Claude quota data was not in the expected format.",
-            )
-        })?;
+        let payload = String::from_utf8(bytes).map_err(|_| schema_error())?;
 
         Self::parse_usage_payload(&payload)
     }
+
+    pub fn parse_usage_payload(payload: &str) -> Result<ProviderQuotaSnapshot, QuotaError> {
+        let response: UsageResponse = serde_json::from_str(payload).map_err(|_| schema_error())?;
+        let session = parse_window(response.five_hour, "claude.session", "Session")?;
+        let weekly = parse_window(response.seven_day, "claude.weekly", "Weekly")?;
+
+        Ok(ProviderQuotaSnapshot {
+            provider: ProviderId::Claude,
+            windows: vec![session, weekly],
+        })
+    }
+
+    #[cfg(test)]
+    fn resolve_credentials(&self, access: ClaudeCredentialAccess) -> Result<(), QuotaError> {
+        self.credentials
+            .resolve(access)
+            .map(|_| ())
+            .map_err(credential_error_to_quota_error)
+    }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CredentialsFile {
-    claude_ai_oauth: Option<ClaudeOauth>,
+impl Default for ClaudeQuotaProvider {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ClaudeOauth {
-    access_token: Option<String>,
-    #[allow(dead_code)]
-    refresh_token: Option<String>,
-    #[serde(default)]
-    expires_at: Option<serde_json::Value>,
-}
-
-struct ClaudeOauthEvidence {
-    access_token: String,
+#[async_trait]
+impl QuotaProvider for ClaudeQuotaProvider {
+    async fn fetch(&self) -> Result<ProviderQuotaSnapshot, QuotaError> {
+        self.fetch_with_credential_access(ClaudeCredentialAccess::BackgroundNoUI)
+            .await
+    }
 }
 
 #[derive(Deserialize)]
@@ -153,62 +158,44 @@ struct UsageResponse {
 #[derive(Deserialize)]
 struct UsageWindow {
     utilization: f64,
-    resets_at: DateTime<Utc>,
+    #[serde(deserialize_with = "deserialize_required_optional_timestamp")]
+    resets_at: Option<DateTime<Utc>>,
+}
+
+fn deserialize_required_optional_timestamp<'de, D>(
+    deserializer: D,
+) -> Result<Option<DateTime<Utc>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<DateTime<Utc>>::deserialize(deserializer)
 }
 
 fn parse_window(source: UsageWindow, id: &str, title: &str) -> Result<QuotaWindow, QuotaError> {
-    QuotaWindow::new(id, title, source.utilization, Some(source.resets_at))
-        .map_err(|_| schema_error())
+    QuotaWindow::new(id, title, source.utilization, source.resets_at).map_err(|_| schema_error())
 }
 
-fn normalize_access_token(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty()
-        || trimmed.chars().any(char::is_whitespace)
-        || HeaderValue::from_str(trimmed).is_err()
-    {
-        None
-    } else {
-        Some(trimmed.to_owned())
+fn credential_error_to_quota_error(error: ClaudeCredentialError) -> QuotaError {
+    match error {
+        ClaudeCredentialError::NotFound => QuotaError::new(
+            Some(ProviderId::Claude),
+            QuotaErrorCode::RequiresAuthentication,
+            "Claude authentication was not available.",
+        ),
+        ClaudeCredentialError::InteractionNotAllowed
+        | ClaudeCredentialError::PermissionDenied
+        | ClaudeCredentialError::Cancelled => QuotaError::new(
+            Some(ProviderId::Claude),
+            QuotaErrorCode::PermissionDenied,
+            "Claude credential access was denied.",
+        ),
+        ClaudeCredentialError::Expired => QuotaError::new(
+            Some(ProviderId::Claude),
+            QuotaErrorCode::AuthenticationExpired,
+            "Claude authentication has expired.",
+        ),
+        ClaudeCredentialError::Malformed => schema_error(),
     }
-}
-
-fn parse_expiry(value: &serde_json::Value) -> Option<DateTime<Utc>> {
-    match value {
-        serde_json::Value::String(value) => {
-            if let Ok(date) = DateTime::parse_from_rfc3339(value) {
-                return Some(date.with_timezone(&Utc));
-            }
-            value.parse::<i64>().ok().and_then(epoch_to_utc)
-        }
-        serde_json::Value::Number(number) => number.as_i64().and_then(epoch_to_utc),
-        _ => None,
-    }
-}
-
-fn epoch_to_utc(timestamp: i64) -> Option<DateTime<Utc>> {
-    let seconds = if timestamp.unsigned_abs() > 100_000_000_000 {
-        timestamp / 1_000
-    } else {
-        timestamp
-    };
-    Utc.timestamp_opt(seconds, 0).single()
-}
-
-fn auth_required() -> QuotaError {
-    QuotaError::new(
-        Some(ProviderId::Claude),
-        QuotaErrorCode::RequiresAuthentication,
-        "Claude authentication was not available.",
-    )
-}
-
-fn auth_expired() -> QuotaError {
-    QuotaError::new(
-        Some(ProviderId::Claude),
-        QuotaErrorCode::AuthenticationExpired,
-        "Claude authentication has expired.",
-    )
 }
 
 fn schema_error() -> QuotaError {
@@ -221,11 +208,125 @@ fn schema_error() -> QuotaError {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{
+        fs,
+        io::{Read, Write},
+        net::TcpListener,
+        sync::{Arc, Mutex},
+        thread,
+    };
 
     use tempfile::TempDir;
 
     use super::*;
+    use crate::providers::claude_credentials::parse_credential_payload;
+
+    struct CanaryResolver {
+        accesses: Arc<Mutex<Vec<ClaudeCredentialAccess>>>,
+    }
+
+    impl ClaudeCredentialResolver for CanaryResolver {
+        fn resolve(
+            &self,
+            access: ClaudeCredentialAccess,
+        ) -> Result<super::super::claude_credentials::ClaudeOAuthSecret, ClaudeCredentialError>
+        {
+            self.accesses.lock().unwrap().push(access);
+            parse_credential_payload(
+                br#"{"claudeAiOauth":{"accessToken":"CLAUDE-KEYCHAIN-CANARY"}}"#,
+            )
+        }
+    }
+
+    #[tokio::test]
+    async fn test_only_provider_endpoint_keeps_parser_canary_off_success_and_failure_surfaces() {
+        let canary = "CLAUDE-KEYCHAIN-CANARY";
+        let accesses = Arc::new(Mutex::new(Vec::new()));
+        let success_payload = include_str!("../../../../Fixtures/quota/claude/usage-success.json");
+        let success_response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            success_payload.len(),
+            success_payload
+        )
+        .into_bytes();
+        let (success_endpoint, success_server) = capturing_local_server(success_response);
+        let success_provider = ClaudeQuotaProvider::with_resolver_and_test_endpoint_for_test(
+            Arc::new(CanaryResolver {
+                accesses: Arc::clone(&accesses),
+            }),
+            &success_endpoint,
+        )
+        .unwrap();
+
+        let snapshot = success_provider
+            .fetch_with_credential_access(ClaudeCredentialAccess::UserInitiatedAllowUI)
+            .await
+            .unwrap();
+        let success_request = String::from_utf8(success_server.join().unwrap()).unwrap();
+
+        assert!(success_request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer claude-keychain-canary"));
+        assert_eq!(success_request.matches(canary).count(), 1);
+        assert!(!format!("{snapshot:?}").contains(canary));
+        assert!(!serde_json::to_string(&snapshot).unwrap().contains(canary));
+
+        let (failure_endpoint, failure_server) = capturing_local_server(
+            b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                .to_vec(),
+        );
+        let failure_provider = ClaudeQuotaProvider::with_resolver_and_test_endpoint_for_test(
+            Arc::new(CanaryResolver {
+                accesses: Arc::clone(&accesses),
+            }),
+            &failure_endpoint,
+        )
+        .unwrap();
+
+        let error = failure_provider
+            .fetch_with_credential_access(ClaudeCredentialAccess::UserInitiatedAllowUI)
+            .await
+            .unwrap_err();
+        let failure_request = String::from_utf8(failure_server.join().unwrap()).unwrap();
+
+        assert!(failure_request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer claude-keychain-canary"));
+        assert_eq!(failure_request.matches(canary).count(), 1);
+        assert!(!format!("{error:?}").contains(canary));
+        assert!(!serde_json::to_string(&error).unwrap().contains(canary));
+        assert_eq!(
+            accesses.lock().unwrap().as_slice(),
+            [
+                ClaudeCredentialAccess::UserInitiatedAllowUI,
+                ClaudeCredentialAccess::UserInitiatedAllowUI,
+            ]
+        );
+    }
+
+    fn capturing_local_server(response: Vec<u8>) -> (String, thread::JoinHandle<Vec<u8>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}/usage", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 1024];
+            loop {
+                let read = stream.read(&mut chunk).unwrap();
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..read]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            stream.write_all(&response).unwrap();
+            stream.flush().unwrap();
+            request
+        });
+        (endpoint, server)
+    }
 
     #[test]
     fn malformed_expiry_is_unusable_oauth_evidence() {
@@ -243,7 +344,10 @@ mod tests {
             RedactingHttpClient::new(),
         );
 
-        let error = provider.load_credentials().err().unwrap();
+        let error = provider
+            .resolve_credentials(ClaudeCredentialAccess::BackgroundNoUI)
+            .err()
+            .unwrap();
 
         assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
     }
@@ -265,7 +369,10 @@ mod tests {
                 RedactingHttpClient::new(),
             );
 
-            let error = provider.load_credentials().err().unwrap();
+            let error = provider
+                .resolve_credentials(ClaudeCredentialAccess::BackgroundNoUI)
+                .err()
+                .unwrap();
 
             assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
         }

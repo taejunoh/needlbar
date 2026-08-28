@@ -10,13 +10,6 @@ public struct UsageRefreshResult: Sendable {
 
 public protocol UsageRepository: Sendable {
     func refresh() throws -> UsageRefreshResult
-    func refresh(forceCursorSync: Bool) throws -> UsageRefreshResult
-}
-
-public extension UsageRepository {
-    func refresh(forceCursorSync: Bool) throws -> UsageRefreshResult {
-        try refresh()
-    }
 }
 
 public struct RustUsageRepository: UsageRepository, Sendable {
@@ -27,11 +20,7 @@ public struct RustUsageRepository: UsageRepository, Sendable {
     }
 
     public func refresh() throws -> UsageRefreshResult {
-        try refresh(forceCursorSync: false)
-    }
-
-    public func refresh(forceCursorSync: Bool) throws -> UsageRefreshResult {
-        let envelope = try bridge.usageEnvelope(forceCursorSync: forceCursorSync)
+        let envelope = try bridge.usageEnvelope()
         guard envelope.ok else {
             throw BridgeFailure.bridgeFailed(envelope.errors)
         }

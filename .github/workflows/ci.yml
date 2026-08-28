@@ -13,7 +13,7 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           submodules: recursive
 
@@ -44,8 +44,14 @@ jobs:
       - name: Test Rust workspace
         run: cargo test --workspace
 
+      - name: Test vendored tokscale-core
+        run: cargo test --manifest-path vendor/tokscale-core/Cargo.toml
+
       - name: Lint Rust workspace
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Lint vendored tokscale-core
+        run: cargo clippy --manifest-path vendor/tokscale-core/Cargo.toml --all-targets --all-features -- -D warnings
 
       - name: Test complete project
         run: make test
@@ -60,7 +66,7 @@ jobs:
         run: ./scripts/smoke-app.sh
 
       - name: Upload arm64 app artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: Needlbar-macos-arm64
           path: dist/Needlbar-macos-arm64.zip

@@ -65,19 +65,12 @@ pub enum QuotaErrorCode {
     NotInstalled,
     RequiresAuthentication,
     AuthenticationExpired,
+    PermissionDenied,
     RateLimited,
     NetworkUnavailable,
     ServiceUnavailable,
     ProviderUnavailable,
     SchemaChanged,
-}
-
-/// A provider-safe next step which remains structured for bridge collection.
-/// It deliberately carries no credential, account, path, or provider payload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum QuotaAction {
-    ConnectCursor,
 }
 
 /// A deliberately provider-safe error. It never stores a source error, URL,
@@ -90,8 +83,6 @@ pub struct QuotaError {
     pub message: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_after: Option<Duration>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub action: Option<QuotaAction>,
 }
 
 impl QuotaError {
@@ -105,7 +96,6 @@ impl QuotaError {
             code,
             message,
             retry_after: None,
-            action: None,
         }
     }
 
@@ -116,11 +106,6 @@ impl QuotaError {
 
     pub(crate) const fn for_provider(mut self, provider: ProviderId) -> Self {
         self.provider = Some(provider);
-        self
-    }
-
-    pub(crate) const fn with_action(mut self, action: QuotaAction) -> Self {
-        self.action = Some(action);
         self
     }
 }

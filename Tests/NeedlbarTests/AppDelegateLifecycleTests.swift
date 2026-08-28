@@ -3,19 +3,26 @@ import Testing
 @testable import NeedlbarApp
 
 @MainActor
-@Test func terminationWaitsForRefreshCleanupAndRepliesExactlyOnce() async {
-    let shutdown = TerminationShutdownGate()
+@Test func terminationWaitsForLoginAndRefreshCleanupAndRepliesExactlyOnce() async {
+    let loginShutdown = TerminationShutdownGate()
+    let refreshShutdown = TerminationShutdownGate()
     let termination = AccessoryTerminationController()
     var startupCancellationCount = 0
     var observationStopCount = 0
     var replyCount = 0
+    var loginAdmissionResumeCount = 0
 
     func requestTermination() -> NSApplication.TerminateReply {
         termination.requestTermination(
             cancelStartup: { startupCancellationCount += 1 },
             stopMenuBarObservation: { observationStopCount += 1 },
-            stopRefreshCoordinator: { await shutdown.waitForRelease() },
-            reply: { replyCount += 1 }
+            stopLoginCoordinator: {
+                await loginShutdown.waitForRelease()
+                return .complete
+            },
+            stopRefreshCoordinator: { await refreshShutdown.waitForRelease() },
+            reply: { _ in replyCount += 1 },
+            resumeLoginAdmission: { loginAdmissionResumeCount += 1 }
         )
     }
 
@@ -27,12 +34,79 @@ import Testing
     #expect(requestTermination() == .terminateLater)
     #expect(startupCancellationCount == 1)
     #expect(observationStopCount == 1)
-    #expect(await eventually { await shutdown.callCount() == 1 })
+    #expect(await eventually { await loginShutdown.callCount() == 1 })
+    #expect(await loginShutdown.callCount() == 1)
+    #expect(await refreshShutdown.callCount() == 0)
 
-    await shutdown.release()
+    await loginShutdown.release()
+    #expect(await eventually { await refreshShutdown.callCount() == 1 })
+    #expect(replyCount == 0)
+
+    await refreshShutdown.release()
 
     #expect(await eventually { replyCount == 1 })
     #expect(replyCount == 1)
+    #expect(loginAdmissionResumeCount == 0)
+}
+
+@MainActor
+@Test func terminationRejectsPendingReapWithoutStoppingRefreshAndAllowsALaterCompleteRetry() async {
+    let loginShutdown = LoginTerminationGate(results: [.pendingReap, .complete])
+    let refreshShutdown = TerminationShutdownGate()
+    let termination = AccessoryTerminationController()
+    var startupCancellationCount = 0
+    var observationStopCount = 0
+    var replies: [Bool] = []
+    var events: [String] = []
+
+    func requestTermination() -> NSApplication.TerminateReply {
+        termination.requestTermination(
+            cancelStartup: { startupCancellationCount += 1 },
+            stopMenuBarObservation: { observationStopCount += 1 },
+            stopLoginCoordinator: {
+                let result = await loginShutdown.waitForRelease()
+                events.append("loginStop")
+                return result
+            },
+            stopRefreshCoordinator: {
+                events.append("refreshStop")
+                await refreshShutdown.waitForRelease()
+            },
+            reply: {
+                replies.append($0)
+                events.append("reply:\($0)")
+            },
+            resumeLoginAdmission: { events.append("resumeLoginAdmission") }
+        )
+    }
+
+    #expect(requestTermination() == .terminateLater)
+    #expect(requestTermination() == .terminateLater)
+    #expect(await eventually { await loginShutdown.callCount() == 1 })
+    #expect(startupCancellationCount == 1)
+    #expect(observationStopCount == 1)
+
+    await loginShutdown.releaseNext()
+    #expect(await eventually { replies == [false] })
+    #expect(await refreshShutdown.callCount() == 0)
+    #expect(events == ["loginStop", "reply:false", "resumeLoginAdmission"])
+
+    #expect(requestTermination() == .terminateLater)
+    #expect(await eventually { await loginShutdown.callCount() == 2 })
+    await loginShutdown.releaseNext()
+    #expect(await eventually { await refreshShutdown.callCount() == 1 })
+    #expect(replies == [false])
+
+    await refreshShutdown.release()
+    #expect(await eventually { replies == [false, true] })
+    #expect(events == [
+        "loginStop", "reply:false", "resumeLoginAdmission",
+        "loginStop", "refreshStop", "reply:true",
+    ])
+    #expect(startupCancellationCount == 1)
+    #expect(observationStopCount == 1)
+    #expect(await loginShutdown.callCount() == 2)
+    #expect(await refreshShutdown.callCount() == 1)
 }
 
 @MainActor
@@ -63,5 +137,31 @@ private actor TerminationShutdownGate {
         let pending = continuations
         continuations.removeAll()
         pending.forEach { $0.resume() }
+    }
+}
+
+private actor LoginTerminationGate {
+    private var results: [ProviderLoginCleanupResult]
+    private var starts = 0
+    private var continuations: [CheckedContinuation<ProviderLoginCleanupResult, Never>] = []
+
+    init(results: [ProviderLoginCleanupResult]) {
+        self.results = results
+    }
+
+    func waitForRelease() async -> ProviderLoginCleanupResult {
+        starts += 1
+        return await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+        }
+    }
+
+    func callCount() -> Int {
+        starts
+    }
+
+    func releaseNext() {
+        guard !continuations.isEmpty, !results.isEmpty else { return }
+        continuations.removeFirst().resume(returning: results.removeFirst())
     }
 }

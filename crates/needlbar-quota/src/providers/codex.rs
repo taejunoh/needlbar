@@ -493,6 +493,7 @@ fn normalize_access_token(value: &str) -> Option<String> {
 fn codex_http_error(error: QuotaError) -> QuotaError {
     let message = match error.code {
         QuotaErrorCode::AuthenticationExpired => "Codex authentication has expired.",
+        QuotaErrorCode::PermissionDenied => "Codex credential access was denied.",
         QuotaErrorCode::RateLimited => "The quota service asked us to retry later.",
         QuotaErrorCode::ServiceUnavailable | QuotaErrorCode::ProviderUnavailable => {
             "The quota service is temporarily unavailable."

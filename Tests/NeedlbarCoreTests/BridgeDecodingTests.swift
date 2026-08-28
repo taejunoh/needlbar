@@ -59,6 +59,16 @@ import Testing
     #expect(envelope.data?.providers.first?.usage.last7DaysDaily == [])
 }
 
+@Test func bridgeErrorsTreatUnknownActionsAsUnknown() throws {
+    let payload = """
+    {"schemaVersion":"needlbar.v1","ok":false,"generatedAt":"2026-08-26T12:00:00Z","data":null,"errors":[{"provider":"cursor","code":"providerUnavailable","message":"Unavailable","action":"futureCursorAction"}]}
+    """
+
+    let envelope = try BridgeDecoder().decodeUsageEnvelope(Data(payload.utf8))
+
+    #expect(envelope.errors.first?.action == .unknown("futureCursorAction"))
+}
+
 @Test func quotaEnvelopeRejectsOutOfRangePercentages() throws {
     let payload = """
     {
@@ -109,18 +119,254 @@ import Testing
     #expect(recorder.count == 1)
 }
 
+@Test func rustUsageRepositoryUsesTheSingleUsageBridgeCall() throws {
+    let calls = CallRecorder()
+    let frees = FreeRecorder()
+    let returnedPointer = try CStringPointer(usageCString(provider: "claude"))
+    let bridge = RustBridge(
+        usageCall: { calls.record("usage"); return returnedPointer.pointer },
+        free: { frees.release($0) }
+    )
+
+    let result = try RustUsageRepository(bridge: bridge).refresh()
+
+    #expect(calls.values == ["usage"])
+    #expect(Set(result.snapshots.keys) == [.claude])
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
+@Test func backgroundQuotaRefreshUsesOnlyTheAggregateBridgeCall() throws {
+    let calls = CallRecorder()
+    let frees = FreeRecorder()
+    let returnedPointer = try CStringPointer(quotaCString(provider: "claude"))
+    let bridge = RustBridge(
+        quotaCall: { calls.record("background"); return returnedPointer.pointer },
+        claudeUserInitiatedQuotaCall: { calls.record("claude"); return quotaCString(provider: "claude") },
+        codexQuotaCall: { calls.record("codex"); return quotaCString(provider: "codex") },
+        free: { frees.release($0) }
+    )
+
+    _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .backgroundAll)
+
+    #expect(calls.values == ["background"])
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
+@Test func claudeUserInitiatedQuotaRefreshUsesOnlyClaudeBridgeCallAndFreesOnce() throws {
+    let calls = CallRecorder()
+    let frees = FreeRecorder()
+    let returnedPointer = try CStringPointer(quotaCString(provider: "claude"))
+    let bridge = RustBridge(
+        quotaCall: { calls.record("background"); return quotaCString(provider: "claude") },
+        claudeUserInitiatedQuotaCall: { calls.record("claude"); return returnedPointer.pointer },
+        codexQuotaCall: { calls.record("codex"); return quotaCString(provider: "codex") },
+        free: { frees.release($0) }
+    )
+
+    let result = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+
+    #expect(calls.values == ["claude"])
+    #expect(Set(result.snapshots.keys) == [.claude])
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
+@Test func codexUserInitiatedQuotaRefreshUsesOnlyCodexBridgeCallAndFreesOnce() throws {
+    let calls = CallRecorder()
+    let frees = FreeRecorder()
+    let returnedPointer = try CStringPointer(quotaCString(provider: "codex"))
+    let bridge = RustBridge(
+        quotaCall: { calls.record("background"); return quotaCString(provider: "claude") },
+        claudeUserInitiatedQuotaCall: { calls.record("claude"); return quotaCString(provider: "claude") },
+        codexQuotaCall: { calls.record("codex"); return returnedPointer.pointer },
+        free: { frees.release($0) }
+    )
+
+    let result = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .codex))
+
+    #expect(calls.values == ["codex"])
+    #expect(Set(result.snapshots.keys) == [.codex])
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
+@Test func cursorUserInitiatedQuotaRefreshReportsLocalOnlyUnavailabilityWithoutAnyBridgeCall() throws {
+    let calls = CallRecorder()
+    let bridge = RustBridge(
+        quotaCall: { calls.record("background"); return quotaCString(provider: "cursor") },
+        claudeUserInitiatedQuotaCall: { calls.record("claude"); return quotaCString(provider: "claude") },
+        codexQuotaCall: { calls.record("codex"); return quotaCString(provider: "codex") }
+    )
+
+    do {
+        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .cursor))
+        Issue.record("Cursor user-initiated quota refresh must fail closed.")
+    } catch let BridgeFailure.bridgeFailed(errors) {
+        #expect(errors == [
+            BridgeError(
+                provider: "cursor",
+                code: "unsupportedProvider",
+                message: "Cursor quota is unavailable in Needlbar. Use Cursor Spending for quota details.",
+                action: nil
+            )
+        ])
+    } catch {
+        Issue.record("Expected the Cursor local-only quota failure, got \(error).")
+    }
+    #expect(calls.values.isEmpty)
+}
+
+@Test func dedicatedQuotaRefreshRejectsAnUnexpectedProviderInsteadOfFilteringIt() throws {
+    let frees = FreeRecorder()
+    let bridge = RustBridge(
+        quotaCall: { quotaCString(provider: "claude") },
+        claudeUserInitiatedQuotaCall: { quotaCString(provider: "codex") },
+        codexQuotaCall: { quotaCString(provider: "claude") },
+        free: { frees.release($0) }
+    )
+
+    #expect(throws: BridgeFailure.self) {
+        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+    }
+    #expect(frees.count == 1)
+}
+
+@Test func dedicatedQuotaRefreshRejectsAnUnknownProviderErrorInsteadOfDroppingIt() throws {
+    let frees = FreeRecorder()
+    let payload = """
+    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-08-25T12:00:00Z","data":{"providers":[]},"errors":[{"provider":"other","code":"permissionDenied","message":"denied"}]}
+    """
+    let bridge = RustBridge(
+        claudeUserInitiatedQuotaCall: { makeCString(Array(payload.utf8).map(CChar.init) + [0]) },
+        free: { frees.release($0) }
+    )
+
+    #expect(throws: BridgeFailure.self) {
+        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+    }
+    #expect(frees.count == 1)
+}
+
+@Test func dedicatedQuotaRefreshRejectsAnEmptySuccessfulEnvelopeAndFreesThatExactPointer() throws {
+    let frees = FreeRecorder()
+    let payload = """
+    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-08-25T12:00:00Z","data":{"providers":[]},"errors":[]}
+    """
+    let returnedPointer = try CStringPointer(makeCString(Array(payload.utf8).map(CChar.init) + [0]))
+    let bridge = RustBridge(
+        claudeUserInitiatedQuotaCall: { returnedPointer.pointer },
+        free: { frees.release($0) }
+    )
+
+    #expect(throws: BridgeFailure.self) {
+        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+    }
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
+@Test func dedicatedQuotaRefreshNormalizesABridgeWideErrorToTheRequestedProvider() throws {
+    let frees = FreeRecorder()
+    let payload = """
+    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-08-25T12:00:00Z","data":{"providers":[]},"errors":[{"provider":null,"code":"permissionDenied","message":"denied"}]}
+    """
+    let returnedPointer = try CStringPointer(makeCString(Array(payload.utf8).map(CChar.init) + [0]))
+    let bridge = RustBridge(
+        claudeUserInitiatedQuotaCall: { returnedPointer.pointer },
+        free: { frees.release($0) }
+    )
+
+    let result = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+
+    #expect(result.snapshots.isEmpty)
+    #expect(result.errors[.claude]?.provider == ProviderID.claude.rawValue)
+    #expect(result.errors[.claude]?.code == "permissionDenied")
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
+@Test func dedicatedQuotaRefreshRejectsAnUnexpectedProviderEvenWhenTheEnvelopeFails() throws {
+    let frees = FreeRecorder()
+    let payload = """
+    {"schemaVersion":"needlbar.v1","ok":false,"generatedAt":"2026-08-25T12:00:00Z","data":{"providers":[{"provider":"claude","windows":[]}]},"errors":[{"provider":"codex","code":"permissionDenied","message":"denied"}]}
+    """
+    let returnedPointer = try CStringPointer(makeCString(Array(payload.utf8).map(CChar.init) + [0]))
+    let bridge = RustBridge(
+        claudeUserInitiatedQuotaCall: { returnedPointer.pointer },
+        free: { frees.release($0) }
+    )
+
+    #expect(throws: BridgeFailure.self) {
+        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+    }
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
+@Test func intentOnlyQuotaRepositoryReceivesUserIntentWithoutAnyLegacyAggregateMethod() throws {
+    let repository = IntentOnlyQuotaRepository()
+
+    _ = try repository.refresh()
+    _ = try repository.refresh(intent: .userInitiated(provider: .claude))
+
+    #expect(repository.intents == [.backgroundAll, .userInitiated(provider: .claude)])
+}
+
 private final class FreeRecorder: @unchecked Sendable {
     private let lock = NSLock()
-    private var releases = 0
+    private var released: [UInt] = []
 
     var count: Int {
-        lock.withLock { releases }
+        lock.withLock { released.count }
+    }
+
+    var pointerIdentities: [UInt] {
+        lock.withLock { released }
     }
 
     func release(_ pointer: UnsafePointer<CChar>?) {
-        lock.withLock { releases += 1 }
+        if let pointer {
+            lock.withLock { released.append(pointerIdentity(pointer)) }
+        }
         guard let pointer else { return }
         UnsafeMutablePointer(mutating: pointer).deallocate()
+    }
+}
+
+private final class CStringPointer: @unchecked Sendable {
+    let pointer: UnsafePointer<CChar>
+
+    init(_ pointer: UnsafePointer<CChar>?) throws {
+        self.pointer = try #require(pointer)
+    }
+}
+
+private final class CallRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [String] = []
+
+    var values: [String] {
+        lock.withLock { calls }
+    }
+
+    func record(_ call: String) {
+        lock.withLock { calls.append(call) }
+    }
+}
+
+private final class IntentOnlyQuotaRepository: QuotaRepository, @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [QuotaRefreshIntent] = []
+
+    var intents: [QuotaRefreshIntent] {
+        lock.withLock { calls }
+    }
+
+    func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
+        lock.withLock { calls.append(intent) }
+        return .init(snapshots: [:], errors: [:])
     }
 }
 
@@ -128,4 +374,22 @@ private func makeCString(_ bytes: [CChar]) -> UnsafePointer<CChar>? {
     let pointer = UnsafeMutablePointer<CChar>.allocate(capacity: bytes.count)
     pointer.initialize(from: bytes, count: bytes.count)
     return UnsafePointer(pointer)
+}
+
+private func pointerIdentity(_ pointer: UnsafePointer<CChar>) -> UInt {
+    UInt(bitPattern: pointer)
+}
+
+private func quotaCString(provider: String) -> UnsafePointer<CChar>? {
+    let json = """
+    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-08-25T12:00:00Z","data":{"providers":[{"provider":"\(provider)","windows":[]}]},"errors":[]}
+    """
+    return makeCString(Array(json.utf8).map(CChar.init) + [0])
+}
+
+private func usageCString(provider: String) -> UnsafePointer<CChar>? {
+    let json = """
+    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-08-26T12:00:00Z","data":{"providers":[{"provider":"\(provider)","inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0,"totalTokens":0,"estimatedCostUSD":0,"today":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0,"totalTokens":0,"estimatedCostUSD":0},"last7Days":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0,"totalTokens":0,"estimatedCostUSD":0},"last30Days":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0,"totalTokens":0,"estimatedCostUSD":0}}]},"errors":[]}
+    """
+    return makeCString(Array(json.utf8).map(CChar.init) + [0])
 }

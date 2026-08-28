@@ -2,9 +2,9 @@
 resolver = "2"
 members = [
   "crates/needlbar-bridge",
-  "crates/needlbar-source-sync",
   "crates/needlbar-quota",
 ]
+exclude = ["vendor/tokscale-core", ".worktrees"]
 
 [workspace.package]
 edition = "2021"
@@ -20,3 +20,8 @@ tempfile = "3"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "fs"] }
 tokscale-core = { path = "vendor/tokscale-core" }
+security-framework = "3.7.0"
+security-framework-sys = "2.17.0"
+core-foundation = "0.10"
+core-foundation-sys = "0.8.7"
+zeroize = "1.8"

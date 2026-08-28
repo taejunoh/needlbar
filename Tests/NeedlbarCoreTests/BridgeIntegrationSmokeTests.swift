@@ -6,9 +6,10 @@ import Testing
     let fixtureHome = try makeFixtureHome()
     defer { try? FileManager.default.removeItem(at: fixtureHome) }
 
-    let installed = fixtureHome.path.withCString { needlbar_test_install_fixture_runtime($0) }
-    #expect(installed)
-    defer { needlbar_test_clear_runtime() }
+    let fixtureSession = fixtureHome.path.withCString { needlbar_test_install_fixture_runtime($0) }
+    #expect(fixtureSession != 0)
+    guard fixtureSession != 0 else { return }
+    defer { #expect(needlbar_test_clear_fixture_runtime(fixtureSession)) }
 
     let bridge = RustBridge()
     let usage = try RustUsageRepository(bridge: bridge).refresh()
@@ -31,8 +32,8 @@ import Testing
     }
 
     let snapshots = await store.snapshots()
-    #expect(snapshots.allSatisfy { $0.usage != nil && $0.quota != nil })
-    #expect(HeadlineQuotaSelector.mostConstrained(snapshots)?.id == "cursor.plan")
+    #expect(snapshots.allSatisfy { $0.usage != nil })
+    #expect(HeadlineQuotaSelector.mostConstrained(snapshots)?.id == "codex.primary")
 
     let codex = try #require(snapshots.first(where: { $0.provider == .codex }))
     #expect(codex.usage?.totalTokens == 1_300)
@@ -43,14 +44,15 @@ import Testing
     let cursor = try #require(snapshots.first(where: { $0.provider == .cursor }))
     #expect(claude.usage?.totalTokens == 1_750)
     #expect(cursor.usage?.totalTokens ?? 0 > 0)
-    #expect(cursor.quotaStatus == .fresh)
+    #expect(cursor.quota == nil)
+    #expect(cursor.quotaStatus == .unavailable)
 }
 
 @_silgen_name("needlbar_test_install_fixture_runtime")
-private func needlbar_test_install_fixture_runtime(_ fixtureHome: UnsafePointer<CChar>) -> Bool
+private func needlbar_test_install_fixture_runtime(_ fixtureHome: UnsafePointer<CChar>) -> UInt64
 
-@_silgen_name("needlbar_test_clear_runtime")
-private func needlbar_test_clear_runtime()
+@_silgen_name("needlbar_test_clear_fixture_runtime")
+private func needlbar_test_clear_fixture_runtime(_ session: UInt64) -> Bool
 
 private func makeFixtureHome() throws -> URL {
     let home = FileManager.default.temporaryDirectory

@@ -26,6 +26,9 @@ public final class MenuBarController {
     private let statusItemFactory: any StatusItemFactory
     private let onModuleActivated: @MainActor (MenuModuleID) -> Void
     private let onRetryRequested: @MainActor () -> Void
+    private let onProviderLoginRequested: @MainActor (ProviderID) -> Void
+    private let onSettingsRequested: @MainActor () -> Void
+    private let openCursorSpending: @MainActor () -> Void
     private let settingsWindowController: SettingsWindowController
     private let popover = NSPopover()
     private var statusItems: [MenuModuleID: any StatusItemHandle] = [:]
@@ -37,16 +40,27 @@ public final class MenuBarController {
     public init(
         configuration: ModuleConfiguration,
         snapshotStore: ProviderSnapshotStore,
+        loginCoordinator: ProviderLoginCoordinator,
         statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
         onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
-        onRetryRequested: @escaping @MainActor () -> Void = {}
+        onRetryRequested: @escaping @MainActor () -> Void = {},
+        onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
+        onSettingsRequested: @escaping @MainActor () -> Void = {},
+        openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() }
     ) {
         self.configuration = configuration
         self.snapshotStore = snapshotStore
         self.statusItemFactory = statusItemFactory
         self.onModuleActivated = onModuleActivated
         self.onRetryRequested = onRetryRequested
-        self.settingsWindowController = SettingsWindowController(configuration: configuration)
+        self.onProviderLoginRequested = onProviderLoginRequested
+        self.onSettingsRequested = onSettingsRequested
+        self.openCursorSpending = openCursorSpending
+        self.settingsWindowController = SettingsWindowController(
+            configuration: configuration,
+            loginCoordinator: loginCoordinator,
+            openCursorSpending: openCursorSpending
+        )
     }
 
     public var activeModuleIDs: [MenuModuleID] {
@@ -150,18 +164,50 @@ public final class MenuBarController {
         case .overview:
             view = AnyView(OverviewPopoverView(snapshots: snapshots, configuration: configuration) { [weak self] in
                 self?.popover.performClose(nil)
-                self?.settingsWindowController.showSettings()
+                self?.showSettings()
             })
         case .claude, .codex, .cursor:
             guard let provider = module.provider,
                   let snapshot = snapshots.first(where: { $0.provider == provider }) else { return }
-            view = AnyView(ProviderPopoverView(snapshot: snapshot) { [weak self] in
-                self?.onRetryRequested()
-            })
+            view = AnyView(ProviderPopoverView(
+                snapshot: snapshot,
+                onRetry: { [weak self] in self?.onRetryRequested() },
+                onAuthenticationAction: { [weak self] action in
+                    self?.popover.performClose(nil)
+                    self?.performAuthenticationAction(action, for: provider)
+                }
+            ))
         }
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: view)
         statusItem.show(popover)
+    }
+
+    func performAuthenticationAction(for provider: ProviderID) {
+        let action: ProviderAuthenticationAction
+        switch provider {
+        case .claude:
+            action = .browserLogin(title: "Sign in with Claude")
+        case .codex:
+            action = .browserLogin(title: "Sign in with ChatGPT")
+        case .cursor:
+            action = .openCursorSpending(title: "Open Cursor Spending")
+        }
+        performAuthenticationAction(action, for: provider)
+    }
+
+    private func performAuthenticationAction(_ action: ProviderAuthenticationAction, for provider: ProviderID) {
+        switch action {
+        case .browserLogin:
+            onProviderLoginRequested(provider)
+        case .openCursorSpending:
+            _ = openCursorSpending()
+        }
+    }
+
+    private func showSettings() {
+        onSettingsRequested()
+        settingsWindowController.showSettings()
     }
 }
 

@@ -51,24 +51,23 @@ public enum DiagnosticsStatus: String, Decodable, Sendable, Equatable {
 
 public enum UsageDiagnosticsSource: String, Decodable, Sendable, Equatable {
     case local
-    case cursorExport
 }
 
 public enum QuotaDiagnosticsSource: String, Decodable, Sendable, Equatable {
     case oauth
-    case session
+    case unavailable
 }
 
 public enum DiagnosticsErrorCode: String, Decodable, Sendable, Equatable {
     case notInstalled
     case requiresAuthentication
     case authenticationExpired
+    case permissionDenied
     case rateLimited
     case networkUnavailable
     case providerUnavailable
     case schemaChanged
     case noUsageData
-    case cursorSyncFailed
     case usageRuntimeUnavailable
     case usageReportUnavailable
     case invalidUsageDate

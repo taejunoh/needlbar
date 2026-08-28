@@ -217,7 +217,7 @@ private final class QuotaRefreshSpy: QuotaRepository, @unchecked Sendable {
         self.result = result
     }
 
-    func refresh() throws -> QuotaRefreshResult {
+    func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
         lock.withLock { calls += 1 }
         return result
     }

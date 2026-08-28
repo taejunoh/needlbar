@@ -41,6 +41,34 @@ import Testing
     #expect(provider.quotaErrorCode == .requiresAuthentication)
 }
 
+@Test func diagnosticsDecoderAcceptsPermissionDeniedFromClaudeVerification() throws {
+    let payload = """
+    { "schemaVersion": "needlbar.v1", "ok": true, "generatedAt": "2026-08-25T12:00:00Z", "data": { "providers": [{ "provider": "claude", "usageStatus": "available", "quotaStatus": "error", "usageSource": "local", "quotaSource": "oauth", "lastUsageAt": null, "lastQuotaAt": null, "quotaErrorCode": "permissionDenied" }] }, "errors": [] }
+    """
+
+    let envelope = try BridgeDecoder().decodeDiagnosticsEnvelope(Data(payload.utf8))
+    let provider = try #require(envelope.data?.providers.first)
+    #expect(provider.quotaErrorCode == .permissionDenied)
+}
+
+@Test func diagnosticsDecoderPreservesLocalCursorUsageWhenQuotaIsUnavailable() throws {
+    let payload = """
+    { "schemaVersion": "needlbar.v1", "ok": true, "generatedAt": "2026-08-26T12:00:00Z", "data": { "providers": [{ "provider": "cursor", "usageStatus": "available", "quotaStatus": "unavailable", "usageSource": "local", "quotaSource": "unavailable", "lastUsageAt": null, "lastQuotaAt": null, "quotaErrorCode": "providerUnavailable" }] }, "errors": [] }
+    """
+
+    let envelope = try BridgeDecoder().decodeDiagnosticsEnvelope(Data(payload.utf8))
+    let provider = try #require(envelope.data?.providers.first)
+
+    #expect(provider.provider == .cursor)
+    #expect(provider.usageStatus == .available)
+    #expect(provider.quotaStatus == .unavailable)
+    #expect(provider.usageSource == .local)
+    #expect(provider.quotaSource == .unavailable)
+    #expect(provider.lastUsageAt == nil)
+    #expect(provider.lastQuotaAt == nil)
+    #expect(provider.quotaErrorCode == .providerUnavailable)
+}
+
 @Test func diagnosticsDecoderRejectsUnknownProviderEnumsAndMalformedTimestamps() {
     let invalidProvider = """
     { "schemaVersion": "needlbar.v1", "ok": true, "generatedAt": "2026-08-14T12:00:00Z", "data": { "providers": [{ "provider": "unknown", "usageStatus": "available", "quotaStatus": "available", "usageSource": "local", "quotaSource": "oauth", "lastUsageAt": null, "lastQuotaAt": null }] }, "errors": [] }

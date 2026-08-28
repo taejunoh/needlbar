@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, path::Path};
 
 use chrono::{Days, Local, NaiveDate};
-use needlbar_source_sync::sync_cursor_cache;
 use serde::Serialize;
 use tokscale_core::{DailyContribution, ReportOptions};
 
@@ -45,11 +44,6 @@ pub struct UsagePayload {
     pub providers: Vec<UsageProviderSnapshot>,
 }
 
-pub struct UsageCollection {
-    pub providers: Vec<UsageProviderSnapshot>,
-    pub warnings: Vec<BridgeError>,
-}
-
 #[derive(Default)]
 struct ProviderPeriods {
     seen: bool,
@@ -62,28 +56,6 @@ struct ProviderPeriods {
 
 pub fn collect_usage() -> Result<Vec<UsageProviderSnapshot>, BridgeError> {
     collect_usage_for_home(None, true)
-}
-
-pub fn collect_usage_with_cursor_sync() -> Result<UsageCollection, BridgeError> {
-    collect_usage_with_cursor_sync_force(false)
-}
-
-pub fn collect_usage_with_cursor_sync_force(force: bool) -> Result<UsageCollection, BridgeError> {
-    let warnings = (!cursor_sync_succeeds(force, |force| {
-        sync_cursor_cache(force).is_ok_and(|outcome| outcome.error.is_none())
-    }))
-    .then(cursor_sync_warning)
-    .into_iter()
-    .collect();
-    let providers = collect_usage()?;
-    Ok(UsageCollection {
-        providers,
-        warnings,
-    })
-}
-
-fn cursor_sync_succeeds(force: bool, sync: impl FnOnce(bool) -> bool) -> bool {
-    sync(force)
 }
 
 pub fn collect_usage_from_home(home: &Path) -> Result<Vec<UsageProviderSnapshot>, BridgeError> {
@@ -301,7 +273,6 @@ fn bridge_error(
         provider: provider.map(ToOwned::to_owned),
         message: safe_usage_message(&code).to_owned(),
         code,
-        action: None,
     }
 }
 
@@ -320,9 +291,6 @@ pub(crate) fn boundary_error(
 fn safe_usage_message(code: &str) -> &'static str {
     match code {
         "noUsageData" => "No local usage data is available.",
-        "cursorSyncFailed" => {
-            "Cursor usage synchronization failed; cached usage may still be available."
-        }
         "usageRuntimeUnavailable" => "Usage collection could not start.",
         "usageReportUnavailable" => "Usage data could not be collected.",
         "invalidUsageDate" | "invalidUsageData" => "Usage data could not be validated.",
@@ -352,29 +320,5 @@ mod daily_series_tests {
         let error = checked_add(u64::MAX, 1, "claude").unwrap_err();
 
         assert_eq!(error.code, "invalidUsageData");
-    }
-}
-
-fn cursor_sync_warning() -> BridgeError {
-    bridge_error(
-        Some("cursor"),
-        "cursorSyncFailed",
-        "Cursor usage synchronization failed; cached usage may still be available",
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::cursor_sync_succeeds;
-
-    #[test]
-    fn forced_cursor_sync_passes_true_to_the_source_sync_seam() {
-        let mut observed = None;
-        let succeeded = cursor_sync_succeeds(true, |force| {
-            observed = Some(force);
-            true
-        });
-        assert!(succeeded);
-        assert_eq!(observed, Some(true));
     }
 }

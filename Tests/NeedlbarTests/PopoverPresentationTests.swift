@@ -36,6 +36,54 @@ import Testing
     #expect(presentation.cacheWriteTokens == "0")
 }
 
+@Test func authenticationRequiredQuotaSelectsTheProviderOwnedAction() {
+    #expect(ProviderPopoverPresentation(snapshot: snapshot(
+        provider: .claude,
+        usage: nil,
+        quota: nil,
+        usageStatus: .unavailable,
+        quotaStatus: .requiresAuthentication
+    )).authenticationAction == .browserLogin(title: "Sign in with Claude"))
+
+    #expect(ProviderPopoverPresentation(snapshot: snapshot(
+        provider: .codex,
+        usage: nil,
+        quota: nil,
+        usageStatus: .unavailable,
+        quotaStatus: .requiresAuthentication
+    )).authenticationAction == .browserLogin(title: "Sign in with ChatGPT"))
+
+    #expect(ProviderPopoverPresentation(snapshot: snapshot(
+        provider: .cursor,
+        usage: usage(totalTokens: 900),
+        quota: nil,
+        usageStatus: .fresh,
+        quotaStatus: .unavailable
+    )).authenticationAction == .openCursorSpending(title: "Open Cursor Spending"))
+}
+
+@Test func nonAuthenticationQuotaStatesDoNotInventAuthenticationActions() {
+    let statuses: [DataStatus] = [
+        .fresh,
+        .stale(lastSuccessfulAt: .distantPast),
+        .unavailable,
+        .error(message: "rate limited", lastSuccessfulAt: nil),
+        .error(message: "network unavailable", lastSuccessfulAt: nil),
+        .error(message: "schema changed", lastSuccessfulAt: nil),
+    ]
+
+    for status in statuses {
+        let presentation = ProviderPopoverPresentation(snapshot: snapshot(
+            provider: .claude,
+            usage: nil,
+            quota: nil,
+            usageStatus: .unavailable,
+            quotaStatus: status
+        ))
+        #expect(presentation.authenticationAction == nil)
+    }
+}
+
 @Test func staleUsageKeepsTheLastKnownUsageWhileFreshQuotaRendersNormally() throws {
     let presentation = ProviderPopoverPresentation(snapshot: snapshot(
         provider: .cursor,
@@ -46,7 +94,7 @@ import Testing
     ))
 
     #expect(presentation.tokensToday == "900")
-    #expect(presentation.headlineQuotaRemaining == "26%")
+    #expect(presentation.headlineQuotaRemaining == nil)
     #expect(presentation.usageFreshness == .stale)
     #expect(presentation.quotaFreshness == .fresh)
 }
@@ -106,115 +154,6 @@ import Testing
     #expect(overview.headlineQuotaRemaining == "80%")
 }
 
-@MainActor
-@Test func cursorConnectClearsTransientInputBeforeTheOffMainImporterFinishes() async {
-    let importer = SuspendedCursorSessionImporter()
-    let controller = CursorSessionConnectionController(
-        importer: { token in await importer.importSession(token) },
-        clearer: { true }
-    )
-    var transientInput = "cursor-secret-test-token"
-    var completion: Bool?
-
-    controller.connect(
-        transientInput,
-        clearInput: { transientInput = "" },
-        completion: { completion = $0 }
-    )
-
-    #expect(transientInput.isEmpty)
-    #expect(await eventuallyOnMainActor { await importer.receivedToken() != nil })
-
-    var mainActorWasResponsive = false
-    Task { @MainActor in mainActorWasResponsive = true }
-    await Task.yield()
-    #expect(mainActorWasResponsive)
-    #expect(completion == nil)
-
-    await importer.complete(with: true)
-    #expect(await eventuallyOnMainActor { completion == true })
-}
-
-@MainActor
-@Test func cursorConnectionRejectsDisconnectWhileSlowConnectIsInFlight() async {
-    let importer = SuspendedCursorSessionImporter()
-    let clearer = SuspendedCursorSessionClearer()
-    let controller = CursorSessionConnectionController(
-        importer: { token in await importer.importSession(token) },
-        clearer: { await clearer.clearSession() }
-    )
-    var transientInput = "cursor-secret-A"
-    var status = "Idle"
-    var actionStates: [Bool] = []
-
-    let connectAccepted = controller.connect(
-        transientInput,
-        clearInput: { transientInput = "" },
-        operationStateChanged: { actionStates.append($0) },
-        completion: { connected in status = connected ? "Cursor connected." : "Cursor could not be connected." }
-    )
-    if connectAccepted { status = "Connecting Cursor…" }
-
-    #expect(connectAccepted)
-    #expect(transientInput.isEmpty)
-    #expect(await eventuallyOnMainActor { await importer.receivedToken() == "cursor-secret-A" })
-    #expect(controller.isOperationInFlight)
-    #expect(status == "Connecting Cursor…")
-
-    let disconnectAccepted = controller.disconnect(
-        operationStateChanged: { actionStates.append($0) },
-        completion: { disconnected in status = disconnected ? "Cursor disconnected." : "Cursor could not be disconnected." }
-    )
-    #expect(!disconnectAccepted)
-    #expect(await clearer.callCount() == 0)
-    #expect(status == "Connecting Cursor…")
-
-    await importer.complete(with: true)
-    #expect(await eventuallyOnMainActor { !controller.isOperationInFlight && status == "Cursor connected." })
-    #expect(actionStates == [true, false])
-}
-
-@MainActor
-@Test func cursorConnectionRejectsSecondSlowConnectWithoutRetainingItsToken() async {
-    let importer = SuspendedCursorSessionImporter()
-    let controller = CursorSessionConnectionController(
-        importer: { token in await importer.importSession(token) },
-        clearer: { true }
-    )
-    var firstInput = "cursor-secret-A"
-    var secondInput = "cursor-secret-B"
-    var status = "Idle"
-    var actionStates: [Bool] = []
-
-    let firstAccepted = controller.connect(
-        firstInput,
-        clearInput: { firstInput = "" },
-        operationStateChanged: { actionStates.append($0) },
-        completion: { connected in status = connected ? "Cursor connected." : "Cursor could not be connected." }
-    )
-    if firstAccepted { status = "Connecting Cursor…" }
-    #expect(await eventuallyOnMainActor { await importer.receivedToken() == "cursor-secret-A" })
-
-    let secondAccepted = controller.connect(
-        secondInput,
-        clearInput: { secondInput = "" },
-        operationStateChanged: { actionStates.append($0) },
-        completion: { connected in status = connected ? "Cursor connected." : "Cursor could not be connected." }
-    )
-
-    #expect(firstAccepted)
-    #expect(!secondAccepted)
-    #expect(firstInput.isEmpty)
-    #expect(secondInput.isEmpty)
-    #expect(await importer.receivedTokens() == ["cursor-secret-A"])
-    #expect(status == "Connecting Cursor…")
-    #expect(controller.isOperationInFlight)
-
-    await importer.complete(with: false)
-    #expect(await eventuallyOnMainActor { !controller.isOperationInFlight && status == "Cursor could not be connected." })
-    #expect(actionStates == [true, false])
-}
-
 private func snapshot(
     provider: ProviderID,
     usage: UsageSnapshot?,
@@ -258,61 +197,4 @@ private func quota(usedPercent: Double) -> QuotaSnapshot {
     QuotaSnapshot(windows: [
         try! QuotaWindow(id: "window", title: "Plan", usedPercent: usedPercent, resetsAt: nil),
     ])
-}
-
-@MainActor
-private func eventuallyOnMainActor(
-    _ condition: @escaping @MainActor () async -> Bool
-) async -> Bool {
-    for _ in 0..<100 {
-        if await condition() { return true }
-        await Task.yield()
-    }
-    return false
-}
-
-private actor SuspendedCursorSessionImporter {
-    private var tokens: [String] = []
-    private var continuation: CheckedContinuation<Bool, Never>?
-
-    func importSession(_ token: String) async -> Bool {
-        tokens.append(token)
-        return await withCheckedContinuation { continuation in
-            self.continuation = continuation
-        }
-    }
-
-    func receivedToken() -> String? {
-        tokens.first
-    }
-
-    func receivedTokens() -> [String] {
-        tokens
-    }
-
-    func complete(with result: Bool) {
-        continuation?.resume(returning: result)
-        continuation = nil
-    }
-}
-
-private actor SuspendedCursorSessionClearer {
-    private var calls = 0
-    private var continuation: CheckedContinuation<Bool, Never>?
-
-    func clearSession() async -> Bool {
-        calls += 1
-        return await withCheckedContinuation { continuation in
-            self.continuation = continuation
-        }
-    }
-
-    func callCount() -> Int {
-        calls
-    }
-
-    func complete(with result: Bool) {
-        continuation?.resume(returning: result)
-        continuation = nil
-    }
 }

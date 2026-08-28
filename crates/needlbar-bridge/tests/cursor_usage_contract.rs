@@ -21,3 +21,13 @@ fn pinned_core_discovers_cursor_usage_from_the_tokscale_cache_layout() {
     assert_eq!(cursor.provider, "cursor");
     assert!(cursor.all_time_split.total_tokens > 0);
 }
+
+#[test]
+fn absent_local_cursor_cache_does_not_invent_cursor_usage() {
+    let home = tempfile::tempdir().expect("temporary home");
+    let snapshots =
+        needlbar_bridge::usage::collect_usage_from_home(home.path()).expect("local report");
+    assert!(!snapshots
+        .iter()
+        .any(|snapshot| snapshot.provider == "cursor"));
+}
