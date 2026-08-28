@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
 **Updated:** 2026-08-27
-**Branch:** `codex/provider-browser-login`
-**Current phase:** The approved Cursor local-usage/dashboard amendment and Task 5 acceptance are complete; the branch remains unreleased and unmerged.
-**Next action:** Merge to `main`, complete authorized protected Environment setup outside chat, then run tagless manual validation. Do not request, record, or handle a Cursor credential; no tag or release action is authorized here.
+**Branch:** `main` (merge commit `0bda9e5`)
+**Current phase:** The approved implementation and uncredentialed release validation are green and merged to `main`; no public release has been created.
+**Next action:** An authorized maintainer must configure the protected release Environment with the six required secrets outside chat, then run the tagless `workflow_dispatch` validation. Do not request, record, or handle a Cursor credential; no tag or public release action is authorized here.
 
 ## Source of Truth
 
