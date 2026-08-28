@@ -3,7 +3,7 @@
 **Updated:** 2026-08-27
 **Branch:** `main` (merge commit `0bda9e5`)
 **Current phase:** The approved implementation and uncredentialed release validation are green and merged to `main`; no public release has been created.
-**Next action:** An authorized maintainer must configure the protected release Environment with the six required secrets outside chat, then run the tagless `workflow_dispatch` validation. Do not request, record, or handle a Cursor credential; no tag or public release action is authorized here.
+**Next action:** An authorized maintainer must configure the protected release Environment with the six required secrets outside chat, then run the tagless `workflow_dispatch` validation. Do not request, record, or handle a Cursor credential; no tag or release action is authorized here.
 
 ## Source of Truth
 
