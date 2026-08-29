@@ -13,6 +13,7 @@ public enum AtomicWriteResult: Sendable, Equatable {
 public enum SnapshotFileWriteError: Error, Sendable, Equatable {
     case invalidDestination
     case writeFailed
+    case cleanupPending
 }
 
 protocol SnapshotPOSIXOperations: Sendable {
@@ -61,12 +62,6 @@ public struct POSIXSnapshotFileWriter: SnapshotFileWriter {
 
         let parentDirectory = destination.deletingLastPathComponent()
         var temporaryPath: String?
-        var didCommit = false
-        defer {
-            if !didCommit, let temporaryPath {
-                try? operations.unlink(path: temporaryPath)
-            }
-        }
 
         do {
             let (path, descriptor) = try createTemporarySibling(for: destination)
@@ -90,8 +85,14 @@ public struct POSIXSnapshotFileWriter: SnapshotFileWriter {
                 throw error
             }
             try operations.rename(from: path, to: destination.path)
-            didCommit = true
         } catch {
+            if let temporaryPath {
+                do {
+                    try operations.unlink(path: temporaryPath)
+                } catch {
+                    throw SnapshotFileWriteError.cleanupPending
+                }
+            }
             throw SnapshotFileWriteError.writeFailed
         }
 

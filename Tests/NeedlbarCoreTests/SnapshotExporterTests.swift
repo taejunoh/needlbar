@@ -70,6 +70,26 @@ func invalidCaptureFailsBeforeWriting(_ capture: ExportCapture) {
     #expect(!json.contains("CLAUDE-CANARY-SECRET"))
 }
 
+@Test func requiresAuthenticationStatusUsesTheExactSafeSchemaForIndependentStreams() throws {
+    let bytes = try SnapshotExporter().encode(try captureWithRequiresAuthenticationStatuses())
+    let json = try #require(String(data: bytes, encoding: .utf8))
+    let document = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+    let providers = try #require(document["providers"] as? [[String: Any]])
+    let claude = try #require(providers.first { $0["provider"] as? String == "claude" })
+    let usage = try #require(claude["usage"] as? [String: Any])
+    let quota = try #require(claude["quota"] as? [String: Any])
+    let usageStatus = try #require(usage["status"] as? [String: Any])
+    let quotaStatus = try #require(quota["status"] as? [String: Any])
+
+    #expect(usageStatus["state"] as? String == "requiresAuthentication")
+    #expect(usageStatus["errorCode"] is NSNull)
+    #expect(usageStatus["lastSuccessfulAt"] as? String == "2026-08-29T10:00:00.000Z")
+    #expect(quotaStatus["state"] as? String == "requiresAuthentication")
+    #expect(quotaStatus["errorCode"] is NSNull)
+    #expect(quotaStatus["lastSuccessfulAt"] is NSNull)
+    #expect(!json.contains("provider response body /Users/example/private"))
+}
+
 private let completeHandWrittenV1GoldenJSONWithFinalNewline = """
 {"exportedAt":"2026-08-29T12:34:56.000Z","providers":[{"provider":"claude","quota":{"data":{"windows":[{"id":"claude.session","resetsAt":"2026-08-29T14:00:00.000Z","usedPercent":42.5}]},"status":{"errorCode":null,"lastSuccessfulAt":"2026-08-29T11:00:00.000Z","state":"fresh"}},"updatedAt":"2026-08-29T11:00:00.000Z","usage":{"data":{"allTime":{"cacheReadTokens":"3","cacheWriteTokens":"4","estimatedCostUSD":"12.34","inputTokens":"10","outputTokens":"20","totalTokens":"37"},"last30Days":{"cacheReadTokens":"0","cacheWriteTokens":"0","estimatedCostUSD":"0","inputTokens":"1","outputTokens":"2","totalTokens":"3"},"last7Days":{"cacheReadTokens":"1","cacheWriteTokens":"0","estimatedCostUSD":"1.2","inputTokens":"3","outputTokens":"4","totalTokens":"8"},"last7DaysDaily":[{"date":"2026-08-28","totalTokens":"0"},{"date":"2026-08-29","totalTokens":"8"}],"today":{"cacheReadTokens":"0","cacheWriteTokens":"1","estimatedCostUSD":"0.01","inputTokens":"2","outputTokens":"3","totalTokens":"6"}},"status":{"errorCode":null,"lastSuccessfulAt":"2026-08-29T10:00:00.000Z","state":"fresh"}}},{"provider":"codex","quota":{"data":{"windows":[{"id":"codex.primary","resetsAt":null,"usedPercent":25}]},"status":{"errorCode":"refreshFailed","lastSuccessfulAt":"2026-08-29T09:00:00.000Z","state":"error"}},"updatedAt":"2026-08-29T10:00:00.000Z","usage":{"data":{"allTime":{"cacheReadTokens":"0","cacheWriteTokens":"0","estimatedCostUSD":"0","inputTokens":"5","outputTokens":"6","totalTokens":"11"},"last30Days":{"cacheReadTokens":"0","cacheWriteTokens":"0","estimatedCostUSD":"0","inputTokens":"1","outputTokens":"2","totalTokens":"3"},"last7Days":{"cacheReadTokens":"0","cacheWriteTokens":"0","estimatedCostUSD":"0","inputTokens":"2","outputTokens":"3","totalTokens":"5"},"last7DaysDaily":[],"today":{"cacheReadTokens":"0","cacheWriteTokens":"0","estimatedCostUSD":"0","inputTokens":"1","outputTokens":"1","totalTokens":"2"}},"status":{"errorCode":null,"lastSuccessfulAt":"2026-08-29T10:00:00.000Z","state":"stale"}}},{"provider":"cursor","quota":{"data":null,"status":{"errorCode":null,"lastSuccessfulAt":null,"state":"unavailable"}},"updatedAt":null,"usage":{"data":null,"status":{"errorCode":null,"lastSuccessfulAt":null,"state":"unavailable"}}}],"schemaVersion":1}
 
@@ -129,6 +149,26 @@ private func validExportCaptureWithPrivacyCanaries() throws -> ExportCapture {
                 updatedAt: nil
             )
         ]
+    )
+}
+
+private func captureWithRequiresAuthenticationStatuses() throws -> ExportCapture {
+    let valid = try validExportCaptureWithPrivacyCanaries()
+    let claude = valid.providers[0]
+    let requiresAuthentication = ProviderExportState(
+        provider: claude.provider,
+        usage: claude.usage,
+        quota: claude.quota,
+        usageStatus: .requiresAuthentication,
+        quotaStatus: .requiresAuthentication,
+        usageLastSuccessfulAt: claude.usageLastSuccessfulAt,
+        quotaLastSuccessfulAt: nil,
+        everUpdated: claude.everUpdated,
+        updatedAt: claude.updatedAt
+    )
+    return ExportCapture(
+        exportedAt: valid.exportedAt,
+        providers: [requiresAuthentication, valid.providers[1], valid.providers[2]]
     )
 }
 

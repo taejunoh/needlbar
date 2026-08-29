@@ -126,18 +126,26 @@ private func everyPreRenameFailurePreservesTheDestinationAndCleansOnlyItsTempora
     #expect(operations.directDestinationWrites.isEmpty)
 }
 
-@Test func cleanupFailureRecordsOnlyTheExactTemporaryPathAndPreservesDestination() throws {
-    let operations = RecordingPOSIXOperations(failing: .syncTemporaryFile, cleanupFails: true)
-    let writer = POSIXSnapshotFileWriter(operations: operations, uuid: { fixedUUID })
+@Test func cleanupFailureIsSanitizedAndLeavesOnlyTheExactTemporarySiblingPending() throws {
     let destination = URL(fileURLWithPath: "/private/export/snapshot.json")
+    let existingDestination = Data("old".utf8)
+    let operations = RecordingPOSIXOperations(
+        failing: .syncTemporaryFile,
+        cleanupFails: true,
+        initialFiles: [destination.path: existingDestination]
+    )
+    let writer = POSIXSnapshotFileWriter(operations: operations, uuid: { fixedUUID })
     let temporaryPath = temporaryPath(for: destination, uuid: fixedUUID)
 
-    #expect(throws: SnapshotFileWriteError.self) {
+    #expect(throws: SnapshotFileWriteError.cleanupPending) {
         _ = try writer.writeAtomically(Data("new".utf8), to: destination)
     }
     #expect(operations.unlinkedPaths == [temporaryPath])
+    #expect(operations.remainingPaths == [destination.path, temporaryPath].sorted())
+    #expect(operations.contents(at: destination.path) == existingDestination)
     #expect(operations.renames.isEmpty)
     #expect(operations.directDestinationWrites.isEmpty)
+    #expect(operations.crossDirectoryRenames.isEmpty)
 }
 
 @Test(arguments: [
@@ -278,6 +286,8 @@ final class RecordingPOSIXOperations: SnapshotPOSIXOperations, @unchecked Sendab
     private let cleanupFails: Bool
     private var collisionConsumed = false
     private var writeCounts: [Int]
+    private var files: [String: Data]
+    private var temporaryPathForOpenDescriptor: String?
     private(set) var events: [Event] = []
     private(set) var exclusiveCreatePaths: [String] = []
     struct Rename: Equatable {
@@ -289,12 +299,21 @@ final class RecordingPOSIXOperations: SnapshotPOSIXOperations, @unchecked Sendab
     private(set) var unlinkedPaths: [String] = []
     private(set) var directDestinationWrites: [Int32] = []
     private(set) var crossDirectoryRenames: [Rename] = []
+    var remainingPaths: [String] { files.keys.sorted() }
 
-    init(failing: Failure? = nil, cleanupFails: Bool = false, writeCounts: [Int] = []) {
+    init(
+        failing: Failure? = nil,
+        cleanupFails: Bool = false,
+        writeCounts: [Int] = [],
+        initialFiles: [String: Data] = [:]
+    ) {
         self.failing = failing
         self.cleanupFails = cleanupFails
         self.writeCounts = writeCounts
+        files = initialFiles
     }
+
+    func contents(at path: String) -> Data? { files[path] }
 
     func openExclusive(path: String, mode: Int32) throws -> Int32 {
         events.append(.openExclusive(path, mode))
@@ -303,6 +322,8 @@ final class RecordingPOSIXOperations: SnapshotPOSIXOperations, @unchecked Sendab
             collisionConsumed = true
             throw SnapshotPOSIXOperationError.alreadyExists
         }
+        files[path] = Data()
+        temporaryPathForOpenDescriptor = path
         return Self.temporaryFD
     }
 
@@ -315,8 +336,11 @@ final class RecordingPOSIXOperations: SnapshotPOSIXOperations, @unchecked Sendab
         events.append(.write(descriptor))
         if descriptor != Self.temporaryFD { directDestinationWrites.append(descriptor) }
         if failing == .writeTemporary { throw SnapshotPOSIXOperationError.failed }
-        if writeCounts.isEmpty { return bytes.count - offset }
-        return writeCounts.removeFirst()
+        let count = writeCounts.isEmpty ? bytes.count - offset : writeCounts.removeFirst()
+        if let temporaryPathForOpenDescriptor {
+            files[temporaryPathForOpenDescriptor, default: Data()].append(bytes[offset ..< offset + count])
+        }
+        return count
     }
 
     func sync(descriptor: Int32) throws {
@@ -336,6 +360,7 @@ final class RecordingPOSIXOperations: SnapshotPOSIXOperations, @unchecked Sendab
         if failing == .rename { throw SnapshotPOSIXOperationError.failed }
         let rename = Rename(source: source, destination: destination)
         renames.append(rename)
+        files[destination] = files.removeValue(forKey: source)
         if URL(fileURLWithPath: source).deletingLastPathComponent() != URL(fileURLWithPath: destination).deletingLastPathComponent() {
             crossDirectoryRenames.append(rename)
         }
@@ -351,5 +376,6 @@ final class RecordingPOSIXOperations: SnapshotPOSIXOperations, @unchecked Sendab
         events.append(.unlink(path))
         unlinkedPaths.append(path)
         if cleanupFails { throw SnapshotPOSIXOperationError.failed }
+        files.removeValue(forKey: path)
     }
 }
