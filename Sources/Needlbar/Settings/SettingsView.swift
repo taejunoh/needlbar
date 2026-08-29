@@ -5,15 +5,18 @@ public struct SettingsView: View {
     private let configuration: ModuleConfiguration
     private let openCursorSpending: () -> Void
     @ObservedObject private var loginCoordinator: ProviderLoginCoordinator
+    @ObservedObject private var snapshotExportController: SnapshotExportController
 
     public init(
         configuration: ModuleConfiguration,
         loginCoordinator: ProviderLoginCoordinator,
+        snapshotExportController: SnapshotExportController,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() }
     ) {
         self.configuration = configuration
         self.openCursorSpending = openCursorSpending
         _loginCoordinator = ObservedObject(wrappedValue: loginCoordinator)
+        _snapshotExportController = ObservedObject(wrappedValue: snapshotExportController)
     }
 
     public var body: some View {
@@ -48,10 +51,29 @@ public struct SettingsView: View {
                     Button("Open Cursor Spending", action: openCursorSpending)
                 }
             }
+
+            Section("Data Export") {
+                Button("Export snapshot…", action: exportSnapshot)
+                    .disabled(isExportButtonDisabled)
+                if snapshotExportController.state == .exported {
+                    Text("Exported")
+                }
+                if snapshotExportController.state == .failed {
+                    Text("Could not export snapshot.")
+                }
+            }
         }
         .formStyle(.grouped)
         .padding()
         .frame(width: 420)
+    }
+
+    func exportSnapshot() {
+        snapshotExportController.exportSnapshot()
+    }
+
+    var isExportButtonDisabled: Bool {
+        snapshotExportController.isExporting
     }
 
     @ViewBuilder

@@ -7,6 +7,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let refreshCoordinator: RefreshCoordinator
     private let loginCoordinator: ProviderLoginCoordinator
     private let moduleConfiguration: ModuleConfiguration
+    private let snapshotExportController: SnapshotExportController
     private let menuBarController: MenuBarController
     private let terminationController = AccessoryTerminationController()
     private var lifecycleTask: Task<Void, Never>?
@@ -31,6 +32,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
         self.loginCoordinator = loginCoordinator
+        let snapshotExportController = SnapshotExportController(
+            captureSource: snapshotStore,
+            savePanelPresenter: NSSavePanelPresenter(),
+            coreExportAction: DefaultCoreExportAction(),
+            captureClock: Date.init
+        )
+        self.snapshotExportController = snapshotExportController
         let openCursorSpending: @MainActor () -> Void = {
             _ = CursorSpendingAction.open()
         }
@@ -38,6 +46,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             configuration: moduleConfiguration,
             snapshotStore: snapshotStore,
             loginCoordinator: loginCoordinator,
+            snapshotExportController: snapshotExportController,
             onModuleActivated: { _ in
                 Task {
                     await refreshCoordinator.popoverOpened()

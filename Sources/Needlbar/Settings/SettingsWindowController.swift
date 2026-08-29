@@ -7,6 +7,7 @@ public final class SettingsWindowController: NSWindowController {
     public init(
         configuration: ModuleConfiguration,
         loginCoordinator: ProviderLoginCoordinator,
+        snapshotExportController: SnapshotExportController,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() }
     ) {
         let window = NSWindow(
@@ -19,6 +20,7 @@ public final class SettingsWindowController: NSWindowController {
         window.contentView = NSHostingView(rootView: SettingsView(
             configuration: configuration,
             loginCoordinator: loginCoordinator,
+            snapshotExportController: snapshotExportController,
             openCursorSpending: openCursorSpending
         ))
         window.isReleasedWhenClosed = false
