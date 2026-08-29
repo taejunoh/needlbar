@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
-**Updated:** 2026-08-27
-**Branch:** `main` (merge commit `0bda9e5`)
-**Current phase:** The approved implementation and uncredentialed release validation are green and merged to `main`; no public release has been created.
-**Next action:** An authorized maintainer must configure the protected release Environment with the six required secrets outside chat, then run the tagless `workflow_dispatch` validation. Do not request, record, or handle a Cursor credential; no tag or release action is authorized here.
+**Updated:** 2026-08-29
+**Branch:** `main` (merge commit `eec51a5`, head `eec51a57f9acd23ab238f1d02d546e2e6d568966`, PR #2)
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists.
+**Next action:** Await explicit user authorization for any version tag/public GitHub Release; until then do not create/push a tag or publish a release. No implementation work remains in the approved v0.1 plan.
 
 ## Source of Truth
 
@@ -780,6 +780,39 @@ The next gate is merge to `main`, authorized protected Environment setup outside
 tagless manual validation. No tag or release action is authorized here. The older credentialed
 release and Cursor-session records above remain historical; the active Cursor contract is
 local-cache-only and never requests or records a Cursor session token.
+
+## Credentialed Tagless Release Validation — 2026-08-29
+
+This section supersedes the preceding continuation point while preserving it as historical
+record. Credentialed tagless release validation is complete against remote `main` head
+`eec51a57f9acd23ab238f1d02d546e2e6d568966` (merge commit `eec51a5`, PR #2).
+
+- GitHub Actions Release run [33272883313](https://github.com/taejunoh/needlbar/actions/runs/33272883313)
+  was dispatched with `workflow_dispatch` on `main`; it completed successfully, created at
+  `2026-08-29T20:12:49Z`, and updated at `2026-08-29T20:24:01Z`.
+- The `validate` job succeeded through Swift 6 toolchain selection, complete project
+  verification, arm64 packaging, packaged-app smoke, Developer ID signing, Apple
+  notarization, stapling, validation/Gatekeeper checks, and artifact upload. The `publish`
+  job was skipped as required for tagless dispatch.
+- Artifact `Needlbar-macos-arm64-notarized` exists at 5,180,723 bytes, is not expired, and
+  expires `2026-11-27T20:12:50Z`. API verification after the run reported zero GitHub
+  releases and zero tags.
+- Protected GitHub Environment `release` was configured with the six required secret names
+  (`DEVELOPER_ID_APPLICATION`, `DEVELOPER_ID_APPLICATION_CERTIFICATE`,
+  `DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID`, and
+  `APPLE_APP_SPECIFIC_PASSWORD`), without recording values. Required reviewer is `taejunoh`;
+  `prevent_self_review` is false, admin bypass is disabled, and deployment policies are
+  `main` and `v*`.
+- The temporary exported local P12 was deleted after secret setup; the macOS Keychain source
+  certificate was retained. No password, certificate bytes, Apple ID, or secret value is
+  recorded. No Cursor credential was requested, inspected, or recorded.
+- Before this documentation edit, the isolated-worktree baseline
+  `source /Users/taejunoh/.cargo/env && cargo build && make test` exited 0: Needlbar Rust
+  suites passed, pinned `tokscale-core` reported 1372 passed/0 failed/1 ignored, Swift
+  reported 129 passed, and the package relink regression and notarize shell contracts passed.
+
+No tag or public GitHub Release was created. Await explicit user authorization for any
+version tag/public GitHub Release; until then do not create/push a tag or publish a release.
 
 ## v0.1 Constraints to Preserve
 
