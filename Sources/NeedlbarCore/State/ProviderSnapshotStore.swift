@@ -10,6 +10,7 @@ public actor ProviderSnapshotStore {
     private struct State: Sendable {
         var usage = StreamState<UsageSnapshot>()
         var quota = StreamState<QuotaSnapshot>()
+        var everUpdated = false
         var updatedAt: Date
     }
 
@@ -27,6 +28,7 @@ public actor ProviderSnapshotStore {
         state.usage.value = usage
         state.usage.lastSuccessfulAt = timestamp
         state.usage.latestFailure = nil
+        state.everUpdated = true
         state.updatedAt = timestamp
         states[provider] = state
         publishUpdates()
@@ -38,6 +40,7 @@ public actor ProviderSnapshotStore {
         state.quota.value = quota
         state.quota.lastSuccessfulAt = timestamp
         state.quota.latestFailure = nil
+        state.everUpdated = true
         state.updatedAt = timestamp
         states[provider] = state
         publishUpdates()
@@ -47,6 +50,7 @@ public actor ProviderSnapshotStore {
         let timestamp = date ?? now()
         var state = state(for: provider, timestamp: timestamp)
         state.usage.latestFailure = normalizedFailure(status, lastSuccessfulAt: state.usage.lastSuccessfulAt)
+        state.everUpdated = true
         state.updatedAt = timestamp
         states[provider] = state
         publishUpdates()
@@ -56,6 +60,7 @@ public actor ProviderSnapshotStore {
         let timestamp = date ?? now()
         var state = state(for: provider, timestamp: timestamp)
         state.quota.latestFailure = normalizedFailure(status, lastSuccessfulAt: state.quota.lastSuccessfulAt)
+        state.everUpdated = true
         state.updatedAt = timestamp
         states[provider] = state
         publishUpdates()
@@ -75,6 +80,26 @@ public actor ProviderSnapshotStore {
 
     public func snapshots() -> [ProviderSnapshot] {
         ProviderID.allCases.map { snapshot(for: $0) }
+    }
+
+    public func captureForExport(exportedAt: Date) -> ExportCapture {
+        ExportCapture(
+            exportedAt: exportedAt,
+            providers: ProviderID.allCases.map { provider in
+                let state = states[provider] ?? State(updatedAt: exportedAt)
+                return ProviderExportState(
+                    provider: provider,
+                    usage: state.usage.value,
+                    quota: state.quota.value,
+                    usageStatus: status(for: state.usage),
+                    quotaStatus: status(for: state.quota),
+                    usageLastSuccessfulAt: state.usage.lastSuccessfulAt,
+                    quotaLastSuccessfulAt: state.quota.lastSuccessfulAt,
+                    everUpdated: state.everUpdated,
+                    updatedAt: state.everUpdated ? state.updatedAt : nil
+                )
+            }
+        )
     }
 
     public func updates() -> AsyncStream<[ProviderSnapshot]> {
@@ -149,3 +174,5 @@ public actor ProviderSnapshotStore {
         }
     }
 }
+
+extension ProviderSnapshotStore: ExportCaptureProviding {}
