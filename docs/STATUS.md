@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-29
 **Branch:** `main` (merge commit `eec51a5`, head `eec51a57f9acd23ab238f1d02d546e2e6d568966`, PR #2)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists.
-**Next action:** Await explicit user authorization for any version tag/public GitHub Release; until then do not create/push a tag or publish a release. Until that authorization is given, no tag or release action is authorized. No implementation work remains in the approved v0.1 plan.
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. The user-approved v0.2.0 local JSON export design is written; implementation has not started.
+**Next action:** User review of `docs/superpowers/specs/2026-08-29-needlbar-v0.2.0-local-json-export-design.md`. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -13,6 +13,7 @@ The v0.1 work is governed by:
 - `docs/superpowers/plans/2026-08-13-needlbar-v0.1.md` — ordered implementation plan.
 - `docs/superpowers/specs/2026-08-25-provider-managed-browser-login-design.md` — approved authentication UX amendment.
 - `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md` — ordered follow-up implementation plan.
+- `docs/superpowers/specs/2026-08-29-needlbar-v0.2.0-local-json-export-design.md` — approved v0.2.0 local JSON export contract; implementation has not started.
 - `AGENTS.md` — continuation rules for Codex/agentic workers.
 
 ## What Is Already Implemented
