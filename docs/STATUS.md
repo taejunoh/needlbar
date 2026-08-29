@@ -794,9 +794,9 @@ record. Credentialed tagless release validation is complete against remote `main
   verification, arm64 packaging, packaged-app smoke, Developer ID signing, Apple
   notarization, stapling, validation/Gatekeeper checks, and artifact upload. The `publish`
   job was skipped as required for tagless dispatch.
-- Artifact `Needlbar-macos-arm64-notarized` exists at 5,180,723 bytes, is not expired, and
-  expires `2026-11-27T20:12:50Z`. API verification after the run reported zero GitHub
-  releases and zero tags.
+- At post-run API verification, artifact `Needlbar-macos-arm64-notarized` was present at
+  5,180,723 bytes, was not expired, and was set to expire `2026-11-27T20:12:50Z`. API
+  verification after the run reported zero GitHub releases and zero tags.
 - Protected GitHub Environment `release` was configured with the six required secret names
   (`DEVELOPER_ID_APPLICATION`, `DEVELOPER_ID_APPLICATION_CERTIFICATE`,
   `DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID`, and
