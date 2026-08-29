@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
 **Updated:** 2026-08-29
-**Branch:** `main` (merge commit `eec51a5`, head `eec51a57f9acd23ab238f1d02d546e2e6d568966`, PR #2)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. The approved v0.2.0 local JSON export design and implementation plan are written; implementation has not started.
-**Next action:** Implement Task 1, `Capture One Export Snapshot Inside ProviderSnapshotStore`, from `docs/superpowers/plans/2026-08-29-needlbar-v0.2.0-local-json-export.md`. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Branch:** `codex/v02-local-json-export-design` (v0.2.0 implementation head `718748e`)
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. The v0.2.0 local JSON export plan is implemented through Task 5 documentation, automated acceptance, and bounded live UI acceptance at implementation head `718748e`.
+**Next action:** Perform final review and handoff for the v0.2.0 local JSON export documentation and acceptance record; no implementation work remains in this plan. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -13,8 +13,8 @@ The active Needlbar work is governed by:
 - `docs/superpowers/plans/2026-08-13-needlbar-v0.1.md` — ordered implementation plan.
 - `docs/superpowers/specs/2026-08-25-provider-managed-browser-login-design.md` — approved authentication UX amendment.
 - `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md` — ordered follow-up implementation plan.
-- `docs/superpowers/specs/2026-08-29-needlbar-v0.2.0-local-json-export-design.md` — approved v0.2.0 local JSON export contract; implementation has not started.
-- `docs/superpowers/plans/2026-08-29-needlbar-v0.2.0-local-json-export.md` — approved v0.2.0 local JSON export implementation plan; implementation starts with Task 1.
+- `docs/superpowers/specs/2026-08-29-needlbar-v0.2.0-local-json-export-design.md` — approved v0.2.0 local JSON export contract; implementation and acceptance are recorded below.
+- `docs/superpowers/plans/2026-08-29-needlbar-v0.2.0-local-json-export.md` — approved v0.2.0 local JSON export implementation plan; all tasks are implemented and documented below.
 - `AGENTS.md` — continuation rules for Codex/agentic workers.
 
 ## What Is Already Implemented
@@ -84,6 +84,22 @@ Task 1 is verified green.
 - CI retains `runs-on: macos-14` and deliberately selects `/Applications/Xcode_16.2.app` before running tests.
 - `Package.swift` remains on Swift tools version 6.0 with a macOS 14 deployment target.
 - No approved-baseline deviation was made.
+
+## v0.2.0 Local JSON Export — Task 5 Acceptance
+
+The v0.2.0 implementation plan was completed only after the acceptance evidence for each numbered task was recorded. The final verified implementation head is `718748e` (`feat: export snapshots from Settings`); Task 5 adds the public documentation and acceptance record without changing implementation code. The v0.1 release authorization gate remains separate and unchanged.
+
+Automated acceptance on this head passed:
+
+- `source /Users/taejunoh/.cargo/env && make test` — exit 0; the Rust workspace, pinned `tokscale-core` suite, Swift tests, package relink regression, and notarization shell contracts passed.
+- `swift build -c release` — exit 0.
+- `make package` — exit 0; the local arm64/macOS 14 bundle was produced.
+- `make smoke` — exit 0; bundle metadata, signature, executable identity, launch, and bounded cleanup passed.
+- `git diff --check` — exit 0.
+
+Bounded live UI acceptance completed through the accessibility fallback: the exact packaged app from this worktree was running, Settings opened from its status-item popover, and the Data Export button opened the production save panel. The panel default was `Needlbar-Snapshot-20260829T233601572Z`; selecting the harmless LFG destination produced `/Users/taejunoh/Developer/LFG/Needlbar-Snapshot-20260829T233601572Z.json` (with the OS-appended `.json` extension). `stat` reported mode `600` and size `3055`; `file` reported JSON data; the final byte was `0a`. Parsed data reported `schemaVersion: 1`, provider order `claude,codex,cursor`, `cursor.quota.data == null`, and an empty forbidden-key intersection for `title`, `message`, `path`, `accountId`, `prompt`, `response`, `sourceCode`, `cookie`, and `credential`. Object keys followed the `SnapshotExporter`/`JSONEncoder` sorted-key contract; exact full golden behavior remains covered by automation. No Foundation `JSONSerialization` re-encode byte-equality claim is made because its numeric-key ordering differs for `last7Days` and `last30Days`. A second export click opened the panel again; Cancel returned to Settings and the only matching file remained the first saved file, proving cancellation created nothing. No credentials, account identifiers, prompts, responses, cookies, or source content were inspected.
+
+No Rust/C/provider/auth/network changes, extra export entry points, raw error/title fields, tag, or release action were introduced. No tag or public GitHub Release was created; until explicit authorization is given, no tag or release action is authorized.
 
 ## Task 2 Verification
 
