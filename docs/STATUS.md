@@ -3,7 +3,7 @@
 **Updated:** 2026-08-29
 **Branch:** `main` (merge commit `eec51a5`, head `eec51a57f9acd23ab238f1d02d546e2e6d568966`, PR #2)
 **Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists.
-**Next action:** Await explicit user authorization for any version tag/public GitHub Release; until then do not create/push a tag or publish a release. No implementation work remains in the approved v0.1 plan.
+**Next action:** Await explicit user authorization for any version tag/public GitHub Release; until then do not create/push a tag or publish a release. Until that authorization is given, no tag or release action is authorized. No implementation work remains in the approved v0.1 plan.
 
 ## Source of Truth
 
