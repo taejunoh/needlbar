@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
 **Updated:** 2026-08-29
-**Branch:** `codex/v02-local-json-export-design` (v0.2.0 implementation head `718748e`)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. The v0.2.0 local JSON export plan is implemented through Task 5 documentation, automated acceptance, and bounded live UI acceptance at implementation head `718748e`.
-**Next action:** Perform final review and handoff for the v0.2.0 local JSON export documentation and acceptance record; no implementation work remains in this plan. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Branch:** `codex/v02-local-json-export-design` (v0.2.0 final verified implementation head `2eafbdb`)
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete at final verified implementation head `2eafbdb` (`fix: expose pending snapshot cleanup safely`), including the sanitized `cleanupPending` and `requiresAuthentication` regression fixes. Final whole-branch review and scoped fix re-review are clean (`Ready to merge: Yes`).
+**Next action:** Integrate this branch to `main`, then push and verify CI; those actions have not occurred here. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -85,21 +85,29 @@ Task 1 is verified green.
 - `Package.swift` remains on Swift tools version 6.0 with a macOS 14 deployment target.
 - No approved-baseline deviation was made.
 
-## v0.2.0 Local JSON Export — Task 5 Acceptance
+## v0.2.0 Local JSON Export — Task 5 Acceptance and Completion
 
-The v0.2.0 implementation plan was completed only after the acceptance evidence for each numbered task was recorded. The final verified implementation head is `718748e` (`feat: export snapshots from Settings`); Task 5 adds the public documentation and acceptance record without changing implementation code. The v0.1 release authorization gate remains separate and unchanged.
+The v0.2.0 implementation plan was completed only after the acceptance evidence for all five numbered tasks was recorded. The final verified implementation head is `2eafbdb` (`fix: expose pending snapshot cleanup safely`), including sanitized `cleanupPending` and the `requiresAuthentication` regression. Task 5 adds the public documentation and acceptance record without changing implementation code. The v0.1 release authorization gate remains separate and unchanged.
 
-Automated acceptance on this head passed:
+Final focused and full acceptance on `2eafbdb` passed:
 
+- `swift test --filter SnapshotFileWriterTests` — exit 0.
+- `swift test --filter SnapshotExporterTests` — exit 0.
 - `source /Users/taejunoh/.cargo/env && make test` — exit 0; the Rust workspace, pinned `tokscale-core` suite, Swift tests, package relink regression, and notarization shell contracts passed.
+
+Post-fix release-like checks run at final implementation head `2eafbdb` also passed:
+
 - `swift build -c release` — exit 0.
 - `make package` — exit 0; the local arm64/macOS 14 bundle was produced.
 - `make smoke` — exit 0; bundle metadata, signature, executable identity, launch, and bounded cleanup passed.
-- `git diff --check` — exit 0.
+
+The bounded live Settings/save-panel export and cancellation acceptance is explicitly evidence from the initial implementation head `718748e`; it remains valid as the recorded live UI run, but was not rerun on `2eafbdb`. No Foundation `JSONSerialization` re-encode byte-equality claim is made; the exact sorted-key/golden behavior remains covered by `SnapshotExporter` automation.
 
 Bounded live UI acceptance completed through the accessibility fallback: the exact packaged app from this worktree was running, Settings opened from its status-item popover, and the Data Export button opened the production save panel. The panel default was `Needlbar-Snapshot-20260829T233601572Z`; selecting the harmless LFG destination produced `/Users/taejunoh/Developer/LFG/Needlbar-Snapshot-20260829T233601572Z.json` (with the OS-appended `.json` extension). `stat` reported mode `600` and size `3055`; `file` reported JSON data; the final byte was `0a`. Parsed data reported `schemaVersion: 1`, provider order `claude,codex,cursor`, `cursor.quota.data == null`, and an empty forbidden-key intersection for `title`, `message`, `path`, `accountId`, `prompt`, `response`, `sourceCode`, `cookie`, and `credential`. Object keys followed the `SnapshotExporter`/`JSONEncoder` sorted-key contract; exact full golden behavior remains covered by automation. No Foundation `JSONSerialization` re-encode byte-equality claim is made because its numeric-key ordering differs for `last7Days` and `last30Days`. A second export click opened the panel again; Cancel returned to Settings and the only matching file remained the first saved file, proving cancellation created nothing. No credentials, account identifiers, prompts, responses, cookies, or source content were inspected.
 
 No Rust/C/provider/auth/network changes, extra export entry points, raw error/title fields, tag, or release action were introduced. No tag or public GitHub Release was created; until explicit authorization is given, no tag or release action is authorized.
+
+Final whole-branch review and the scoped fix re-review are clean with `Ready to merge: Yes`. The exact next action is to integrate this branch to `main`, push it, and verify CI; no merge, push, tag, or release is claimed here.
 
 ## Task 2 Verification
 
