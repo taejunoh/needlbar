@@ -40,6 +40,25 @@ func invalidCaptureFailsBeforeWriting(_ capture: ExportCapture) {
     }
 }
 
+@Test func encodingRejectsTimestampOutsideTheV1FourDigitYearShape() throws {
+    var components = DateComponents()
+    components.calendar = Calendar(identifier: .gregorian)
+    components.timeZone = TimeZone(secondsFromGMT: 0)
+    components.year = 10_000
+    components.month = 1
+    components.day = 2
+    components.hour = 3
+    components.minute = 4
+    components.second = 5
+    let outOfRangeDate = try #require(components.date)
+    let valid = try validExportCaptureWithPrivacyCanaries()
+    let capture = ExportCapture(exportedAt: outOfRangeDate, providers: valid.providers)
+
+    #expect(throws: SnapshotExportError.self) {
+        _ = try SnapshotExporter().encode(capture)
+    }
+}
+
 @Test func staleDataAndErrorStatusRetainOnlySafeExportFields() throws {
     let bytes = try SnapshotExporter().encode(try validExportCaptureWithPrivacyCanaries())
     let json = try #require(String(data: bytes, encoding: .utf8))

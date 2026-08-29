@@ -52,7 +52,9 @@ enum SnapshotExportValidation {
     }
 
     static func validateTimestamp(_ date: Date) throws {
-        guard date.timeIntervalSinceReferenceDate.isFinite else {
+        guard date.timeIntervalSinceReferenceDate.isFinite,
+              SnapshotExportFormat.isExactV1Timestamp(date)
+        else {
             throw SnapshotExportError.invalidTimestamp
         }
     }
@@ -375,10 +377,23 @@ private enum SnapshotExportFormat {
     static func encodeTimestamp(_ date: Date, to encoder: Encoder) throws {
         try SnapshotExportValidation.validateTimestamp(date)
         var container = encoder.singleValueContainer()
-        try container.encode(timestampFormatter().string(from: date))
+        try container.encode(timestampString(date))
     }
 
-    private static func timestampFormatter() -> DateFormatter {
+    static func isExactV1Timestamp(_ date: Date) -> Bool {
+        let value = timestampString(date)
+        guard value.utf8.count == 24 else { return false }
+        let formatter = timestampFormatter()
+        formatter.isLenient = false
+        guard let parsed = formatter.date(from: value) else { return false }
+        return formatter.string(from: parsed) == value
+    }
+
+    static func timestampString(_ date: Date) -> String {
+        timestampFormatter().string(from: date)
+    }
+
+    static func timestampFormatter() -> DateFormatter {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
