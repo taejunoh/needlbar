@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
-**Updated:** 2026-08-29
-**Branch:** `codex/v02-local-json-export-design` (v0.2.0 final verified implementation head `2eafbdb`)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete at final verified implementation head `2eafbdb` (`fix: expose pending snapshot cleanup safely`), including the sanitized `cleanupPending` and `requiresAuthentication` regression fixes. Final whole-branch review and scoped fix re-review are clean (`Ready to merge: Yes`).
-**Next action:** Integrate this branch to `main`, then push and verify CI; those actions have not occurred here. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Updated:** 2026-08-30
+**Branch:** `main` (PR #3 merge commit `181e41d07d9c2dfe41edb37d9257e697dd5840d7`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f` fixes cross-Xcode JSON key ordering with an internal UTF-8 lexical canonical writer. Final whole-branch review and scoped fix re-review are clean (`Ready to merge: Yes`); main CI is green.
+**Next action:** Begin the v0.2.1 widgets/notifications design and implementation only when the user authorizes that scope. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -87,27 +87,35 @@ Task 1 is verified green.
 
 ## v0.2.0 Local JSON Export — Task 5 Acceptance and Completion
 
-The v0.2.0 implementation plan was completed only after the acceptance evidence for all five numbered tasks was recorded. The final verified implementation head is `2eafbdb` (`fix: expose pending snapshot cleanup safely`), including sanitized `cleanupPending` and the `requiresAuthentication` regression. Task 5 adds the public documentation and acceptance record without changing implementation code. The v0.1 release authorization gate remains separate and unchanged.
+The v0.2.0 implementation plan was completed only after the acceptance evidence for all five numbered tasks was recorded. The pre-integration implementation head `2eafbdb` (`fix: expose pending snapshot cleanup safely`) included sanitized `cleanupPending` and the `requiresAuthentication` regression. Task 5 adds the public documentation and acceptance record without changing implementation code. The v0.1 release authorization gate remains separate and unchanged.
 
-Final focused and full acceptance on `2eafbdb` passed:
+Final focused and full acceptance on pre-integration head `2eafbdb` passed:
 
 - `swift test --filter SnapshotFileWriterTests` — exit 0.
 - `swift test --filter SnapshotExporterTests` — exit 0.
 - `source /Users/taejunoh/.cargo/env && make test` — exit 0; the Rust workspace, pinned `tokscale-core` suite, Swift tests, package relink regression, and notarization shell contracts passed.
 
-Post-fix release-like checks run at final implementation head `2eafbdb` also passed:
+Release-like checks run at pre-integration head `2eafbdb` also passed:
 
 - `swift build -c release` — exit 0.
 - `make package` — exit 0; the local arm64/macOS 14 bundle was produced.
 - `make smoke` — exit 0; bundle metadata, signature, executable identity, launch, and bounded cleanup passed.
 
-The bounded live Settings/save-panel export and cancellation acceptance is explicitly evidence from the initial implementation head `718748e`; it remains valid as the recorded live UI run, but was not rerun on `2eafbdb`. No Foundation `JSONSerialization` re-encode byte-equality claim is made; the exact sorted-key/golden behavior remains covered by `SnapshotExporter` automation.
+The bounded live Settings/save-panel export and cancellation acceptance is explicitly evidence from the initial implementation head `718748e`; it remains the recorded live UI run and was not rerun on `2eafbdb` or the final feature commit. No Foundation `JSONSerialization` re-encode byte-equality claim is made; the exact sorted-key/golden behavior remains covered by `SnapshotExporter` automation.
 
 Bounded live UI acceptance completed through the accessibility fallback: the exact packaged app from this worktree was running, Settings opened from its status-item popover, and the Data Export button opened the production save panel. The panel default was `Needlbar-Snapshot-20260829T233601572Z`; selecting the harmless LFG destination produced `/Users/taejunoh/Developer/LFG/Needlbar-Snapshot-20260829T233601572Z.json` (with the OS-appended `.json` extension). `stat` reported mode `600` and size `3055`; `file` reported JSON data; the final byte was `0a`. Parsed data reported `schemaVersion: 1`, provider order `claude,codex,cursor`, `cursor.quota.data == null`, and an empty forbidden-key intersection for `title`, `message`, `path`, `accountId`, `prompt`, `response`, `sourceCode`, `cookie`, and `credential`. Object keys followed the `SnapshotExporter`/`JSONEncoder` sorted-key contract; exact full golden behavior remains covered by automation. No Foundation `JSONSerialization` re-encode byte-equality claim is made because its numeric-key ordering differs for `last7Days` and `last30Days`. A second export click opened the panel again; Cancel returned to Settings and the only matching file remained the first saved file, proving cancellation created nothing. No credentials, account identifiers, prompts, responses, cookies, or source content were inspected.
 
 No Rust/C/provider/auth/network changes, extra export entry points, raw error/title fields, tag, or release action were introduced. No tag or public GitHub Release was created; until explicit authorization is given, no tag or release action is authorized.
 
-Final whole-branch review and the scoped fix re-review are clean with `Ready to merge: Yes`. The exact next action is to integrate this branch to `main`, push it, and verify CI; no merge, push, tag, or release is claimed here.
+Final whole-branch review and the scoped fix re-review were clean with `Ready to merge: Yes`; PR #3 integration and green main CI are recorded below.
+
+## v0.2.0 Integration Completion — 2026-08-30
+
+Pull request [#3](https://github.com/taejunoh/needlbar/pull/3) merged at `2026-08-30T00:42:48Z` via merge commit `181e41d07d9c2dfe41edb37d9257e697dd5840d7`. The local `main` worktree was fast-forwarded to that merge commit before this documentation update. The final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f` (`fix: canonicalize snapshot JSON key order`) replaced the cross-Xcode-sensitive encoder ordering with an internal UTF-8 lexical canonical writer after PR CI run [33282531973](https://github.com/taejunoh/needlbar/actions/runs/33282531973) failed on the Xcode 16.2 golden-byte test.
+
+Corrected PR CI run [33283518126](https://github.com/taejunoh/needlbar/actions/runs/33283518126) passed. Main CI run [33283963156](https://github.com/taejunoh/needlbar/actions/runs/33283963156) passed all Rust, vendored, lint, `make test`, package, smoke, and artifact steps. The prior release build/package/smoke evidence and the live Settings save/cancel evidence remain recorded above with their exact head boundaries; the live UI run was on initial head `718748e`, not rerun after `6f39ec6`.
+
+V0.2.0 is complete. The next continuation point is the separately scoped v0.2.1 widgets/notifications design and implementation, only after explicit user authorization. No tag or public GitHub Release was created; until explicit authorization is given, no tag or release action is authorized.
 
 ## Task 2 Verification
 
