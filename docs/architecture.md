@@ -45,6 +45,8 @@ Cursor usage has no Needlbar-owned hydration layer. The pinned `tokscale-core` e
 
 `NeedlbarCore` decodes bridge envelopes, merges usage and quota streams, records last-known-good values and failure status, schedules refreshes, and provides presentation-neutral formatting and module configuration. It never re-parses provider files or raw authentication formats.
 
+For the v0.2.0 local JSON export, `ProviderSnapshotStore` captures one immutable export value for all three providers in one actor turn. `NeedlbarCore` validates that value, deterministically encodes the versioned JSON document, and writes it through the private same-directory atomic writer. AppKit owns only the save panel and export UI state; it does not capture, encode, or write provider data.
+
 `Needlbar` owns AppKit lifecycle, status items, popovers, Settings, and native window presentation.
 
 ## Independent refresh streams

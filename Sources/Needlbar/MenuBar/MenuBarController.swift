@@ -41,6 +41,7 @@ public final class MenuBarController {
         configuration: ModuleConfiguration,
         snapshotStore: ProviderSnapshotStore,
         loginCoordinator: ProviderLoginCoordinator,
+        snapshotExportController: SnapshotExportController,
         statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
         onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
         onRetryRequested: @escaping @MainActor () -> Void = {},
@@ -59,6 +60,7 @@ public final class MenuBarController {
         self.settingsWindowController = SettingsWindowController(
             configuration: configuration,
             loginCoordinator: loginCoordinator,
+            snapshotExportController: snapshotExportController,
             openCursorSpending: openCursorSpending
         )
     }

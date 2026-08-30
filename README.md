@@ -33,6 +33,10 @@ Click Overview to see today’s combined tokens and estimated cost, the most con
 
 Settings controls which modules are visible and which title metric each module uses. It also provides provider-native sign-in actions for Claude and Codex, plus a Cursor row explaining that usage comes from an existing local cache and offering one `Open Cursor Spending` button. Claude and Codex buttons launch the installed provider CLI's browser flow; Needlbar does not implement a second OAuth flow. Cursor has no credential or connection workflow in Needlbar.
 
+Settings also provides one JSON-only `Export snapshot…` action for the current normalized snapshot. Export does not refresh provider data, authenticate, or upload data.
+
+The v0.2.0 export is a user-initiated local backup/automation file. It contains only the normalized usage, quota, freshness, and safe status fields defined by the export schema; it does not include credentials, account identifiers, raw paths or provider responses, prompts, assistant responses, source code, or raw diagnostics.
+
 ## Provider authentication and recovery
 
 Needlbar reuses provider-native authentication for Claude and Codex. It does not own their credentials or provide separate disconnect controls.

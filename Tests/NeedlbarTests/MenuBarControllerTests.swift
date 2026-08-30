@@ -7,7 +7,7 @@ import Testing
 @Test func defaultConfigurationCreatesOnlyTheOverviewStatusItem() async {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     let factory = FakeStatusItemFactory()
-    let controller = MenuBarController(
+    let controller = makeMenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
         loginCoordinator: testLoginCoordinator(),
@@ -25,7 +25,7 @@ import Testing
 @Test func enablingClaudeAddsItWithoutRecreatingOverview() async throws {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     let factory = FakeStatusItemFactory()
-    let controller = MenuBarController(
+    let controller = makeMenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
         loginCoordinator: testLoginCoordinator(),
@@ -48,7 +48,7 @@ import Testing
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     configuration.claude = ModuleSettings(isEnabled: true, metric: .quotaRemaining)
     let factory = FakeStatusItemFactory()
-    let controller = MenuBarController(
+    let controller = makeMenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
         loginCoordinator: testLoginCoordinator(),
@@ -75,7 +75,7 @@ import Testing
     let store = ProviderSnapshotStore()
     let factory = FakeStatusItemFactory()
     var activatedModules: [MenuModuleID] = []
-    let controller = MenuBarController(
+    let controller = makeMenuBarController(
         configuration: configuration,
         snapshotStore: store,
         loginCoordinator: testLoginCoordinator(),
@@ -101,7 +101,7 @@ import Testing
 @Test func observingConfigurationChangesReconcilesEnabledModules() async {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     let factory = FakeStatusItemFactory()
-    let controller = MenuBarController(
+    let controller = makeMenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
         loginCoordinator: testLoginCoordinator(),
@@ -124,7 +124,7 @@ import Testing
     configuration.overview = ModuleSettings(isEnabled: true, metric: .tokensToday)
     let store = ProviderSnapshotStore()
     let factory = FakeStatusItemFactory()
-    let controller = MenuBarController(
+    let controller = makeMenuBarController(
         configuration: configuration,
         snapshotStore: store,
         loginCoordinator: testLoginCoordinator(),
@@ -143,7 +143,7 @@ import Testing
 @Test func stoppingObservationIgnoresAnAlreadyQueuedConfigurationUpdate() async {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     let factory = FakeStatusItemFactory()
-    let controller = MenuBarController(
+    let controller = makeMenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
         loginCoordinator: testLoginCoordinator(),
@@ -163,7 +163,7 @@ import Testing
 @Test func authenticationActionsRouteClaudeAndCodexToTheLoginCallbackExactlyOnce() {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     var requestedProviders: [ProviderID] = []
-    let controller = MenuBarController(
+    let controller = makeMenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
         loginCoordinator: testLoginCoordinator(),
@@ -182,7 +182,7 @@ import Testing
     var requestedProviders: [ProviderID] = []
     var settingsRequests = 0
     var openedURLs: [URL] = []
-    let controller = MenuBarController(
+    let controller = makeMenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
         loginCoordinator: testLoginCoordinator(),
@@ -213,6 +213,50 @@ private func freshMenuBarDefaults() -> UserDefaults {
 @MainActor
 private func testLoginCoordinator() -> ProviderLoginCoordinator {
     ProviderLoginCoordinator(refreshQuota: { _ in false })
+}
+
+@MainActor
+private func makeMenuBarController(
+    configuration: ModuleConfiguration,
+    snapshotStore: ProviderSnapshotStore,
+    loginCoordinator: ProviderLoginCoordinator,
+    statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
+    onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
+    onRetryRequested: @escaping @MainActor () -> Void = {},
+    onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
+    onSettingsRequested: @escaping @MainActor () -> Void = {},
+    openCursorSpending: @escaping @MainActor () -> Void = {}
+) -> MenuBarController {
+    MenuBarController(
+        configuration: configuration,
+        snapshotStore: snapshotStore,
+        loginCoordinator: loginCoordinator,
+        snapshotExportController: SnapshotExportController(
+            captureSource: ProviderSnapshotStore(),
+            savePanelPresenter: CancellingSavePanelPresenter(),
+            coreExportAction: FailingCoreExportAction(),
+            captureClock: Date.init
+        ),
+        statusItemFactory: statusItemFactory,
+        onModuleActivated: onModuleActivated,
+        onRetryRequested: onRetryRequested,
+        onProviderLoginRequested: onProviderLoginRequested,
+        onSettingsRequested: onSettingsRequested,
+        openCursorSpending: openCursorSpending
+    )
+}
+
+@MainActor
+private final class CancellingSavePanelPresenter: SavePanelPresenter {
+    func selectDestination(defaultFilename _: String) -> URL? {
+        nil
+    }
+}
+
+private struct FailingCoreExportAction: CoreExportAction {
+    func export(_ capture: ExportCapture, to destination: URL) async throws -> AtomicWriteResult {
+        throw SnapshotFileWriteError.writeFailed
+    }
 }
 
 private func menuBarUsage(totalTokens: UInt64) -> UsageSnapshot {

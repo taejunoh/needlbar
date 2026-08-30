@@ -31,6 +31,12 @@ reading it; an absent file is success, and the local usage cache is never remove
 credentials are never copied into Swift or UserDefaults, and diagnostics expose fixed source
 labels rather than paths.
 
+## Local JSON export
+
+Settings exposes one user-initiated JSON export for the current normalized snapshot. The destination is selected by the user and remains a local file; Needlbar does not upload it, refresh provider data, or authenticate while exporting. The writer creates or replaces the selected file with mode `0600`, using a private same-directory temporary file and an atomic commit.
+
+The document contains only normalized usage and quota values, UTC timestamps, fixed non-user-specific quota category labels (`claude.session`, `claude.weekly`, `codex.primary`, and `codex.secondary`), and safe freshness/status codes. These labels are schema categories, not identity data. The export excludes credentials, account IDs, user IDs, organization IDs, device IDs, provider-generated IDs, raw local paths, raw provider responses or diagnostics, prompts, assistant responses, and source code. Quota window titles and underlying error messages are not exported.
+
 ## Network requests
 
 Usage and quota have separate network behavior:
