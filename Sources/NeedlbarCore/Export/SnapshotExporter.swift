@@ -5,12 +5,92 @@ public struct SnapshotExporter: Sendable {
 
     public func encode(_ capture: ExportCapture) throws -> Data {
         let document = try SnapshotExportDocument(capture: capture)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        encoder.dateEncodingStrategy = .custom(SnapshotExportFormat.encodeTimestamp)
-        var bytes = try encoder.encode(document)
+        var bytes = SnapshotCanonicalJSON.encode(document.canonicalJSONValue)
         bytes.append(0x0A)
         return bytes
+    }
+}
+
+enum SnapshotCanonicalJSON {
+    indirect enum Value: Sendable {
+        case null
+        case number(String)
+        case string(String)
+        case array([Value])
+        case object([String: Value])
+    }
+
+    static func encode(_ value: Value) -> Data {
+        var bytes: [UInt8] = []
+        append(value, to: &bytes)
+        return Data(bytes)
+    }
+
+    private static func append(_ value: Value, to bytes: inout [UInt8]) {
+        switch value {
+        case .null:
+            bytes.append(contentsOf: "null".utf8)
+        case let .number(value):
+            bytes.append(contentsOf: value.utf8)
+        case let .string(value):
+            appendString(value, to: &bytes)
+        case let .array(values):
+            bytes.append(0x5B)
+            for (index, value) in values.enumerated() {
+                if index > 0 {
+                    bytes.append(0x2C)
+                }
+                append(value, to: &bytes)
+            }
+            bytes.append(0x5D)
+        case let .object(values):
+            bytes.append(0x7B)
+            for (index, key) in values.keys.sorted(by: utf8LexicographicallyPrecedes).enumerated() {
+                if index > 0 {
+                    bytes.append(0x2C)
+                }
+                appendString(key, to: &bytes)
+                bytes.append(0x3A)
+                append(values[key]!, to: &bytes)
+            }
+            bytes.append(0x7D)
+        }
+    }
+
+    private static func utf8LexicographicallyPrecedes(_ lhs: String, _ rhs: String) -> Bool {
+        lhs.utf8.lexicographicallyPrecedes(rhs.utf8)
+    }
+
+    private static func appendString(_ value: String, to bytes: inout [UInt8]) {
+        bytes.append(0x22)
+        for scalar in value.unicodeScalars {
+            switch scalar.value {
+            case 0x08:
+                bytes.append(contentsOf: "\\b".utf8)
+            case 0x09:
+                bytes.append(contentsOf: "\\t".utf8)
+            case 0x0A:
+                bytes.append(contentsOf: "\\n".utf8)
+            case 0x0C:
+                bytes.append(contentsOf: "\\f".utf8)
+            case 0x0D:
+                bytes.append(contentsOf: "\\r".utf8)
+            case 0x22:
+                bytes.append(contentsOf: "\\\"".utf8)
+            case 0x5C:
+                bytes.append(contentsOf: "\\\\".utf8)
+            case 0 ... 0x1F:
+                bytes.append(contentsOf: "\\u00".utf8)
+                let hexadecimal = String(scalar.value, radix: 16, uppercase: true)
+                if hexadecimal.utf8.count == 1 {
+                    bytes.append(0x30)
+                }
+                bytes.append(contentsOf: hexadecimal.utf8)
+            default:
+                bytes.append(contentsOf: String(scalar).utf8)
+            }
+        }
+        bytes.append(0x22)
     }
 }
 
@@ -90,7 +170,7 @@ enum SnapshotExportValidation {
     }
 }
 
-private struct SnapshotExportDocument: Encodable {
+private struct SnapshotExportDocument {
     let schemaVersion = 1
     let exportedAt: Date
     let providers: [SnapshotExportProvider]
@@ -110,6 +190,14 @@ private struct SnapshotExportDocument: Encodable {
 
         self.exportedAt = capture.exportedAt
         self.providers = try capture.providers.map(SnapshotExportProvider.init)
+    }
+
+    var canonicalJSONValue: SnapshotCanonicalJSON.Value {
+        .object([
+            "schemaVersion": .number("1"),
+            "exportedAt": .string(SnapshotExportFormat.timestampString(exportedAt)),
+            "providers": .array(providers.map(\.canonicalJSONValue))
+        ])
     }
 }
 
@@ -188,7 +276,7 @@ private extension SnapshotExportValidation {
     }
 }
 
-private struct SnapshotExportProvider: Encodable {
+private struct SnapshotExportProvider {
     let provider: String
     let usage: SnapshotExportStream<SnapshotExportUsage>
     let quota: SnapshotExportStream<SnapshotExportQuota>
@@ -207,35 +295,40 @@ private struct SnapshotExportProvider: Encodable {
         updatedAt = state.updatedAt
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case provider, usage, quota, updatedAt
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(provider, forKey: .provider)
-        try container.encode(usage, forKey: .usage)
-        try container.encode(quota, forKey: .quota)
-        try container.encode(updatedAt, forKey: .updatedAt)
+    var canonicalJSONValue: SnapshotCanonicalJSON.Value {
+        .object([
+            "provider": .string(provider),
+            "usage": usage.canonicalJSONValue,
+            "quota": quota.canonicalJSONValue,
+            "updatedAt": updatedAt.map { .string(SnapshotExportFormat.timestampString($0)) } ?? .null
+        ])
     }
 }
 
-private struct SnapshotExportStream<DataValue: Encodable>: Encodable {
+private struct SnapshotExportStream<DataValue> {
     let data: DataValue?
     let status: SnapshotExportStatus
+}
 
-    private enum CodingKeys: String, CodingKey {
-        case data, status
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(data, forKey: .data)
-        try container.encode(status, forKey: .status)
+private extension SnapshotExportStream where DataValue == SnapshotExportUsage {
+    var canonicalJSONValue: SnapshotCanonicalJSON.Value {
+        .object([
+            "data": data.map(\.canonicalJSONValue) ?? .null,
+            "status": status.canonicalJSONValue
+        ])
     }
 }
 
-private struct SnapshotExportStatus: Encodable {
+private extension SnapshotExportStream where DataValue == SnapshotExportQuota {
+    var canonicalJSONValue: SnapshotCanonicalJSON.Value {
+        .object([
+            "data": data.map(\.canonicalJSONValue) ?? .null,
+            "status": status.canonicalJSONValue
+        ])
+    }
+}
+
+private struct SnapshotExportStatus {
     let state: String
     let lastSuccessfulAt: Date?
     let errorCode: String?
@@ -261,19 +354,16 @@ private struct SnapshotExportStatus: Encodable {
         }
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case state, lastSuccessfulAt, errorCode
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(state, forKey: .state)
-        try container.encode(lastSuccessfulAt, forKey: .lastSuccessfulAt)
-        try container.encode(errorCode, forKey: .errorCode)
+    var canonicalJSONValue: SnapshotCanonicalJSON.Value {
+        .object([
+            "state": .string(state),
+            "lastSuccessfulAt": lastSuccessfulAt.map { .string(SnapshotExportFormat.timestampString($0)) } ?? .null,
+            "errorCode": errorCode.map(SnapshotCanonicalJSON.Value.string) ?? .null
+        ])
     }
 }
 
-private struct SnapshotExportUsage: Encodable {
+private struct SnapshotExportUsage {
     let allTime: SnapshotExportUsagePeriod
     let today: SnapshotExportUsagePeriod
     let last7Days: SnapshotExportUsagePeriod
@@ -294,9 +384,19 @@ private struct SnapshotExportUsage: Encodable {
         last7DaysDaily = usage.last7DaysDaily.map(SnapshotExportDailyUsage.init)
         last30Days = try .init(usage.last30Days)
     }
+
+    var canonicalJSONValue: SnapshotCanonicalJSON.Value {
+        .object([
+            "allTime": allTime.canonicalJSONValue,
+            "today": today.canonicalJSONValue,
+            "last7Days": last7Days.canonicalJSONValue,
+            "last7DaysDaily": .array(last7DaysDaily.map(\.canonicalJSONValue)),
+            "last30Days": last30Days.canonicalJSONValue
+        ])
+    }
 }
 
-private struct SnapshotExportUsagePeriod: Encodable {
+private struct SnapshotExportUsagePeriod {
     let inputTokens: String
     let outputTokens: String
     let cacheReadTokens: String
@@ -330,9 +430,20 @@ private struct SnapshotExportUsagePeriod: Encodable {
             estimatedCostUSD: period.estimatedCostUSD
         )
     }
+
+    var canonicalJSONValue: SnapshotCanonicalJSON.Value {
+        .object([
+            "inputTokens": .string(inputTokens),
+            "outputTokens": .string(outputTokens),
+            "cacheReadTokens": .string(cacheReadTokens),
+            "cacheWriteTokens": .string(cacheWriteTokens),
+            "totalTokens": .string(totalTokens),
+            "estimatedCostUSD": .string(estimatedCostUSD)
+        ])
+    }
 }
 
-private struct SnapshotExportDailyUsage: Encodable {
+private struct SnapshotExportDailyUsage {
     let date: String
     let totalTokens: String
 
@@ -340,17 +451,28 @@ private struct SnapshotExportDailyUsage: Encodable {
         date = point.date
         totalTokens = String(point.totalTokens)
     }
+
+    var canonicalJSONValue: SnapshotCanonicalJSON.Value {
+        .object([
+            "date": .string(date),
+            "totalTokens": .string(totalTokens)
+        ])
+    }
 }
 
-private struct SnapshotExportQuota: Encodable {
+private struct SnapshotExportQuota {
     let windows: [SnapshotExportQuotaWindow]
 
     init(_ quota: QuotaSnapshot) throws {
         windows = quota.windows.map(SnapshotExportQuotaWindow.init)
     }
+
+    var canonicalJSONValue: SnapshotCanonicalJSON.Value {
+        .object(["windows": .array(windows.map(\.canonicalJSONValue))])
+    }
 }
 
-private struct SnapshotExportQuotaWindow: Encodable {
+private struct SnapshotExportQuotaWindow {
     let id: String
     let usedPercent: Double
     let resetsAt: Date?
@@ -361,23 +483,19 @@ private struct SnapshotExportQuotaWindow: Encodable {
         resetsAt = window.resetsAt
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case id, usedPercent, resetsAt
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(usedPercent, forKey: .usedPercent)
-        try container.encode(resetsAt, forKey: .resetsAt)
+    var canonicalJSONValue: SnapshotCanonicalJSON.Value {
+        .object([
+            "id": .string(id),
+            "usedPercent": .number(SnapshotExportFormat.canonicalPercent(usedPercent)),
+            "resetsAt": resetsAt.map { .string(SnapshotExportFormat.timestampString($0)) } ?? .null
+        ])
     }
 }
 
 private enum SnapshotExportFormat {
-    static func encodeTimestamp(_ date: Date, to encoder: Encoder) throws {
-        try SnapshotExportValidation.validateTimestamp(date)
-        var container = encoder.singleValueContainer()
-        try container.encode(timestampString(date))
+    static func canonicalPercent(_ value: Double) -> String {
+        guard value != 0 else { return "0" }
+        return String(format: "%.17g", locale: Locale(identifier: "en_US_POSIX"), value)
     }
 
     static func isExactV1Timestamp(_ date: Date) -> Bool {

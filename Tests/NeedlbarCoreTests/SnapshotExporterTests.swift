@@ -14,6 +14,18 @@ import Testing
     #expect(first == second)
 }
 
+@Test func canonicalJSONOrdersNumericLookingKeysByUTF8LexicalOrder() throws {
+    let bytes = SnapshotCanonicalJSON.encode(
+        .object([
+            "last7Days": .string("seven"),
+            "last30Days": .string("thirty"),
+            "last7DaysDaily": .string("daily")
+        ])
+    )
+
+    #expect(bytes == Data(#"{"last30Days":"thirty","last7Days":"seven","last7DaysDaily":"daily"}"#.utf8))
+}
+
 @Test(arguments: invalidExportCaptures())
 func invalidCaptureFailsBeforeWriting(_ capture: ExportCapture) {
     #expect(throws: SnapshotExportError.self) {
