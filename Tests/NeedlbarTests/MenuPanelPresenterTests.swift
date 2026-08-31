@@ -49,6 +49,27 @@ struct MenuPanelPresenterTests {
         #expect(presenter.isShown)
     }
 
+    @Test func repeatedPresentationCancelsPreviousTokenBeforeStartingNextSession() throws {
+        let window = FakeMenuPanelWindow()
+        let monitor = FakeMenuPanelDismissalMonitor()
+        let presenter = AppKitMenuPanelPresenter(window: window, dismissalMonitor: monitor)
+
+        #expect(presenter.present(FixedSizeViewController(size: NSSize(width: 300, height: 350)), anchoredAt: testAnchor()))
+        let tokenA = try #require(monitor.tokens.first)
+
+        #expect(presenter.present(FixedSizeViewController(size: NSSize(width: 300, height: 350)), anchoredAt: testAnchor()))
+        let tokenB = try #require(monitor.tokens.dropFirst().first)
+
+        #expect(monitor.startCallCount == 2)
+        #expect(tokenA.cancelCallCount == 1)
+        #expect(tokenB.cancelCallCount == 0)
+
+        presenter.dismiss()
+
+        #expect(tokenA.cancelCallCount == 1)
+        #expect(tokenB.cancelCallCount == 1)
+    }
+
     @Test func repeatedDismissalCallsDismissOnceAndCancelsMonitorOnce() {
         let window = FakeMenuPanelWindow()
         let monitor = FakeMenuPanelDismissalMonitor()
@@ -144,16 +165,22 @@ private final class FakeMenuPanelWindow: MenuPanelWindowing {
 
 @MainActor
 private final class FakeMenuPanelDismissalMonitor: MenuPanelDismissalMonitoring {
-    let token = FakeMenuPanelDismissalMonitoringToken()
+    private(set) var tokens: [FakeMenuPanelDismissalMonitoringToken] = []
     private(set) var startCallCount = 0
     private(set) var panelFrameProvider: (@MainActor () -> NSRect)?
     private(set) var dismissHandler: (@MainActor () -> Void)?
+
+    var token: FakeMenuPanelDismissalMonitoringToken {
+        tokens[0]
+    }
 
     func start(
         panelFrame: @escaping @MainActor () -> NSRect,
         dismiss: @escaping @MainActor () -> Void
     ) -> any MenuPanelDismissalMonitoringToken {
         startCallCount += 1
+        let token = FakeMenuPanelDismissalMonitoringToken()
+        tokens.append(token)
         panelFrameProvider = panelFrame
         dismissHandler = dismiss
         return token
