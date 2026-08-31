@@ -2,6 +2,9 @@ import Foundation
 import Testing
 @testable import NeedlbarCore
 
+@Suite("ProviderSnapshotStoreTests")
+struct ProviderSnapshotStoreTests {
+
 @Test func usageAndQuotaFailuresPreserveIndependentLastKnownGoodValues() async throws {
     let start = try #require(BridgeDecoder.date("2026-08-14T10:00:00Z"))
     let quotaUpdate = try #require(BridgeDecoder.date("2026-08-14T10:01:00Z"))
@@ -60,6 +63,51 @@ import Testing
     #expect(snapshot.usageStatus == .unavailable)
 }
 
+@Test func quotaAlertCaptureIsQuotaOnlyAndCoalescingStillCapturesBothProviders() async throws {
+    let date = try #require(BridgeDecoder.date("2026-08-31T12:00:00Z"))
+    let store = ProviderSnapshotStore(now: { date })
+    let signals = await store.quotaAlertChangeSignals()
+    var iterator = signals.makeAsyncIterator()
+
+    await store.applyUsage(makeUsage(totalTokens: 99), for: .claude, at: date)
+    let usageOnly = await store.currentQuotaAlertSample(for: .claude)
+    #expect(usageOnly.quota == nil)
+    #expect(usageOnly.revision == 0)
+    await store.applyQuota(try alertQuota(id: "claude.session", usedPercent: 60), for: .claude, at: date)
+    await store.applyQuota(try alertQuota(id: "codex.primary", usedPercent: 60), for: .codex, at: date)
+
+    _ = await iterator.next()
+    let capture = await store.quotaAlertCapture()
+    let claude = try #require(capture.first { $0.provider == .claude })
+    let codex = try #require(capture.first { $0.provider == .codex })
+    let cursor = try #require(capture.first { $0.provider == .cursor })
+    #expect(capture.map(\.provider) == [.claude, .codex, .cursor])
+    #expect(claude.revision == 1)
+    #expect(codex.revision == 1)
+    #expect(cursor.revision == 0)
+    #expect(claude.lastSuccessfulAt == date)
+    #expect(codex.lastSuccessfulAt == date)
+}
+
+@Test func currentQuotaAlertSampleReflectsAFailureAfterItsSuccessfulRevision() async throws {
+    let date = try #require(BridgeDecoder.date("2026-08-31T12:00:00Z"))
+    let store = ProviderSnapshotStore(now: { date })
+    let quota = try alertQuota(id: "claude.session", usedPercent: 60)
+
+    await store.applyQuota(quota, for: .claude, at: date)
+    await store.markQuotaFailure(
+        for: .claude,
+        status: .error(message: "fixture-only failure", lastSuccessfulAt: nil),
+        at: date.addingTimeInterval(1)
+    )
+
+    let current = await store.currentQuotaAlertSample(for: .claude)
+    #expect(current.revision == 1)
+    #expect(current.quota == quota)
+    #expect(current.status == .error(message: "fixture-only failure", lastSuccessfulAt: date))
+}
+}
+
 private func makeUsage(totalTokens: UInt64) -> UsageSnapshot {
     let period = UsagePeriod(
         inputTokens: totalTokens,
@@ -80,4 +128,10 @@ private func makeUsage(totalTokens: UInt64) -> UsageSnapshot {
         last7Days: period,
         last30Days: period
     )
+}
+
+private func alertQuota(id: String, usedPercent: Double) throws -> QuotaSnapshot {
+    QuotaSnapshot(windows: [
+        try QuotaWindow(id: id, title: "fixture title", usedPercent: usedPercent, resetsAt: nil)
+    ])
 }

@@ -1,5 +1,27 @@
 import Foundation
 
+public struct QuotaAlertSample: Sendable, Equatable {
+    public let provider: ProviderID
+    public let quota: QuotaSnapshot?
+    public let status: DataStatus
+    public let lastSuccessfulAt: Date?
+    public let revision: UInt64
+
+    public init(
+        provider: ProviderID,
+        quota: QuotaSnapshot?,
+        status: DataStatus,
+        lastSuccessfulAt: Date?,
+        revision: UInt64
+    ) {
+        self.provider = provider
+        self.quota = quota
+        self.status = status
+        self.lastSuccessfulAt = lastSuccessfulAt
+        self.revision = revision
+    }
+}
+
 public actor ProviderSnapshotStore {
     private struct StreamState<Value: Sendable>: Sendable {
         var value: Value?
@@ -11,6 +33,7 @@ public actor ProviderSnapshotStore {
     private struct State: Sendable {
         var usage = StreamState<UsageSnapshot>()
         var quota = StreamState<QuotaSnapshot>()
+        var quotaRevision: UInt64 = 0
         var everUpdated = false
         var updatedAt: Date
     }
@@ -18,6 +41,7 @@ public actor ProviderSnapshotStore {
     private var states: [ProviderID: State] = [:]
     private let now: @Sendable () -> Date
     private var updateContinuations: [UUID: AsyncStream<[ProviderSnapshot]>.Continuation] = [:]
+    private var quotaAlertContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
 
     public init(now: @escaping @Sendable () -> Date = { Date() }) {
         self.now = now
@@ -47,10 +71,12 @@ public actor ProviderSnapshotStore {
         state.quota.value = quota
         state.quota.lastSuccessfulAt = timestamp
         state.quota.latestFailure = nil
+        state.quotaRevision &+= 1
         state.everUpdated = true
         state.updatedAt = timestamp
         states[provider] = state
         publishUpdates()
+        publishQuotaAlertChange()
     }
 
     public func markUsageFailure(for provider: ProviderID, status: DataStatus, at date: Date? = nil) {
@@ -125,6 +151,31 @@ public actor ProviderSnapshotStore {
         })
     }
 
+    public func quotaAlertCapture() -> [QuotaAlertSample] {
+        ProviderID.allCases.map { currentQuotaAlertSample(for: $0) }
+    }
+
+    public func currentQuotaAlertSample(for provider: ProviderID) -> QuotaAlertSample {
+        let state = states[provider] ?? State(updatedAt: now())
+        return QuotaAlertSample(
+            provider: provider,
+            quota: state.quota.value,
+            status: status(for: state.quota),
+            lastSuccessfulAt: state.quota.lastSuccessfulAt,
+            revision: state.quotaRevision
+        )
+    }
+
+    public func quotaAlertChangeSignals() -> AsyncStream<Void> {
+        let identifier = UUID()
+        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            quotaAlertContinuations[identifier] = continuation
+            continuation.onTermination = { [weak self] _ in
+                Task { await self?.removeQuotaAlertContinuation(identifier) }
+            }
+        }
+    }
+
     public func updates() -> AsyncStream<[ProviderSnapshot]> {
         let identifier = UUID()
         return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
@@ -149,8 +200,18 @@ public actor ProviderSnapshotStore {
         }
     }
 
+    private func publishQuotaAlertChange() {
+        for continuation in quotaAlertContinuations.values {
+            continuation.yield()
+        }
+    }
+
     private func removeUpdateContinuation(_ identifier: UUID) {
         updateContinuations.removeValue(forKey: identifier)
+    }
+
+    private func removeQuotaAlertContinuation(_ identifier: UUID) {
+        quotaAlertContinuations.removeValue(forKey: identifier)
     }
 
     private func normalizedFailure(_ status: DataStatus, lastSuccessfulAt: Date?) -> DataStatus {

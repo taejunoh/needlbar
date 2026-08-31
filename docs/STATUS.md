@@ -32,6 +32,8 @@ The user-approved v0.2.1 scope and reviewed implementation plans are limited to:
 
 Written design approval and implementation-plan review are complete. The current machine is macOS 26.6.2 with Xcode 26.6; actual signed macOS 14 arm64 Widget Gallery/App Group acceptance must be recorded separately before v0.2.1 completion. The known historical green CI result for baseline main commit `1ba620b` is [run 33284608349](https://github.com/taejunoh/needlbar/actions/runs/33284608349), recorded from the previous turn. Docs-only verification: `git diff --check`, Markdown fence validation, and Bash code-block syntax checks passed. `make test` and native compilation/signing were not run because product/build/test sources were unchanged; no new CI run was made.
 
+Notification Task 1 complete: ProviderSnapshotStore now provides a coalesced quota-alert wake-up and authoritative per-provider quota revisions; next: Notification Task 2 policy and ledger.
+
 ## Widget W4 Verification — 2026-08-31
 
 W4 host packaging, extension embedding, signing, smoke contracts, and release-path signing assertions are implemented. The host remains unsandboxed with only the TeamID-prefixed App Group; the extension is sandboxed with the same group. The automated package contract embeds exactly one `.appex` and records extension signing before host signing. The Developer ID notarization path retains the six existing secret inputs, temporary-keychain import/cleanup, hardened runtime, timestamp, deep verification, stapling, Gatekeeper, and candidate ZIP replacement semantics while resolving the production group from `APPLE_TEAM_ID` and signing the extension before the host without `--deep` signing.
