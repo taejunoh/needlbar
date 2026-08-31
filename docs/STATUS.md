@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-31
 **Branch:** `codex/v021-widgets-notifications-design` (based on `main` at `1ba620b`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications layout and behavior are approved for written-spec review; the written spec is pending USER REVIEW. No v0.2.1 implementation plan or product implementation has started.
-**Next action:** Complete USER REVIEW of the written v0.2.1 spec; after written-spec approval, invoke `writing-plans`. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved. The implementation index, widget and notification subplans, and widget packaging appendix have completed main-agent plan review. No v0.2.1 product implementation has started; this docs-only update introduces no product changes or new CI result.
+**Next action:** Complete the execution handoff, then start Widget Task 1: the pure, bridge-free widget projection target. Execute W1–W4, N1–N4, and Integration Task 1 in order, one numbered task at a time. Native signed macOS 14 arm64 acceptance remains an external final gate, not a blocker to starting N1 after automated W4 checks. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -15,18 +15,22 @@ The active Needlbar work is governed by:
 - `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md` — ordered follow-up implementation plan.
 - `docs/superpowers/specs/2026-08-29-needlbar-v0.2.0-local-json-export-design.md` — approved v0.2.0 local JSON export contract; implementation and acceptance are recorded below.
 - `docs/superpowers/plans/2026-08-29-needlbar-v0.2.0-local-json-export.md` — approved v0.2.0 local JSON export implementation plan; all tasks are implemented and documented below.
-- `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — v0.2.1 widgets/notifications written design; pending USER REVIEW and written approval, so it is not yet authoritative.
+- `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; implementation not started.
+- `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widgets-notifications.md` — reviewed v0.2.1 implementation index: four widget tasks, four notification tasks, then combined acceptance.
+- `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget.md` — W1–W4, including Swift-only day provenance, sanitized projection, and medium Overview presentation.
+- `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
+- `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-notifications.md` — N1–N4, including fresh quota observation, durable policy, explicit permission, and lifecycle tests.
 - `AGENTS.md` — continuation rules for Codex/agentic workers.
 
 ## v0.2.1 Widgets and Notifications — Design Continuation
 
-The approved v0.2.1 scope is limited to the following layout and behavior while the written spec is under USER REVIEW:
+The user-approved v0.2.1 scope and reviewed implementation plans are limited to:
 
 - One medium Overview-first macOS widget, centered on quota/reset information with tokens and cost as secondary values. Cursor contributes usage only; its quota remains unavailable. Clicking the widget opens Needlbar.
 - Alerts default to off and require explicit permission when enabled. While the main app is running, fresh Claude/Codex readings crossing downward thresholds of 20%/10% may alert once per cycle stage. The first fresh reading establishes a baseline; one jump to at most 10% emits only the 10% alert. Restart deduplication is durable, and reset-date drift alone does not re-arm alerts.
 - The main app remains the only provider-fetching process and publishes a sanitized local widget projection. The projection preserves last-good/stale state, timestamps, and the last value at app quit; it does not expose credentials or raw provider data.
 
-Additional policy details in the written specification remain proposals pending user review. The known historical green CI result for baseline main commit `1ba620b` is [run 33284608349](https://github.com/taejunoh/needlbar/actions/runs/33284608349), recorded from the previous turn. Docs-only verification: `git diff --check` passed; `make test` was not run because product/build/test sources were unchanged, and no new CI run was made.
+Written design approval and implementation-plan review are complete. The current machine is macOS 26.6.2 with Xcode 26.6; actual signed macOS 14 arm64 Widget Gallery/App Group acceptance must be recorded separately before v0.2.1 completion. The known historical green CI result for baseline main commit `1ba620b` is [run 33284608349](https://github.com/taejunoh/needlbar/actions/runs/33284608349), recorded from the previous turn. Docs-only verification: `git diff --check`, Markdown fence validation, and Bash code-block syntax checks passed. `make test` and native compilation/signing were not run because product/build/test sources were unchanged; no new CI run was made.
 
 ## What Is Already Implemented
 
