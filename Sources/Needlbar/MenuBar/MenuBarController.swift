@@ -14,6 +14,48 @@ public extension StatusItemHandle {
 }
 
 @MainActor
+public protocol GlobalMouseDownMonitoringToken: AnyObject {
+    func cancel()
+}
+
+@MainActor
+public protocol GlobalMouseDownMonitoring: AnyObject {
+    func start(_ handler: @escaping @MainActor () -> Void) -> any GlobalMouseDownMonitoringToken
+}
+
+@MainActor
+public final class AppKitGlobalMouseDownMonitor: GlobalMouseDownMonitoring {
+    public init() {}
+
+    public func start(_ handler: @escaping @MainActor () -> Void) -> any GlobalMouseDownMonitoringToken {
+        let monitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { _ in
+            Task { @MainActor in
+                handler()
+            }
+        }
+        return Token(monitor: monitor)
+    }
+
+    @MainActor
+    private final class Token: GlobalMouseDownMonitoringToken {
+        private var monitor: Any?
+
+        init(monitor: Any?) {
+            self.monitor = monitor
+        }
+
+        func cancel() {
+            guard let monitor else { return }
+            self.monitor = nil
+            NSEvent.removeMonitor(monitor)
+        }
+
+    }
+}
+
+@MainActor
 public protocol StatusItemFactory: AnyObject {
     func makeStatusItem() -> any StatusItemHandle
     func removeStatusItem(_ statusItem: any StatusItemHandle)
@@ -30,7 +72,10 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
     private let onSettingsRequested: @MainActor () -> Void
     private let openCursorSpending: @MainActor () -> Void
     private let settingsWindowController: SettingsWindowController
-    private let popover = NSPopover()
+    private let popover: NSPopover
+    private let globalMouseDownMonitor: any GlobalMouseDownMonitoring
+    private var globalMouseDownMonitoringToken: (any GlobalMouseDownMonitoringToken)?
+    private var popoverPresentationGeneration: UInt64 = 0
     private var statusItems: [MenuModuleID: any StatusItemHandle] = [:]
     private var deepLinkStatusItem: (any StatusItemHandle)?
     private var cachedSnapshots: [ProviderSnapshot] = []
@@ -46,6 +91,8 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
         notificationPreferences: QuotaNotificationPreferences,
         notificationService: QuotaNotificationService,
         statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
+        globalMouseDownMonitor: any GlobalMouseDownMonitoring = AppKitGlobalMouseDownMonitor(),
+        popover: NSPopover = NSPopover(),
         onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
         onRetryRequested: @escaping @MainActor () -> Void = {},
         onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
@@ -60,6 +107,8 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
         self.onProviderLoginRequested = onProviderLoginRequested
         self.onSettingsRequested = onSettingsRequested
         self.openCursorSpending = openCursorSpending
+        self.popover = popover
+        self.globalMouseDownMonitor = globalMouseDownMonitor
         self.settingsWindowController = SettingsWindowController(
             configuration: configuration,
             loginCoordinator: loginCoordinator,
@@ -112,6 +161,7 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
         observationGeneration &+= 1
         snapshotObservationTask?.cancel()
         snapshotObservationTask = nil
+        cancelGlobalMouseDownMonitoring()
         if let configurationObserver {
             NotificationCenter.default.removeObserver(configurationObserver)
             self.configurationObserver = nil
@@ -134,6 +184,7 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     public func popoverDidClose(_ notification: Notification) {
+        cancelGlobalMouseDownMonitoring()
         guard let temporary = deepLinkStatusItem else { return }
         statusItemFactory.removeStatusItem(temporary)
         deepLinkStatusItem = nil
@@ -210,7 +261,24 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
         }
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: view)
+        popoverPresentationGeneration &+= 1
+        let presentationGeneration = popoverPresentationGeneration
+        globalMouseDownMonitoringToken?.cancel()
+        globalMouseDownMonitoringToken = nil
         statusItem.show(popover)
+        guard popover.isShown else { return }
+        globalMouseDownMonitoringToken = globalMouseDownMonitor.start { [weak self] in
+            guard let self,
+                  self.popoverPresentationGeneration == presentationGeneration,
+                  self.popover.isShown else { return }
+            self.popover.performClose(nil)
+        }
+    }
+
+    private func cancelGlobalMouseDownMonitoring() {
+        popoverPresentationGeneration &+= 1
+        globalMouseDownMonitoringToken?.cancel()
+        globalMouseDownMonitoringToken = nil
     }
 
     func performAuthenticationAction(for provider: ProviderID) {
@@ -281,10 +349,14 @@ private final class AppKitStatusItemHandle: NSObject, StatusItemHandle {
 
     func show(_ popover: NSPopover) {
         guard let button = statusItem.button else { return }
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: preferredPopoverEdge(isFlipped: button.isFlipped))
     }
 
     @objc private func performAction() {
         action?()
     }
+}
+
+func preferredPopoverEdge(isFlipped: Bool) -> NSRectEdge {
+    isFlipped ? .maxY : .minY
 }
