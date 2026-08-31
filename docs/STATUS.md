@@ -36,6 +36,8 @@ Notification Task 1 complete: ProviderSnapshotStore now provides a coalesced quo
 
 Notification Task 2 complete: allowlisted per-window threshold policy and private durable reservation ledger are covered by synthetic tests; next: Notification Task 3 permission/lifecycle service.
 
+Notification Task 3 complete: serialized opt-in authorization, admission revalidation, durable reservation, and immediate no-retry submission are implemented; next: Notification Task 4 Settings and lifecycle wiring.
+
 ## Widget W4 Verification — 2026-08-31
 
 W4 host packaging, extension embedding, signing, smoke contracts, and release-path signing assertions are implemented. The host remains unsandboxed with only the TeamID-prefixed App Group; the extension is sandboxed with the same group. The automated package contract embeds exactly one `.appex` and records extension signing before host signing. The Developer ID notarization path retains the six existing secret inputs, temporary-keychain import/cleanup, hardened runtime, timestamp, deep verification, stapling, Gatekeeper, and candidate ZIP replacement semantics while resolving the production group from `APPLE_TEAM_ID` and signing the extension before the host without `--deep` signing.
