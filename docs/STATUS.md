@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-31
 **Branch:** `codex/v021-widgets-notifications` (based on `main` at `e73356e2a836930488f7a7eb5ef92af008bda809`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1–W4 and Notification Tasks N1–N4 are implemented on this isolated branch. Native signed macOS 14 arm64 Widget Gallery/App Group acceptance remains an external final gate.
-**Next action:** Execute Integration Task 1 combined acceptance. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1–W4 and Notification Tasks N1–N4 are implemented on this isolated branch. Integration Task 1 automated verification is green, while native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance remain external final gates.
+**Next action:** Obtain actual signed macOS 14 arm64 Widget Gallery/App Group and native notification-permission evidence, then finish Integration Task 1. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -39,6 +39,45 @@ Notification Task 2 complete: allowlisted per-window threshold policy and privat
 Notification Task 3 complete: serialized opt-in authorization, admission revalidation, durable reservation, and immediate no-retry submission are implemented; next: Notification Task 4 Settings and lifecycle wiring.
 
 Notification Task 4 complete: Settings and main-app lifecycle own the explicit quota-alert preference; notifications implementation awaits combined v0.2.1 acceptance.
+
+## v0.2.1 Widgets and Notifications — Integration Task 1 Automated Verification — 2026-08-31
+
+W1–W4 and Notification Tasks N1–N4 are implemented on source HEAD `1255ea9`
+(`test: make termination lifecycle checks deterministic`). The controller's prescribed
+Integration Task 1 pipeline ran in session `55602` and exited 0; the exact command/output
+record is retained in the ignored
+`.superpowers/sdd/2026-08-31-needlbar-v0.2.1-widgets-notifications/integration-controller-gates.log`.
+No full gate was rerun during this documentation/mechanical-check pass.
+
+Recorded automated command outcomes:
+
+- `source /Users/taejunoh/.cargo/env && make test` — exit 0; Rust and package suites passed,
+  pinned `tokscale-core` reported 1372 passed/0 failed/1 ignored, and Swift reported 211
+  tests in 9 suites passed. The widget-extension, package relink, and notarization shell
+  contracts also passed.
+- `cargo fmt --check` — exit 0.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — exit 0.
+- `make package` — exit 0; local arm64/macOS 14 package produced.
+- `make smoke` — exit 0; `Needlbar app-bundle smoke passed`.
+- `./scripts/tests/package-app-tests.sh` — exit 0; `package-app relink regression passed`.
+- `./scripts/tests/notarize-app-tests.sh` — exit 0; `notarize-app shell contracts passed`.
+
+Read-only checks on the produced `dist/Needlbar.app` found arm64 host and extension
+executables, `14.0` minimum-system metadata, one `com.apple.widgetkit-extension`, and matching
+synthetic `TESTTEAMID.com.taejunoh.needlbar` host/extension App Group metadata. The local
+ad-hoc signature verifies with `codesign --verify --deep --strict`; the extension declares
+App Sandbox and no network/Keychain entitlement. `swift package dump-package` reports external
+`dependencies: []` and a dependency-free `NeedlbarWidgetSupport` target. The checked-in widget
+source scan, extension entitlement scan, and extension `otool -L`/`nm -u` boundary checks found
+no `NeedlbarCore`, `CNeedlbar`, Rust, provider, credential, Keychain, URLSession, or network
+dependency. These are structural/ad-hoc checks only and do not establish a real Team ID,
+provisioned entitlements, Widget Gallery discovery, or App Group runtime behavior.
+
+Actual signed macOS 14 arm64 Widget Gallery/App Group/deep-link/quit/reset/midnight acceptance
+and native notification authorization/enable-disable acceptance are unavailable on the current
+macOS 26.6.2/Xcode 26.6 host. They remain the next external action; v0.2.1 is implemented but
+not accepted. Whole-branch review remains pending controller completion. No new CI run was made,
+and no tag or release action is authorized.
 
 ## Widget W4 Verification — 2026-08-31
 

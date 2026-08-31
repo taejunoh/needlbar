@@ -23,7 +23,7 @@ Needlbar.app
                 ├── panic/error boundary
                 └── Rust-owned allocation/freeing
                     ├── needlbar-quota
-                        │   └── Claude, Codex, and Cursor quota/auth adapters
+                    │   └── Claude and Codex quota/auth adapters; Cursor unavailable result
                     └── vendor/tokscale-core
                         └── pinned local usage discovery/parsing/aggregation
 ```
@@ -48,6 +48,12 @@ Cursor usage has no Needlbar-owned hydration layer. The pinned `tokscale-core` e
 For the v0.2.0 local JSON export, `ProviderSnapshotStore` captures one immutable export value for all three providers in one actor turn. `NeedlbarCore` validates that value, deterministically encodes the versioned JSON document, and writes it through the private same-directory atomic writer. AppKit owns only the save panel and export UI state; it does not capture, encode, or write provider data.
 
 `Needlbar` owns AppKit lifecycle, status items, popovers, Settings, and native window presentation.
+
+The main app writes the sanitized widget projection to the private App Group; the WidgetKit extension reads only that DTO and never refreshes providers.
+
+The notification evaluator runs only in the live main app; WidgetKit timelines and notifications do not invoke Rust, the C ABI, Keychain, authentication, or provider/network paths.
+
+The widget projection is bounded, versioned, and written atomically with private file permissions. The notification ledger is likewise local and durable; neither is a provider or credential source.
 
 ## Independent refresh streams
 

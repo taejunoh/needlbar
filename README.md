@@ -37,6 +37,14 @@ Settings also provides one JSON-only `Export snapshot…` action for the current
 
 The v0.2.0 export is a user-initiated local backup/automation file. It contains only the normalized usage, quota, freshness, and safe status fields defined by the export schema; it does not include credentials, account identifiers, raw paths or provider responses, prompts, assistant responses, source code, or raw diagnostics.
 
+## v0.2.1 widgets and notifications (unreleased)
+
+v0.2.1 adds one medium Overview widget backed by a sanitized local projection; the widget does not refresh providers.
+
+Quota notifications are off by default, require explicit macOS permission, run only while Needlbar is running, and never contain credentials or raw provider data.
+
+This branch contains the widget and notification implementation and automated package checks, but it is not a release. Cursor remains usage-only with quota unavailable. Native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance still require external evidence; the local macOS 26 build is not that acceptance.
+
 ## Provider authentication and recovery
 
 Needlbar reuses provider-native authentication for Claude and Codex. It does not own their credentials or provide separate disconnect controls.

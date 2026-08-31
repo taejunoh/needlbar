@@ -14,6 +14,10 @@ Needlbar v0.1 is local-first.
   Its usage is local-only, and its quota action opens the fixed provider-owned Spending
   dashboard URL.
 
+The App Group projection and notification ledger are local, private, and credential-free; projection bytes are bounded and written with private file permissions.
+
+Notification copy uses fixed provider/category labels only and excludes credentials, account identifiers, raw titles, payloads, paths, prompts, responses, and source content.
+
 ## Local reads
 
 The following are the documented v0.1 boundaries. Paths are examples relative to the current user's home directory; they are not emitted in diagnostics or bridge errors.
