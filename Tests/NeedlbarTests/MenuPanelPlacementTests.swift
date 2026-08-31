@@ -59,6 +59,20 @@ struct MenuPanelPlacementTests {
         #expect(frame.maxY == anchor.visibleFrameInScreen.maxY)
     }
 
+    @Test func panelClampsToTheVisibleFrameInsetAtTheBottom() throws {
+        let anchor = StatusItemPresentationAnchor(
+            buttonFrameInScreen: NSRect(x: 531, y: 30, width: 39, height: 22),
+            visibleFrameInScreen: NSRect(x: 0, y: 0, width: 1512, height: 949)
+        )
+        let frame = try #require(MenuPanelPlacement.frame(
+            contentSize: NSSize(width: 300, height: 350),
+            anchor: anchor
+        ))
+
+        #expect(frame == NSRect(x: 400.5, y: 6, width: 300, height: 350))
+        #expect(frame.minY == anchor.visibleFrameInScreen.minY + 6)
+    }
+
     @Test func panelUsesNegativeCoordinatesOnASecondaryDisplay() throws {
         let anchor = StatusItemPresentationAnchor(
             buttonFrameInScreen: NSRect(x: -420, y: 880, width: 40, height: 22),
