@@ -1284,6 +1284,29 @@ Native caveats remain truthful: macOS 14 arm64 acceptance is unavailable on this
 and direct native Escape injection was not accepted because the nonactivating panel could not be
 focused. Automated Escape coverage remains green; it is not a native Escape claim.
 
+## v0.2.1 Widgets and Notifications — Final Exact-Source Native Candidate — 2026-08-31
+
+The final native evidence supersedes the earlier candidate path: source HEAD `dd426ab` was
+packaged and signed as
+`.superpowers/native-validation/final.Nb2q75/Needlbar.app`. PID `54409` remained alive from the
+exact host executable path. The candidate uses App Group
+`3BMF4LM6TM.com.taejunoh.needlbar`, extension-first Developer ID hardened-runtime signing with
+`--timestamp=none`, and strict nested code-signature verification exited 0. The exact widget
+extension registration listed one plug-in at the final candidate path. `open needlbar://overview`
+exited 0; this command result does not claim a visual deep-link outcome.
+
+The primary agent directly inspected the final screenshot
+`.superpowers/native-validation/final.Nb2q75/panel-position-crop.png`. On the secondary display,
+the AppKit screen frame was `(-503, 982, 2560, 1440)` and the custom panel CoreGraphics bounds
+were `X=972, Y=-1410, W=300, H=353`. The visual evidence shows the menu bar bottom at 60 px and
+the panel beginning immediately below near y=61 px at 2x scale, horizontally centered beneath the
+second `AI —` status item, with no native arrow/glass overlap.
+
+This final exact-source evidence confirms the bounded current-host panel placement and final
+candidate signature/registration. macOS 14 arm64 acceptance remains unavailable. Final native
+Escape and outside-click behavior are not newly claimed here; earlier external-system dismissal
+evidence remains labeled only at its previously verified scope.
+
 ## v0.1 Constraints to Preserve
 
 - macOS 14+.
