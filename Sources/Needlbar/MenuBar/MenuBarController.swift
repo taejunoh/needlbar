@@ -258,7 +258,7 @@ public final class MenuBarController: NSObject {
                 snapshot: snapshot,
                 onRetry: { [weak self] in self?.performRetryAction() },
                 onAuthenticationAction: { [weak self] action in
-                    self?.performAuthenticationAction(action, for: provider)
+                    self?.performPresentedAuthenticationAction(action, for: provider)
                 }
             ))
         }
@@ -318,7 +318,6 @@ public final class MenuBarController: NSObject {
     }
 
     func performAuthenticationAction(for provider: ProviderID) {
-        panelPresenter.dismiss()
         let action: ProviderAuthenticationAction
         switch provider {
         case .claude:
@@ -328,6 +327,11 @@ public final class MenuBarController: NSObject {
         case .cursor:
             action = .openCursorSpending(title: "Open Cursor Spending")
         }
+        performPresentedAuthenticationAction(action, for: provider)
+    }
+
+    func performPresentedAuthenticationAction(_ action: ProviderAuthenticationAction, for provider: ProviderID) {
+        panelPresenter.dismiss()
         performAuthenticationAction(action, for: provider)
     }
 

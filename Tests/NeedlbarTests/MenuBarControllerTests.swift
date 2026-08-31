@@ -512,7 +512,7 @@ struct MenuBarControllerTests {
         #expect(eventLog.events.suffix(2) == ["dismiss", "settings"])
     }
 
-    @Test func providerAuthenticationActionsDismissBeforeTheirCallbacks() {
+    @Test func presentedProviderAuthenticationActionsDismissBeforeTheirCallbacks() {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
         let eventLog = FakeEventLog()
         let presenter = FakeMenuPanelPresenter(eventLog: eventLog)
@@ -525,9 +525,13 @@ struct MenuBarControllerTests {
             openCursorSpending: { eventLog.events.append("cursor") }
         )
 
-        for provider in [ProviderID.claude, .codex, .cursor] {
+        for (provider, action) in [
+            (ProviderID.claude, ProviderAuthenticationAction.browserLogin(title: "Sign in with Claude")),
+            (.codex, .browserLogin(title: "Sign in with ChatGPT")),
+            (.cursor, .openCursorSpending(title: "Open Cursor Spending")),
+        ] {
             presenter.markShownForTesting()
-            controller.performAuthenticationAction(for: provider)
+            controller.performPresentedAuthenticationAction(action, for: provider)
         }
 
         #expect(eventLog.events == [
