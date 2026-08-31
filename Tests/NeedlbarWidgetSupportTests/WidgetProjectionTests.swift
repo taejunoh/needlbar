@@ -86,6 +86,24 @@ struct WidgetProjectionTests {
     }
 
     @Test
+    func rejectsQuotaHeadlineWithoutLastGoodTimestamp() {
+        let incoherent = Data("""
+        {"schemaVersion":1,"quotaRows":[{"provider":"claude","stream":"unavailable","lastSuccessfulAt":null,"headline":{"id":"claude.session","remainingPercent":50,"resetsAt":null}},{"provider":"codex","stream":"unavailable","lastSuccessfulAt":null,"headline":null}],"usageRows":[{"provider":"claude","stream":"unavailable","localDayKey":null,"utcOffsetSeconds":null,"lastSuccessfulAt":null,"todayTokens":null,"todayCostUSD":null},{"provider":"codex","stream":"unavailable","localDayKey":null,"utcOffsetSeconds":null,"lastSuccessfulAt":null,"todayTokens":null,"todayCostUSD":null},{"provider":"cursor","stream":"unavailable","localDayKey":null,"utcOffsetSeconds":null,"lastSuccessfulAt":null,"todayTokens":null,"todayCostUSD":null}],"today":{"completeness":"unavailable","totalTokens":null,"estimatedCostUSD":null}}
+        """.utf8)
+
+        #expect(throws: WidgetProjectionError.invalidQuotaRow) {
+            try WidgetProjection.decode(incoherent, referenceDate: referenceDate)
+        }
+
+        let staleLastGood = Data("""
+        {"schemaVersion":1,"quotaRows":[{"provider":"claude","stream":"stale","lastSuccessfulAt":"2027-01-15T08:00:00Z","headline":{"id":"claude.session","remainingPercent":50,"resetsAt":null}},{"provider":"codex","stream":"unavailable","lastSuccessfulAt":null,"headline":null}],"usageRows":[{"provider":"claude","stream":"unavailable","localDayKey":null,"utcOffsetSeconds":null,"lastSuccessfulAt":null,"todayTokens":null,"todayCostUSD":null},{"provider":"codex","stream":"unavailable","localDayKey":null,"utcOffsetSeconds":null,"lastSuccessfulAt":null,"todayTokens":null,"todayCostUSD":null},{"provider":"cursor","stream":"unavailable","localDayKey":null,"utcOffsetSeconds":null,"lastSuccessfulAt":null,"todayTokens":null,"todayCostUSD":null}],"today":{"completeness":"unavailable","totalTokens":null,"estimatedCostUSD":null}}
+        """.utf8)
+        let projection = try? WidgetProjection.decode(staleLastGood, referenceDate: referenceDate)
+        #expect(projection?.quotaRows[0].headline?.remainingPercent == 50)
+        #expect(projection?.quotaRows[0].lastSuccessfulAt == referenceDate)
+    }
+
+    @Test
     func rejectsInvalidUsageDayOffsetAndCost() throws {
         let invalidDay = WidgetUsageRow(provider: .claude, stream: .fresh, localDayKey: "2027-02-30", utcOffsetSeconds: 0, lastSuccessfulAt: referenceDate, todayTokens: 1, todayCostUSD: Decimal(string: "1")!)
         #expect(throws: WidgetProjectionError.invalidDay) {

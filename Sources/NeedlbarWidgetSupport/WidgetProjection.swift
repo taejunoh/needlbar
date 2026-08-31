@@ -323,7 +323,8 @@ public struct WidgetProjection: Codable, Sendable, Equatable {
                       $0.id.provider == row.provider
                           && $0.remainingPercent.isFinite
                           && (0...100).contains($0.remainingPercent)
-                  }) ?? true else {
+                  }) ?? true,
+                  row.headline == nil || row.lastSuccessfulAt != nil else {
                 throw WidgetProjectionError.invalidQuotaRow
             }
             try validateTimestamp(row.lastSuccessfulAt, referenceDate)
