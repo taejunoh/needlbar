@@ -33,7 +33,7 @@ if [[ "$*" == "--sdk macosx --show-sdk-path" ]]; then
 fi
 [[ "${1:-}" == swiftc ]] || { echo "unexpected xcrun argv: $*" >&2; exit 2; }
 argv="$*"
-for required in '-target arm64-apple-macosx14.0' '-swift-version 6' '-application-extension' '-framework SwiftUI' '-framework WidgetKit' 'WidgetProjection.swift' 'WidgetPresentation.swift' 'NeedlbarOverviewWidget.swift'; do
+for required in '-target arm64-apple-macosx14.0' '-swift-version 6' '-application-extension' '-Xlinker -e -Xlinker _NSExtensionMain' '-framework SwiftUI' '-framework WidgetKit' 'WidgetProjection.swift' 'WidgetPresentation.swift' 'NeedlbarOverviewWidget.swift'; do
   [[ "$argv" == *"$required"* ]] || { echo "missing swiftc argument: $required" >&2; exit 3; }
 done
 [[ "$argv" != *NeedlbarCore* && "$argv" != *CNeedlbar* && "$argv" != *Rust* ]] || exit 4
@@ -59,8 +59,15 @@ chmod 755 "$fake_bin/xcrun" "$fake_bin/codesign"
 log="$temp_root/codesign.log"
 output_dir="$fixture/.build/widget-extension"
 output="${output_dir}/NeedlbarWidgetExtension.appex"
-PATH="$fake_bin:$PATH" FAKE_CODESIGN_LOG="$log" \
-  "$fixture/scripts/build-widget-extension.sh" >"$temp_root/stdout" 2>"$temp_root/stderr"
+if PATH="$fake_bin:$PATH" FAKE_CODESIGN_LOG="$log" \
+  "$fixture/scripts/build-widget-extension.sh" >"$temp_root/stdout" 2>"$temp_root/stderr"; then
+  :
+else
+  status=$?
+  cat "$temp_root/stdout" >&2
+  cat "$temp_root/stderr" >&2
+  fail "builder failed with status $status"
+fi
 
 [[ -x "$output/Contents/MacOS/NeedlbarWidgetExtension" ]] || fail "extension executable missing"
 [[ "$(<"$temp_root/stdout")" == *"synthetic App Group identity"* ]] || fail "synthetic identity was not reported"

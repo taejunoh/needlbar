@@ -45,6 +45,8 @@ xcrun swiftc \
   -swift-version 6 \
   -application-extension \
   -parse-as-library \
+  -Xlinker -e \
+  -Xlinker _NSExtensionMain \
   -emit-executable \
   -module-name NeedlbarWidgetExtension \
   -framework SwiftUI \
