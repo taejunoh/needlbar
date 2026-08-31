@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-31
 **Branch:** `codex/v021-widgets-notifications` (execution docs baseline `e73356e2a836930488f7a7eb5ef92af008bda809`; branched from `main` at `1ba620b35c6c4a51087be2c7cb07ce7eda738f1d`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1–W4 and Notification Tasks N1–N4 are implemented on this isolated branch at `9de686e`, and the final whole-branch and scoped code reviews accepted the implementation. Integration Task 1 automated verification is green, while native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance remain external final gates, so Integration Task 1 overall is not complete.
-**Next action:** Obtain actual signed macOS 14 arm64 Widget Gallery/App Group and native notification-permission evidence, then finish Integration Task 1. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1–W4 and Notification Tasks N1–N4 are implemented on this isolated branch at `9de686e`, and the final whole-branch and scoped code reviews accepted the implementation. Integration Task 1 automated verification is green, and current-host signed native popover acceptance is partially recorded; native macOS 14 arm64 compatibility, installed-widget lifecycle, and remaining notification gates remain, so Integration Task 1 overall is not complete.
+**Next action:** Continue installed-widget acceptance using the signed outside-click-fix candidate: current-host Widget Gallery visibly shows Needlbar's medium Overview preview, Settings opens from the status-item popover, an external-app SecurityAgent Deny click dismisses the panel, and the bounded AppKit coordinate evidence satisfies the bottom-edge and centered-anchor checks. Same-app outside-click and native Escape remain unverified because the synthetic click was not focused and the nonactivating panel could not receive direct Escape injection. Widget placement, deep-link/quit/reset/midnight behavior, real threshold delivery, remaining notification acceptance, and macOS 14 arm64 compatibility still require separate evidence before finishing Integration Task 1. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -76,12 +76,168 @@ dependency. These are structural/ad-hoc checks only and do not establish a real 
 provisioned entitlements, Widget Gallery discovery, or App Group runtime behavior.
 
 Actual signed macOS 14 arm64 Widget Gallery/App Group/deep-link/quit/reset/midnight acceptance
-and native notification authorization/enable-disable acceptance are unavailable on the current
-macOS 26.6.2/Xcode 26.6 host. They remain the next external action; v0.2.1 is implemented but
-not accepted. Final whole-branch review and scoped final-fix re-review accepted the code,
+is unavailable on the current macOS 26.6.2/Xcode 26.6 host. Current-host notification
+authorization/enable-disable testing is possible. Live-data launch is now approved and underway,
+but Settings/permission UI access remains pending as recorded in the runtime continuation below.
+These checks remain the next action;
+v0.2.1 is implemented but not accepted. Final whole-branch review and scoped final-fix re-review accepted the code,
 specification, and quality for `9de686e`; Integration Task 1 overall remains incomplete until
 the external native gates are satisfied. No new CI run was made, and no tag or release action is
 authorized.
+
+## v0.2.1 Widgets and Notifications — Current macOS 26 Native Preflight — 2026-08-31
+
+This is the historical pre-launch checkpoint; the runtime continuation below supersedes its
+launch-consent and registration pending states.
+
+The controller completed local signing and a native preflight on the current macOS 26.6.2
+arm64 host without changing product source. No Needlbar process was running. An existing local Developer ID identity was valid;
+the original `dist/Needlbar.app` remains unchanged and was copied to the isolated candidate
+`.superpowers/native-validation/macos26.YDT1Bc/Needlbar.app` without rebuilding. The candidate
+was based on checkout HEAD `df51dbd` (docs-only after source `9de686e`).
+
+- Candidate `Info.plist` and copied entitlements were resolved to
+  `3BMF4LM6TM.com.taejunoh.needlbar`. The extension was signed before the host with
+  `--force --options runtime --timestamp=none --sign 4C6503D0A78A9F51C86CC7C9683115E74A4902A7`;
+  `codesign --verify --deep --strict --verbose=2` exited 0.
+- Both binaries are arm64, carry the real Developer ID TeamIdentifier and hardened-runtime
+  flag. Host entitlements are unsandboxed with only the App Group; the widget is sandboxed with
+  the same group and has no network or Keychain entitlement.
+- This is local signing only: no trusted timestamp, notarization/stapling, Gatekeeper
+  acceptance, upload, Apple portal mutation, credential export/import, tag, release, or push was
+  performed.
+- `pluginkit -a` for the exact candidate extension exited 0, but
+  `pluginkit -m -Av -i com.taejunoh.needlbar.widget` listed only the old `dist` extension; no
+  candidate-discovery claim is made.
+- Native launch was not performed. Read-only review found no preview/fixture-only app path, and
+  production launch always starts normal provider refresh. The controller is awaiting approval
+  for real-data launch under the synthetic-only acceptance constraint, or a separately scoped
+  synthetic harness. Widget Gallery/show, App Group runtime, widget data/deep-link behavior,
+  quit/reset/midnight behavior, and notifications remain unverified. Current-host notification
+  permission testing can proceed after launch approval; only macOS 14-specific compatibility
+  remains impossible to establish on this host.
+
+The detailed local evidence is retained in
+`.superpowers/native-validation/macos26.YDT1Bc/preflight.md`. This preflight does not change the
+macOS 14 minimum target or authorize any tag/release action.
+
+## v0.2.1 Widgets and Notifications — macOS 26 Runtime Continuation — 2026-08-31
+
+Following explicit approval for a live connected-data normal-app launch, the signed candidate was
+started with `open -n` at `16:17:26 EDT` (PID `72814`). Initial candidate
+`codesign --verify --deep --strict --verbose=2` exited 0. The real App Group container
+`3BMF4LM6TM.com.taejunoh.needlbar` was auto-created; `NeedlbarWidgetProjection.json` appeared with mode `0600`,
+size `815` bytes, and mtime `16:17:43`. At `16:22`, `pluginkit` listed the signed candidate
+extension only.
+
+A later controller `stat` observed mode `0600`, size `817` bytes, and mtime `16:22:33 EDT`,
+confirming a subsequent host publication during the running session. This is not evidence that
+WidgetKit rendered or read back the projection.
+
+- A read-only responsiveness sample recorded 2,588 samples over 3 seconds. The main thread was
+  in `NSApplication.run`/normal `mach_msg` idle with CPU at 0% range; no hang was observed.
+- `open -a` for the candidate with `needlbar://overview` exited 0, but the UI was not observable,
+  so no deep-link visual pass is claimed. A separate old Task 5 fresh-app process (PID `72970`,
+  started `16:17:56`) appeared during those attempts; its exact-path start was checked and it was
+  terminated with `SIGTERM`, while candidate PID `72814` remained alive.
+- Registration cleanup was narrow: `lsregister -u` targeted only the worktree
+  `dist/Needlbar.app`, then `lsregister -f` targeted the exact candidate. No files were deleted.
+  Existing desktop widgets were observed enabled. System Settings did not list Needlbar under
+  notifications.
+- Orca could not expose Needlbar's status-item popover despite granted UI-automation access;
+  System Settings was accessible, while Needlbar background-state reads timed out. No persistent
+  Settings surface, alert toggle, OS permission change, or authorization request was visually
+  verified at that initial checkpoint. The user subsequently opened Settings. The controller
+  observed the signed candidate's persistent `Needlbar Settings` window using native UI
+  automation and scrolled to Notifications: `Quota threshold alerts` was off, with
+  `Off. Enable to request permission.` visible at that checkpoint.
+
+After action-time approval, the controller enabled the quota-alert switch. The first request
+returned an error (`didGrant: 0 hasError: 1` in the bounded native log), and the app showed
+`Notifications unavailable in macOS settings.` The exact error was not retained by the client.
+The user then confirmed personally granting OS permission; System Settings showed Needlbar's
+allow-notifications switch on. Re-enabling the already-approved app option re-read authorization
+and visibly changed `Quota threshold alerts` to on with
+`Alerts are enabled for fresh Claude and Codex quota readings.` No OS permission switch was
+changed by the controller, no permission database was reset, and no product source was changed.
+This verifies current-host opt-in activation after permission was granted, not notification
+delivery, revocation, restart de-duplication, or macOS 14 behavior.
+
+At approximately `16:51 EDT`, the user opened Widget Gallery and the controller inspected its
+native UI without requiring a chat reply while the modal editor was open. Searching `Needlbar`
+produced only `All Widgets` with an empty previews collection, confirmed in a second UI read.
+The signed candidate still appeared as the sole entry in `pluginkit -m -ADv`, so plugin
+registration alone has not established WidgetKit discovery. The empty-result screenshot is
+retained locally at `.superpowers/native-validation/macos26.YDT1Bc/gallery-needlbar-empty.jpeg`.
+The editor was closed afterward so the user could return to chat; no widget was added and no
+existing desktop widget was changed. Gallery discovery failed this native check.
+
+Bounded native logs subsequently narrowed the failure to extension startup: at `16:49:50`,
+macOS launched the exact candidate, initialized its sandbox, and entered `WidgetBundle.main`,
+but the process then exited voluntarily before replying to the descriptor request. `chronod`
+reported an invalidated connection (`NSCocoaErrorDomain 4099`). An earlier `16:21` containing-bundle
+registration warning is therefore not sufficient to explain the current failure. Binary
+comparison found that Needlbar enters its synthesized Swift `main` and lacks the Foundation
+`_NSExtensionMain` entry used by three working WidgetKit extensions. A narrowly scoped linker
+entrypoint regression test first failed with the missing linker argument, then passed after adding
+`-Xlinker -e -Xlinker _NSExtensionMain` to the extension build. The actual rebuilt binary imports
+Foundation's `_NSExtensionMain`; its `LC_MAIN` entry (`211172`) points to that symbol's trampoline.
+The scoped read-only review accepted the two-script change without findings. No widget source,
+plist template, data schema, provider, or permission behavior changed.
+
+The controller preserved the original signed and ad-hoc bundles, copied the signed candidate to
+`.superpowers/native-validation/entrypoint.nW5gTb/Needlbar.app`, embedded the rebuilt extension,
+resolved its group to the existing real Team ID, and signed the extension before the host with
+the same local runtime/no-timestamp signing recipe. Strict nested verification exited 0.
+After checking the old candidate's exact process path, only PID `72814` was terminated; its
+registration was narrowly replaced with the new candidate. The new host started at `17:01:14`
+as PID `80226`, with one registered extension. No files or system caches were deleted.
+At `17:01:14–15`, `chronod` received the `NeedlbarOverview` medium-widget descriptor and the
+extension successfully completed its placeholder request.
+
+At `17:02:54`, the controller opened Gallery through the existing widget context menu and searched
+`Needlbar`. Both the native accessibility tree and screenshot showed the Needlbar category and
+one medium `Overview` preview with rendered provider rows. The screenshot is retained locally at
+`.superpowers/native-validation/entrypoint.nW5gTb/gallery-needlbar-visible.jpeg`. The controller
+clicked Done and verified the editor was closed. No widget was added or removed. This passes
+current-host Gallery discovery and preview rendering, but is not installed-widget acceptance.
+
+Fresh verification on the two-script fix: `source /Users/taejunoh/.cargo/env && make test` exited 0
+(controller session `3404`); Rust/vendor, 213 Swift tests in 9 suites, widget-extension, package
+relink, and notarization shell contracts passed. Output is retained at
+`.superpowers/native-validation/entrypoint.nW5gTb/make-test.log`. The host test link still reports
+newer-macOS object-file deployment warnings (26.5 objects against the 14.0 target); this successful
+current-host run does not establish macOS 14 compatibility. The original `dist` and earlier signed
+candidate remain preserved; no commit, push, release upload, or native cache reset was performed.
+
+The user then reproduced a separate native popover problem: clicking an ordinary other-app view
+or the desktop did not dismiss the `.transient` popover. The existing code had no close veto or
+re-show path, so a narrowly scoped global left/right/other mouse-down fallback was added without
+changing the popover edge, activation policy, panel type, or SwiftUI layout. TDD first failed on
+the missing monitor seam; a review wave then added RED cases for a hidden popover incorrectly
+installing a monitor and a queued old-presentation callback closing a newly presented popover.
+The final implementation installs only after a successful show, guards delayed callbacks with a
+monotonic presentation generation, and cancels on replacement, close, and both application
+termination paths. The final scoped review accepted the implementation with no Critical or
+Important findings; the public test seam remains a nonblocking Minor in this executable target.
+
+Focused `MenuBarControllerTests` passed 19 tests in one suite, full Swift verification passed 221
+tests in 9 suites, and a fresh `source /Users/taejunoh/.cargo/env && make test` exited 0 with all
+Rust/vendor, Swift, widget-extension, package, and notarization contracts passing. `make package`
+also exited 0. The candidate `.superpowers/native-validation/dismiss.Pyfdbi/Needlbar.app` was
+resolved to the existing real Team ID, signed extension-first with the existing local
+runtime/no-timestamp recipe, and passed strict nested verification. After exact-path validation,
+only the prior candidate PID `80226` was terminated and its registration was narrowly replaced.
+The new candidate started as PID `20555` at `17:31:44 EDT`. The user then confirmed that clicking
+outside the displayed popover closes it. Popover positioning remains separately unverified and
+unchanged; no tag, push, release upload, portal change, or cache reset occurred.
+
+Installed-widget rendering/readback, App Group lifecycle behavior, deep-link visual behavior,
+quit/reset/midnight behavior, remaining notification-permission cases, and threshold-crossing acceptance remain
+unverified. No artificial usage, login change, provider record overwrite, notarization/upload,
+portal mutation, tag, or push occurred. The current-host notification checks are no longer blocked
+by launch consent, Settings access, or initial authorization; macOS 14 arm64
+compatibility remains a separate final gate.
 
 ## v0.2.1 Final Review Fix Wave — 2026-08-31
 
@@ -1055,6 +1211,49 @@ Full verification passed:
 The native signed macOS 14 arm64 widget acceptance remains an external final
 gate. The next continuation point is Task W3: extension target and widget
 presentation packaging.
+
+## v0.2.1 Widgets and Notifications — Task 4 Native Popover Acceptance — 2026-08-31
+
+Task 4's current-host native acceptance was run by the primary agent against the exact
+Developer ID-signed candidate
+`.superpowers/native-validation/menu-panel.x6vzf2n2yv/Needlbar.app`, with host PID `32737`
+confirmed healthy and running from that exact executable path. The candidate had already
+passed the fresh full gates and strict nested code-signature verification recorded in the
+Task 4 evidence report.
+
+The AppKit display evidence recorded:
+
+- Primary screen frame `(0, 0, 1512, 982)` and visible frame `(0, 0, 1512, 949)`.
+- Secondary screen frame `(-503, 982, 2560, 1440)` and the same visible frame.
+- On the secondary display, custom panel CoreGraphics bounds `X=1019, Y=-1410, W=300,
+  H=353`; converted placement stayed within the visible frame and was centered under the
+  clicked status-item anchor when not edge-clamped.
+- The retained crop
+  `.superpowers/native-validation/menu-panel.x6vzf2n2yv/panel-position-crop.png` shows the
+  menu bar ending at approximately 60 px at 2x scale, the panel beginning near y=61, centered
+  under the second AI status icon, with no native popover arrow/glass overlap.
+
+Direct native interactions verified:
+
+- Clicking Settings dismissed the panel and opened the Needlbar Settings window.
+- Clicking the external SecurityAgent Deny control dismissed the panel.
+- A same-app outside interaction dismissed once, but its synthetic click reported
+  `unverified/window_not_focused`; no stronger same-app outside-click claim is made.
+- Direct native Escape injection was not possible because the nonactivating panel could not be
+  focused. Escape behavior remains covered by automated tests only and is not claimed as a
+  native result.
+
+This evidence disproves the prior hypothesis that the panel's native popover behavior was
+accepted without an outside-click dismissal path. It confirms current-host positioning and
+selected dismissal behavior, but does not establish installed-widget rendering/readback,
+WidgetKit App Group lifecycle, deep-link/quit/reset/midnight behavior, notification delivery or
+remaining permission cases, same-app outside-click behavior beyond the bounded observation,
+native Escape, or macOS 14 arm64 compatibility. No tag, push, release upload, or Apple portal
+mutation was performed.
+
+The exact command exits, test counts, signing identity hash, bundle/executable paths, and
+candidate evidence are retained in
+`.superpowers/sdd/2026-08-31-needlbar-v0.2.1-popover-anchor-fix/task-4-report.md`.
 
 ## v0.1 Constraints to Preserve
 
