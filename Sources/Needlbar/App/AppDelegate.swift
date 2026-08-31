@@ -9,6 +9,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let loginCoordinator: ProviderLoginCoordinator
     private let moduleConfiguration: ModuleConfiguration
     private let snapshotExportController: SnapshotExportController
+    private let notificationPreferences: QuotaNotificationPreferences
+    private let notificationService: QuotaNotificationService
     private let widgetPublisher: WidgetProjectionPublisher?
     private let menuBarController: MenuBarController
     private let terminationController = AccessoryTerminationController()
@@ -20,6 +22,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let usageFileWatcher = UsageFileWatcher()
 
         self.snapshotStore = snapshotStore
+        let notificationPreferences = QuotaNotificationPreferences()
+        self.notificationPreferences = notificationPreferences
+        let notificationService = QuotaNotificationService(
+            store: snapshotStore,
+            preferences: notificationPreferences
+        )
+        self.notificationService = notificationService
         self.moduleConfiguration = moduleConfiguration
         self.widgetPublisher = makeWidgetPublisher()
         let refreshCoordinator = RefreshCoordinator(
@@ -50,6 +59,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             snapshotStore: snapshotStore,
             loginCoordinator: loginCoordinator,
             snapshotExportController: snapshotExportController,
+            notificationPreferences: notificationPreferences,
+            notificationService: notificationService,
             onModuleActivated: { _ in
                 Task {
                     await refreshCoordinator.popoverOpened()
@@ -75,6 +86,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             await self.menuBarController.startObserving()
             guard !Task.isCancelled else { return }
+            await self.notificationService.start()
+            guard !Task.isCancelled else { return }
             await self.widgetPublisher?.start(observing: self.snapshotStore)
             guard !Task.isCancelled else { return }
             await self.refreshCoordinator.start()
@@ -92,6 +105,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationWillTerminate(_ notification: Notification) {
         terminationController.performSynchronousSafetyCleanup(
             cancelStartup: { [weak self] in self?.cancelLifecycleTask() },
+            stopNotifications: { [weak self] in self?.notificationService.stop() },
             stopMenuBarObservation: { [weak self] in self?.menuBarController.stopObserving() }
         )
     }
@@ -99,6 +113,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         terminationController.requestTermination(
             cancelStartup: { [weak self] in self?.cancelLifecycleTask() },
+            stopNotifications: { [weak self] in self?.notificationService.stop() },
             stopMenuBarObservation: { [weak self] in self?.menuBarController.stopObserving() },
             stopLoginCoordinator: { [weak self] in
                 guard let self else { return .complete }
@@ -114,6 +129,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             resumeLoginAdmission: { [weak self] in
                 self?.loginCoordinator.resumeAfterDeniedTermination()
+            },
+            resumeNotifications: { [weak self] in
+                Task { await self?.notificationService.start() }
             }
         )
     }
@@ -165,16 +183,19 @@ final class AccessoryTerminationController {
 
     func requestTermination(
         cancelStartup: @escaping @MainActor () -> Void,
+        stopNotifications: @escaping @MainActor () -> Void,
         stopMenuBarObservation: @escaping @MainActor () -> Void,
         stopLoginCoordinator: @escaping @MainActor () async -> ProviderLoginCleanupResult,
         stopRefreshCoordinator: @escaping @MainActor () async -> Void,
         reply: @escaping @MainActor (Bool) -> Void,
-        resumeLoginAdmission: @escaping @MainActor () -> Void
+        resumeLoginAdmission: @escaping @MainActor () -> Void,
+        resumeNotifications: @escaping @MainActor () -> Void
     ) -> NSApplication.TerminateReply {
         guard !isTerminating else { return .terminateLater }
         isTerminating = true
         performSynchronousSafetyCleanup(
             cancelStartup: cancelStartup,
+            stopNotifications: stopNotifications,
             stopMenuBarObservation: stopMenuBarObservation
         )
         terminationTask = Task { [weak self] in
@@ -189,7 +210,9 @@ final class AccessoryTerminationController {
             case .pendingReap:
                 reply(false)
                 resumeLoginAdmission()
+                resumeNotifications()
                 self.isTerminating = false
+                self.didPerformSynchronousSafetyCleanup = false
                 self.terminationTask = nil
             }
         }
@@ -198,11 +221,13 @@ final class AccessoryTerminationController {
 
     func performSynchronousSafetyCleanup(
         cancelStartup: @escaping @MainActor () -> Void,
+        stopNotifications: @escaping @MainActor () -> Void,
         stopMenuBarObservation: @escaping @MainActor () -> Void
     ) {
         guard !didPerformSynchronousSafetyCleanup else { return }
         didPerformSynchronousSafetyCleanup = true
         cancelStartup()
+        stopNotifications()
         stopMenuBarObservation()
     }
 }

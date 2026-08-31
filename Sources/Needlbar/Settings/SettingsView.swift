@@ -6,17 +6,23 @@ public struct SettingsView: View {
     private let openCursorSpending: () -> Void
     @ObservedObject private var loginCoordinator: ProviderLoginCoordinator
     @ObservedObject private var snapshotExportController: SnapshotExportController
+    @ObservedObject private var notificationPreferences: QuotaNotificationPreferences
+    private let notificationService: QuotaNotificationService
 
     public init(
         configuration: ModuleConfiguration,
         loginCoordinator: ProviderLoginCoordinator,
         snapshotExportController: SnapshotExportController,
+        notificationPreferences: QuotaNotificationPreferences,
+        notificationService: QuotaNotificationService,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() }
     ) {
         self.configuration = configuration
         self.openCursorSpending = openCursorSpending
         _loginCoordinator = ObservedObject(wrappedValue: loginCoordinator)
         _snapshotExportController = ObservedObject(wrappedValue: snapshotExportController)
+        _notificationPreferences = ObservedObject(wrappedValue: notificationPreferences)
+        self.notificationService = notificationService
     }
 
     public var body: some View {
@@ -62,6 +68,16 @@ public struct SettingsView: View {
                     Text("Could not export snapshot.")
                 }
             }
+
+            Section("Notifications") {
+                Toggle("Quota threshold alerts", isOn: Binding(
+                    get: { notificationPreferences.isEnabled },
+                    set: { setQuotaAlertsEnabled($0) }
+                ))
+                Text(notificationStatusCopy)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .padding()
@@ -74,6 +90,18 @@ public struct SettingsView: View {
 
     var isExportButtonDisabled: Bool {
         snapshotExportController.isExporting
+    }
+
+    func setQuotaAlertsEnabled(_ enabled: Bool) {
+        Task { await notificationService.setEnabledFromSettings(enabled) }
+    }
+
+    var notificationStatusCopy: String {
+        switch notificationPreferences.state {
+        case .off: "Off. Enable to request permission."
+        case .enabled: "Alerts are enabled for fresh Claude and Codex quota readings."
+        case .unavailable: "Notifications unavailable in macOS settings."
+        }
     }
 
     @ViewBuilder

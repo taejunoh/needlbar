@@ -2,37 +2,55 @@ import AppKit
 import Testing
 @testable import NeedlbarApp
 
+@Suite("AppDelegateLifecycleTests", .serialized)
 @MainActor
-@Test func terminationWaitsForLoginAndRefreshCleanupAndRepliesExactlyOnce() async {
+struct AppDelegateLifecycleTests {
+@Test func terminationStopsNotificationsBeforeLoginAndRefreshCleanup() async {
     let loginShutdown = TerminationShutdownGate()
     let refreshShutdown = TerminationShutdownGate()
     let termination = AccessoryTerminationController()
     var startupCancellationCount = 0
+    var notificationStopCount = 0
     var observationStopCount = 0
     var replyCount = 0
     var loginAdmissionResumeCount = 0
+    var events: [String] = []
 
     func requestTermination() -> NSApplication.TerminateReply {
         termination.requestTermination(
             cancelStartup: { startupCancellationCount += 1 },
+            stopNotifications: {
+                notificationStopCount += 1
+                events.append("notificationStop")
+            },
             stopMenuBarObservation: { observationStopCount += 1 },
             stopLoginCoordinator: {
+                events.append("loginStop")
                 await loginShutdown.waitForRelease()
                 return .complete
             },
-            stopRefreshCoordinator: { await refreshShutdown.waitForRelease() },
-            reply: { _ in replyCount += 1 },
-            resumeLoginAdmission: { loginAdmissionResumeCount += 1 }
+            stopRefreshCoordinator: {
+                events.append("refreshStop")
+                await refreshShutdown.waitForRelease()
+            },
+            reply: {
+                replyCount += 1
+                events.append("reply:\($0)")
+            },
+            resumeLoginAdmission: { loginAdmissionResumeCount += 1 },
+            resumeNotifications: {}
         )
     }
 
     #expect(requestTermination() == .terminateLater)
     #expect(startupCancellationCount == 1)
+    #expect(notificationStopCount == 1)
     #expect(observationStopCount == 1)
     #expect(replyCount == 0)
 
     #expect(requestTermination() == .terminateLater)
     #expect(startupCancellationCount == 1)
+    #expect(notificationStopCount == 1)
     #expect(observationStopCount == 1)
     #expect(await eventually { await loginShutdown.callCount() == 1 })
     #expect(await loginShutdown.callCount() == 1)
@@ -47,14 +65,16 @@ import Testing
     #expect(await eventually { replyCount == 1 })
     #expect(replyCount == 1)
     #expect(loginAdmissionResumeCount == 0)
+    #expect(events == ["notificationStop", "loginStop", "refreshStop", "reply:true"])
 }
 
-@MainActor
-@Test func terminationRejectsPendingReapWithoutStoppingRefreshAndAllowsALaterCompleteRetry() async {
+@Test func pendingReapResumesNotificationsAndResetsSynchronousCleanupForLaterRetry() async {
     let loginShutdown = LoginTerminationGate(results: [.pendingReap, .complete])
     let refreshShutdown = TerminationShutdownGate()
     let termination = AccessoryTerminationController()
     var startupCancellationCount = 0
+    var notificationStopCount = 0
+    var notificationResumeCount = 0
     var observationStopCount = 0
     var replies: [Bool] = []
     var events: [String] = []
@@ -62,6 +82,10 @@ import Testing
     func requestTermination() -> NSApplication.TerminateReply {
         termination.requestTermination(
             cancelStartup: { startupCancellationCount += 1 },
+            stopNotifications: {
+                notificationStopCount += 1
+                events.append("notificationStop")
+            },
             stopMenuBarObservation: { observationStopCount += 1 },
             stopLoginCoordinator: {
                 let result = await loginShutdown.waitForRelease()
@@ -76,7 +100,11 @@ import Testing
                 replies.append($0)
                 events.append("reply:\($0)")
             },
-            resumeLoginAdmission: { events.append("resumeLoginAdmission") }
+            resumeLoginAdmission: { events.append("resumeLoginAdmission") },
+            resumeNotifications: {
+                notificationResumeCount += 1
+                events.append("resumeNotifications")
+            }
         )
     }
 
@@ -84,12 +112,14 @@ import Testing
     #expect(requestTermination() == .terminateLater)
     #expect(await eventually { await loginShutdown.callCount() == 1 })
     #expect(startupCancellationCount == 1)
+    #expect(notificationStopCount == 1)
     #expect(observationStopCount == 1)
 
     await loginShutdown.releaseNext()
     #expect(await eventually { replies == [false] })
     #expect(await refreshShutdown.callCount() == 0)
-    #expect(events == ["loginStop", "reply:false", "resumeLoginAdmission"])
+    #expect(events == ["notificationStop", "loginStop", "reply:false", "resumeLoginAdmission", "resumeNotifications"])
+    #expect(notificationResumeCount == 1)
 
     #expect(requestTermination() == .terminateLater)
     #expect(await eventually { await loginShutdown.callCount() == 2 })
@@ -100,13 +130,16 @@ import Testing
     await refreshShutdown.release()
     #expect(await eventually { replies == [false, true] })
     #expect(events == [
-        "loginStop", "reply:false", "resumeLoginAdmission",
+        "notificationStop", "loginStop", "reply:false", "resumeLoginAdmission", "resumeNotifications",
+        "notificationStop",
         "loginStop", "refreshStop", "reply:true",
     ])
-    #expect(startupCancellationCount == 1)
-    #expect(observationStopCount == 1)
+    #expect(startupCancellationCount == 2)
+    #expect(notificationStopCount == 2)
+    #expect(observationStopCount == 2)
     #expect(await loginShutdown.callCount() == 2)
     #expect(await refreshShutdown.callCount() == 1)
+}
 }
 
 @MainActor

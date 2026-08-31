@@ -121,13 +121,21 @@ func invalidDestinationFailsBeforeInvokingCore(_ destination: URL) async {
         panelResult: URL(fileURLWithPath: "/tmp/backup.json"),
         action: action
     )
+    let defaults = freshSettingsDefaults()
+    let notificationPreferences = QuotaNotificationPreferences(defaults: defaults)
+    let notificationService = QuotaNotificationService(
+        store: ProviderSnapshotStore(),
+        preferences: notificationPreferences
+    )
     let view = SettingsView(
-        configuration: ModuleConfiguration(defaults: freshSettingsDefaults()),
+        configuration: ModuleConfiguration(defaults: defaults),
         loginCoordinator: ProviderLoginCoordinator(refreshQuota: { _ in
             await refreshOrLoginCounter.increment()
             return true
         }),
-        snapshotExportController: controller
+        snapshotExportController: controller,
+        notificationPreferences: notificationPreferences,
+        notificationService: notificationService
     )
 
     view.exportSnapshot()

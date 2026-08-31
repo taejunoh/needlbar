@@ -301,7 +301,12 @@ private func makeMenuBarController(
     onSettingsRequested: @escaping @MainActor () -> Void = {},
     openCursorSpending: @escaping @MainActor () -> Void = {}
 ) -> MenuBarController {
-    MenuBarController(
+    let notificationPreferences = QuotaNotificationPreferences(defaults: freshMenuBarDefaults())
+    let notificationService = QuotaNotificationService(
+        store: snapshotStore,
+        preferences: notificationPreferences
+    )
+    return MenuBarController(
         configuration: configuration,
         snapshotStore: snapshotStore,
         loginCoordinator: loginCoordinator,
@@ -311,6 +316,8 @@ private func makeMenuBarController(
             coreExportAction: FailingCoreExportAction(),
             captureClock: Date.init
         ),
+        notificationPreferences: notificationPreferences,
+        notificationService: notificationService,
         statusItemFactory: statusItemFactory,
         onModuleActivated: onModuleActivated,
         onRetryRequested: onRetryRequested,

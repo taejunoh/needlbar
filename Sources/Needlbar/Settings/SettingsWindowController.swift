@@ -8,6 +8,8 @@ public final class SettingsWindowController: NSWindowController {
         configuration: ModuleConfiguration,
         loginCoordinator: ProviderLoginCoordinator,
         snapshotExportController: SnapshotExportController,
+        notificationPreferences: QuotaNotificationPreferences,
+        notificationService: QuotaNotificationService,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() }
     ) {
         let window = NSWindow(
@@ -21,6 +23,8 @@ public final class SettingsWindowController: NSWindowController {
             configuration: configuration,
             loginCoordinator: loginCoordinator,
             snapshotExportController: snapshotExportController,
+            notificationPreferences: notificationPreferences,
+            notificationService: notificationService,
             openCursorSpending: openCursorSpending
         ))
         window.isReleasedWhenClosed = false

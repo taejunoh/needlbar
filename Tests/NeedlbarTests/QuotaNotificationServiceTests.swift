@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 @testable import NeedlbarApp
@@ -5,6 +6,44 @@ import Testing
 
 @Suite("QuotaNotificationServiceTests", .serialized)
 struct QuotaNotificationServiceTests {
+    @MainActor @Test func settingsToggleRequestsOnlyOnExplicitEnableAndShowsNoRawAuthorizationError() async throws {
+        let events = NotificationEventLog()
+        let client = FakeQuotaNotificationClient(status: .denied, submissionResult: .submitted, events: events)
+        let suiteName = "QuotaNotificationSettings.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = QuotaNotificationPreferences(defaults: defaults)
+        let service = QuotaNotificationService(
+            store: ProviderSnapshotStore(),
+            preferences: preferences,
+            client: client,
+            ledgerStore: RecordingLedgerStore(pauseNextLoad: false, saveResult: .success(()), events: events)
+        )
+        let view = SettingsView(
+            configuration: ModuleConfiguration(defaults: defaults),
+            loginCoordinator: ProviderLoginCoordinator(refreshQuota: { _ in true }),
+            snapshotExportController: SnapshotExportController(
+                captureSource: ProviderSnapshotStore(),
+                savePanelPresenter: NSSavePanelPresenter(),
+                coreExportAction: DefaultCoreExportAction(),
+                captureClock: Date.init
+            ),
+            notificationPreferences: preferences,
+            notificationService: service
+        )
+        let unavailable = NotificationPreferenceStateGate(preferences: preferences, expected: .unavailable)
+
+        #expect(await client.requestCount == 0)
+        await service.start()
+        view.setQuotaAlertsEnabled(true)
+        await unavailable.wait()
+
+        #expect(await client.requestCount == 1)
+        #expect(view.notificationStatusCopy == "Notifications unavailable in macOS settings.")
+    }
+
     @MainActor @Test func deniedProvisionalAndRevokedAuthorizationNeverSubmit() async throws {
         for status in [QuotaNotificationAuthorization.denied, .provisional, .notDetermined] {
             let fixture = try NotificationFixture(status: status)
@@ -412,6 +451,7 @@ private actor FakeQuotaNotificationClient: QuotaNotificationClient {
     private let events: NotificationEventLog
     private var statusContinuations: [CheckedContinuation<QuotaNotificationAuthorization, Never>] = []
     private var statusPendingWaiters: [CheckedContinuation<Bool, Never>] = []
+    private(set) var requestCount = 0
     private(set) var submissions: [String] = []
 
     init(status: QuotaNotificationAuthorization, submissionResult: QuotaNotificationSubmission, events: NotificationEventLog) {
@@ -436,7 +476,8 @@ private actor FakeQuotaNotificationClient: QuotaNotificationClient {
     }
 
     func requestAuthorization() async -> QuotaNotificationAuthorization {
-        status
+        requestCount += 1
+        return status
     }
 
     func currentAuthorization() async -> QuotaNotificationAuthorization {
@@ -458,6 +499,32 @@ private actor FakeQuotaNotificationClient: QuotaNotificationClient {
         submissions.append(body)
         await events.append("submit")
         return submissionResult
+    }
+}
+
+@MainActor
+private final class NotificationPreferenceStateGate {
+    private let expected: QuotaNotificationPreferences.State
+    private var reached = false
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+    private var cancellable: AnyCancellable?
+
+    init(preferences: QuotaNotificationPreferences, expected: QuotaNotificationPreferences.State) {
+        self.expected = expected
+        cancellable = preferences.$state.sink { [weak self] state in
+            guard let self, state == self.expected else { return }
+            self.reached = true
+            let continuations = self.continuations
+            self.continuations.removeAll()
+            continuations.forEach { $0.resume() }
+        }
+    }
+
+    func wait() async {
+        guard !reached else { return }
+        await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+        }
     }
 }
 

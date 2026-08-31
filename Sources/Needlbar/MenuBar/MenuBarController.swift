@@ -43,6 +43,8 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
         snapshotStore: ProviderSnapshotStore,
         loginCoordinator: ProviderLoginCoordinator,
         snapshotExportController: SnapshotExportController,
+        notificationPreferences: QuotaNotificationPreferences,
+        notificationService: QuotaNotificationService,
         statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
         onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
         onRetryRequested: @escaping @MainActor () -> Void = {},
@@ -62,6 +64,8 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
             configuration: configuration,
             loginCoordinator: loginCoordinator,
             snapshotExportController: snapshotExportController,
+            notificationPreferences: notificationPreferences,
+            notificationService: notificationService,
             openCursorSpending: openCursorSpending
         )
         super.init()
