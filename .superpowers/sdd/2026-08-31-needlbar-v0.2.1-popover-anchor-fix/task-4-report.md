@@ -146,3 +146,31 @@ token on the correct actor. A direct presenter `deinit` cancellation is not safe
 under the current Swift baseline because deinitializers are synchronous/nonisolated while the
 token's `cancel()` is `@MainActor`; the probe above provides the compiler evidence. The code keeps
 the safe explicit teardown and does not use `nonisolated(unsafe)` or other baseline-risky access.
+
+## Task 4 final review follow-up
+
+Final read-only review closed the P1/P3 findings with focused fix commit `dd426ab` (`fix: guard
+stale menu panel dismissals`) and found no new P0–P2 findings. The presenter-owned monotonically
+increasing generation guards each locally queued dismissal callback, so a callback retained from
+an earlier presentation cannot dismiss the newer panel or call `onDismiss`. The
+`StatusItemPresentationAnchor: Equatable` contract is covered by direct equality/inequality tests.
+
+The P2 deinit concern is withdrawn as an open finding: explicit
+`MenuBarController.stopObserving` teardown is invoked by both application termination paths and
+cancels the presenter token on the main actor. The direct `deinit` cancellation probe failed under
+the current Swift 6 baseline because a synchronous nonisolated deinitializer cannot call the
+token's `@MainActor cancel()` (`[#ActorIsolatedCall]`). No `nonisolated(unsafe)` workaround was
+introduced.
+
+Fresh final gate evidence from the primary agent:
+
+- `source /Users/taejunoh/.cargo/env && make test` — exit 0; Rust workspace green, pinned
+  `tokscale-core` 1372 passed / 0 failed / 1 ignored, Swift 245 tests in 11 suites passed, and
+  widget-extension, package relink, and notarization shell contracts passed.
+- Known linker deployment warnings were the only caveat: macOS 26.5 Rust objects linked against
+  the macOS 14.0 deployment target; no gate failed.
+- The root agent will run the final `git diff --check` for this docs-only pass.
+
+Native caveats remain unchanged: macOS 14 arm64 acceptance is unavailable on this macOS 26 host.
+Direct native Escape injection was not accepted because the nonactivating panel could not be
+focused; automated Escape tests remain green but do not establish native Escape acceptance.

@@ -1255,6 +1255,35 @@ The exact command exits, test counts, signing identity hash, bundle/executable p
 candidate evidence are retained in
 `.superpowers/sdd/2026-08-31-needlbar-v0.2.1-popover-anchor-fix/task-4-report.md`.
 
+## v0.2.1 Widgets and Notifications — Task 4 Final Review Follow-up — 2026-08-31
+
+The final read-only review closed the P1/P3 findings with focused fix commit `dd426ab`
+(`fix: guard stale menu panel dismissals`). `AppKitMenuPanelPresenter` now owns a monotonically
+increasing presentation generation and captures it in each locally queued dismissal callback;
+callbacks from an older presentation cannot dismiss or invoke `onDismiss` for a newer panel.
+`StatusItemPresentationAnchor` derives `Equatable`, preserving a direct value-equality contract
+for its button and visible-screen frames. The read-only re-review found no new P0–P2 findings.
+
+The previously noted P2 deinit concern is withdrawn as an open finding. Explicit
+`MenuBarController.stopObserving` teardown is invoked from both application termination paths and
+cancels the presenter token on the main actor. A direct ordinary `deinit` cancellation probe was
+rejected by Swift 6's actor isolation (`@MainActor` token cancellation from a synchronous
+nonisolated deinitializer), so no `nonisolated(unsafe)` or compiler-baseline-risky workaround was
+introduced.
+
+Fresh final verification recorded by the primary agent:
+
+- `source /Users/taejunoh/.cargo/env && make test` — exit 0; Rust workspace green, pinned
+  `tokscale-core` 1372 passed / 0 failed / 1 ignored, Swift 245 tests in 11 suites passed, and
+  widget-extension, package relink, and notarization shell contracts passed.
+- Known linker warnings only: Rust objects built for macOS 26.5 were linked against the macOS
+  14.0 deployment target; no test or gate failure resulted.
+- `git diff --check` is the root agent's final verification step for this documentation pass.
+
+Native caveats remain truthful: macOS 14 arm64 acceptance is unavailable on this macOS 26 host,
+and direct native Escape injection was not accepted because the nonactivating panel could not be
+focused. Automated Escape coverage remains green; it is not a native Escape claim.
+
 ## v0.1 Constraints to Preserve
 
 - macOS 14+.
