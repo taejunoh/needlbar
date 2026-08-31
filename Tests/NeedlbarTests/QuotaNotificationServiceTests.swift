@@ -195,6 +195,86 @@ struct QuotaNotificationServiceTests {
 
         #expect(await restarted.client.submissions == ["Claude quota: 20% or less remaining."])
     }
+
+    @MainActor @Test func disablingDuringHeldReservationSaveReloadsDurableFlagsAndRequiresNewWindowBaseline() async throws {
+        let fixture = try NotificationFixture(status: .authorized)
+        await fixture.service.start()
+        await fixture.service.setEnabledFromSettings(true)
+        await fixture.applyQuota(remaining: 80, for: .claude)
+        await fixture.service.reconcileLatestForTesting()
+        await fixture.service.waitUntilIdle()
+
+        await fixture.ledger.pauseNextSave()
+        await fixture.applyQuota(remaining: 20, for: .claude)
+        await fixture.service.reconcileLatestForTesting()
+        guard await fixture.ledger.waitUntilSavePending() else {
+            Issue.record("reservation save did not reach the deterministic checkpoint")
+            return
+        }
+        await fixture.service.setEnabledFromSettings(false)
+        await fixture.ledger.resumeSave()
+        await fixture.service.waitUntilIdle()
+
+        #expect(await fixture.client.submissionCount == 0)
+        let persistedSession = try #require(await fixture.ledger.lastSaved?.record(for: try QuotaAlertKey(provider: .claude, windowID: "claude.session")))
+        #expect(persistedSession.consumedStages == [.twenty])
+        #expect(persistedSession.reservedStages == [.twenty])
+
+        await fixture.service.setEnabledFromSettings(true)
+        await fixture.service.reconcileLatestForTesting()
+        await fixture.service.waitUntilIdle()
+        #expect(await fixture.client.submissionCount == 0)
+
+        await fixture.applyQuota(windows: [("claude.weekly", 80)], for: .claude)
+        await fixture.service.reconcileLatestForTesting()
+        await fixture.service.waitUntilIdle()
+        await fixture.applyQuota(windows: [("claude.weekly", 20)], for: .claude)
+        await fixture.service.reconcileLatestForTesting()
+        await fixture.service.waitUntilIdle()
+
+        #expect(await fixture.client.submissions == ["Claude quota: 20% or less remaining."])
+        let retainedSession = try #require(await fixture.ledger.lastSaved?.record(for: try QuotaAlertKey(provider: .claude, windowID: "claude.session")))
+        #expect(retainedSession.consumedStages == [.twenty])
+        #expect(retainedSession.reservedStages == [.twenty])
+    }
+
+    @MainActor @Test func stoppingDuringHeldReservationSaveDoesNotReviveOldWorkerAfterRestart() async throws {
+        let fixture = try NotificationFixture(status: .authorized)
+        await fixture.service.start()
+        await fixture.service.setEnabledFromSettings(true)
+        await fixture.applyQuota(remaining: 80, for: .claude)
+        await fixture.service.reconcileLatestForTesting()
+        await fixture.service.waitUntilIdle()
+
+        await fixture.ledger.pauseNextSave()
+        await fixture.applyQuota(remaining: 20, for: .claude)
+        await fixture.service.reconcileLatestForTesting()
+        guard await fixture.ledger.waitUntilSavePending() else {
+            Issue.record("reservation save did not reach the deterministic checkpoint")
+            return
+        }
+        fixture.service.stop()
+        await fixture.ledger.resumeSave()
+        await fixture.service.waitUntilIdle()
+        #expect(await fixture.client.submissionCount == 0)
+
+        let restarted = fixture.restartedService()
+        await restarted.service.start()
+        await restarted.service.waitUntilIdle()
+        #expect(await restarted.client.submissionCount == 0)
+
+        await restarted.applyQuota(windows: [("claude.weekly", 80)], for: .claude)
+        await restarted.service.reconcileLatestForTesting()
+        await restarted.service.waitUntilIdle()
+        await restarted.applyQuota(windows: [("claude.weekly", 20)], for: .claude)
+        await restarted.service.reconcileLatestForTesting()
+        await restarted.service.waitUntilIdle()
+
+        #expect(await restarted.client.submissions == ["Claude quota: 20% or less remaining."])
+        let retainedSession = try #require(await restarted.ledger.lastSaved?.record(for: try QuotaAlertKey(provider: .claude, windowID: "claude.session")))
+        #expect(retainedSession.consumedStages == [.twenty])
+        #expect(retainedSession.reservedStages == [.twenty])
+    }
 }
 
 @MainActor
@@ -383,6 +463,7 @@ private actor FakeQuotaNotificationClient: QuotaNotificationClient {
 
 private actor RecordingLedgerStore: QuotaAlertLedgerStoring {
     private var pauseNextLoad: Bool
+    private var shouldPauseNextSave = false
     private let saveResult: Result<Void, QuotaAlertLedgerStoreError>
     private(set) var saveCount = 0
     private(set) var loadCount = 0
@@ -390,6 +471,8 @@ private actor RecordingLedgerStore: QuotaAlertLedgerStoring {
     private let events: NotificationEventLog
     private var loadContinuations: [CheckedContinuation<QuotaAlertLedger, Never>] = []
     private var loadPendingWaiters: [CheckedContinuation<Bool, Never>] = []
+    private var saveContinuations: [CheckedContinuation<Void, Never>] = []
+    private var savePendingWaiters: [CheckedContinuation<Bool, Never>] = []
 
     init(pauseNextLoad: Bool, saveResult: Result<Void, QuotaAlertLedgerStoreError>, events: NotificationEventLog) {
         self.pauseNextLoad = pauseNextLoad
@@ -419,8 +502,30 @@ private actor RecordingLedgerStore: QuotaAlertLedgerStoring {
         continuations.forEach { $0.resume(returning: ledger) }
     }
 
+    func pauseNextSave() {
+        shouldPauseNextSave = true
+    }
+
+    func waitUntilSavePending() async -> Bool {
+        if !saveContinuations.isEmpty { return true }
+        return await withCheckedContinuation { savePendingWaiters.append($0) }
+    }
+
+    func resumeSave() {
+        let continuations = saveContinuations
+        saveContinuations.removeAll()
+        continuations.forEach { $0.resume() }
+    }
+
     func save(_ ledger: QuotaAlertLedger) async throws {
         saveCount += 1
+        if shouldPauseNextSave {
+            shouldPauseNextSave = false
+            let waiters = savePendingWaiters
+            savePendingWaiters.removeAll()
+            waiters.forEach { $0.resume(returning: true) }
+            await withCheckedContinuation { saveContinuations.append($0) }
+        }
         try saveResult.get()
         lastSaved = ledger
         await events.append("save")
