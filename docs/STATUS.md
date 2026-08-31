@@ -2,7 +2,7 @@
 
 **Updated:** 2026-08-31
 **Branch:** `codex/v021-widgets-notifications` (execution docs baseline `e73356e2a836930488f7a7eb5ef92af008bda809`; branched from `main` at `1ba620b35c6c4a51087be2c7cb07ce7eda738f1d`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1–W4 and Notification Tasks N1–N4 are implemented on this isolated branch. Integration Task 1 automated verification is green, while native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance remain external final gates.
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1–W4 and Notification Tasks N1–N4 are implemented on this isolated branch at `9de686e`, and the final whole-branch and scoped code reviews accepted the implementation. Integration Task 1 automated verification is green, while native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance remain external final gates, so Integration Task 1 overall is not complete.
 **Next action:** Obtain actual signed macOS 14 arm64 Widget Gallery/App Group and native notification-permission evidence, then finish Integration Task 1. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
@@ -15,7 +15,7 @@ The active Needlbar work is governed by:
 - `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md` — ordered follow-up implementation plan.
 - `docs/superpowers/specs/2026-08-29-needlbar-v0.2.0-local-json-export-design.md` — approved v0.2.0 local JSON export contract; implementation and acceptance are recorded below.
 - `docs/superpowers/plans/2026-08-29-needlbar-v0.2.0-local-json-export.md` — approved v0.2.0 local JSON export implementation plan; all tasks are implemented and documented below.
-- `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1–W4 and Notification Tasks N1–N4 are complete and Integration Task 1 is next on this execution branch.
+- `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1–W4, Notification Tasks N1–N4, and automated Integration Task 1 verification are complete on the code path, with native acceptance still pending.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widgets-notifications.md` — reviewed v0.2.1 implementation index: four widget tasks, four notification tasks, then combined acceptance.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget.md` — W1–W4, including Swift-only day provenance, sanitized projection, and medium Overview presentation.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
@@ -44,17 +44,17 @@ Notification Task 4 complete: Settings and main-app lifecycle own the explicit q
 
 ## v0.2.1 Widgets and Notifications — Integration Task 1 Automated Verification — 2026-08-31
 
-W1–W4 and Notification Tasks N1–N4 are implemented on source HEAD `1255ea9`
-(`test: make termination lifecycle checks deterministic`). The controller's prescribed
-Integration Task 1 pipeline ran in session `55602` and exited 0; the exact command/output
-record is retained in the ignored
-`.superpowers/sdd/2026-08-31-needlbar-v0.2.1-widgets-notifications/integration-controller-gates.log`.
-No full gate was rerun during this documentation/mechanical-check pass.
+W1–W4 and Notification Tasks N1–N4 are implemented on source HEAD `9de686e`
+(`fix: preserve widget freshness and deduplicate alerts`). The controller's prescribed
+final pipeline ran on the frozen five-file tree in session `4025` and exited 0; the exact
+command/output record is retained in the ignored
+`.superpowers/sdd/2026-08-31-needlbar-v0.2.1-widgets-notifications/final-fix-controller-gates.log`.
+No gate was rerun during this documentation bookkeeping pass.
 
 Recorded automated command outcomes:
 
 - `source /Users/taejunoh/.cargo/env && make test` — exit 0; Rust and package suites passed,
-  pinned `tokscale-core` reported 1372 passed/0 failed/1 ignored, and Swift reported 211
+  pinned `tokscale-core` reported 1372 passed/0 failed/1 ignored, and Swift reported 213
   tests in 9 suites passed. The widget-extension, package relink, and notarization shell
   contracts also passed.
 - `cargo fmt --check` — exit 0.
@@ -78,8 +78,10 @@ provisioned entitlements, Widget Gallery discovery, or App Group runtime behavio
 Actual signed macOS 14 arm64 Widget Gallery/App Group/deep-link/quit/reset/midnight acceptance
 and native notification authorization/enable-disable acceptance are unavailable on the current
 macOS 26.6.2/Xcode 26.6 host. They remain the next external action; v0.2.1 is implemented but
-not accepted. The controller-owned full gate passed; final scoped re-review remains pending. No
-new CI run was made, and no tag or release action is authorized.
+not accepted. Final whole-branch review and scoped final-fix re-review accepted the code,
+specification, and quality for `9de686e`; Integration Task 1 overall remains incomplete until
+the external native gates are satisfied. No new CI run was made, and no tag or release action is
+authorized.
 
 ## v0.2.1 Final Review Fix Wave — 2026-08-31
 
@@ -98,10 +100,14 @@ Focused RED/GREEN evidence from this worktree:
 - `bash scripts/build-widget-extension.sh && bash scripts/tests/widget-extension-tests.sh` — exit 0; the native extension built with the synthetic App Group identity and the fake build/metadata contract passed.
 - Controller full pipeline, session `4025`, on the frozen five-file fix tree — actual exit 0: `source /Users/taejunoh/.cargo/env && make test` passed with 213 Swift tests in 9 suites plus Rust/vendor and all widget/package/notarization contracts; `cargo fmt --check`, strict `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `make package`, `make smoke`, `./scripts/tests/package-app-tests.sh`, and `./scripts/tests/notarize-app-tests.sh` also passed. The exact output is retained in the ignored `final-fix-controller-gates.log`.
 
-The controller-owned full integration pipeline has completed; scoped final re-review remains.
+The controller-owned full integration pipeline has completed. Final whole-branch review and
+scoped final-fix re-review accepted the code, specification, and quality with no new findings.
 The external signed macOS 14 arm64 Widget Gallery/App Group and native notification-permission
-acceptance gates remain separate and unsatisfied. The final review's remaining Minor coverage
-list is explicit future test debt, not additional production changes in this wave.
+acceptance gates remain separate and unsatisfied. The final review's Minor coverage groups are
+nonblocking future test debt for fresh-checkout continuation: decoder/reader failure fixtures;
+container failure; package argv/sandbox assertions; usage-only no-wake; throwing-writer/0700;
+uncertain-save/initial-freshness; and permission-after-start. No production or test source
+changes are requested by these debt items.
 
 ## Widget W4 Verification — 2026-08-31
 
