@@ -50,7 +50,7 @@ swift-test:
 	grep -F 'needlbar_test_install_fixture_runtime' "$$symbols_file" >/dev/null; \
 	grep -F 'needlbar_test_clear_fixture_runtime' "$$symbols_file" >/dev/null; \
 	swift package clean; \
-	swift test
+	swift test $(if $(SWIFT_TEST_FILTER),--filter $(SWIFT_TEST_FILTER))
 
 package-test:
 	./scripts/tests/package-app-tests.sh

@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
 **Updated:** 2026-08-31
-**Branch:** `codex/v021-widgets-notifications-design` (based on `main` at `1ba620b`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved. The implementation index, widget and notification subplans, and widget packaging appendix have completed main-agent plan review. No v0.2.1 product implementation has started; this docs-only update introduces no product changes or new CI result.
-**Next action:** Complete the execution handoff, then start Widget Task 1: the pure, bridge-free widget projection target. Execute W1–W4, N1–N4, and Integration Task 1 in order, one numbered task at a time. Native signed macOS 14 arm64 acceptance remains an external final gate, not a blocker to starting N1 after automated W4 checks. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Branch:** `codex/v021-widgets-notifications` (based on `main` at `e73356e2a836930488f7a7eb5ef92af008bda809`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved, W1 is implemented and verified on this isolated branch, and W2 is the next task. Native signed macOS 14 arm64 acceptance remains an external final gate.
+**Next action:** Continue with Widget Task W2: host-side projection mapping and atomic publication. Execute W1–W4, N1–N4, and Integration Task 1 in order, one numbered task at a time. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -15,7 +15,7 @@ The active Needlbar work is governed by:
 - `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md` — ordered follow-up implementation plan.
 - `docs/superpowers/specs/2026-08-29-needlbar-v0.2.0-local-json-export-design.md` — approved v0.2.0 local JSON export contract; implementation and acceptance are recorded below.
 - `docs/superpowers/plans/2026-08-29-needlbar-v0.2.0-local-json-export.md` — approved v0.2.0 local JSON export implementation plan; all tasks are implemented and documented below.
-- `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; implementation not started.
+- `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1 is complete and W2 is next on this execution branch.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widgets-notifications.md` — reviewed v0.2.1 implementation index: four widget tasks, four notification tasks, then combined acceptance.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget.md` — W1–W4, including Swift-only day provenance, sanitized projection, and medium Overview presentation.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
@@ -862,6 +862,31 @@ record. Credentialed tagless release validation is complete against remote `main
 
 No tag or public GitHub Release was created. Await explicit user authorization for any
 version tag/public GitHub Release; until then do not create/push a tag or publish a release.
+
+## v0.2.1 Widgets and Notifications — W1 Verification — 2026-08-31
+
+Task W1 is complete on the isolated execution branch
+`codex/v021-widgets-notifications`. The pure `NeedlbarWidgetSupport` SwiftPM target
+contains only Foundation DTOs, the validated 64 KiB projection codec, and the
+fixed freshness/current-day/reset display policy. It has no dependency on
+`NeedlbarCore` or `CNeedlbar`. Document decoding performs its own nested provider
+and allowlisted quota-window validation before aggregate checks.
+
+Focused verification passed:
+
+- `source /Users/taejunoh/.cargo/env && make swift-test SWIFT_TEST_FILTER=WidgetProjectionTests`
+  — exit 0; named `WidgetProjectionTests` suite ran 12 tests with 0 failures.
+
+Full verification passed:
+
+- `source /Users/taejunoh/.cargo/env && make test` — exit 0; Rust workspace
+  suites passed, pinned `tokscale-core` reported 1372 passed/0 failed/1 ignored,
+  Swift reported 169 tests in 3 suites with 0 failures, package relink and
+  notarization shell contracts passed.
+
+The native signed macOS 14 arm64 widget acceptance remains an external final
+gate. The next continuation point is Task W2: host-side projection mapping and
+atomic publication.
 
 ## v0.1 Constraints to Preserve
 

@@ -23,8 +23,10 @@ let package = Package(
         ),
         .target(name: "NeedlbarCore", dependencies: ["CNeedlbar"]),
         .target(name: "NeedlbarApp", dependencies: ["NeedlbarCore", "CNeedlbar"], path: "Sources/Needlbar"),
+        .target(name: "NeedlbarWidgetSupport"),
         .executableTarget(name: "Needlbar", dependencies: ["NeedlbarApp"], path: "Sources/NeedlbarMain"),
         .testTarget(name: "NeedlbarCoreTests", dependencies: ["NeedlbarCore"]),
         .testTarget(name: "NeedlbarTests", dependencies: ["NeedlbarApp"]),
+        .testTarget(name: "NeedlbarWidgetSupportTests", dependencies: ["NeedlbarWidgetSupport"]),
     ]
 )
