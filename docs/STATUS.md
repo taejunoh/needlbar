@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-31
 **Branch:** `codex/v021-widgets-notifications` (based on `main` at `e73356e2a836930488f7a7eb5ef92af008bda809`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1, W2, and W3 are implemented and verified on this isolated branch. Native signed macOS 14 arm64 Widget Gallery/App Group acceptance remains an external final gate.
-**Next action:** Continue with Widget Task W4: host packaging, extension embedding, signing, and smoke contracts. Execute W4, N1–N4, and Integration Task 1 in order, one numbered task at a time. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1–W4 are implemented and automated checks are verified on this isolated branch. Native signed macOS 14 arm64 Widget Gallery/App Group acceptance remains an external final gate.
+**Next action:** Continue with Notification Task N1 after W4 automated checks. Execute N1–N4 and Integration Task 1 in order, one numbered task at a time. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -31,6 +31,20 @@ The user-approved v0.2.1 scope and reviewed implementation plans are limited to:
 - The main app remains the only provider-fetching process and publishes a sanitized local widget projection. The projection preserves last-good/stale state, timestamps, and the last value at app quit; it does not expose credentials or raw provider data.
 
 Written design approval and implementation-plan review are complete. The current machine is macOS 26.6.2 with Xcode 26.6; actual signed macOS 14 arm64 Widget Gallery/App Group acceptance must be recorded separately before v0.2.1 completion. The known historical green CI result for baseline main commit `1ba620b` is [run 33284608349](https://github.com/taejunoh/needlbar/actions/runs/33284608349), recorded from the previous turn. Docs-only verification: `git diff --check`, Markdown fence validation, and Bash code-block syntax checks passed. `make test` and native compilation/signing were not run because product/build/test sources were unchanged; no new CI run was made.
+
+## Widget W4 Verification — 2026-08-31
+
+W4 host packaging, extension embedding, signing, smoke contracts, and release-path signing assertions are implemented. The host remains unsandboxed with only the TeamID-prefixed App Group; the extension is sandboxed with the same group. The automated package contract embeds exactly one `.appex` and records extension signing before host signing. The Developer ID notarization path retains the six existing secret inputs, temporary-keychain import/cleanup, hardened runtime, timestamp, deep verification, stapling, Gatekeeper, and candidate ZIP replacement semantics while resolving the production group from `APPLE_TEAM_ID` and signing the extension before the host without `--deep` signing.
+
+Verification evidence:
+
+- RED: `bash scripts/tests/package-app-tests.sh` and `bash scripts/tests/notarize-app-tests.sh` exited 1 on the expected missing `Resources/NeedlbarHostWidget.entitlements`; `bash scripts/tests/smoke-app-tests.sh` exited 1 because no packaged `dist/Needlbar.app` existed yet.
+- GREEN: `bash scripts/tests/widget-extension-tests.sh` exited 0 with `widget extension build/metadata contract passed`; `bash scripts/tests/package-app-tests.sh` exited 0 with `package-app relink regression passed`; `bash scripts/tests/notarize-app-tests.sh` exited 0 with `notarize-app shell contracts passed`.
+- GREEN after `source /Users/taejunoh/.cargo/env && make package`: `bash scripts/tests/smoke-app-tests.sh` exited 0 with `smoke-app cleanup regressions passed`; `make package` exited 0; and `make smoke` exited 0 with `Needlbar app-bundle smoke passed`.
+- Full project verification `source /Users/taejunoh/.cargo/env && make test` exited 0: Rust workspace tests passed; pinned `tokscale-core` reported 1372 passed, 0 failed, 1 ignored; Swift reported 187 tests in 5 suites passed; widget-extension, package relink, and notarization shell contracts passed.
+- `git diff --check` and Bash syntax checks for all six changed scripts exited 0.
+
+The package and smoke checks are structural/ad-hoc evidence only. This macOS 26.6.2/Xcode 26.6 environment does not establish provisioned entitlements, Widget Gallery discovery, App Group access, or signed macOS 14 arm64 acceptance. Those remain Integration Task 1 and do not block N1 after the automated W4 checks pass. No credentialed notarization, Apple portal action, tag, or release action was performed.
 
 ## What Is Already Implemented
 

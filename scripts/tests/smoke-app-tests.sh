@@ -154,8 +154,19 @@ run_launch_signal_case() (
   temp_root="$temp_candidate"
   temp_root_valid=1
   pid_file="$temp_root/child.pid"
-  mkdir -p "$temp_root/Needlbar.app/Contents"
+  mkdir -p "$temp_root/Needlbar.app/Contents/MacOS" \
+    "$temp_root/Needlbar.app/Contents/PlugIns/NeedlbarWidgetExtension.appex/Contents/MacOS"
   touch "$temp_root/Needlbar.app/Contents/Info.plist"
+  touch "$temp_root/Needlbar.app/Contents/MacOS/Needlbar"
+  chmod 755 "$temp_root/Needlbar.app/Contents/MacOS/Needlbar"
+  cat > "$temp_root/Needlbar.app/Contents/PlugIns/NeedlbarWidgetExtension.appex/Contents/Info.plist" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>NSExtension</key><dict><key>NSExtensionPointIdentifier</key><string>com.apple.widgetkit-extension</string></dict>
+</dict></plist>
+EOF
+  printf '%s\n' synthetic-widget > "$temp_root/Needlbar.app/Contents/PlugIns/NeedlbarWidgetExtension.appex/Contents/MacOS/NeedlbarWidgetExtension"
+  chmod 755 "$temp_root/Needlbar.app/Contents/PlugIns/NeedlbarWidgetExtension.appex/Contents/MacOS/NeedlbarWidgetExtension"
 
   set +e
   (

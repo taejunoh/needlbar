@@ -47,6 +47,12 @@ keychain_path="$work_dir/signing.keychain-db"
 submission_zip="$work_dir/notarization-submission.zip"
 notary_output="$work_dir/notarytool-output.txt"
 extract_root="$work_dir/extracted"
+group_id="$APPLE_TEAM_ID.com.taejunoh.needlbar"
+widget_app="$APP_PATH/Contents/PlugIns/NeedlbarWidgetExtension.appex"
+widget_info="$widget_app/Contents/Info.plist"
+widget_executable="$widget_app/Contents/MacOS/NeedlbarWidgetExtension"
+host_entitlements="$work_dir/host-widget.entitlements"
+widget_entitlements="$work_dir/widget.entitlements"
 candidate_zip="$(mktemp "$zip_parent/.needlbar-final.XXXXXX.zip")"
 rm -f -- "$candidate_zip"
 
@@ -101,8 +107,22 @@ identity_names="$(security find-identity -v -p codesigning "$keychain_path" \
 identity_count="$(printf '%s\n' "$identity_names" | grep -Fxc "$DEVELOPER_ID_APPLICATION" || true)"
 [[ "$identity_count" == 1 ]] || fail "identity verification failed"
 
-codesign --force --deep --options runtime --timestamp \
-  --sign "$DEVELOPER_ID_APPLICATION" "$APP_PATH"
+[[ -d "$widget_app" ]] || fail "embedded widget extension not found: $widget_app"
+[[ -f "$widget_info" ]] || fail "embedded widget Info.plist not found: $widget_info"
+[[ -x "$widget_executable" ]] || fail "embedded widget executable not found: $widget_executable"
+cp "$ROOT/Resources/NeedlbarHostWidget.entitlements" "$host_entitlements"
+cp "$ROOT/WidgetExtension/NeedlbarWidgetExtension.entitlements" "$widget_entitlements"
+/usr/libexec/PlistBuddy -c "Set :com.apple.security.application-groups:0 $group_id" "$host_entitlements"
+/usr/libexec/PlistBuddy -c "Set :com.apple.security.application-groups:0 $group_id" "$widget_entitlements"
+/usr/libexec/PlistBuddy -c "Set :NeedlbarAppGroupIdentifier $group_id" "$APP_PATH/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :NeedlbarAppGroupIdentifier $group_id" "$widget_info"
+
+codesign --force --options runtime --timestamp \
+  --sign "$DEVELOPER_ID_APPLICATION" \
+  --entitlements "$widget_entitlements" "$widget_app"
+codesign --force --options runtime --timestamp \
+  --sign "$DEVELOPER_ID_APPLICATION" \
+  --entitlements "$host_entitlements" "$APP_PATH"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
 signing_details="$(codesign --display --verbose=4 "$APP_PATH" 2>&1)"

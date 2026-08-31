@@ -6,6 +6,10 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_PATH="$ROOT/dist/Needlbar.app"
 INFO_PLIST="$APP_PATH/Contents/Info.plist"
 EXECUTABLE="$APP_PATH/Contents/MacOS/Needlbar"
+PLUGINS_PATH="$APP_PATH/Contents/PlugIns"
+WIDGET_APP="$PLUGINS_PATH/NeedlbarWidgetExtension.appex"
+WIDGET_INFO_PLIST="$WIDGET_APP/Contents/Info.plist"
+WIDGET_EXECUTABLE="$WIDGET_APP/Contents/MacOS/NeedlbarWidgetExtension"
 APP_PID=""
 APP_LOG=""
 APP_PARENT_PID="$$"
@@ -164,6 +168,17 @@ main() {
   plutil -lint "$INFO_PLIST"
   codesign --verify --deep --strict "$APP_PATH"
   file "$EXECUTABLE" | grep -q 'arm64'
+  [[ -d "$PLUGINS_PATH" ]] || fail "missing PlugIns directory: $PLUGINS_PATH"
+  appex_count="$(find "$PLUGINS_PATH" -maxdepth 1 -type d -name '*.appex' -print | wc -l | tr -d '[:space:]')"
+  [[ "$appex_count" == 1 ]] || fail "expected exactly one widget extension, found $appex_count"
+  [[ -d "$WIDGET_APP" ]] || fail "missing widget extension: $WIDGET_APP"
+  [[ -f "$WIDGET_INFO_PLIST" ]] || fail "missing widget extension Info.plist"
+  [[ -x "$WIDGET_EXECUTABLE" ]] || fail "missing widget extension executable"
+  plutil -lint "$WIDGET_INFO_PLIST"
+  grep -F '<string>com.apple.widgetkit-extension</string>' "$WIDGET_INFO_PLIST" >/dev/null ||
+    fail "widget extension point is not WidgetKit"
+  codesign --verify --deep --strict "$WIDGET_APP"
+  file "$WIDGET_EXECUTABLE" | grep -q 'arm64'
 
   APP_LOG="$(mktemp "${TMPDIR:-/tmp}/needlbar-smoke.XXXXXX")"
   "$EXECUTABLE" >"$APP_LOG" 2>&1 &

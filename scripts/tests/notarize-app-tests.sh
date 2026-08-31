@@ -61,20 +61,37 @@ cat > "$fake_bin/codesign" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-record_stage() {
-  printf '%s\n' "$1" >> "$FAKE_COMMAND_LOG"
-}
-
-case "$1" in
-  --force) record_stage codesign:sign ;;
-  --verify) record_stage codesign:verify ;;
-  --display)
-    record_stage codesign:display
-    printf 'Authority=Developer ID Application: Test Signer (3BMF4LM6TM)\n'
-    printf 'TeamIdentifier=%s\n' "${FAKE_CODESIGN_TEAM_ID-3BMF4LM6TM}"
-    printf 'Runtime Version=%s\n' "${FAKE_CODESIGN_RUNTIME-14.0.0}" ;;
-  *) exit 64 ;;
-esac
+record_stage() { printf '%s\n' "$1" >> "$FAKE_COMMAND_LOG"; }
+if [[ "${1:-}" == --force ]]; then
+  [[ "$*" == *'--options runtime --timestamp'* ]] || exit 81
+  [[ "$*" == *'--entitlements'* ]] || exit 82
+  target="${@: -1}"
+  entitlements=''
+  previous=''
+  for argument in "$@"; do
+    if [[ "$previous" == --entitlements ]]; then entitlements="$argument"; fi
+    previous="$argument"
+  done
+  [[ -f "$entitlements" ]] || exit 83
+  record_stage codesign:sign
+  record_stage "codesign:sign:$target"
+  if [[ "$target" == *NeedlbarWidgetExtension.appex ]]; then
+    cp "$entitlements" "$FAKE_STATE_DIR/widget-entitlements"
+  elif [[ "$target" == *Needlbar.app ]]; then
+    cp "$entitlements" "$FAKE_STATE_DIR/host-entitlements"
+  else
+    exit 84
+  fi
+elif [[ "${1:-}" == --verify ]]; then
+  record_stage codesign:verify
+elif [[ "${1:-}" == --display ]]; then
+  record_stage codesign:display
+  printf 'Authority=Developer ID Application: Test Signer (3BMF4LM6TM)\n'
+  printf 'TeamIdentifier=%s\n' "${FAKE_CODESIGN_TEAM_ID-3BMF4LM6TM}"
+  printf 'Runtime Version=%s\n' "${FAKE_CODESIGN_RUNTIME-14.0.0}"
+else
+  exit 64
+fi
 EOF
 
 cat > "$fake_bin/xcrun" <<'EOF'
@@ -186,10 +203,29 @@ chmod 755 "$fake_bin/security" "$fake_bin/codesign" "$fake_bin/xcrun" \
 new_case() {
   case_root="$(mktemp -d "$temp_root/case.XXXXXX")"
   mkdir -p "$case_root/repo/scripts" "$case_root/repo/dist/Needlbar.app/Contents/MacOS" \
+    "$case_root/repo/Resources" \
+    "$case_root/repo/WidgetExtension" \
+    "$case_root/repo/dist/Needlbar.app/Contents/PlugIns/NeedlbarWidgetExtension.appex/Contents/MacOS" \
     "$case_root/private-temp" "$case_root/state"
   cp "$SCRIPT_UNDER_TEST" "$case_root/repo/scripts/notarize-app.sh"
+  cp "$ROOT/Resources/NeedlbarHostWidget.entitlements" "$case_root/repo/Resources/NeedlbarHostWidget.entitlements"
+  cp "$ROOT/WidgetExtension/NeedlbarWidgetExtension.entitlements" "$case_root/repo/WidgetExtension/NeedlbarWidgetExtension.entitlements"
   chmod 755 "$case_root/repo/scripts/notarize-app.sh"
   : > "$case_root/repo/dist/Needlbar.app/Contents/MacOS/Needlbar"
+  cat > "$case_root/repo/dist/Needlbar.app/Contents/Info.plist" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>NeedlbarAppGroupIdentifier</key><string>TESTTEAMID.com.taejunoh.needlbar</string>
+</dict></plist>
+EOF
+  cat > "$case_root/repo/dist/Needlbar.app/Contents/PlugIns/NeedlbarWidgetExtension.appex/Contents/Info.plist" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>NeedlbarAppGroupIdentifier</key><string>TESTTEAMID.com.taejunoh.needlbar</string>
+</dict></plist>
+EOF
+  printf '%s\n' synthetic-widget > "$case_root/repo/dist/Needlbar.app/Contents/PlugIns/NeedlbarWidgetExtension.appex/Contents/MacOS/NeedlbarWidgetExtension"
+  chmod 755 "$case_root/repo/dist/Needlbar.app/Contents/PlugIns/NeedlbarWidgetExtension.appex/Contents/MacOS/NeedlbarWidgetExtension"
   printf '%s\n' 'original-ad-hoc-zip' > "$case_root/repo/dist/Needlbar-macos-arm64.zip"
   : > "$case_root/commands.log"
 }
@@ -740,5 +776,15 @@ fi
 assert_stage_subsequence "$case_root"
 assert_private_cleanup "$case_root"
 assert_no_canary "$case_root"
+
+release_group='3BMF4LM6TM.com.taejunoh.needlbar'
+grep -F "$release_group" "$case_root/repo/dist/Needlbar.app/Contents/Info.plist" >/dev/null || fail 'host group was not resolved from APPLE_TEAM_ID'
+grep -F "$release_group" "$case_root/repo/dist/Needlbar.app/Contents/PlugIns/NeedlbarWidgetExtension.appex/Contents/Info.plist" >/dev/null || fail 'extension group was not resolved from APPLE_TEAM_ID'
+grep -F "$release_group" "$case_root/state/host-entitlements" >/dev/null || fail 'host signing entitlement group mismatch'
+grep -F "$release_group" "$case_root/state/widget-entitlements" >/dev/null || fail 'extension signing entitlement group mismatch'
+extension_sign_line="$(grep -n 'NeedlbarWidgetExtension.appex' "$case_root/commands.log" | head -n 1 | cut -d: -f1)"
+host_sign_line="$(grep -n 'codesign:sign:.*Needlbar\.app$' "$case_root/commands.log" | head -n 1 | cut -d: -f1)"
+[[ "$extension_sign_line" =~ ^[0-9]+$ && "$host_sign_line" =~ ^[0-9]+$ ]] || fail 'Developer ID sign records missing'
+(( extension_sign_line < host_sign_line )) || fail 'Developer ID host signing preceded extension signing'
 
 echo 'notarize-app shell contracts passed'
