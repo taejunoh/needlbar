@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-31
 **Branch:** `codex/v021-widgets-notifications` (based on `main` at `e73356e2a836930488f7a7eb5ef92af008bda809`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1–W4 are implemented and automated checks are verified on this isolated branch. Native signed macOS 14 arm64 Widget Gallery/App Group acceptance remains an external final gate.
-**Next action:** Continue with Notification Task N1 after W4 automated checks. Execute N1–N4 and Integration Task 1 in order, one numbered task at a time. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1–W4 and Notification Task N1 are implemented and automated checks are verified on this isolated branch. Native signed macOS 14 arm64 Widget Gallery/App Group acceptance remains an external final gate.
+**Next action:** Continue with Notification Task N2 policy and ledger. Execute N2–N4 and Integration Task 1 in order, one numbered task at a time. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -15,7 +15,7 @@ The active Needlbar work is governed by:
 - `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md` — ordered follow-up implementation plan.
 - `docs/superpowers/specs/2026-08-29-needlbar-v0.2.0-local-json-export-design.md` — approved v0.2.0 local JSON export contract; implementation and acceptance are recorded below.
 - `docs/superpowers/plans/2026-08-29-needlbar-v0.2.0-local-json-export.md` — approved v0.2.0 local JSON export implementation plan; all tasks are implemented and documented below.
-- `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1–W3 are complete and W4 is next on this execution branch.
+- `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1–W4 and Notification Task N1 are complete and Notification Task N2 is next on this execution branch.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widgets-notifications.md` — reviewed v0.2.1 implementation index: four widget tasks, four notification tasks, then combined acceptance.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget.md` — W1–W4, including Swift-only day provenance, sanitized projection, and medium Overview presentation.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
