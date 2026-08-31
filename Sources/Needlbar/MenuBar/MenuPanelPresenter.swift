@@ -52,6 +52,7 @@ public final class AppKitMenuPanelPresenter: MenuPanelPresenting {
     private let dismissalMonitor: any MenuPanelDismissalMonitoring
     private var dismissalMonitoringToken: (any MenuPanelDismissalMonitoringToken)?
     private var shown = false
+    private var presentationGeneration: UInt = 0
 
     public var isShown: Bool { shown }
     public var onDismiss: (@MainActor () -> Void)?
@@ -83,6 +84,8 @@ public final class AppKitMenuPanelPresenter: MenuPanelPresenting {
             return false
         }
 
+        presentationGeneration += 1
+        let generation = presentationGeneration
         dismissalMonitoringToken?.cancel()
         dismissalMonitoringToken = nil
         window.contentViewController = wrappedViewController
@@ -91,13 +94,17 @@ public final class AppKitMenuPanelPresenter: MenuPanelPresenting {
         shown = true
         dismissalMonitoringToken = dismissalMonitor.start(
             panelFrame: { [weak self] in self?.window.frame ?? .zero },
-            dismiss: { [weak self] in self?.dismiss() }
+            dismiss: { [weak self] in
+                guard let self, self.presentationGeneration == generation else { return }
+                self.dismiss()
+            }
         )
         return true
     }
 
     public func dismiss() {
         guard shown else { return }
+        presentationGeneration += 1
         shown = false
         let token = dismissalMonitoringToken
         dismissalMonitoringToken = nil

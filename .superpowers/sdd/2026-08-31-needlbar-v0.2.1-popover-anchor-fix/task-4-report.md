@@ -103,3 +103,46 @@ behavior, notification delivery or remaining permission cases, same-app outside-
 beyond the bounded observation, native Escape, or macOS 14 arm64 compatibility. No additional app
 registration/launch/termination operation was performed by this documentation update, and no
 tag, push, release upload, or Apple portal mutation occurred.
+
+## Task 4 follow-up — stale presenter callbacks, anchor equality, and P2 deinit probe
+
+### RED
+
+- Added `staleDismissalFromPriorPresentationCannotDismissNewPresentation`: before the presenter
+  generation guard existed, the test change could not prove the required stale-callback behavior;
+  the focused presenter compile/run was blocked by the independent missing `Equatable`
+  conformance on `StatusItemPresentationAnchor`.
+- Added `presentationAnchorsCompareByFrames`: the focused compile failed with the expected Swift
+  errors that `StatusItemPresentationAnchor` did not conform to `Equatable`.
+- A temporary `deinit { dismissalMonitoringToken?.cancel() }` probe was compiled under the current
+  Swift 6 baseline. It failed with exit 1 and the compiler diagnostic
+  `call to main actor-isolated instance method 'cancel()' in a synchronous nonisolated context`
+  (`[#ActorIsolatedCall]`). The temporary probe was removed; no `nonisolated(unsafe)` workaround
+  was introduced.
+
+### GREEN
+
+- `source /Users/taejunoh/.cargo/env && make swift-test SWIFT_TEST_FILTER=MenuPanelPresenterTests`
+  — exit 0; 9 tests in 1 suite passed, including stale callback isolation.
+- `source /Users/taejunoh/.cargo/env && make swift-test SWIFT_TEST_FILTER=MenuPanelPlacementTests`
+  — exit 0; 9 tests in 1 suite passed, including direct anchor equality.
+- `source /Users/taejunoh/.cargo/env && make swift-test` — exit 0; 245 tests in 11 suites
+  passed. Existing compiler output still contains the known macOS 26.5 object versus macOS 14
+  deployment warning; there were no test failures.
+- `git diff --check` — exit 0.
+
+### Implementation and P2 conclusion
+
+`AppKitMenuPanelPresenter` now owns a monotonically increasing presentation generation. A
+successful `present` advances and captures the generation in its monitor dismissal callback;
+`dismiss` advances it again before tearing down the current token. A callback queued for an older
+presentation therefore becomes a no-op and cannot dismiss the newer panel or call `onDismiss`.
+Existing re-present cancellation and toggle/dismiss behavior remain covered by the focused suite.
+`StatusItemPresentationAnchor` now derives `Equatable` from its two `NSRect` values.
+
+The P2 deinit cleanup is mitigated by explicit owner teardown: the menu-bar lifecycle calls the
+presenter's main-actor `dismiss` path while stopping observation, which cancels the monitoring
+token on the correct actor. A direct presenter `deinit` cancellation is not safely implementable
+under the current Swift baseline because deinitializers are synchronous/nonisolated while the
+token's `cancel()` is `@MainActor`; the probe above provides the compiler evidence. The code keeps
+the safe explicit teardown and does not use `nonisolated(unsafe)` or other baseline-risky access.

@@ -70,6 +70,32 @@ struct MenuPanelPresenterTests {
         #expect(tokenB.cancelCallCount == 1)
     }
 
+    @Test func staleDismissalFromPriorPresentationCannotDismissNewPresentation() throws {
+        let window = FakeMenuPanelWindow()
+        let monitor = FakeMenuPanelDismissalMonitor()
+        let presenter = AppKitMenuPanelPresenter(window: window, dismissalMonitor: monitor)
+        var dismissCallbackCount = 0
+        presenter.onDismiss = { dismissCallbackCount += 1 }
+        let contentViewController = FixedSizeViewController(size: NSSize(width: 300, height: 350))
+
+        #expect(presenter.present(contentViewController, anchoredAt: testAnchor()))
+        let staleDismiss = try #require(monitor.dismissHandlers.first)
+        #expect(presenter.present(contentViewController, anchoredAt: testAnchor()))
+        let currentDismiss = try #require(monitor.dismissHandlers.dropFirst().first)
+
+        staleDismiss()
+
+        #expect(presenter.isShown)
+        #expect(dismissCallbackCount == 0)
+        #expect(window.orderOutCallCount == 0)
+
+        currentDismiss()
+
+        #expect(!presenter.isShown)
+        #expect(dismissCallbackCount == 1)
+        #expect(window.orderOutCallCount == 1)
+    }
+
     @Test func repeatedDismissalCallsDismissOnceAndCancelsMonitorOnce() {
         let window = FakeMenuPanelWindow()
         let monitor = FakeMenuPanelDismissalMonitor()
@@ -167,8 +193,8 @@ private final class FakeMenuPanelWindow: MenuPanelWindowing {
 private final class FakeMenuPanelDismissalMonitor: MenuPanelDismissalMonitoring {
     private(set) var tokens: [FakeMenuPanelDismissalMonitoringToken] = []
     private(set) var startCallCount = 0
-    private(set) var panelFrameProvider: (@MainActor () -> NSRect)?
-    private(set) var dismissHandler: (@MainActor () -> Void)?
+    private(set) var panelFrameProviders: [@MainActor () -> NSRect] = []
+    private(set) var dismissHandlers: [@MainActor () -> Void] = []
 
     var token: FakeMenuPanelDismissalMonitoringToken {
         tokens[0]
@@ -181,8 +207,8 @@ private final class FakeMenuPanelDismissalMonitor: MenuPanelDismissalMonitoring 
         startCallCount += 1
         let token = FakeMenuPanelDismissalMonitoringToken()
         tokens.append(token)
-        panelFrameProvider = panelFrame
-        dismissHandler = dismiss
+        panelFrameProviders.append(panelFrame)
+        dismissHandlers.append(dismiss)
         return token
     }
 }

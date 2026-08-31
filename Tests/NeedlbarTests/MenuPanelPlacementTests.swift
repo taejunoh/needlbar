@@ -5,6 +5,22 @@ import Testing
 
 @Suite("MenuPanelPlacementTests")
 struct MenuPanelPlacementTests {
+    @Test func presentationAnchorsCompareByFrames() {
+        let anchor = StatusItemPresentationAnchor(
+            buttonFrameInScreen: NSRect(x: 531, y: 954.5, width: 39, height: 22),
+            visibleFrameInScreen: NSRect(x: 0, y: 0, width: 1512, height: 949)
+        )
+
+        #expect(anchor == StatusItemPresentationAnchor(
+            buttonFrameInScreen: NSRect(x: 531, y: 954.5, width: 39, height: 22),
+            visibleFrameInScreen: NSRect(x: 0, y: 0, width: 1512, height: 949)
+        ))
+        #expect(anchor != StatusItemPresentationAnchor(
+            buttonFrameInScreen: NSRect(x: 532, y: 954.5, width: 39, height: 22),
+            visibleFrameInScreen: NSRect(x: 0, y: 0, width: 1512, height: 949)
+        ))
+    }
+
     @Test func measuredStatusButtonPlacesTheWholePanelBelowTheMenuBar() throws {
         let anchor = StatusItemPresentationAnchor(
             buttonFrameInScreen: NSRect(x: 531, y: 954.5, width: 39, height: 22),

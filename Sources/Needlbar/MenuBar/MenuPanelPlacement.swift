@@ -1,6 +1,6 @@
 import AppKit
 
-public struct StatusItemPresentationAnchor {
+public struct StatusItemPresentationAnchor: Equatable {
     public let buttonFrameInScreen: NSRect
     public let visibleFrameInScreen: NSRect
 
