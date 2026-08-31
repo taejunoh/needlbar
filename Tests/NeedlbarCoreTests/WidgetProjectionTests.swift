@@ -3,6 +3,8 @@ import Testing
 @testable import NeedlbarCore
 import NeedlbarWidgetSupport
 
+@Suite("WidgetProjectionTests")
+struct WidgetProjectionTests {
 @Test func directUsageApplicationHasUnknownWidgetDay() async throws {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     let store = ProviderSnapshotStore(now: { now })
@@ -109,12 +111,15 @@ import NeedlbarWidgetSupport
     let context = WidgetUsageDayContext(dayKey: "2027-01-15", timeZoneIdentifier: "America/New_York", utcOffsetSeconds: -18_000)
     let proof = WidgetUsageDayProvenance(startedAt: now, startedContext: context, endedAt: now, endedContext: context)
     let store = ProviderSnapshotStore(now: { now })
-    await store.applyUsage(fixtureUsage(todayTokens: 44, dailyDay: context.dayKey), for: .claude, widgetDayProvenance: proof)
+    let cost = Decimal(string: "12.34")!
+    await store.applyUsage(fixtureUsage(todayTokens: 44, dailyDay: context.dayKey, cost: cost), for: .claude, widgetDayProvenance: proof)
     await store.markUsageFailure(for: .claude, status: .error(message: "offline", lastSuccessfulAt: nil))
     let projection = try WidgetProjectionMapper(now: now).map(await store.captureForWidget(exportedAt: now))
     #expect(projection.usageRows[0].stream == .stale)
     #expect(projection.usageRows[0].todayTokens == 44)
+    #expect(projection.usageRows[0].todayCostUSD == cost)
     #expect(projection.today.totalTokens == 44)
+    #expect(projection.today.estimatedCostUSD == cost)
     #expect(projection.today.completeness == .partial)
 }
 
@@ -133,6 +138,17 @@ import NeedlbarWidgetSupport
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     var capture = try makeWidgetCapture(now: now)
     capture = replacing(capture, provider: .claude, usage: fixtureUsage(todayTokens: .max, dailyDay: "2027-01-15"))
+    #expect(throws: WidgetProjectionError.invalidTodaySummary) {
+        _ = try WidgetProjectionMapper(now: now).map(capture)
+    }
+}
+
+@Test func mapperRejectsDecimalOverflowingTodayAggregate() throws {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let maximumCost = Decimal(sign: .plus, exponent: 127, significand: 9)
+    var capture = try makeWidgetCapture(now: now)
+    capture = replacing(capture, provider: .claude, usage: fixtureUsage(todayTokens: 1, dailyDay: "2027-01-15", cost: maximumCost))
+    capture = replacing(capture, provider: .codex, usage: fixtureUsage(todayTokens: 1, dailyDay: "2027-01-15", cost: maximumCost))
     #expect(throws: WidgetProjectionError.invalidTodaySummary) {
         _ = try WidgetProjectionMapper(now: now).map(capture)
     }
@@ -165,6 +181,36 @@ import NeedlbarWidgetSupport
     await task.value
     #expect(writer.attempts == 0)
     #expect(await reloader.reloadCount == 0)
+}
+
+@Test func stoppingObservationAfterAwaitedCapturePreventsWriteAndReload() async throws {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let store = ProviderSnapshotStore(now: { now })
+    let checkpoint = BlockingWidgetCapturer()
+    let writer = FixtureWidgetWriter()
+    let reloader = FixtureWidgetReloader()
+    let publisher = WidgetProjectionPublisher(
+        writer: writer,
+        reloader: reloader,
+        destination: fixtureDestination(),
+        now: { now },
+        capturer: checkpoint
+    )
+    let context = WidgetUsageDayContext(dayKey: "2027-01-15", timeZoneIdentifier: "America/New_York", utcOffsetSeconds: -18_000)
+    let proof = WidgetUsageDayProvenance(startedAt: now, startedContext: context, endedAt: now, endedContext: context)
+
+    await publisher.start(observing: store)
+    await store.applyUsage(fixtureUsage(todayTokens: 1, dailyDay: context.dayKey), for: .claude, widgetDayProvenance: proof)
+    await checkpoint.waitUntilCaptureIsBlocked()
+
+    let stop = Task { await publisher.stop() }
+    await checkpoint.releaseCapture()
+    await stop.value
+
+    #expect(writer.attempts == 0)
+    #expect(await reloader.reloadCount == 0)
+}
+
 }
 
 private func fixtureUsage(todayTokens: UInt64, dailyDay: String, cost: Decimal = Decimal(string: "1.00")!) -> UsageSnapshot {
@@ -237,4 +283,29 @@ private final class FixtureWidgetWriter: WidgetProjectionWriting, @unchecked Sen
 private actor FixtureWidgetReloader: WidgetTimelineReloading {
     private(set) var reloadCount = 0
     func reloadOverview() { reloadCount += 1 }
+}
+
+private actor BlockingWidgetCapturer: WidgetProjectionCapturing {
+    private var isCaptureBlocked = false
+    private var captureStarted: CheckedContinuation<Void, Never>?
+    private var captureRelease: CheckedContinuation<Void, Never>?
+
+    func captureWidgetProjection(from store: ProviderSnapshotStore, exportedAt: Date) async -> WidgetStoreCapture {
+        let capture = await store.captureForWidget(exportedAt: exportedAt)
+        isCaptureBlocked = true
+        captureStarted?.resume()
+        captureStarted = nil
+        await withCheckedContinuation { captureRelease = $0 }
+        return capture
+    }
+
+    func waitUntilCaptureIsBlocked() async {
+        guard !isCaptureBlocked else { return }
+        await withCheckedContinuation { captureStarted = $0 }
+    }
+
+    func releaseCapture() {
+        captureRelease?.resume()
+        captureRelease = nil
+    }
 }
