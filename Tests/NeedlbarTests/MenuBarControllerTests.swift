@@ -207,219 +207,275 @@ import Testing
 @Suite("MenuBarControllerTests")
 @MainActor
 struct MenuBarControllerTests {
-    @Test func flippedPopoverAnchorUsesMaximumYEdge() {
-        #expect(preferredPopoverEdge(isFlipped: true) == .maxY)
-    }
-
-    @Test func nonFlippedPopoverAnchorUsesMinimumYEdge() {
-        #expect(preferredPopoverEdge(isFlipped: false) == .minY)
-    }
-
-    @Test func showingPopoverInstallsGlobalMouseDownMonitor() async {
+    @Test func clickedStatusItemAnchorIsPassedToThePanelPresenter() async throws {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
         let factory = FakeStatusItemFactory()
+        let presenter = FakeMenuPanelPresenter()
         let monitor = FakeGlobalMouseDownMonitor()
         let controller = makeMenuBarController(
             configuration: configuration,
             snapshotStore: ProviderSnapshotStore(),
             loginCoordinator: testLoginCoordinator(),
             statusItemFactory: factory,
-            globalMouseDownMonitor: monitor
+            globalMouseDownMonitor: monitor,
+            panelPresenter: presenter
         )
 
         await controller.refresh()
+        let overview = try #require(factory.created.first)
+        overview.performAction()
+
+        #expect(await eventually { presenter.presentedAnchors.count == 1 })
+        let anchor = try #require(presenter.presentedAnchors.first)
+        #expect(anchor.buttonFrameInScreen == FakeStatusItemHandle.literalAnchor.buttonFrameInScreen)
+        #expect(anchor.visibleFrameInScreen == FakeStatusItemHandle.literalAnchor.visibleFrameInScreen)
+    }
+
+    @Test func globalMonitorStartsOnlyAfterThePanelIsPresented() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        let eventLog = FakeEventLog()
+        let presenter = FakeMenuPanelPresenter(eventLog: eventLog)
+        let monitor = FakeGlobalMouseDownMonitor(eventLog: eventLog)
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            statusItemFactory: FakeStatusItemFactory(),
+            globalMouseDownMonitor: monitor,
+            panelPresenter: presenter
+        )
+
         controller.openOverview()
 
+        #expect(eventLog.events == ["present", "monitor"])
         #expect(monitor.startCount == 1)
     }
 
-    @Test func globalMouseDownCallbackClosesShownPopover() async {
+    @Test func missingAnchorRemovesTemporaryDeepLinkItemWithoutStartingAMonitor() {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        configuration.overview = ModuleSettings(isEnabled: false, metric: .quotaRemaining)
+        let factory = FakeStatusItemFactory()
+        factory.nextPresentationAnchor = nil
         let monitor = FakeGlobalMouseDownMonitor()
-        let popover = SpyPopover()
-        popover.shownForTesting = true
+        let presenter = FakeMenuPanelPresenter()
         let controller = makeMenuBarController(
             configuration: configuration,
             snapshotStore: ProviderSnapshotStore(),
             loginCoordinator: testLoginCoordinator(),
-            statusItemFactory: FakeStatusItemFactory(),
+            statusItemFactory: factory,
             globalMouseDownMonitor: monitor,
-            popover: popover
+            panelPresenter: presenter
         )
 
         controller.openOverview()
-        await monitor.sendMouseDown()
 
-        #expect(popover.performCloseCount == 1)
+        #expect(presenter.presentedAnchors.isEmpty)
+        #expect(monitor.startCount == 0)
+        #expect(factory.removed.count == 1)
     }
 
-    @Test func globalMouseDownCallbackLeavesHiddenPopoverClosed() async {
-        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
-        let monitor = FakeGlobalMouseDownMonitor()
-        let popover = SpyPopover()
-        let controller = makeMenuBarController(
-            configuration: configuration,
-            snapshotStore: ProviderSnapshotStore(),
-            loginCoordinator: testLoginCoordinator(),
-            statusItemFactory: FakeStatusItemFactory(),
-            globalMouseDownMonitor: monitor,
-            popover: popover
-        )
-
-        controller.openOverview()
-        popover.shownForTesting = false
-        await monitor.sendMouseDown()
-
-        #expect(popover.performCloseCount == 0)
-    }
-
-    @Test func popoverDidCloseCancelsGlobalMouseDownMonitorAndTemporaryItem() {
+    @Test func failedPresentationRemovesTemporaryDeepLinkItemWithoutStartingAMonitor() {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
         configuration.overview = ModuleSettings(isEnabled: false, metric: .quotaRemaining)
         let factory = FakeStatusItemFactory()
         let monitor = FakeGlobalMouseDownMonitor()
+        let presenter = FakeMenuPanelPresenter(presentResult: false)
         let controller = makeMenuBarController(
             configuration: configuration,
             snapshotStore: ProviderSnapshotStore(),
             loginCoordinator: testLoginCoordinator(),
             statusItemFactory: factory,
-            globalMouseDownMonitor: monitor
+            globalMouseDownMonitor: monitor,
+            panelPresenter: presenter
         )
 
         controller.openOverview()
-        controller.popoverDidClose(Notification(name: .init("testPopoverClosed")))
-        controller.popoverDidClose(Notification(name: .init("testPopoverClosedAgain")))
+
+        #expect(presenter.presentedAnchors.count == 1)
+        #expect(monitor.startCount == 0)
+        #expect(factory.removed.count == 1)
+    }
+
+    @Test func panelDismissalCancelsMonitoringAndRemovesTemporaryItemOnlyOnce() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        configuration.overview = ModuleSettings(isEnabled: false, metric: .quotaRemaining)
+        let factory = FakeStatusItemFactory()
+        let monitor = FakeGlobalMouseDownMonitor()
+        let presenter = FakeMenuPanelPresenter()
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            statusItemFactory: factory,
+            globalMouseDownMonitor: monitor,
+            panelPresenter: presenter
+        )
+
+        controller.openOverview()
+        presenter.dismiss()
+        presenter.dismiss()
 
         #expect(monitor.cancelCount == 1)
         #expect(factory.removed.count == 1)
     }
 
-    @Test func stopObservingCancelsGlobalMouseDownMonitor() {
+    @Test func staleGlobalCallbackCannotDismissANewerPresentation() async {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
         let monitor = FakeGlobalMouseDownMonitor()
-        let controller = makeMenuBarController(
-            configuration: configuration,
-            snapshotStore: ProviderSnapshotStore(),
-            loginCoordinator: testLoginCoordinator(),
-            statusItemFactory: FakeStatusItemFactory(),
-            globalMouseDownMonitor: monitor
-        )
-
-        controller.openOverview()
-        controller.stopObserving()
-
-        #expect(monitor.cancelCount == 1)
-    }
-
-    @Test func showingAgainReplacesPreviousGlobalMouseDownMonitor() {
-        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
-        let monitor = FakeGlobalMouseDownMonitor()
-        let controller = makeMenuBarController(
-            configuration: configuration,
-            snapshotStore: ProviderSnapshotStore(),
-            loginCoordinator: testLoginCoordinator(),
-            statusItemFactory: FakeStatusItemFactory(),
-            globalMouseDownMonitor: monitor
-        )
-
-        controller.openOverview()
-        controller.openOverview()
-
-        #expect(monitor.startCount == 2)
-        #expect(monitor.cancelCount == 1)
-    }
-
-    @Test func staleMouseDownCallbackFromPreviousPresentationDoesNotCloseCurrentPopover() async {
-        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
-        let monitor = FakeGlobalMouseDownMonitor()
-        let popover = SpyPopover()
+        let presenter = FakeMenuPanelPresenter()
         let controller = makeMenuBarController(
             configuration: configuration,
             snapshotStore: ProviderSnapshotStore(),
             loginCoordinator: testLoginCoordinator(),
             statusItemFactory: FakeStatusItemFactory(),
             globalMouseDownMonitor: monitor,
-            popover: popover
+            panelPresenter: presenter
         )
 
         controller.openOverview()
         let staleCallback = monitor.scheduleMouseDown(at: 0)
         controller.openOverview()
-        #expect(monitor.startCount == 2)
-        #expect(popover.isShown)
+        controller.openOverview()
         await staleCallback.value
-        #expect(monitor.callbackInvocationCount == 1)
 
-        #expect(popover.performCloseCount == 0)
+        #expect(monitor.startCount == 2)
+        #expect(presenter.dismissCount == 1)
+        #expect(presenter.isShown)
     }
 
-    @Test func hiddenPopoverDoesNotInstallGlobalMouseDownMonitor() {
+    @Test func clickingTheShownModuleTogglesThePanelClosedWithoutAnotherPresentation() {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
-        let monitor = FakeGlobalMouseDownMonitor()
-        let popover = SpyPopover(markShownOnShow: false)
+        let presenter = FakeMenuPanelPresenter()
         let controller = makeMenuBarController(
             configuration: configuration,
             snapshotStore: ProviderSnapshotStore(),
             loginCoordinator: testLoginCoordinator(),
             statusItemFactory: FakeStatusItemFactory(),
-            globalMouseDownMonitor: monitor,
-            popover: popover
+            panelPresenter: presenter
         )
 
         controller.openOverview()
+        controller.openOverview()
 
-        #expect(monitor.startCount == 0)
+        #expect(presenter.presentCount == 1)
+        #expect(presenter.dismissCount == 1)
+        #expect(!presenter.isShown)
     }
 
-    @Test func overviewDeepLinkShowsCachedOverviewWhenTheModuleIsDisabled() {
+    @Test func clickingADifferentModuleReanchorsTheExistingPresenter() async throws {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
-        configuration.overview = ModuleSettings(isEnabled: false, metric: .quotaRemaining)
+        configuration.claude = ModuleSettings(isEnabled: true, metric: .quotaRemaining)
+        let store = ProviderSnapshotStore()
+        await store.applyUsage(menuBarUsage(totalTokens: 1), for: .claude)
         let factory = FakeStatusItemFactory()
-        var activatedModules: [MenuModuleID] = []
-        var retries = 0
-        var loginRequests = 0
+        let presenter = FakeMenuPanelPresenter()
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: store,
+            loginCoordinator: testLoginCoordinator(),
+            statusItemFactory: factory,
+            panelPresenter: presenter
+        )
+
+        await controller.refresh()
+        controller.openOverview()
+        let claude = try #require(factory.created.last)
+        claude.anchorForPresentation = StatusItemPresentationAnchor(
+            buttonFrameInScreen: NSRect(x: 200, y: 500, width: 24, height: 24),
+            visibleFrameInScreen: NSRect(x: 0, y: 0, width: 1_024, height: 768)
+        )
+        claude.performAction()
+
+        #expect(await eventually { presenter.presentCount == 2 })
+        #expect(presenter.dismissCount == 0)
+        let anchor = try #require(presenter.presentedAnchors.last)
+        #expect(anchor.buttonFrameInScreen == claude.anchorForPresentation?.buttonFrameInScreen)
+    }
+
+    @Test func staleSnapshotFetchCannotReopenAPanelAfterItIsToggledClosed() async throws {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        let factory = FakeStatusItemFactory()
+        let presenter = FakeMenuPanelPresenter()
         let controller = makeMenuBarController(
             configuration: configuration,
             snapshotStore: ProviderSnapshotStore(),
             loginCoordinator: testLoginCoordinator(),
             statusItemFactory: factory,
-            onModuleActivated: { activatedModules.append($0) },
-            onRetryRequested: { retries += 1 },
-            onProviderLoginRequested: { _ in loginRequests += 1 }
+            panelPresenter: presenter
+        )
+
+        await controller.refresh()
+        let overview = try #require(factory.created.first)
+        overview.performAction()
+        controller.openOverview()
+        controller.openOverview()
+        for _ in 0..<10 { await Task.yield() }
+
+        #expect(presenter.presentCount == 1)
+        #expect(!presenter.isShown)
+    }
+
+    @Test func dismissingTheCurrentPanelInvalidatesAnInFlightDifferentModuleSnapshotFetch() async throws {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        configuration.claude = ModuleSettings(isEnabled: true, metric: .quotaRemaining)
+        let store = ProviderSnapshotStore()
+        await store.applyUsage(menuBarUsage(totalTokens: 1), for: .claude)
+        let factory = FakeStatusItemFactory()
+        let presenter = FakeMenuPanelPresenter()
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: store,
+            loginCoordinator: testLoginCoordinator(),
+            statusItemFactory: factory,
+            panelPresenter: presenter
+        )
+
+        await controller.refresh()
+        controller.openOverview()
+        let claude = try #require(factory.created.last)
+        claude.performAction()
+        presenter.dismiss()
+        for _ in 0..<10 { await Task.yield() }
+
+        #expect(presenter.presentCount == 1)
+        #expect(!presenter.isShown)
+    }
+
+    @Test func overviewDeepLinkPresentsCachedOverviewAndRemovesItsTemporaryItemOnDismissal() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        configuration.overview = ModuleSettings(isEnabled: false, metric: .quotaRemaining)
+        let factory = FakeStatusItemFactory()
+        let presenter = FakeMenuPanelPresenter()
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            statusItemFactory: factory,
+            panelPresenter: presenter
         )
 
         let opened = OverviewDeepLink.open(URL(string: "needlbar://overview")!) {
             controller.openOverview()
         }
+        presenter.dismiss()
 
         #expect(opened)
-        #expect(factory.created.count == 1)
-        #expect(factory.created[0].showCount == 1)
-        #expect(activatedModules.isEmpty)
-        #expect(retries == 0)
-        #expect(loginRequests == 0)
-
-        controller.popoverDidClose(Notification(name: .init("testPopoverClosed")))
-
+        #expect(presenter.presentCount == 1)
         #expect(factory.removed.count == 1)
-        #expect(factory.removed[0] === factory.created[0])
+        #expect(factory.removed.first === factory.created.first)
     }
 
-    @Test func invalidOverviewDeepLinksDoNotShowOrRefreshOrLogin() {
+    @Test func invalidOverviewDeepLinksDoNotPresentOrCreateStatusItems() {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
         configuration.overview = ModuleSettings(isEnabled: false, metric: .quotaRemaining)
         let factory = FakeStatusItemFactory()
-        var activatedModules: [MenuModuleID] = []
-        var retries = 0
-        var loginRequests = 0
+        let presenter = FakeMenuPanelPresenter()
         let controller = makeMenuBarController(
             configuration: configuration,
             snapshotStore: ProviderSnapshotStore(),
             loginCoordinator: testLoginCoordinator(),
             statusItemFactory: factory,
-            onModuleActivated: { activatedModules.append($0) },
-            onRetryRequested: { retries += 1 },
-            onProviderLoginRequested: { _ in loginRequests += 1 }
+            panelPresenter: presenter
         )
 
         for value in [
@@ -435,9 +491,90 @@ struct MenuBarControllerTests {
         }
 
         #expect(factory.created.isEmpty)
-        #expect(activatedModules.isEmpty)
-        #expect(retries == 0)
-        #expect(loginRequests == 0)
+        #expect(presenter.presentCount == 0)
+    }
+
+    @Test func settingsDismissesThePanelBeforeInvokingTheCallback() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        let eventLog = FakeEventLog()
+        let presenter = FakeMenuPanelPresenter(eventLog: eventLog)
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            panelPresenter: presenter,
+            onSettingsRequested: { eventLog.events.append("settings") }
+        )
+
+        controller.openOverview()
+        controller.performSettingsAction()
+
+        #expect(eventLog.events.suffix(2) == ["dismiss", "settings"])
+    }
+
+    @Test func providerAuthenticationActionsDismissBeforeTheirCallbacks() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        let eventLog = FakeEventLog()
+        let presenter = FakeMenuPanelPresenter(eventLog: eventLog)
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            panelPresenter: presenter,
+            onProviderLoginRequested: { provider in eventLog.events.append("login-\(provider.rawValue)") },
+            openCursorSpending: { eventLog.events.append("cursor") }
+        )
+
+        for provider in [ProviderID.claude, .codex, .cursor] {
+            presenter.markShownForTesting()
+            controller.performAuthenticationAction(for: provider)
+        }
+
+        #expect(eventLog.events == [
+            "dismiss", "login-claude",
+            "dismiss", "login-codex",
+            "dismiss", "cursor",
+        ])
+    }
+
+    @Test func retryLeavesThePanelShown() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        var retries = 0
+        let presenter = FakeMenuPanelPresenter()
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            panelPresenter: presenter,
+            onRetryRequested: { retries += 1 }
+        )
+
+        controller.openOverview()
+        controller.performRetryAction()
+
+        #expect(retries == 1)
+        #expect(presenter.isShown)
+        #expect(presenter.dismissCount == 0)
+    }
+
+    @Test func stopObservingDismissesShownPanelAndCancelsMonitoringOnlyOnce() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        let monitor = FakeGlobalMouseDownMonitor()
+        let presenter = FakeMenuPanelPresenter()
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            globalMouseDownMonitor: monitor,
+            panelPresenter: presenter
+        )
+
+        controller.openOverview()
+        controller.stopObserving()
+        controller.stopObserving()
+
+        #expect(presenter.dismissCount == 1)
+        #expect(monitor.cancelCount == 1)
     }
 }
 
@@ -460,7 +597,7 @@ private func makeMenuBarController(
     loginCoordinator: ProviderLoginCoordinator,
     statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
     globalMouseDownMonitor: any GlobalMouseDownMonitoring = FakeGlobalMouseDownMonitor(),
-    popover: NSPopover = SpyPopover(),
+    panelPresenter: any MenuPanelPresenting = FakeMenuPanelPresenter(),
     onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
     onRetryRequested: @escaping @MainActor () -> Void = {},
     onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
@@ -486,7 +623,7 @@ private func makeMenuBarController(
         notificationService: notificationService,
         statusItemFactory: statusItemFactory,
         globalMouseDownMonitor: globalMouseDownMonitor,
-        popover: popover,
+        panelPresenter: panelPresenter,
         onModuleActivated: onModuleActivated,
         onRetryRequested: onRetryRequested,
         onProviderLoginRequested: onProviderLoginRequested,
@@ -543,9 +680,10 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
 private final class FakeStatusItemFactory: StatusItemFactory {
     var created: [FakeStatusItemHandle] = []
     var removed: [FakeStatusItemHandle] = []
+    var nextPresentationAnchor: StatusItemPresentationAnchor? = FakeStatusItemHandle.literalAnchor
 
     func makeStatusItem() -> any StatusItemHandle {
-        let handle = FakeStatusItemHandle()
+        let handle = FakeStatusItemHandle(presentationAnchor: nextPresentationAnchor)
         created.append(handle)
         return handle
     }
@@ -557,40 +695,90 @@ private final class FakeStatusItemFactory: StatusItemFactory {
 
 @MainActor
 private final class FakeStatusItemHandle: StatusItemHandle {
-    let fixedPresentationAnchor = StatusItemPresentationAnchor(
+    static let literalAnchor = StatusItemPresentationAnchor(
         buttonFrameInScreen: NSRect(x: 0, y: 0, width: 24, height: 24),
         visibleFrameInScreen: NSRect(x: 0, y: 0, width: 1_024, height: 768)
     )
+    var anchorForPresentation: StatusItemPresentationAnchor?
     var title = ""
     var action: (@MainActor () -> Void)? {
         didSet { actionAssignmentCount += 1 }
     }
     private(set) var actionAssignmentCount = 0
-    private(set) var showCount = 0
+
+    init(presentationAnchor: StatusItemPresentationAnchor?) {
+        anchorForPresentation = presentationAnchor
+    }
 
     func performAction() {
         action?()
     }
 
-    func show(_ popover: NSPopover) {
-        showCount += 1
-        (popover as? SpyPopover)?.markShownIfConfigured()
+    func presentationAnchor() -> StatusItemPresentationAnchor? {
+        anchorForPresentation
+    }
+}
+
+@MainActor
+private final class FakeEventLog {
+    var events: [String] = []
+}
+
+@MainActor
+private final class FakeMenuPanelPresenter: MenuPanelPresenting {
+    private let presentResult: Bool
+    private let eventLog: FakeEventLog?
+    private(set) var presentCount = 0
+    private(set) var dismissCount = 0
+    private(set) var presentedAnchors: [StatusItemPresentationAnchor] = []
+    private(set) var isShown = false
+    var onDismiss: (@MainActor () -> Void)?
+
+    init(presentResult: Bool = true, eventLog: FakeEventLog? = nil) {
+        self.presentResult = presentResult
+        self.eventLog = eventLog
     }
 
-    func presentationAnchor() -> StatusItemPresentationAnchor? {
-        fixedPresentationAnchor
+    func present(
+        _ contentViewController: NSViewController,
+        anchoredAt anchor: StatusItemPresentationAnchor
+    ) -> Bool {
+        presentCount += 1
+        presentedAnchors.append(anchor)
+        eventLog?.events.append("present")
+        guard presentResult else { return false }
+        isShown = true
+        return true
+    }
+
+    func dismiss() {
+        guard isShown else { return }
+        dismissCount += 1
+        isShown = false
+        eventLog?.events.append("dismiss")
+        onDismiss?()
+    }
+
+    func markShownForTesting() {
+        isShown = true
     }
 }
 
 @MainActor
 private final class FakeGlobalMouseDownMonitor: GlobalMouseDownMonitoring {
+    private let eventLog: FakeEventLog?
     private(set) var startCount = 0
     private(set) var cancelCount = 0
     private(set) var callbackInvocationCount = 0
     private var callbacks: [(@MainActor () -> Void)?] = []
 
+    init(eventLog: FakeEventLog? = nil) {
+        self.eventLog = eventLog
+    }
+
     func start(_ callback: @escaping @MainActor () -> Void) -> any GlobalMouseDownMonitoringToken {
         startCount += 1
+        eventLog?.events.append("monitor")
         callbacks.append { [weak self] in
             self?.callbackInvocationCount += 1
             callback()
@@ -623,36 +811,5 @@ private final class FakeGlobalMouseDownMonitor: GlobalMouseDownMonitoring {
             isCancelled = true
             onCancel()
         }
-    }
-}
-
-@MainActor
-private final class SpyPopover: NSPopover {
-    private let markShownOnShow: Bool
-    var shownForTesting = false
-    private(set) var performCloseCount = 0
-
-    init(markShownOnShow: Bool = true) {
-        self.markShownOnShow = markShownOnShow
-        super.init()
-    }
-
-    required init?(coder: NSCoder) {
-        self.markShownOnShow = true
-        super.init(coder: coder)
-    }
-
-    func markShownIfConfigured() {
-        if markShownOnShow {
-            shownForTesting = true
-        }
-    }
-
-    override var isShown: Bool { shownForTesting }
-
-    override func performClose(_ sender: Any?) {
-        performCloseCount += 1
-        shownForTesting = false
-        super.performClose(sender)
     }
 }

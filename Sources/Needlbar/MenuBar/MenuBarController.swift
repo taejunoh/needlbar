@@ -6,12 +6,7 @@ import SwiftUI
 public protocol StatusItemHandle: AnyObject {
     var title: String { get set }
     var action: (@MainActor () -> Void)? { get set }
-    func show(_ popover: NSPopover)
     func presentationAnchor() -> StatusItemPresentationAnchor?
-}
-
-public extension StatusItemHandle {
-    func show(_ popover: NSPopover) {}
 }
 
 @MainActor
@@ -63,7 +58,7 @@ public protocol StatusItemFactory: AnyObject {
 }
 
 @MainActor
-public final class MenuBarController: NSObject, NSPopoverDelegate {
+public final class MenuBarController: NSObject {
     private let configuration: ModuleConfiguration
     private let snapshotStore: ProviderSnapshotStore
     private let statusItemFactory: any StatusItemFactory
@@ -73,10 +68,12 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
     private let onSettingsRequested: @MainActor () -> Void
     private let openCursorSpending: @MainActor () -> Void
     private let settingsWindowController: SettingsWindowController
-    private let popover: NSPopover
+    private let panelPresenter: any MenuPanelPresenting
     private let globalMouseDownMonitor: any GlobalMouseDownMonitoring
     private var globalMouseDownMonitoringToken: (any GlobalMouseDownMonitoringToken)?
-    private var popoverPresentationGeneration: UInt64 = 0
+    private var panelPresentationGeneration: UInt64 = 0
+    private var snapshotRequestGeneration: UInt64 = 0
+    private var activeMenuModule: MenuModuleID?
     private var statusItems: [MenuModuleID: any StatusItemHandle] = [:]
     private var deepLinkStatusItem: (any StatusItemHandle)?
     private var cachedSnapshots: [ProviderSnapshot] = []
@@ -93,7 +90,7 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
         notificationService: QuotaNotificationService,
         statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
         globalMouseDownMonitor: any GlobalMouseDownMonitoring = AppKitGlobalMouseDownMonitor(),
-        popover: NSPopover = NSPopover(),
+        panelPresenter: any MenuPanelPresenting = AppKitMenuPanelPresenter(),
         onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
         onRetryRequested: @escaping @MainActor () -> Void = {},
         onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
@@ -108,7 +105,7 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
         self.onProviderLoginRequested = onProviderLoginRequested
         self.onSettingsRequested = onSettingsRequested
         self.openCursorSpending = openCursorSpending
-        self.popover = popover
+        self.panelPresenter = panelPresenter
         self.globalMouseDownMonitor = globalMouseDownMonitor
         self.settingsWindowController = SettingsWindowController(
             configuration: configuration,
@@ -119,7 +116,9 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
             openCursorSpending: openCursorSpending
         )
         super.init()
-        popover.delegate = self
+        panelPresenter.onDismiss = { [weak self] in
+            self?.panelDidDismiss()
+        }
     }
 
     public var activeModuleIDs: [MenuModuleID] {
@@ -160,9 +159,9 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
 
     public func stopObserving() {
         observationGeneration &+= 1
+        dismissPanelAndCleanUp()
         snapshotObservationTask?.cancel()
         snapshotObservationTask = nil
-        cancelGlobalMouseDownMonitoring()
         if let configurationObserver {
             NotificationCenter.default.removeObserver(configurationObserver)
             self.configurationObserver = nil
@@ -181,14 +180,8 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
             deepLinkStatusItem = created
             statusItem = created
         }
-        showPopover(for: .overview, snapshots: cachedSnapshots, from: statusItem)
-    }
-
-    public func popoverDidClose(_ notification: Notification) {
-        cancelGlobalMouseDownMonitoring()
-        guard let temporary = deepLinkStatusItem else { return }
-        statusItemFactory.removeStatusItem(temporary)
-        deepLinkStatusItem = nil
+        snapshotRequestGeneration &+= 1
+        showPanel(for: .overview, snapshots: cachedSnapshots, from: statusItem)
     }
 
     private func reconcile(using snapshots: [ProviderSnapshot]) {
@@ -228,61 +221,104 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
 
     private func activate(_ module: MenuModuleID, from statusItem: any StatusItemHandle) {
         onModuleActivated(module)
+        snapshotRequestGeneration &+= 1
+        let requestGeneration = snapshotRequestGeneration
+        if panelPresenter.isShown, activeMenuModule == module {
+            panelPresenter.dismiss()
+            return
+        }
         Task { [weak self] in
             guard let self else { return }
             let snapshots = await self.snapshotStore.snapshots()
-            guard !Task.isCancelled else { return }
-            self.showPopover(for: module, snapshots: snapshots, from: statusItem)
+            guard !Task.isCancelled, self.snapshotRequestGeneration == requestGeneration else { return }
+            self.showPanel(for: module, snapshots: snapshots, from: statusItem)
         }
     }
 
-    private func showPopover(
+    private func showPanel(
         for module: MenuModuleID,
         snapshots: [ProviderSnapshot],
         from statusItem: any StatusItemHandle
     ) {
+        if panelPresenter.isShown, activeMenuModule == module {
+            panelPresenter.dismiss()
+            return
+        }
+
         let view: AnyView
         switch module {
         case .overview:
             view = AnyView(OverviewPopoverView(snapshots: snapshots, configuration: configuration) { [weak self] in
-                self?.popover.performClose(nil)
-                self?.showSettings()
+                self?.performSettingsAction()
             })
         case .claude, .codex, .cursor:
             guard let provider = module.provider,
                   let snapshot = snapshots.first(where: { $0.provider == provider }) else { return }
             view = AnyView(ProviderPopoverView(
                 snapshot: snapshot,
-                onRetry: { [weak self] in self?.onRetryRequested() },
+                onRetry: { [weak self] in self?.performRetryAction() },
                 onAuthenticationAction: { [weak self] action in
-                    self?.popover.performClose(nil)
                     self?.performAuthenticationAction(action, for: provider)
                 }
             ))
         }
-        popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: view)
-        popoverPresentationGeneration &+= 1
-        let presentationGeneration = popoverPresentationGeneration
-        globalMouseDownMonitoringToken?.cancel()
-        globalMouseDownMonitoringToken = nil
-        statusItem.show(popover)
-        guard popover.isShown else { return }
+        guard let anchor = statusItem.presentationAnchor() else {
+            dismissPanelAndCleanUp()
+            return
+        }
+
+        cancelGlobalMouseDownMonitoring()
+        let hostingController = NSHostingController(rootView: view)
+        guard panelPresenter.present(hostingController, anchoredAt: anchor) else {
+            dismissPanelAndCleanUp()
+            return
+        }
+
+        activeMenuModule = module
+        panelPresentationGeneration &+= 1
+        let presentationGeneration = panelPresentationGeneration
         globalMouseDownMonitoringToken = globalMouseDownMonitor.start { [weak self] in
             guard let self,
-                  self.popoverPresentationGeneration == presentationGeneration,
-                  self.popover.isShown else { return }
-            self.popover.performClose(nil)
+                  self.panelPresentationGeneration == presentationGeneration,
+                  self.panelPresenter.isShown else { return }
+            self.panelPresenter.dismiss()
         }
     }
 
     private func cancelGlobalMouseDownMonitoring() {
-        popoverPresentationGeneration &+= 1
         globalMouseDownMonitoringToken?.cancel()
         globalMouseDownMonitoringToken = nil
     }
 
+    private func panelDidDismiss() {
+        panelPresentationGeneration &+= 1
+        snapshotRequestGeneration &+= 1
+        cancelGlobalMouseDownMonitoring()
+        activeMenuModule = nil
+        guard let temporary = deepLinkStatusItem else { return }
+        statusItemFactory.removeStatusItem(temporary)
+        deepLinkStatusItem = nil
+    }
+
+    private func dismissPanelAndCleanUp() {
+        if panelPresenter.isShown {
+            panelPresenter.dismiss()
+        } else {
+            panelDidDismiss()
+        }
+    }
+
+    func performRetryAction() {
+        onRetryRequested()
+    }
+
+    func performSettingsAction() {
+        panelPresenter.dismiss()
+        showSettings()
+    }
+
     func performAuthenticationAction(for provider: ProviderID) {
+        panelPresenter.dismiss()
         let action: ProviderAuthenticationAction
         switch provider {
         case .claude:
@@ -348,11 +384,6 @@ private final class AppKitStatusItemHandle: NSObject, StatusItemHandle {
         super.init()
     }
 
-    func show(_ popover: NSPopover) {
-        guard let button = statusItem.button else { return }
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: preferredPopoverEdge(isFlipped: button.isFlipped))
-    }
-
     func presentationAnchor() -> StatusItemPresentationAnchor? {
         guard let button = statusItem.button,
               let window = button.window,
@@ -369,8 +400,4 @@ private final class AppKitStatusItemHandle: NSObject, StatusItemHandle {
     @objc private func performAction() {
         action?()
     }
-}
-
-func preferredPopoverEdge(isFlipped: Bool) -> NSRectEdge {
-    isFlipped ? .maxY : .minY
 }
