@@ -78,8 +78,30 @@ provisioned entitlements, Widget Gallery discovery, or App Group runtime behavio
 Actual signed macOS 14 arm64 Widget Gallery/App Group/deep-link/quit/reset/midnight acceptance
 and native notification authorization/enable-disable acceptance are unavailable on the current
 macOS 26.6.2/Xcode 26.6 host. They remain the next external action; v0.2.1 is implemented but
-not accepted. Whole-branch review remains pending controller completion. No new CI run was made,
-and no tag or release action is authorized.
+not accepted. The controller-owned full gate passed; final scoped re-review remains pending. No
+new CI run was made, and no tag or release action is authorized.
+
+## v0.2.1 Final Review Fix Wave — 2026-08-31
+
+The final whole-branch review found two important code defects and this single scoped fix wave
+addresses them without changing the shared quota domain, provider/bridge/export contracts, or
+widget schema. Projection dates now use a paired fractional RFC3339 codec while preserving
+legacy whole-second decoding; notification observation construction omits every row for an
+ambiguous duplicated allowlisted window ID rather than selecting one arbitrarily.
+
+Focused RED/GREEN evidence from this worktree:
+
+- RED: `source /Users/taejunoh/.cargo/env && make swift-test SWIFT_TEST_FILTER=WidgetProjectionTests` exited 2 with 28 tests in 2 suites and 3 expected issues: default ISO-8601 encoding lost fractional `lastSuccessfulAt` and `resetsAt`, making the just-below-900-second reading stale.
+- GREEN: the same `WidgetProjectionTests` command exited 0 with 28 tests in 2 suites. The fixture uses non-millisecond successful/reset dates, preserves both through encode/decode, is fresh just below 900 seconds, and stale exactly at 900 seconds. Existing whole-second document fixtures continue to decode.
+- RED: `source /Users/taejunoh/.cargo/env && make swift-test SWIFT_TEST_FILTER=QuotaNotificationServiceTests` exited 2 with 14 tests in 1 suite and 3 expected issues: an initial duplicate `claude.session` 80%/20% sample submitted a false alert and contaminated the later unique baseline/crossing assertions.
+- GREEN: the same `QuotaNotificationServiceTests` command exited 0 with 14 tests in 1 suite. Both duplicate orders submit nothing; a later unique 80% sample baselines and its later unique 20% sample submits one alert. The existing distinct-window independence fixture remains green.
+- `bash scripts/build-widget-extension.sh && bash scripts/tests/widget-extension-tests.sh` — exit 0; the native extension built with the synthetic App Group identity and the fake build/metadata contract passed.
+- Controller full pipeline, session `4025`, on the frozen five-file fix tree — actual exit 0: `source /Users/taejunoh/.cargo/env && make test` passed with 213 Swift tests in 9 suites plus Rust/vendor and all widget/package/notarization contracts; `cargo fmt --check`, strict `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `make package`, `make smoke`, `./scripts/tests/package-app-tests.sh`, and `./scripts/tests/notarize-app-tests.sh` also passed. The exact output is retained in the ignored `final-fix-controller-gates.log`.
+
+The controller-owned full integration pipeline has completed; scoped final re-review remains.
+The external signed macOS 14 arm64 Widget Gallery/App Group and native notification-permission
+acceptance gates remain separate and unsatisfied. The final review's remaining Minor coverage
+list is explicit future test debt, not additional production changes in this wave.
 
 ## Widget W4 Verification — 2026-08-31
 

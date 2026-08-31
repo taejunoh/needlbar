@@ -172,6 +172,59 @@ public enum WidgetProjectionError: Error, Equatable, Sendable {
     case invalidTodaySummary
 }
 
+private enum WidgetProjectionDateCodec {
+    private static func wholeSecondFormatter() -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime, .withColonSeparatorInTimeZone]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }
+
+    static func encode(_ date: Date) -> String {
+        let interval = date.timeIntervalSince1970
+        var seconds = floor(interval)
+        var nanoseconds = Int64(((interval - seconds) * 1_000_000_000).rounded())
+        if nanoseconds == 1_000_000_000 {
+            seconds += 1
+            nanoseconds = 0
+        }
+
+        let wholeSecond = wholeSecondFormatter().string(from: Date(timeIntervalSince1970: seconds))
+        guard nanoseconds != 0 else { return wholeSecond }
+        let digits = String(nanoseconds)
+        let padded = String(repeating: "0", count: 9 - digits.count) + digits
+        var end = padded.endIndex
+        while padded[padded.index(before: end)] == "0" {
+            end = padded.index(before: end)
+        }
+        return "\(wholeSecond.dropLast()).\(padded[..<end])Z"
+    }
+
+    static func decode(_ string: String) -> Date? {
+        guard let decimal = string.lastIndex(of: ".") else {
+            return wholeSecondFormatter().date(from: string)
+        }
+
+        let suffixStart = string.index(after: decimal)
+        let fractionalAndZone = string[suffixStart...]
+        guard let zoneStart = fractionalAndZone.firstIndex(where: { $0 == "Z" || $0 == "+" || $0 == "-" }) else {
+            return nil
+        }
+        let fraction = fractionalAndZone[..<zoneStart]
+        guard (1...9).contains(fraction.count), fraction.allSatisfy(\.isNumber) else {
+            return nil
+        }
+
+        let base = String(string[..<decimal]) + String(fractionalAndZone[zoneStart...])
+        guard let seconds = wholeSecondFormatter().date(from: base),
+              let subsecond = Double("0.\(fraction)"),
+              subsecond.isFinite else {
+            return nil
+        }
+        return seconds.addingTimeInterval(subsecond)
+    }
+}
+
 public struct WidgetProjection: Codable, Sendable, Equatable {
     public static let schemaVersion = 1
     public static let maximumEncodedBytes = 64 * 1024
@@ -196,7 +249,10 @@ public struct WidgetProjection: Codable, Sendable, Equatable {
     public static func encode(_ value: WidgetProjection) throws -> Data {
         try validate(value, referenceDate: nil)
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(WidgetProjectionDateCodec.encode(date))
+        }
         encoder.outputFormatting = [.sortedKeys]
         let bytes = try encoder.encode(value)
         guard bytes.count <= maximumEncodedBytes else {
@@ -220,7 +276,14 @@ public struct WidgetProjection: Codable, Sendable, Equatable {
         }
 
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            guard let date = WidgetProjectionDateCodec.decode(value) else {
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected an RFC3339 date.")
+            }
+            return date
+        }
         do {
             let value = try decoder.decode(WidgetProjection.self, from: bytes)
             try validate(value, referenceDate: referenceDate)

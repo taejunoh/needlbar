@@ -177,6 +177,35 @@ struct WidgetProjectionTests {
     }
 
     @Test
+    func fractionalRFC3339DatesRoundTripAtTheExactFreshnessBoundary() throws {
+        let successfulAt = Date(timeIntervalSince1970: 1_800_000_000.123_456_7)
+        let resetsAt = Date(timeIntervalSince1970: 1_800_003_600.765_432_1)
+        let projection = try WidgetProjection(
+            quotaRows: [
+                try WidgetQuotaRow(
+                    provider: .claude,
+                    stream: .fresh,
+                    lastSuccessfulAt: successfulAt,
+                    headline: WidgetQuotaHeadline(id: .claudeSession, remainingPercent: 50, resetsAt: resetsAt)
+                ),
+                try WidgetQuotaRow(provider: .codex, stream: .unavailable, lastSuccessfulAt: nil, headline: nil),
+            ],
+            usageRows: makeUnavailableUsageRows(),
+            today: unavailableToday
+        )
+
+        let encoded = try WidgetProjection.encode(projection)
+        let exactBoundary = successfulAt.addingTimeInterval(WidgetPresentation.freshnessHorizon)
+        let decoded = try WidgetProjection.decode(encoded, referenceDate: exactBoundary)
+        let decodedHeadline = try #require(decoded.quotaRows[0].headline)
+
+        #expect(decoded.quotaRows[0].lastSuccessfulAt == successfulAt)
+        #expect(decodedHeadline.resetsAt == resetsAt)
+        #expect(WidgetPresentation.freshness(.fresh, lastSuccessfulAt: decoded.quotaRows[0].lastSuccessfulAt, now: exactBoundary.addingTimeInterval(-0.001)) == .fresh)
+        #expect(WidgetPresentation.freshness(.fresh, lastSuccessfulAt: decoded.quotaRows[0].lastSuccessfulAt, now: exactBoundary) == .stale)
+    }
+
+    @Test
     func exactlyFifteenMinutesOldFreshValueIsStale() {
         let now = referenceDate
         #expect(WidgetPresentation.freshness(.fresh, lastSuccessfulAt: now.addingTimeInterval(-WidgetPresentation.freshnessHorizon), now: now) == .stale)

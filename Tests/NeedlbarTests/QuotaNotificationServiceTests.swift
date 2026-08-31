@@ -220,6 +220,32 @@ struct QuotaNotificationServiceTests {
         ])
     }
 
+    @MainActor @Test func duplicateAllowlistedWindowsAreOmittedUntilAUniqueBaselineThenCrossing() async throws {
+        for duplicateWindows in [
+            [("claude.session", 80.0), ("claude.session", 20.0)],
+            [("claude.session", 20.0), ("claude.session", 80.0)],
+        ] {
+            let fixture = try NotificationFixture(status: .authorized)
+            await fixture.service.start()
+            await fixture.service.setEnabledFromSettings(true)
+
+            await fixture.applyQuota(windows: duplicateWindows, for: .claude)
+            await fixture.service.reconcileLatestForTesting()
+            await fixture.service.waitUntilIdle()
+            #expect(await fixture.client.submissionCount == 0)
+
+            await fixture.applyQuota(remaining: 80, for: .claude)
+            await fixture.service.reconcileLatestForTesting()
+            await fixture.service.waitUntilIdle()
+            #expect(await fixture.client.submissionCount == 0)
+
+            await fixture.applyQuota(remaining: 20, for: .claude)
+            await fixture.service.reconcileLatestForTesting()
+            await fixture.service.waitUntilIdle()
+            #expect(await fixture.client.submissions == ["Claude quota: 20% or less remaining."])
+        }
+    }
+
     @MainActor @Test func restartRetainsDurableReservationAndDoesNotSubmitTheRecordedStageAgain() async throws {
         let fixture = try NotificationFixture(status: .authorized)
         await fixture.startEnabledAndCrossTwenty()

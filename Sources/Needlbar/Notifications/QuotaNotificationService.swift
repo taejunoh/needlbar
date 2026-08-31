@@ -360,8 +360,14 @@ public final class QuotaNotificationService {
             return []
         }
 
-        return quota.windows
-            .filter { isAllowed(provider: sample.provider, id: $0.id) }
+        let allowedWindows = quota.windows.filter { isAllowed(provider: sample.provider, id: $0.id) }
+        let duplicateIDs = Set(
+            Dictionary(grouping: allowedWindows, by: \.id)
+                .compactMap { $0.value.count > 1 ? $0.key : nil }
+        )
+
+        return allowedWindows
+            .filter { !duplicateIDs.contains($0.id) }
             .sorted { $0.id < $1.id }
             .compactMap { window in
                 guard let key = try? QuotaAlertKey(provider: sample.provider, windowID: window.id) else {
