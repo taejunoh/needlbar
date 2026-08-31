@@ -557,6 +557,10 @@ private final class FakeStatusItemFactory: StatusItemFactory {
 
 @MainActor
 private final class FakeStatusItemHandle: StatusItemHandle {
+    let fixedPresentationAnchor = StatusItemPresentationAnchor(
+        buttonFrameInScreen: NSRect(x: 0, y: 0, width: 24, height: 24),
+        visibleFrameInScreen: NSRect(x: 0, y: 0, width: 1_024, height: 768)
+    )
     var title = ""
     var action: (@MainActor () -> Void)? {
         didSet { actionAssignmentCount += 1 }
@@ -571,6 +575,10 @@ private final class FakeStatusItemHandle: StatusItemHandle {
     func show(_ popover: NSPopover) {
         showCount += 1
         (popover as? SpyPopover)?.markShownIfConfigured()
+    }
+
+    func presentationAnchor() -> StatusItemPresentationAnchor? {
+        fixedPresentationAnchor
     }
 }
 

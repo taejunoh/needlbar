@@ -7,6 +7,7 @@ public protocol StatusItemHandle: AnyObject {
     var title: String { get set }
     var action: (@MainActor () -> Void)? { get set }
     func show(_ popover: NSPopover)
+    func presentationAnchor() -> StatusItemPresentationAnchor?
 }
 
 public extension StatusItemHandle {
@@ -350,6 +351,19 @@ private final class AppKitStatusItemHandle: NSObject, StatusItemHandle {
     func show(_ popover: NSPopover) {
         guard let button = statusItem.button else { return }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: preferredPopoverEdge(isFlipped: button.isFlipped))
+    }
+
+    func presentationAnchor() -> StatusItemPresentationAnchor? {
+        guard let button = statusItem.button,
+              let window = button.window,
+              let screen = window.screen else {
+            return nil
+        }
+        let buttonFrameInScreen = window.convertToScreen(button.convert(button.bounds, to: nil))
+        return StatusItemPresentationAnchor(
+            buttonFrameInScreen: buttonFrameInScreen,
+            visibleFrameInScreen: screen.visibleFrame
+        )
     }
 
     @objc private func performAction() {
