@@ -1,5 +1,6 @@
 import AppKit
 import NeedlbarCore
+import WidgetKit
 
 @MainActor
 public final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -8,6 +9,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let loginCoordinator: ProviderLoginCoordinator
     private let moduleConfiguration: ModuleConfiguration
     private let snapshotExportController: SnapshotExportController
+    private let widgetPublisher: WidgetProjectionPublisher?
     private let menuBarController: MenuBarController
     private let terminationController = AccessoryTerminationController()
     private var lifecycleTask: Task<Void, Never>?
@@ -19,6 +21,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
         self.snapshotStore = snapshotStore
         self.moduleConfiguration = moduleConfiguration
+        self.widgetPublisher = makeWidgetPublisher()
         let refreshCoordinator = RefreshCoordinator(
             usageRepository: RustUsageRepository(),
             quotaRepository: RustQuotaRepository(),
@@ -72,6 +75,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             await self.menuBarController.startObserving()
             guard !Task.isCancelled else { return }
+            await self.widgetPublisher?.start(observing: self.snapshotStore)
+            guard !Task.isCancelled else { return }
             await self.refreshCoordinator.start()
         }
     }
@@ -92,7 +97,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 return await self.loginCoordinator.stop()
             },
             stopRefreshCoordinator: { [weak self] in
-                await self?.refreshCoordinator.stop()
+                guard let self else { return }
+                await self.widgetPublisher?.stop()
+                await self.refreshCoordinator.stop()
             },
             reply: { shouldTerminate in
                 sender.reply(toApplicationShouldTerminate: shouldTerminate)
@@ -107,6 +114,21 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         lifecycleTask?.cancel()
         lifecycleTask = nil
     }
+}
+
+struct WidgetKitTimelineReloader: WidgetTimelineReloading {
+    func reloadOverview() async {
+        WidgetCenter.shared.reloadTimelines(ofKind: "NeedlbarOverview")
+    }
+}
+
+private func makeWidgetPublisher() -> WidgetProjectionPublisher? {
+    guard let id = Bundle.main.object(forInfoDictionaryKey: "NeedlbarAppGroupIdentifier") as? String,
+          let directory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: id) else { return nil }
+    return WidgetProjectionPublisher(
+        reloader: WidgetKitTimelineReloader(),
+        destination: directory.appendingPathComponent("NeedlbarWidgetProjection.json")
+    )
 }
 
 @MainActor

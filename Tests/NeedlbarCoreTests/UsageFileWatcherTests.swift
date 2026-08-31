@@ -100,24 +100,24 @@ import Testing
     )
 
     await coordinator.start()
-    await eventually { usage.callCount == 1 }
+    await usage.waitUntilCallCount(1)
     source.sendEvent()
-    await eventually { clock.sleeperCount == 3 }
+    await clock.waitUntilSleeperCount(3)
     clock.advance(by: 1)
-    await eventually { acceptanceGate.waiterCount == 1 }
+    await acceptanceGate.waitUntilWaiterCount(1)
 
     await coordinator.stop()
     await coordinator.start()
-    await eventually { usage.callCount == 2 }
+    await usage.waitUntilCallCount(2)
     acceptanceGate.open()
     await Task.yield()
 
     #expect(usage.callCount == 2)
 
     source.sendEvent()
-    await eventually { clock.sleeperCount == 3 }
+    await clock.waitUntilSleeperCount(3)
     clock.advance(by: 1)
-    await eventually { usage.callCount == 3 }
+    await usage.waitUntilCallCount(3)
 
     #expect(usage.callCount == 3)
     await coordinator.stop()
@@ -193,6 +193,7 @@ private final class UsageRefreshSpy: UsageRepository, @unchecked Sendable {
     private let lock = NSLock()
     private let result: UsageRefreshResult
     private var calls = 0
+    private var callCountWaiters: [CallCountWaiter] = []
 
     init(result: UsageRefreshResult) {
         self.result = result
@@ -203,9 +204,31 @@ private final class UsageRefreshSpy: UsageRepository, @unchecked Sendable {
     }
 
     func refresh() throws -> UsageRefreshResult {
-        lock.withLock { calls += 1 }
+        let waiters = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            calls += 1
+            let ready = callCountWaiters.filter { calls >= $0.expectedCount }.map(\.continuation)
+            callCountWaiters.removeAll { calls >= $0.expectedCount }
+            return ready
+        }
+        waiters.forEach { $0.resume() }
         return result
     }
+
+    func waitUntilCallCount(_ expectedCount: Int) async {
+        await withCheckedContinuation { continuation in
+            let ready = lock.withLock { () -> Bool in
+                guard calls < expectedCount else { return true }
+                callCountWaiters.append(.init(expectedCount: expectedCount, continuation: continuation))
+                return false
+            }
+            if ready { continuation.resume() }
+        }
+    }
+}
+
+private struct CallCountWaiter {
+    let expectedCount: Int
+    let continuation: CheckedContinuation<Void, Never>
 }
 
 private final class QuotaRefreshSpy: QuotaRepository, @unchecked Sendable {
@@ -224,12 +247,29 @@ private final class QuotaRefreshSpy: QuotaRepository, @unchecked Sendable {
 }
 
 private final class AsyncGate: @unchecked Sendable {
+    private struct WaiterCountWaiter {
+        let expectedCount: Int
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
     private let lock = NSLock()
     private var isOpen = false
     private var continuations: [CheckedContinuation<Void, Never>] = []
+    private var waiterCountWaiters: [WaiterCountWaiter] = []
 
     var waiterCount: Int {
         lock.withLock { continuations.count }
+    }
+
+    func waitUntilWaiterCount(_ expectedCount: Int) async {
+        await withCheckedContinuation { continuation in
+            let ready = lock.withLock { () -> Bool in
+                guard continuations.count < expectedCount else { return true }
+                waiterCountWaiters.append(.init(expectedCount: expectedCount, continuation: continuation))
+                return false
+            }
+            if ready { continuation.resume() }
+        }
     }
 
     func wait() async {
@@ -237,6 +277,9 @@ private final class AsyncGate: @unchecked Sendable {
             let resumeImmediately = lock.withLock { () -> Bool in
                 guard !isOpen else { return true }
                 continuations.append(continuation)
+                let ready = waiterCountWaiters.filter { continuations.count >= $0.expectedCount }.map(\.continuation)
+                waiterCountWaiters.removeAll { continuations.count >= $0.expectedCount }
+                ready.forEach { $0.resume() }
                 return false
             }
             if resumeImmediately {
@@ -261,9 +304,15 @@ private final class WatcherClock: ClockLike, @unchecked Sendable {
         let continuation: CheckedContinuation<Void, Error>
     }
 
+    private struct SleeperCountWaiter {
+        let expectedCount: Int
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
     private let lock = NSLock()
     private var date: Date
     private var continuations: [UUID: Sleeper] = [:]
+    private var sleeperCountWaiters: [SleeperCountWaiter] = []
 
     init(now: Date) {
         date = now
@@ -277,6 +326,17 @@ private final class WatcherClock: ClockLike, @unchecked Sendable {
         lock.withLock { continuations.count }
     }
 
+    func waitUntilSleeperCount(_ expectedCount: Int) async {
+        await withCheckedContinuation { continuation in
+            let ready = lock.withLock { () -> Bool in
+                guard continuations.count < expectedCount else { return true }
+                sleeperCountWaiters.append(.init(expectedCount: expectedCount, continuation: continuation))
+                return false
+            }
+            if ready { continuation.resume() }
+        }
+    }
+
     func sleep(for duration: Duration) async throws {
         try Task.checkCancellation()
         let id = UUID()
@@ -288,6 +348,9 @@ private final class WatcherClock: ClockLike, @unchecked Sendable {
                         deadline: date.addingTimeInterval(timeInterval(for: duration)),
                         continuation: continuation
                     )
+                    let ready = sleeperCountWaiters.filter { continuations.count >= $0.expectedCount }.map(\.continuation)
+                    sleeperCountWaiters.removeAll { continuations.count >= $0.expectedCount }
+                    ready.forEach { $0.resume() }
                     return false
                 }
                 if cancelled {

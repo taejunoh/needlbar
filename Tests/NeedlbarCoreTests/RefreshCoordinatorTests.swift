@@ -181,7 +181,8 @@ struct RefreshCoordinatorTests {
     #expect(quota.callCount == 1)
 
     clock.advance(by: 1)
-    await eventually { usage.callCount == 2 && quota.callCount == 2 }
+    await usage.waitUntilCallCount(2)
+    await quota.waitUntilCallCount(2)
 
     #expect(usage.callCount == 2)
     #expect(quota.callCount == 2)
@@ -238,7 +239,7 @@ struct RefreshCoordinatorTests {
     #expect(await watcher.isActive)
 
     await watcher.sendEvent()
-    await eventually { usage.callCount == 2 }
+    await usage.waitUntilCallCount(2)
 
     #expect(usage.callCount == 2)
     let lifecycleAfterEvent = await watcher.lifecycle
@@ -628,6 +629,55 @@ struct RefreshCoordinatorTests {
     await coordinator.stop()
 }
 
+@Test func usageRefreshCapturesOneStableDayProofAroundOneRepositoryCall() async throws {
+    let usage = UsageRefreshSpy(result: .init(
+        snapshots: [.claude: usageSnapshotForWidgetProvenanceTest()],
+        errors: [:]
+    ))
+    let store = ProviderSnapshotStore()
+    let context = WidgetUsageDayContext(
+        dayKey: "2027-01-15",
+        timeZoneIdentifier: "America/New_York",
+        utcOffsetSeconds: -18_000
+    )
+    let updates = await store.updates()
+    let appliedUsage = Task {
+        for await snapshots in updates where snapshots[0].usage != nil {
+            return
+        }
+    }
+    let coordinator = RefreshCoordinator(
+        usageRepository: usage,
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        store: store,
+        clock: ManualClock(now: Self.fixedStart),
+        widgetUsageDayCapture: FixedDayCapture(values: [context, context])
+    )
+
+    await coordinator.start()
+    await usage.waitUntilCallCount(1)
+    await appliedUsage.value
+
+    #expect(usage.callCount == 1)
+    #expect(await store.captureForWidget(exportedAt: Self.fixedStart).providers[0].usageDayProvenance?.provenContext == context)
+    await coordinator.stop()
+}
+
+private func usageSnapshotForWidgetProvenanceTest() -> UsageSnapshot {
+    let period = UsagePeriod(inputTokens: 1, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 1, estimatedCostUSD: Decimal(string: "1")!)
+    return .init(inputTokens: 1, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 1, estimatedCostUSD: Decimal(string: "1")!, today: period, last7Days: period, last7DaysDaily: [.init(date: "2027-01-15", totalTokens: 1)], last30Days: period)
+}
+
+private struct FixedDayCapture: WidgetUsageDayCapturing {
+    let values: [WidgetUsageDayContext]
+
+    func capture(at date: Date) -> WidgetUsageDayContext {
+        values[date == RefreshCoordinatorTests.fixedStart ? 0 : 1]
+    }
+}
+
+private static let fixedStart = Date(timeIntervalSince1970: 1_800_000_000)
+
 private func makeRunningCoordinator(
     usage: any UsageRepository = UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
     quota: any QuotaRepository,
@@ -664,6 +714,7 @@ private final class UsageRefreshSpy: UsageRepository, @unchecked Sendable {
     private let lock = NSLock()
     private let result: UsageRefreshResult
     private var calls = 0
+    private var callCountWaiters: [QuotaCallCountWaiter] = []
 
     init(result: UsageRefreshResult) {
         self.result = result
@@ -674,8 +725,25 @@ private final class UsageRefreshSpy: UsageRepository, @unchecked Sendable {
     }
 
     func refresh() throws -> UsageRefreshResult {
-        lock.withLock { calls += 1 }
+        let waiters = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            calls += 1
+            let ready = callCountWaiters.filter { calls >= $0.expectedCount }.map(\.continuation)
+            callCountWaiters.removeAll { calls >= $0.expectedCount }
+            return ready
+        }
+        waiters.forEach { $0.resume() }
         return result
+    }
+
+    func waitUntilCallCount(_ expectedCount: Int) async {
+        await withCheckedContinuation { continuation in
+            let ready = lock.withLock { () -> Bool in
+                guard calls < expectedCount else { return true }
+                callCountWaiters.append(.init(expectedCount: expectedCount, continuation: continuation))
+                return false
+            }
+            if ready { continuation.resume() }
+        }
     }
 }
 

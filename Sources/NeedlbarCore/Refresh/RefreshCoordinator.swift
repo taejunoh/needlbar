@@ -26,6 +26,7 @@ public actor RefreshCoordinator {
     private let usageFileWatcher: (any UsageFileWatching)?
     private let quotaApplicationWillApply: (@Sendable () async -> Void)?
     private let quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)?
+    private let widgetUsageDayCapture: any WidgetUsageDayCapturing
 
     private struct UserQuotaWaiter {
         let generation: UInt64
@@ -73,7 +74,8 @@ public actor RefreshCoordinator {
         store: ProviderSnapshotStore,
         clock: any ClockLike = SystemClock(),
         lastQuotaSuccessfulAt: Date? = nil,
-        usageFileWatcher: (any UsageFileWatching)? = nil
+        usageFileWatcher: (any UsageFileWatching)? = nil,
+        widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture()
     ) {
         self.init(
             usageRepository: usageRepository,
@@ -83,7 +85,8 @@ public actor RefreshCoordinator {
             lastQuotaSuccessfulAt: lastQuotaSuccessfulAt,
             usageFileWatcher: usageFileWatcher,
             quotaApplicationWillApply: nil,
-            quotaIntentRegistered: nil
+            quotaIntentRegistered: nil,
+            widgetUsageDayCapture: widgetUsageDayCapture
         )
     }
 
@@ -95,7 +98,8 @@ public actor RefreshCoordinator {
         lastQuotaSuccessfulAt: Date? = nil,
         usageFileWatcher: (any UsageFileWatching)? = nil,
         quotaApplicationWillApply: (@Sendable () async -> Void)? = nil,
-        quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)? = nil
+        quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)? = nil,
+        widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture()
     ) {
         self.usageRepository = usageRepository
         self.quotaRepository = quotaRepository
@@ -105,6 +109,7 @@ public actor RefreshCoordinator {
         self.usageFileWatcher = usageFileWatcher
         self.quotaApplicationWillApply = quotaApplicationWillApply
         self.quotaIntentRegistered = quotaIntentRegistered
+        self.widgetUsageDayCapture = widgetUsageDayCapture
     }
 
     deinit {
@@ -292,9 +297,20 @@ public actor RefreshCoordinator {
         guard usageTask == nil else { return }
         let repository = usageRepository
         let generation = runGeneration
-        usageTask = Task { [weak self, repository] in
+        let clock = clock
+        let widgetUsageDayCapture = widgetUsageDayCapture
+        let startedAt = clock.now
+        let startedContext = widgetUsageDayCapture.capture(at: startedAt)
+        usageTask = Task { [weak self, repository, clock, widgetUsageDayCapture] in
             let result = Result { try repository.refresh() }
-            await self?.finishUsageRefresh(result, applyResult: !Task.isCancelled, generation: generation)
+            let endedAt = clock.now
+            let proof = WidgetUsageDayProvenance(
+                startedAt: startedAt,
+                startedContext: startedContext,
+                endedAt: endedAt,
+                endedContext: widgetUsageDayCapture.capture(at: endedAt)
+            )
+            await self?.finishUsageRefresh(result, usageDayProvenance: proof, applyResult: !Task.isCancelled, generation: generation)
         }
     }
 
@@ -319,6 +335,7 @@ public actor RefreshCoordinator {
 
     private func finishUsageRefresh(
         _ result: Result<UsageRefreshResult, Error>,
+        usageDayProvenance: WidgetUsageDayProvenance,
         applyResult: Bool,
         generation: UInt64
     ) async {
@@ -337,7 +354,12 @@ public actor RefreshCoordinator {
         case .success(let refresh):
             for (provider, usage) in refresh.snapshots {
                 guard generation == runGeneration, applyResult else { return }
-                await store.applyUsage(usage, for: provider, at: clock.now)
+                await store.applyUsage(
+                    usage,
+                    for: provider,
+                    at: clock.now,
+                    widgetDayProvenance: usageDayProvenance.provenContext == nil ? nil : usageDayProvenance
+                )
             }
             for (provider, error) in refresh.errors {
                 guard generation == runGeneration, applyResult else { return }

@@ -5,6 +5,7 @@ public actor ProviderSnapshotStore {
         var value: Value?
         var lastSuccessfulAt: Date?
         var latestFailure: DataStatus?
+        var usageDayProvenance: WidgetUsageDayProvenance?
     }
 
     private struct State: Sendable {
@@ -22,12 +23,18 @@ public actor ProviderSnapshotStore {
         self.now = now
     }
 
-    public func applyUsage(_ usage: UsageSnapshot, for provider: ProviderID, at date: Date? = nil) {
+    public func applyUsage(
+        _ usage: UsageSnapshot,
+        for provider: ProviderID,
+        at date: Date? = nil,
+        widgetDayProvenance: WidgetUsageDayProvenance? = nil
+    ) {
         let timestamp = date ?? now()
         var state = state(for: provider, timestamp: timestamp)
         state.usage.value = usage
         state.usage.lastSuccessfulAt = timestamp
         state.usage.latestFailure = nil
+        state.usage.usageDayProvenance = widgetDayProvenance
         state.everUpdated = true
         state.updatedAt = timestamp
         states[provider] = state
@@ -100,6 +107,22 @@ public actor ProviderSnapshotStore {
                 )
             }
         )
+    }
+
+    public func captureForWidget(exportedAt: Date) -> WidgetStoreCapture {
+        WidgetStoreCapture(exportedAt: exportedAt, providers: ProviderID.allCases.map { provider in
+            let state = states[provider] ?? State(updatedAt: exportedAt)
+            return WidgetProviderCapture(
+                provider: provider,
+                usage: state.usage.value,
+                quota: state.quota.value,
+                usageStatus: status(for: state.usage),
+                quotaStatus: status(for: state.quota),
+                usageLastSuccessfulAt: state.usage.lastSuccessfulAt,
+                quotaLastSuccessfulAt: state.quota.lastSuccessfulAt,
+                usageDayProvenance: state.usage.usageDayProvenance
+            )
+        })
     }
 
     public func updates() -> AsyncStream<[ProviderSnapshot]> {
