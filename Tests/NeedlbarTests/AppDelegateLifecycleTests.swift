@@ -12,9 +12,9 @@ struct AppDelegateLifecycleTests {
     var startupCancellationCount = 0
     var notificationStopCount = 0
     var observationStopCount = 0
-    var replyCount = 0
     var loginAdmissionResumeCount = 0
     var events: [String] = []
+    let replies = TerminationReplyGate()
 
     func requestTermination() -> NSApplication.TerminateReply {
         termination.requestTermination(
@@ -33,9 +33,9 @@ struct AppDelegateLifecycleTests {
                 events.append("refreshStop")
                 await refreshShutdown.waitForRelease()
             },
-            reply: {
-                replyCount += 1
-                events.append("reply:\($0)")
+            reply: { value in
+                replies.record(value)
+                events.append("reply:\(value)")
             },
             resumeLoginAdmission: { loginAdmissionResumeCount += 1 },
             resumeNotifications: {}
@@ -46,24 +46,22 @@ struct AppDelegateLifecycleTests {
     #expect(startupCancellationCount == 1)
     #expect(notificationStopCount == 1)
     #expect(observationStopCount == 1)
-    #expect(replyCount == 0)
+    #expect(replies.values.isEmpty)
 
     #expect(requestTermination() == .terminateLater)
     #expect(startupCancellationCount == 1)
     #expect(notificationStopCount == 1)
     #expect(observationStopCount == 1)
-    #expect(await eventually { await loginShutdown.callCount() == 1 })
-    #expect(await loginShutdown.callCount() == 1)
-    #expect(await refreshShutdown.callCount() == 0)
+    await loginShutdown.waitForEntry()
+    #expect(await refreshShutdown.entryCount() == 0)
 
     await loginShutdown.release()
-    #expect(await eventually { await refreshShutdown.callCount() == 1 })
-    #expect(replyCount == 0)
+    await refreshShutdown.waitForEntry()
+    #expect(replies.values.isEmpty)
 
     await refreshShutdown.release()
-
-    #expect(await eventually { replyCount == 1 })
-    #expect(replyCount == 1)
+    await replies.waitForCount(1)
+    #expect(replies.values == [true])
     #expect(loginAdmissionResumeCount == 0)
     #expect(events == ["notificationStop", "loginStop", "refreshStop", "reply:true"])
 }
@@ -76,8 +74,8 @@ struct AppDelegateLifecycleTests {
     var notificationStopCount = 0
     var notificationResumeCount = 0
     var observationStopCount = 0
-    var replies: [Bool] = []
     var events: [String] = []
+    let replies = TerminationReplyGate()
 
     func requestTermination() -> NSApplication.TerminateReply {
         termination.requestTermination(
@@ -96,9 +94,9 @@ struct AppDelegateLifecycleTests {
                 events.append("refreshStop")
                 await refreshShutdown.waitForRelease()
             },
-            reply: {
-                replies.append($0)
-                events.append("reply:\($0)")
+            reply: { value in
+                replies.record(value)
+                events.append("reply:\(value)")
             },
             resumeLoginAdmission: { events.append("resumeLoginAdmission") },
             resumeNotifications: {
@@ -110,25 +108,27 @@ struct AppDelegateLifecycleTests {
 
     #expect(requestTermination() == .terminateLater)
     #expect(requestTermination() == .terminateLater)
-    #expect(await eventually { await loginShutdown.callCount() == 1 })
+    await loginShutdown.waitForEntry(count: 1)
     #expect(startupCancellationCount == 1)
     #expect(notificationStopCount == 1)
     #expect(observationStopCount == 1)
 
     await loginShutdown.releaseNext()
-    #expect(await eventually { replies == [false] })
-    #expect(await refreshShutdown.callCount() == 0)
+    await replies.waitForCount(1)
+    #expect(await refreshShutdown.entryCount() == 0)
+    #expect(replies.values == [false])
     #expect(events == ["notificationStop", "loginStop", "reply:false", "resumeLoginAdmission", "resumeNotifications"])
     #expect(notificationResumeCount == 1)
 
     #expect(requestTermination() == .terminateLater)
-    #expect(await eventually { await loginShutdown.callCount() == 2 })
+    await loginShutdown.waitForEntry(count: 2)
     await loginShutdown.releaseNext()
-    #expect(await eventually { await refreshShutdown.callCount() == 1 })
-    #expect(replies == [false])
+    await refreshShutdown.waitForEntry()
+    #expect(replies.values == [false])
 
     await refreshShutdown.release()
-    #expect(await eventually { replies == [false, true] })
+    await replies.waitForCount(2)
+    #expect(replies.values == [false, true])
     #expect(events == [
         "notificationStop", "loginStop", "reply:false", "resumeLoginAdmission", "resumeNotifications",
         "notificationStop",
@@ -137,32 +137,62 @@ struct AppDelegateLifecycleTests {
     #expect(startupCancellationCount == 2)
     #expect(notificationStopCount == 2)
     #expect(observationStopCount == 2)
-    #expect(await loginShutdown.callCount() == 2)
-    #expect(await refreshShutdown.callCount() == 1)
+    #expect(await loginShutdown.entryCount() == 2)
+    #expect(await refreshShutdown.entryCount() == 1)
 }
 }
 
 @MainActor
-private func eventually(_ condition: @escaping @MainActor () async -> Bool) async -> Bool {
-    for _ in 0..<100 {
-        if await condition() { return true }
-        await Task.yield()
+private final class TerminationReplyGate {
+    private(set) var values: [Bool] = []
+    private var waiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+    func record(_ value: Bool) {
+        values.append(value)
+        resumeSatisfiedWaiters()
     }
-    return false
+
+    func waitForCount(_ count: Int) async {
+        guard values.count < count else { return }
+        await withCheckedContinuation { continuation in
+            waiters.append((count, continuation))
+        }
+    }
+
+    private func resumeSatisfiedWaiters() {
+        let pending = waiters
+        waiters.removeAll()
+        for waiter in pending {
+            if values.count >= waiter.count {
+                waiter.continuation.resume()
+            } else {
+                waiters.append(waiter)
+            }
+        }
+    }
 }
 
 private actor TerminationShutdownGate {
     private var starts = 0
+    private var entryWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
     private var continuations: [CheckedContinuation<Void, Never>] = []
 
     func waitForRelease() async {
         starts += 1
+        resumeSatisfiedEntryWaiters()
         await withCheckedContinuation { continuation in
             continuations.append(continuation)
         }
     }
 
-    func callCount() -> Int {
+    func waitForEntry(count: Int = 1) async {
+        guard starts < count else { return }
+        await withCheckedContinuation { continuation in
+            entryWaiters.append((count, continuation))
+        }
+    }
+
+    func entryCount() -> Int {
         starts
     }
 
@@ -171,11 +201,24 @@ private actor TerminationShutdownGate {
         continuations.removeAll()
         pending.forEach { $0.resume() }
     }
+
+    private func resumeSatisfiedEntryWaiters() {
+        let pending = entryWaiters
+        entryWaiters.removeAll()
+        for waiter in pending {
+            if starts >= waiter.count {
+                waiter.continuation.resume()
+            } else {
+                entryWaiters.append(waiter)
+            }
+        }
+    }
 }
 
 private actor LoginTerminationGate {
     private var results: [ProviderLoginCleanupResult]
     private var starts = 0
+    private var entryWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
     private var continuations: [CheckedContinuation<ProviderLoginCleanupResult, Never>] = []
 
     init(results: [ProviderLoginCleanupResult]) {
@@ -184,17 +227,37 @@ private actor LoginTerminationGate {
 
     func waitForRelease() async -> ProviderLoginCleanupResult {
         starts += 1
+        resumeSatisfiedEntryWaiters()
         return await withCheckedContinuation { continuation in
             continuations.append(continuation)
         }
     }
 
-    func callCount() -> Int {
+    func waitForEntry(count: Int = 1) async {
+        guard starts < count else { return }
+        await withCheckedContinuation { continuation in
+            entryWaiters.append((count, continuation))
+        }
+    }
+
+    func entryCount() -> Int {
         starts
     }
 
     func releaseNext() {
         guard !continuations.isEmpty, !results.isEmpty else { return }
         continuations.removeFirst().resume(returning: results.removeFirst())
+    }
+
+    private func resumeSatisfiedEntryWaiters() {
+        let pending = entryWaiters
+        entryWaiters.removeAll()
+        for waiter in pending {
+            if starts >= waiter.count {
+                waiter.continuation.resume()
+            } else {
+                entryWaiters.append(waiter)
+            }
+        }
     }
 }
