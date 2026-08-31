@@ -20,7 +20,7 @@ public protocol StatusItemFactory: AnyObject {
 }
 
 @MainActor
-public final class MenuBarController {
+public final class MenuBarController: NSObject, NSPopoverDelegate {
     private let configuration: ModuleConfiguration
     private let snapshotStore: ProviderSnapshotStore
     private let statusItemFactory: any StatusItemFactory
@@ -32,6 +32,7 @@ public final class MenuBarController {
     private let settingsWindowController: SettingsWindowController
     private let popover = NSPopover()
     private var statusItems: [MenuModuleID: any StatusItemHandle] = [:]
+    private var deepLinkStatusItem: (any StatusItemHandle)?
     private var cachedSnapshots: [ProviderSnapshot] = []
     private var configurationObserver: NSObjectProtocol?
     private var snapshotObservationTask: Task<Void, Never>?
@@ -63,6 +64,8 @@ public final class MenuBarController {
             snapshotExportController: snapshotExportController,
             openCursorSpending: openCursorSpending
         )
+        super.init()
+        popover.delegate = self
     }
 
     public var activeModuleIDs: [MenuModuleID] {
@@ -109,6 +112,27 @@ public final class MenuBarController {
             NotificationCenter.default.removeObserver(configurationObserver)
             self.configurationObserver = nil
         }
+    }
+
+    public func openOverview() {
+        let statusItem: any StatusItemHandle
+        if let existing = statusItems[.overview] {
+            statusItem = existing
+        } else if let existing = deepLinkStatusItem {
+            statusItem = existing
+        } else {
+            let created = statusItemFactory.makeStatusItem()
+            created.title = MenuBarModule.overview.title
+            deepLinkStatusItem = created
+            statusItem = created
+        }
+        showPopover(for: .overview, snapshots: cachedSnapshots, from: statusItem)
+    }
+
+    public func popoverDidClose(_ notification: Notification) {
+        guard let temporary = deepLinkStatusItem else { return }
+        statusItemFactory.removeStatusItem(temporary)
+        deepLinkStatusItem = nil
     }
 
     private func reconcile(using snapshots: [ProviderSnapshot]) {

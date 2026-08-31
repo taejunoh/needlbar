@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import NeedlbarApp
@@ -203,6 +204,79 @@ import Testing
     #expect(openedURLs == [URL(string: "https://cursor.com/dashboard/spending")!])
 }
 
+@Suite("MenuBarControllerTests")
+@MainActor
+struct MenuBarControllerTests {
+    @Test func overviewDeepLinkShowsCachedOverviewWhenTheModuleIsDisabled() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        configuration.overview = ModuleSettings(isEnabled: false, metric: .quotaRemaining)
+        let factory = FakeStatusItemFactory()
+        var activatedModules: [MenuModuleID] = []
+        var retries = 0
+        var loginRequests = 0
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            statusItemFactory: factory,
+            onModuleActivated: { activatedModules.append($0) },
+            onRetryRequested: { retries += 1 },
+            onProviderLoginRequested: { _ in loginRequests += 1 }
+        )
+
+        let opened = OverviewDeepLink.open(URL(string: "needlbar://overview")!) {
+            controller.openOverview()
+        }
+
+        #expect(opened)
+        #expect(factory.created.count == 1)
+        #expect(factory.created[0].showCount == 1)
+        #expect(activatedModules.isEmpty)
+        #expect(retries == 0)
+        #expect(loginRequests == 0)
+
+        controller.popoverDidClose(Notification(name: .init("testPopoverClosed")))
+
+        #expect(factory.removed.count == 1)
+        #expect(factory.removed[0] === factory.created[0])
+    }
+
+    @Test func invalidOverviewDeepLinksDoNotShowOrRefreshOrLogin() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        configuration.overview = ModuleSettings(isEnabled: false, metric: .quotaRemaining)
+        let factory = FakeStatusItemFactory()
+        var activatedModules: [MenuModuleID] = []
+        var retries = 0
+        var loginRequests = 0
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            statusItemFactory: factory,
+            onModuleActivated: { activatedModules.append($0) },
+            onRetryRequested: { retries += 1 },
+            onProviderLoginRequested: { _ in loginRequests += 1 }
+        )
+
+        for value in [
+            "needlbar://overview?refresh=1",
+            "needlbar://overview/",
+            "needlbar://user@overview",
+            "needlbar://overview:1",
+        ] {
+            let opened = OverviewDeepLink.open(URL(string: value)!) {
+                controller.openOverview()
+            }
+            #expect(!opened)
+        }
+
+        #expect(factory.created.isEmpty)
+        #expect(activatedModules.isEmpty)
+        #expect(retries == 0)
+        #expect(loginRequests == 0)
+    }
+}
+
 private func freshMenuBarDefaults() -> UserDefaults {
     let suiteName = "MenuBarControllerTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suiteName)!
@@ -313,8 +387,13 @@ private final class FakeStatusItemHandle: StatusItemHandle {
         didSet { actionAssignmentCount += 1 }
     }
     private(set) var actionAssignmentCount = 0
+    private(set) var showCount = 0
 
     func performAction() {
         action?()
+    }
+
+    func show(_: NSPopover) {
+        showCount += 1
     }
 }

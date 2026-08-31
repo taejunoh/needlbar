@@ -81,6 +81,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    public func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            _ = OverviewDeepLink.open(url) { [weak self] in
+                self?.menuBarController.openOverview()
+            }
+        }
+    }
+
     public func applicationWillTerminate(_ notification: Notification) {
         terminationController.performSynchronousSafetyCleanup(
             cancelStartup: { [weak self] in self?.cancelLifecycleTask() },
@@ -113,6 +121,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private func cancelLifecycleTask() {
         lifecycleTask?.cancel()
         lifecycleTask = nil
+    }
+}
+
+@MainActor
+enum OverviewDeepLink {
+    static func open(_ url: URL, showOverview: () -> Void) -> Bool {
+        guard url.scheme == "needlbar",
+              url.host == "overview",
+              url.port == nil,
+              url.user == nil,
+              url.password == nil,
+              url.path.isEmpty,
+              url.query == nil,
+              url.fragment == nil else {
+            return false
+        }
+        showOverview()
+        return true
     }
 }
 

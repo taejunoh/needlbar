@@ -2,8 +2,8 @@
 
 **Updated:** 2026-08-31
 **Branch:** `codex/v021-widgets-notifications` (based on `main` at `e73356e2a836930488f7a7eb5ef92af008bda809`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1 and W2 are implemented and verified on this isolated branch. Native signed macOS 14 arm64 acceptance remains an external final gate.
-**Next action:** Continue with Widget Task W3: extension target and widget presentation packaging. Execute W1–W4, N1–N4, and Integration Task 1 in order, one numbered task at a time. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1, W2, and W3 are implemented and verified on this isolated branch. Native signed macOS 14 arm64 Widget Gallery/App Group acceptance remains an external final gate.
+**Next action:** Continue with Widget Task W4: host packaging, extension embedding, signing, and smoke contracts. Execute W4, N1–N4, and Integration Task 1 in order, one numbered task at a time. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -15,7 +15,7 @@ The active Needlbar work is governed by:
 - `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md` — ordered follow-up implementation plan.
 - `docs/superpowers/specs/2026-08-29-needlbar-v0.2.0-local-json-export-design.md` — approved v0.2.0 local JSON export contract; implementation and acceptance are recorded below.
 - `docs/superpowers/plans/2026-08-29-needlbar-v0.2.0-local-json-export.md` — approved v0.2.0 local JSON export implementation plan; all tasks are implemented and documented below.
-- `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1 and W2 are complete and W3 is next on this execution branch.
+- `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1–W3 are complete and W4 is next on this execution branch.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widgets-notifications.md` — reviewed v0.2.1 implementation index: four widget tasks, four notification tasks, then combined acceptance.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget.md` — W1–W4, including Swift-only day provenance, sanitized projection, and medium Overview presentation.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
@@ -887,6 +887,49 @@ Full verification passed:
 The native signed macOS 14 arm64 widget acceptance remains an external final
 gate. The next continuation point is Task W3: extension target and widget
 presentation packaging.
+
+## v0.2.1 Widgets and Notifications — W3 Verification — 2026-08-31
+
+Task W3 is complete on the isolated execution branch
+`codex/v021-widgets-notifications`. It adds one separately compiled, sandboxed
+`NeedlbarOverview` system-medium WidgetKit extension and a synthetic command
+contract that verifies its arm64/macOS 14, Swift 6, WidgetKit, source-boundary,
+metadata, and entitlement inputs. The extension reads only the bounded
+App-Group `NeedlbarWidgetProjection.json` cache and renders malformed,
+unsupported, partial-file, or absent projections as unavailable; it performs no
+provider, authentication, bridge, or network work. Today explicitly presents
+both completeness and freshness, and lists each displayed contributor's own
+timestamp so a newer value cannot hide an older stale contributor.
+
+The host registers only `needlbar://overview`. Its strict handler rejects a
+query, path, credentials, port, or fragment and opens the cached Overview
+without module activation, refresh, bridge access, or login. If Overview is
+disabled, a temporary status item is removed on popover close. No W4 host
+embedding or packaging change has been made.
+
+Focused verification passed:
+
+- `bash scripts/tests/widget-extension-tests.sh` — exit 0; exact output
+  `widget-extension build/metadata contract passed`.
+- `source /Users/taejunoh/.cargo/env && make swift-test SWIFT_TEST_FILTER=MenuBarControllerTests`
+  — exit 0; named `MenuBarControllerTests` suite and its selected file ran 11
+  tests in 1 suite with 0 failures, including strict deep-link acceptance and
+  rejection cases.
+- `bash scripts/build-widget-extension.sh` — exit 0; an actual Swift 6.3.3
+  compiler invocation used explicit `-swift-version 6` and
+  `-target arm64-apple-macosx14.0`, produced an arm64 executable, and ad-hoc
+  signed/verified it. The output plist reports minimum system version `14.0`.
+
+Full verification passed:
+
+- `source /Users/taejunoh/.cargo/env && make test` — exit 0; Rust workspace
+  suites passed, pinned `tokscale-core` reported 1372 passed/0 failed/1
+  ignored, Swift reported 186 tests in 5 suites with 0 failures, and the widget,
+  package relink, and notarization shell contracts passed.
+
+This ad-hoc native build and synthetic metadata contract do not prove signed
+macOS 14 Widget Gallery or App Group acceptance; that remains Integration Task
+1's external gate. The next continuation point is Task W4.
 
 ## v0.2.1 Widgets and Notifications — W2 Verification — 2026-08-31
 

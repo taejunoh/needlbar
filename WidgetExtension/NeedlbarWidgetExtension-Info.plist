@@ -5,35 +5,29 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>Needlbar</string>
+    <string>Overview</string>
     <key>CFBundleExecutable</key>
-    <string>Needlbar</string>
+    <string>NeedlbarWidgetExtension</string>
     <key>CFBundleIdentifier</key>
-    <string>com.taejunoh.needlbar</string>
+    <string>com.taejunoh.needlbar.widget</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Needlbar</string>
+    <string>NeedlbarWidgetExtension</string>
     <key>CFBundlePackageType</key>
-    <string>APPL</string>
+    <string>XPC!</string>
     <key>CFBundleShortVersionString</key>
     <string>0.1.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>needlbar</string>
-            </array>
-        </dict>
-    </array>
-    <key>LSUIElement</key>
-    <true/>
     <key>NeedlbarAppGroupIdentifier</key>
     <string>$(NEEDLBAR_APP_GROUP_IDENTIFIER)</string>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.widgetkit-extension</string>
+    </dict>
 </dict>
 </plist>

@@ -1,4 +1,4 @@
-.PHONY: rust swift swift-test package-test notarize-test test run package smoke
+.PHONY: rust swift swift-test widget-extension-test package-test notarize-test test run package smoke
 
 rust:
 	./scripts/build-rust.sh
@@ -52,6 +52,9 @@ swift-test:
 	swift package clean; \
 	swift test $(if $(SWIFT_TEST_FILTER),--filter $(SWIFT_TEST_FILTER))
 
+widget-extension-test:
+	./scripts/tests/widget-extension-tests.sh
+
 package-test:
 	./scripts/tests/package-app-tests.sh
 
@@ -62,6 +65,7 @@ test:
 	cargo test --workspace --features bridge-test-runtime
 	sh ./scripts/tests/vendor-tokscale-test.sh
 	$(MAKE) swift-test
+	$(MAKE) widget-extension-test
 	$(MAKE) package-test
 	$(MAKE) notarize-test
 
