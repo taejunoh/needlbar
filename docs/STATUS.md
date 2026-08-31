@@ -1,7 +1,7 @@
 # Needlbar Development Status
 
 **Updated:** 2026-08-31
-**Branch:** `codex/v021-widgets-notifications` (based on `main` at `e73356e2a836930488f7a7eb5ef92af008bda809`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
+**Branch:** `codex/v021-widgets-notifications` (execution docs baseline `e73356e2a836930488f7a7eb5ef92af008bda809`; branched from `main` at `1ba620b35c6c4a51087be2c7cb07ce7eda738f1d`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
 **Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1–W4 and Notification Tasks N1–N4 are implemented on this isolated branch. Integration Task 1 automated verification is green, while native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance remain external final gates.
 **Next action:** Obtain actual signed macOS 14 arm64 Widget Gallery/App Group and native notification-permission evidence, then finish Integration Task 1. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
@@ -30,7 +30,9 @@ The user-approved v0.2.1 scope and reviewed implementation plans are limited to:
 - Alerts default to off and require explicit permission when enabled. While the main app is running, fresh Claude/Codex readings crossing downward thresholds of 20%/10% may alert once per cycle stage. The first fresh reading establishes a baseline; one jump to at most 10% emits only the 10% alert. Restart deduplication is durable, and reset-date drift alone does not re-arm alerts.
 - The main app remains the only provider-fetching process and publishes a sanitized local widget projection. The projection preserves last-good/stale state, timestamps, and the last value at app quit; it does not expose credentials or raw provider data.
 
-Written design approval and implementation-plan review are complete. The current machine is macOS 26.6.2 with Xcode 26.6; actual signed macOS 14 arm64 Widget Gallery/App Group acceptance must be recorded separately before v0.2.1 completion. The known historical green CI result for baseline main commit `1ba620b` is [run 33284608349](https://github.com/taejunoh/needlbar/actions/runs/33284608349), recorded from the previous turn. Docs-only verification: `git diff --check`, Markdown fence validation, and Bash code-block syntax checks passed. `make test` and native compilation/signing were not run because product/build/test sources were unchanged; no new CI run was made.
+**Planning-only checkpoint, before W1 implementation:**
+
+Written design approval and implementation-plan review are complete. The current machine is macOS 26.6.2 with Xcode 26.6; actual signed macOS 14 arm64 Widget Gallery/App Group acceptance must be recorded separately before v0.2.1 completion. The known historical green CI result for baseline main commit `1ba620b` is [run 33284608349](https://github.com/taejunoh/needlbar/actions/runs/33284608349), recorded from the previous turn. Docs-only verification: `git diff --check`, Markdown fence validation, and Bash code-block syntax checks passed. `make test` and native compilation/signing were not run because product/build/test sources were unchanged; no new CI run was made. This planning checkpoint predates the W1–W4, N1–N4, and Integration Task 1 verification records below.
 
 Notification Task 1 complete: ProviderSnapshotStore now provides a coalesced quota-alert wake-up and authoritative per-provider quota revisions.
 
