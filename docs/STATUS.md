@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
-**Updated:** 2026-08-30
-**Branch:** `main` (PR #3 merge commit `181e41d07d9c2dfe41edb37d9257e697dd5840d7`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f` fixes cross-Xcode JSON key ordering with an internal UTF-8 lexical canonical writer. Final whole-branch review and scoped fix re-review are clean (`Ready to merge: Yes`); main CI is green.
-**Next action:** Begin the v0.2.1 widgets/notifications design and implementation only when the user authorizes that scope. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Updated:** 2026-08-31
+**Branch:** `codex/v021-widgets-notifications-design` (based on `main` at `1ba620b`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications layout and behavior are approved for written-spec review; the written spec is pending USER REVIEW. No v0.2.1 implementation plan or product implementation has started.
+**Next action:** Complete USER REVIEW of the written v0.2.1 spec; after written-spec approval, invoke `writing-plans`. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -15,7 +15,18 @@ The active Needlbar work is governed by:
 - `docs/superpowers/plans/2026-08-25-provider-managed-browser-login.md` — ordered follow-up implementation plan.
 - `docs/superpowers/specs/2026-08-29-needlbar-v0.2.0-local-json-export-design.md` — approved v0.2.0 local JSON export contract; implementation and acceptance are recorded below.
 - `docs/superpowers/plans/2026-08-29-needlbar-v0.2.0-local-json-export.md` — approved v0.2.0 local JSON export implementation plan; all tasks are implemented and documented below.
+- `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — v0.2.1 widgets/notifications written design; pending USER REVIEW and written approval, so it is not yet authoritative.
 - `AGENTS.md` — continuation rules for Codex/agentic workers.
+
+## v0.2.1 Widgets and Notifications — Design Continuation
+
+The approved v0.2.1 scope is limited to the following layout and behavior while the written spec is under USER REVIEW:
+
+- One medium Overview-first macOS widget, centered on quota/reset information with tokens and cost as secondary values. Cursor contributes usage only; its quota remains unavailable. Clicking the widget opens Needlbar.
+- Alerts default to off and require explicit permission when enabled. While the main app is running, fresh Claude/Codex readings crossing downward thresholds of 20%/10% may alert once per cycle stage. The first fresh reading establishes a baseline; one jump to at most 10% emits only the 10% alert. Restart deduplication is durable, and reset-date drift alone does not re-arm alerts.
+- The main app remains the only provider-fetching process and publishes a sanitized local widget projection. The projection preserves last-good/stale state, timestamps, and the last value at app quit; it does not expose credentials or raw provider data.
+
+Additional policy details in the written specification remain proposals pending user review. The known historical green CI result for baseline main commit `1ba620b` is [run 33284608349](https://github.com/taejunoh/needlbar/actions/runs/33284608349), recorded from the previous turn. Docs-only verification: `git diff --check` passed; `make test` was not run because product/build/test sources were unchanged, and no new CI run was made.
 
 ## What Is Already Implemented
 
