@@ -204,6 +204,7 @@ struct WidgetProjectionTests {
     await checkpoint.waitUntilCaptureIsBlocked()
 
     let stop = Task { await publisher.stop() }
+    await checkpoint.waitUntilCaptureCancellationIsAcknowledged()
     await checkpoint.releaseCapture()
     await stop.value
 
@@ -287,7 +288,10 @@ private actor FixtureWidgetReloader: WidgetTimelineReloading {
 
 private actor BlockingWidgetCapturer: WidgetProjectionCapturing {
     private var isCaptureBlocked = false
+    private var isCancellationAcknowledged = false
+    private var isReleaseRequested = false
     private var captureStarted: CheckedContinuation<Void, Never>?
+    private var cancellationAcknowledged: CheckedContinuation<Void, Never>?
     private var captureRelease: CheckedContinuation<Void, Never>?
 
     func captureWidgetProjection(from store: ProviderSnapshotStore, exportedAt: Date) async -> WidgetStoreCapture {
@@ -295,7 +299,18 @@ private actor BlockingWidgetCapturer: WidgetProjectionCapturing {
         isCaptureBlocked = true
         captureStarted?.resume()
         captureStarted = nil
-        await withCheckedContinuation { captureRelease = $0 }
+        await withTaskCancellationHandler(operation: {
+            await withCheckedContinuation { continuation in
+                if isReleaseRequested {
+                    isReleaseRequested = false
+                    continuation.resume()
+                } else {
+                    captureRelease = continuation
+                }
+            }
+        }, onCancel: {
+            Task { await self.acknowledgeCancellation() }
+        })
         return capture
     }
 
@@ -304,8 +319,23 @@ private actor BlockingWidgetCapturer: WidgetProjectionCapturing {
         await withCheckedContinuation { captureStarted = $0 }
     }
 
+    func waitUntilCaptureCancellationIsAcknowledged() async {
+        guard !isCancellationAcknowledged else { return }
+        await withCheckedContinuation { cancellationAcknowledged = $0 }
+    }
+
     func releaseCapture() {
-        captureRelease?.resume()
+        guard let continuation = captureRelease else {
+            isReleaseRequested = true
+            return
+        }
         captureRelease = nil
+        continuation.resume()
+    }
+
+    private func acknowledgeCancellation() {
+        isCancellationAcknowledged = true
+        cancellationAcknowledged?.resume()
+        cancellationAcknowledged = nil
     }
 }
