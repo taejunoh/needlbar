@@ -8,6 +8,7 @@ public typealias BridgeStringFree = @Sendable (UnsafePointer<CChar>?) -> Void
 public struct RustBridge: Sendable {
     private let usageCall: BridgeJSONCall
     private let quotaCall: BridgeJSONCall
+    private let analyticsCall: BridgeJSONCall
     private let claudeUserInitiatedQuotaCall: BridgeJSONCall
     private let codexQuotaCall: BridgeJSONCall
     private let free: BridgeStringFree
@@ -16,6 +17,7 @@ public struct RustBridge: Sendable {
     public init(
         usageCall: @escaping BridgeJSONCall = { needlbar_usage_snapshot_json() },
         quotaCall: @escaping BridgeJSONCall = { needlbar_quota_snapshot_json() },
+        analyticsCall: @escaping BridgeJSONCall = { needlbar_analytics_snapshot_json() },
         claudeUserInitiatedQuotaCall: @escaping BridgeJSONCall = { needlbar_claude_user_initiated_quota_snapshot_json() },
         codexQuotaCall: @escaping BridgeJSONCall = { needlbar_codex_quota_snapshot_json() },
         free: @escaping BridgeStringFree = { pointer in needlbar_free_string(pointer) },
@@ -23,6 +25,7 @@ public struct RustBridge: Sendable {
     ) {
         self.usageCall = usageCall
         self.quotaCall = quotaCall
+        self.analyticsCall = analyticsCall
         self.claudeUserInitiatedQuotaCall = claudeUserInitiatedQuotaCall
         self.codexQuotaCall = codexQuotaCall
         self.free = free
@@ -45,10 +48,14 @@ public struct RustBridge: Sendable {
         try decodeCString(codexQuotaCall, decode: decoder.decodeQuotaEnvelope)
     }
 
-    private func decodeCString<Payload: Sendable>(
+    public func analyticsEnvelope() throws -> AnalyticsSnapshot {
+        try decodeCString(analyticsCall, decode: AnalyticsBridgeDecoder().decodeSnapshot)
+    }
+
+    private func decodeCString<Result: Sendable>(
         _ call: BridgeJSONCall,
-        decode: (Data) throws -> BridgeEnvelope<Payload>
-    ) throws -> BridgeEnvelope<Payload> {
+        decode: (Data) throws -> Result
+    ) throws -> Result {
         guard let pointer = call() else {
             throw BridgeFailure.nullPointer
         }
