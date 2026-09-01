@@ -307,6 +307,19 @@ mod tests {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command as TestCommand;
+    use std::sync::{Mutex as TestMutex, MutexGuard, OnceLock};
+
+    // The runner's process deadline is deliberately tight. Keep independent
+    // shell fixtures out of libtest's parallel scheduler while preserving the
+    // lifecycle test's two concurrent calls below.
+    static PROCESS_FIXTURE_GUARD: OnceLock<TestMutex<()>> = OnceLock::new();
+
+    fn process_fixture_guard() -> MutexGuard<'static, ()> {
+        PROCESS_FIXTURE_GUARD
+            .get_or_init(|| TestMutex::new(()))
+            .lock()
+            .expect("process fixture guard is not poisoned")
+    }
 
     #[test]
     fn byte_caps_and_time_budgets_are_exact_constants() {
@@ -363,6 +376,7 @@ mod tests {
 
     #[test]
     fn lifecycle_faults_attempt_kill_wait_and_poison_before_any_second_spawn() {
+        let _fixture_guard = process_fixture_guard();
         for (kill_ok, wait_ok) in [(true, true), (false, true), (true, false)] {
             let runner =
                 BoundedGitRunner::with_test_executable(PathBuf::from("/definitely/not-run"));
@@ -409,6 +423,7 @@ mod tests {
 
     #[test]
     fn test_only_executable_observes_closed_arguments_and_allowlisted_environment() {
+        let _fixture_guard = process_fixture_guard();
         let output = tempfile::NamedTempFile::new().unwrap();
         let script = format!(
             "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nprintf 'terminal=%s\\n' \"$GIT_TERMINAL_PROMPT\" >> '{}'\nprintf 'nosystem=%s\\n' \"$GIT_CONFIG_NOSYSTEM\" >> '{}'\nprintf 'global=%s\\n' \"$GIT_CONFIG_GLOBAL\" >> '{}'\nprintf 'locks=%s\\n' \"$GIT_OPTIONAL_LOCKS\" >> '{}'\nprintf 'sensitive=%s\\n' \"$SENSITIVE_INHERITED_CANARY\" >> '{}'\n",
@@ -431,6 +446,7 @@ mod tests {
 
     #[test]
     fn timeout_kills_and_reaps_the_exact_spawned_child() {
+        let _fixture_guard = process_fixture_guard();
         let pid = tempfile::NamedTempFile::new().unwrap();
         let script = format!(
             "#!/bin/sh\necho $$ > '{}'\nexec /bin/sleep 30\n",
@@ -452,6 +468,7 @@ mod tests {
 
     #[test]
     fn descendant_holding_pipes_is_killed_with_its_process_group_before_deadline_escape() {
+        let _fixture_guard = process_fixture_guard();
         let child = tempfile::NamedTempFile::new().unwrap();
         let script = format!(
             "#!/bin/sh\n/bin/sleep 30 &\necho $! > '{}'\nwait\n",
@@ -475,6 +492,7 @@ mod tests {
 
     #[test]
     fn exited_parent_pipe_cleanup_returns_timeout_and_runner_is_reusable() {
+        let _fixture_guard = process_fixture_guard();
         let directory = tempfile::tempdir().unwrap();
         let marker = directory.path().join("already-ran");
         let child = directory.path().join("descendant-pid");
@@ -505,6 +523,7 @@ mod tests {
 
     #[test]
     fn lifecycle_mutex_serializes_two_runs() {
+        let _fixture_guard = process_fixture_guard();
         let count = tempfile::NamedTempFile::new().unwrap();
         let script = format!(
             "#!/bin/sh\necho x >> '{}'\n/bin/sleep 0.1\n",
