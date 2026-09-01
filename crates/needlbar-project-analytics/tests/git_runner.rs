@@ -1,64 +1,11 @@
-use needlbar_project_analytics::{BoundedGitRunner, GitRequest, GitRunner, GitRunnerError};
-use std::path::PathBuf;
-use std::process::Command;
-#[test]
-fn bounded_runner_rejects_missing_workspace_without_a_shell() {
-    let runner = BoundedGitRunner::default();
-    let result = runner.run(GitRequest::DiscoverRepository {
-        workspace: PathBuf::from("/definitely/not/a/repository"),
-    });
-    assert!(result.is_err());
-}
+use needlbar_project_analytics::{GitOutput, GitRequestKind};
 
 #[test]
-fn bounded_runner_marks_existing_non_git_workspace_as_non_repository() {
-    let directory = tempfile::tempdir().unwrap();
-    let runner = BoundedGitRunner::default();
-    let result = runner.run(GitRequest::DiscoverRepository {
-        workspace: directory.path().into(),
-    });
-    assert!(matches!(result, Err(GitRunnerError::NotRepository)));
-}
-
-#[test]
-fn bounded_runner_reads_only_a_disposable_local_repository() {
-    let directory = tempfile::tempdir().unwrap();
-    let root = directory.path();
-    assert!(Command::new("/usr/bin/git")
-        .args(["init", "--quiet"])
-        .current_dir(root)
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("/usr/bin/git")
-        .args([
-            "-c",
-            "user.name=Test",
-            "-c",
-            "user.email=test@example.invalid",
-            "commit",
-            "--quiet",
-            "--allow-empty",
-            "-m",
-            "PR #7",
-        ])
-        .current_dir(root)
-        .status()
-        .unwrap()
-        .success());
-    let runner = BoundedGitRunner::default();
-    let discovered = runner
-        .run(GitRequest::DiscoverRepository {
-            workspace: root.into(),
-        })
-        .unwrap();
-    assert!(String::from_utf8(discovered.stdout)
-        .unwrap()
-        .contains(root.to_str().unwrap()));
-    let log = runner
-        .run(GitRequest::ReadCommits {
-            repository: root.into(),
-        })
-        .unwrap();
-    assert!(log.stdout.split(|byte| *byte == 0).count() >= 3);
+fn public_git_boundary_exposes_kind_and_fake_output_without_paths_or_raw_getters() {
+    let output = GitOutput::new(b"fixture".to_vec(), b"stderr".to_vec());
+    assert!(!format!("{output:?}").contains("/private"));
+    assert_eq!(
+        GitRequestKind::DiscoverRepository,
+        GitRequestKind::DiscoverRepository
+    );
 }

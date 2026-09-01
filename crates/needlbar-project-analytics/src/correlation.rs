@@ -110,9 +110,7 @@ pub(crate) fn build(
             continue;
         }
         let workspace = fragment.workspace_key.as_ref().expect("checked");
-        match git.run(GitRequest::DiscoverRepository {
-            workspace: workspace.into(),
-        }) {
+        match git.run(GitRequest::discover(workspace.into())) {
             Ok(output) => match parse_root(&output) {
                 Ok(root) if root_contains(&root, workspace) => {
                     mapped.push(MappedFragment { fragment, root })
@@ -293,9 +291,7 @@ fn repository(
         add_models(&mut models, &value.fragment);
     }
     let mut repo_coverage = RepositoryCoverage::default();
-    let (repository_state, mut parsed) = match state.git.run(GitRequest::ReadCommits {
-        repository: root.into(),
-    }) {
+    let (repository_state, mut parsed) = match state.git.run(GitRequest::commits(root.into())) {
         Ok(output) => match parse_commits(&output) {
             Ok((items, record_cap)) => {
                 if record_cap {
@@ -443,12 +439,17 @@ fn parse_commits(output: &GitOutput) -> Result<(Vec<RawCommit>, bool), &'static 
     if output.stdout.len() > MAX_STDOUT_BYTES || output.stderr.len() > MAX_STDERR_BYTES {
         return Err("gitOutputLimitReached");
     }
-    let mut fields = output.stdout.split(|b| *b == 0).collect::<Vec<_>>();
-    if fields.last().is_some_and(|field| field.is_empty()) {
-        fields.pop();
-    }
-    if fields.is_empty() {
+    if output.stdout.is_empty() {
         return Ok((Vec::new(), false));
+    }
+    if output.stdout.last() != Some(&0) {
+        return Err("repositoryUnavailable");
+    }
+    let fields = output.stdout[..output.stdout.len() - 1]
+        .split(|b| *b == 0)
+        .collect::<Vec<_>>();
+    if fields.is_empty() {
+        return Err("repositoryUnavailable");
     }
     if fields.len() % 3 != 0 {
         return Err("repositoryUnavailable");

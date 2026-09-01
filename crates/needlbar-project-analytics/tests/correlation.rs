@@ -69,10 +69,7 @@ fn report(fragment: WorkspaceSessionFragment) -> WorkspaceSessionReport {
     }
 }
 fn output(value: &str) -> Result<GitOutput, GitRunnerError> {
-    Ok(GitOutput {
-        stdout: value.as_bytes().to_vec(),
-        stderr: vec![],
-    })
+    Ok(GitOutput::new(value.as_bytes().to_vec(), vec![]))
 }
 #[test]
 fn earliest_same_repository_commit_in_inclusive_four_hour_window_gets_one_fragment() {
@@ -199,10 +196,7 @@ fn local_pr_markers_require_exactly_one_standalone_valid_candidate() {
 #[test]
 fn output_and_record_caps_are_fixed_partial_results() {
     let large = vec![b'x'; 1024 * 1024 + 1];
-    let git = FakeGitRunner::new(vec![Ok(GitOutput {
-        stdout: large,
-        stderr: vec![],
-    })]);
+    let git = FakeGitRunner::new(vec![Ok(GitOutput::new(large, vec![]))]);
     let payload = build_analytics_payload(
         report(fragment("/repos/a", "2026-09-01T10:00:00Z")),
         time("2026-09-01T20:00:00Z"),
@@ -212,10 +206,7 @@ fn output_and_record_caps_are_fixed_partial_results() {
 
     let git = FakeGitRunner::new(vec![
         output("/repos/a\n"),
-        Ok(GitOutput {
-            stdout: vec![],
-            stderr: vec![b'x'; 8 * 1024 + 1],
-        }),
+        Ok(GitOutput::new(vec![], vec![b'x'; 8 * 1024 + 1])),
     ]);
     let payload = build_analytics_payload(
         report(fragment("/repos/a", "2026-09-01T10:00:00Z")),
@@ -431,10 +422,7 @@ fn malformed_nul_records_fail_closed_while_another_repository_survives() {
             &FakeGitRunner::new(vec![
                 output("/repos/a\n"),
                 output("/repos/b\n"),
-                Ok(GitOutput {
-                    stdout: malformed.to_vec(),
-                    stderr: vec![],
-                }),
+                Ok(GitOutput::new(malformed.to_vec(), vec![])),
                 output(&good),
             ]),
         );

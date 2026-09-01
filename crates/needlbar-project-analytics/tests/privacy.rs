@@ -12,12 +12,12 @@ impl GitRunner for Fake {
         let mut n = self.0.lock().unwrap();
         *n += 1;
         Ok(if *n == 1 {
-            GitOutput {
-                stdout: b"/private/repo\n".to_vec(),
-                stderr: b"https://forge.invalid".to_vec(),
-            }
+            GitOutput::new(
+                b"/private/repo\n".to_vec(),
+                b"https://forge.invalid".to_vec(),
+            )
         } else {
-            GitOutput { stdout: b"abcdefabcdefabcdefabcdefabcdefabcdefabcd\x002026-09-01T11:00:00Z\0commit secret PR #7 Ada <ada@example.invalid> secret-branch\0".to_vec(), stderr: vec![] }
+            GitOutput::new(b"abcdefabcdefabcdefabcdefabcdefabcdefabcd\x002026-09-01T11:00:00Z\0commit secret PR #7 Ada <ada@example.invalid> secret-branch\0".to_vec(), vec![])
         })
     }
 }

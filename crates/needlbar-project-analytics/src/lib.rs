@@ -6,7 +6,7 @@ mod git;
 mod model;
 mod sanitize;
 
-pub use git::{BoundedGitRunner, GitOutput, GitRequest, GitRunner, GitRunnerError};
+pub use git::{BoundedGitRunner, GitOutput, GitRequest, GitRequestKind, GitRunner, GitRunnerError};
 pub use model::AnalyticsPayload;
 
 use chrono::{DateTime, Utc};

@@ -15,14 +15,41 @@ pub const PROCESS_TIMEOUT: Duration = Duration::from_secs(2);
 pub const TOTAL_GIT_BUDGET: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone)]
-pub enum GitRequest {
-    DiscoverRepository { workspace: PathBuf },
-    ReadCommits { repository: PathBuf },
+pub struct GitRequest {
+    kind: GitRequestKind,
+    path: PathBuf,
+}
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum GitRequestKind {
+    DiscoverRepository,
+    ReadCommits,
+}
+impl GitRequest {
+    pub fn kind(&self) -> GitRequestKind {
+        self.kind
+    }
+    pub(crate) fn discover(path: PathBuf) -> Self {
+        Self {
+            kind: GitRequestKind::DiscoverRepository,
+            path,
+        }
+    }
+    pub(crate) fn commits(path: PathBuf) -> Self {
+        Self {
+            kind: GitRequestKind::ReadCommits,
+            path,
+        }
+    }
 }
 #[derive(Debug, Clone)]
 pub struct GitOutput {
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) stderr: Vec<u8>,
+}
+impl GitOutput {
+    pub fn new(stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
+        Self { stdout, stderr }
+    }
 }
 pub trait GitRunner: Send + Sync {
     fn run(&self, request: GitRequest) -> Result<GitOutput, GitRunnerError>;
@@ -77,18 +104,18 @@ impl GitRunner for BoundedGitRunner {
             return Err(GitRunnerError::CleanupFailed);
         }
         let remaining = self.remaining_budget()?;
-        let discovery = matches!(&request, GitRequest::DiscoverRepository { .. });
-        let (directory, arguments): (PathBuf, Vec<String>) = match request {
-            GitRequest::DiscoverRepository { workspace } => (
-                workspace,
+        let discovery = request.kind == GitRequestKind::DiscoverRepository;
+        let (directory, arguments): (PathBuf, Vec<String>) = match request.kind {
+            GitRequestKind::DiscoverRepository => (
+                request.path,
                 vec![
                     "rev-parse".into(),
                     "--path-format=absolute".into(),
                     "--show-toplevel".into(),
                 ],
             ),
-            GitRequest::ReadCommits { repository } => (
-                repository,
+            GitRequestKind::ReadCommits => (
+                request.path,
                 vec![
                     "log".into(),
                     "--no-ext-diff".into(),
@@ -97,7 +124,7 @@ impl GitRunner for BoundedGitRunner {
                     "--no-show-signature".into(),
                     "--format=%H%x00%cI%x00%s".into(),
                     "-z".into(),
-                    "--max-count=500".into(),
+                    "--max-count=501".into(),
                 ],
             ),
         };
@@ -293,9 +320,7 @@ mod tests {
             assert_eq!(*attempts.lock().unwrap(), vec!["kill", "wait", "drain"]);
             if !kill_ok || !wait_ok {
                 assert!(matches!(
-                    runner.run(GitRequest::DiscoverRepository {
-                        workspace: std::env::temp_dir()
-                    }),
+                    runner.run(GitRequest::discover(std::env::temp_dir())),
                     Err(GitRunnerError::CleanupFailed)
                 ));
             }
@@ -321,9 +346,7 @@ mod tests {
         std::env::set_var("SENSITIVE_INHERITED_CANARY", "not-allowed");
         let runner = BoundedGitRunner::with_test_executable(path);
         runner
-            .run(GitRequest::DiscoverRepository {
-                workspace: std::env::temp_dir(),
-            })
+            .run(GitRequest::discover(std::env::temp_dir()))
             .unwrap();
         std::env::remove_var("SENSITIVE_INHERITED_CANARY");
         let lines = fs::read_to_string(output.path()).unwrap();
@@ -340,9 +363,7 @@ mod tests {
         let (_directory, path) = executable(&script);
         let runner = BoundedGitRunner::with_test_executable(path);
         let started = Instant::now();
-        let result = runner.run(GitRequest::DiscoverRepository {
-            workspace: std::env::temp_dir(),
-        });
+        let result = runner.run(GitRequest::discover(std::env::temp_dir()));
         assert!(matches!(result, Err(GitRunnerError::TimedOut)));
         assert!(started.elapsed() >= PROCESS_TIMEOUT);
         let child = fs::read_to_string(pid.path()).unwrap();
