@@ -249,6 +249,7 @@ fn analytics_sanitizes_raw_workspace_session_and_git_metadata_before_ffi() {
     assert!(test_runtime::install_analytics_redaction_fixture(
         fixed_analytics_time()
     ));
+    let _clear = RuntimeCleanup;
 
     let analytics = ffi_json(needlbar_analytics_snapshot_json);
     let value: serde_json::Value = serde_json::from_str(&analytics).expect("analytics JSON");
