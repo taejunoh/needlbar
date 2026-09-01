@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-01
-**Branch:** `main` (pushed and CI-verified through `ad02662`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.2.2 implementation is complete through final review, verification, and local integration. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
-**Next action:** Consider a signed RC only with explicit user authorization. No further v0.2.2 feature implementation is planned; tag, release, notarization, and credentialed provider actions remain unauthorized. Preserve the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates.
+**Branch:** `main` (signed tagless RC source HEAD `15c229f19a8c74417e11092873b947e8ca368e7d`; v0.2.1 remains an earlier integrated line of work)
+**Current phase:** v0.2.2 implementation, final review, local integration, and signed tagless RC validation are complete. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the exact native macOS 14 Widget Gallery/App Group acceptance gate.
+**Next action:** Separately authorized tag/public release if desired. No further v0.2.2 feature implementation is planned; preserve the outstanding v0.2.1 exact macOS 14 Widget Gallery/App Group acceptance caveat.
 
 ## Source of Truth
 
@@ -299,8 +299,37 @@ succeeded through all CI stages.
 A fresh local full `make test` at `ad02662` passed: all Needlbar Rust suites,
 vendor 1,396 passed / 1 ignored, Swift 277 tests in 12 suites, and the
 widget/package/notarization contracts. The vendor-publication blocker is
-resolved. No tag, release, or notarization was performed. The next
-continuation is a signed RC only with explicit user authorization.
+resolved. No tag or public release was performed at this stage. The next
+continuation is the signed tagless RC validation recorded below.
+
+## v0.2.2 Signed Tagless RC Validation — 2026-09-01
+
+Remote and local `main` are at HEAD
+`15c229f19a8c74417e11092873b947e8ca368e7d`. Release workflow dispatch run
+[33524771615](https://github.com/taejunoh/needlbar/actions/runs/33524771615)
+succeeded. Its validation stages passed: **Verify complete project**,
+**Package arm64 app**, **Smoke-test packaged app**,
+**Sign/notarize/staple/validate**, and **Upload**; **Publish** was skipped.
+
+The `Needlbar-macos-arm64-notarized` artifact was 5,930,415 bytes through the
+Actions API and expires at `2026-11-30T15:17:00Z`. The downloaded inner archive
+is retained at
+`/Users/taejunoh/Developer/LFG/needlbar-release-artifacts/33524771615/Needlbar-macos-arm64.zip`;
+it is 5,949,772 bytes with SHA-256
+`dc2b624922935338b6d9ce7eb6bb57c4736bbd590c3287519cb6844ee732ff15`.
+
+Independent host checks on macOS 26.6.2 arm64 passed: deep strict
+`codesign` verification, Developer ID identity presence, hardened-runtime
+presence, stapler validation, Gatekeeper assessment, and extracted-bundle
+smoke launch. Identity, team, and account details are intentionally not
+recorded.
+
+Repository tag count is 0 and public release count is 0. This validates a
+tagless notarized RC artifact only; it does not claim exact macOS 14 native
+acceptance, Widget Gallery acceptance, or App Group acceptance. No tag or
+public release was created. The next action is a separately authorized
+tag/public release if desired, while preserving the outstanding v0.2.1 exact
+macOS 14 Widget Gallery/App Group acceptance caveat.
 
 ## v0.2.1 Widgets and Notifications — Design Continuation
 
