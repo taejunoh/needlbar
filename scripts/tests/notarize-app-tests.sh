@@ -1048,6 +1048,8 @@ assert_contract(publish_uses.length == 3 && publish_uses.count { |value| value.s
 assert_contract(publish_steps.all? { |step| step.keys == ['name', 'uses', 'with'] || step.keys == ['name', 'uses'] }, 'publish steps must be actions only')
 release_actions = publish_steps.select { |step| step['uses'].to_s.start_with?('softprops/action-gh-release@') }
 assert_contract(release_actions.length == 1, 'publish must contain exactly one GitHub Release action')
+release_index = publish_steps.index(release_actions.first)
+assert_contract(download_index < release_index, 'publish artifact download must precede release')
 release_with = mapping(release_actions.first['with'], 'release action settings')
 exact_artifact_paths(release_with['files'], 'release action files')
 assert_contract(release_with['body_path'] == '.github/release-notes/v0.2.2.md', 'release action body_path is wrong')
@@ -1077,6 +1079,7 @@ test_release_workflow_contract() {
   local decoy_generated_notes="$temp_root/release-generated-notes.yml"
   local decoy_missing_publish_checkout="$temp_root/release-missing-publish-checkout.yml"
   local decoy_persisted_publish_credentials="$temp_root/release-persisted-publish-credentials.yml"
+  local decoy_reordered_publish_steps="$temp_root/release-reordered-publish-steps.yml"
   local decoy_output decoy_status
 
   set +e
@@ -1229,6 +1232,23 @@ RUBY
   [[ "$decoy_status" -ne 0 ]] || fail 'persisted-publish-credentials decoy was accepted'
   [[ "$decoy_output" == *'publish checkout must disable credential persistence'* ]] ||
     fail 'persisted-publish-credentials decoy failed for an unexpected reason'
+
+  ruby - "$valid_workflow" "$decoy_reordered_publish_steps" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+checkout = "      - name: Checkout release notes\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          persist-credentials: false\n\n"
+download = "      - name: Download validated release artifact\n        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093\n        with:\n          name: Needlbar-macos-arm64-notarized\n          path: dist\n\n"
+release = "      - name: Publish notarized GitHub Release\n        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65\n        with:\n          files: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n          body_path: .github/release-notes/v0.2.2.md\n          generate_release_notes: false\n"
+abort 'fixture setup: publish step order was not found' unless document.sub!(checkout + download + release, checkout + release + download)
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(release_workflow_contract_is_valid "$decoy_reordered_publish_steps" "$ci_workflow" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'reordered-publish-steps decoy was accepted'
+  [[ "$decoy_output" == *'publish artifact download must precede release'* ]] ||
+    fail 'reordered-publish-steps decoy failed for an unexpected reason'
 }
 
 test_checksum_directory_contract() {
