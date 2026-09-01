@@ -363,14 +363,57 @@ end
 RUBY
 }
 
+release_preparation_status_contract_is_valid() {
+  local status_file="$1"
+  ruby - "$status_file" <<'RUBY'
+status_path = ARGV.fetch(0)
+document = File.read(status_path)
+match = document.match(/^## v0.2.2 Public Release Preparation — 2026-09-01\n(.*?)(?=^## |\z)/m)
+abort 'documentation contract: missing v0.2.2 public release preparation section' unless match
+
+section = match[1].gsub(/\s+/, ' ').strip
+required_fact = 'This records preparation only: no v0.2.2 tag, GitHub Release, public download, or public notarization claim has been made.'
+abort "documentation contract: preparation is missing #{required_fact.inspect}" unless section.include?(required_fact)
+RUBY
+}
+
+published_state_contract_is_valid() {
+  local readme_file="$1"
+  local status_file="$2"
+
+  grep -F 'Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.' "$readme_file" >/dev/null ||
+    { echo 'documentation contract: README missing published availability statement' >&2; return 1; }
+  grep -F '[Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)' "$readme_file" >/dev/null ||
+    { echo 'documentation contract: README missing exact v0.2.2 download link' >&2; return 1; }
+  grep -F 'Developer ID-signed and notarized' "$readme_file" >/dev/null ||
+    { echo 'documentation contract: README missing Developer ID signing/notarization fact' >&2; return 1; }
+  grep -F 'ad-hoc signed and is not a substitute' "$readme_file" >/dev/null ||
+    { echo 'documentation contract: README missing ad-hoc package caveat' >&2; return 1; }
+  grep -F 'Native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance still require external evidence; the local macOS 26 build is not that acceptance.' "$readme_file" >/dev/null ||
+    { echo 'documentation contract: README missing native macOS 14 acceptance caveat' >&2; return 1; }
+  grep -F 'Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration.' "$readme_file" >/dev/null ||
+    { echo 'documentation contract: README missing Cursor privacy boundary' >&2; return 1; }
+  release_preparation_status_contract_is_valid "$status_file"
+}
+
+assert_plist_value() {
+  local plist_path="$1" key="$2" expected="$3" actual
+  actual="$(/usr/libexec/PlistBuddy -c "Print :$key" "$plist_path")"
+  [[ "$actual" == "$expected" ]] ||
+    fail "$plist_path $key must be $expected, got $actual"
+}
+
 test_documentation_contract() {
   local readme_file="$ROOT/README.md"
   local status_file="$ROOT/docs/STATUS.md"
-  local decoy_status="$temp_root/status-release-validation-decoy.md"
+  local published_readme="$temp_root/readme-published-fixture.md"
+  local published_status="$temp_root/status-published-fixture.md"
+  local decoy_readme_url="$temp_root/readme-wrong-release-url.md"
+  local decoy_readme_cursor="$temp_root/readme-missing-cursor-sentence.md"
+  local decoy_readme_native="$temp_root/readme-missing-native-caveat.md"
+  local decoy_status="$temp_root/status-release-preparation-decoy.md"
   local decoy_output decoy_rc
 
-  grep -F 'No public GitHub Release or notarized download is available yet.' "$readme_file" >/dev/null ||
-    fail 'README must retain the unreleased/no-public-download statement'
   grep -F 'tagless' "$readme_file" >/dev/null ||
     fail 'README must describe bounded tagless validation'
   grep -F 'Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration.' "$readme_file" >/dev/null ||
@@ -383,19 +426,107 @@ test_documentation_contract() {
   grep -F 'no tag or release action is authorized' "$status_file" >/dev/null ||
     fail 'STATUS must state that no tag or release action is authorized'
 
-  ruby - "$status_file" "$decoy_status" <<'RUBY'
+  ruby - "$readme_file" "$published_readme" <<'RUBY'
 source, destination = ARGV
 document = File.read(source)
-document.sub!(/^## Release Validation Continuation — 2026-08-27\n.*?(?=^## |\z)/m, '')
+document << <<~MARKDOWN
+
+  Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.
+  [Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)
+  Developer ID-signed and notarized
+MARKDOWN
+File.write(destination, document)
+RUBY
+  ruby - "$status_file" "$published_status" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document << <<~MARKDOWN
+
+  ## v0.2.2 Public Release Preparation — 2026-09-01
+
+  Release preparation updates the host and widget to version 0.2.2 (build 2),
+  adds the reviewed public-download copy, and prepares validated ZIP and checksum
+  release artifacts. This records preparation only: no v0.2.2 tag, GitHub Release,
+  public download, or public notarization claim has been made. The signed tagless RC
+  run 33524771615 at `15c229f` and docs CI run 33526409582 remain pre-release
+  evidence only; a later exact green `main` commit is required for public release.
+MARKDOWN
+File.write(destination, document)
+RUBY
+
+  published_state_contract_is_valid "$published_readme" "$published_status" ||
+    fail 'published-state fixture is unexpectedly invalid'
+
+  ruby - "$published_readme" "$decoy_readme_url" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+old_link = '[Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)'
+new_link = '[Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/wrong.zip)'
+abort 'fixture setup: expected download link was not found' unless document.sub!(old_link, new_link)
 File.write(destination, document)
 RUBY
   set +e
-  decoy_output="$(release_validation_status_contract_is_valid "$decoy_status" 2>&1)"
+  decoy_output="$(published_state_contract_is_valid "$decoy_readme_url" "$published_status" 2>&1)"
   decoy_rc=$?
   set -e
-  [[ "$decoy_rc" -ne 0 ]] || fail 'STATUS decoy without the current continuation was accepted'
-  [[ "$decoy_output" == *'missing release validation continuation section'* ]] ||
-    fail 'STATUS decoy failed for an unexpected reason'
+  [[ "$decoy_rc" -ne 0 ]] || fail 'README URL decoy was accepted'
+  [[ "$decoy_output" == *'README missing exact v0.2.2 download link'* ]] ||
+    fail 'README URL decoy failed for an unexpected reason'
+
+  ruby - "$published_readme" "$decoy_readme_cursor" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+sentence = 'Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration.'
+abort 'fixture setup: expected Cursor sentence was not found' unless document.sub!(sentence, '')
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(published_state_contract_is_valid "$decoy_readme_cursor" "$published_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'README Cursor decoy was accepted'
+  [[ "$decoy_output" == *'README missing Cursor privacy boundary'* ]] ||
+    fail 'README Cursor decoy failed for an unexpected reason'
+
+  ruby - "$published_readme" "$decoy_readme_native" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+sentence = 'Native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance still require external evidence; the local macOS 26 build is not that acceptance.'
+abort 'fixture setup: expected native acceptance caveat was not found' unless document.sub!(sentence, '')
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(published_state_contract_is_valid "$decoy_readme_native" "$published_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'README native caveat decoy was accepted'
+  [[ "$decoy_output" == *'README missing native macOS 14 acceptance caveat'* ]] ||
+    fail 'README native caveat decoy failed for an unexpected reason'
+
+  ruby - "$published_status" "$decoy_status" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+unless document.sub!(/^## v0.2.2 Public Release Preparation — 2026-09-01\n.*?(?=^## |\z)/m, '')
+  abort 'fixture setup: expected public release preparation section was not found'
+end
+File.write(destination, document)
+RUBY
+  release_validation_status_contract_is_valid "$decoy_status" ||
+    fail 'STATUS preparation decoy altered the historical release-validation section'
+  set +e
+  decoy_output="$(published_state_contract_is_valid "$published_readme" "$decoy_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'STATUS preparation decoy was accepted'
+  [[ "$decoy_output" == *'missing v0.2.2 public release preparation section'* ]] ||
+    fail 'STATUS preparation decoy failed for an unexpected reason'
+
+  published_state_contract_is_valid "$readme_file" "$status_file"
+
+  assert_plist_value "$ROOT/Resources/Info.plist" CFBundleShortVersionString 0.2.2
+  assert_plist_value "$ROOT/Resources/Info.plist" CFBundleVersion 2
+  assert_plist_value "$ROOT/WidgetExtension/NeedlbarWidgetExtension-Info.plist" CFBundleShortVersionString 0.2.2
+  assert_plist_value "$ROOT/WidgetExtension/NeedlbarWidgetExtension-Info.plist" CFBundleVersion 2
 }
 
 test_documentation_contract
