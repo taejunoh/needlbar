@@ -15,7 +15,7 @@
         "cacheWriteTokens": "2",
         "reasoningTokens": "3",
         "totalTokens": "197",
-        "estimatedCostUsd": "2.2"
+        "estimatedCostUSD": "2.2"
       },
       "observedActiveTimeSeconds": "180",
       "providerModels": [
@@ -29,11 +29,11 @@
             "cacheWriteTokens": "0",
             "reasoningTokens": "0",
             "totalTokens": "60",
-            "estimatedCostUsd": "0.75"
+            "estimatedCostUSD": "0.75"
           },
-          "costPer1kTokens": "12.5",
+          "costPer1KTokens": "12.5",
           "tokensPerObservedActiveHour": "3600",
-          "millisecondsPer1kTokens": null,
+          "millisecondsPer1KTokens": null,
           "costCoverage": "partial",
           "timingCoverage": "missingDuration"
         },
@@ -47,11 +47,11 @@
             "cacheWriteTokens": "2",
             "reasoningTokens": "3",
             "totalTokens": "130",
-            "estimatedCostUsd": "1.25"
+            "estimatedCostUSD": "1.25"
           },
-          "costPer1kTokens": "9.615384615384615",
+          "costPer1KTokens": "9.615384615384615",
           "tokensPerObservedActiveHour": "3900",
-          "millisecondsPer1kTokens": "8333.333333333334",
+          "millisecondsPer1KTokens": "8333.333333333334",
           "costCoverage": "complete",
           "timingCoverage": "complete"
         },
@@ -65,11 +65,11 @@
             "cacheWriteTokens": "0",
             "reasoningTokens": "0",
             "totalTokens": "7",
-            "estimatedCostUsd": "0.2"
+            "estimatedCostUSD": "0.2"
           },
-          "costPer1kTokens": null,
+          "costPer1KTokens": null,
           "tokensPerObservedActiveHour": null,
-          "millisecondsPer1kTokens": "71428.57142857143",
+          "millisecondsPer1KTokens": "71428.57142857143",
           "costCoverage": "none",
           "timingCoverage": "complete"
         }
@@ -85,7 +85,7 @@
             "cacheWriteTokens": "2",
             "reasoningTokens": "3",
             "totalTokens": "130",
-            "estimatedCostUsd": "1.25"
+            "estimatedCostUSD": "1.25"
           },
           "pullRequestNumber": 42,
           "coverage": "correlated"
@@ -110,7 +110,7 @@
       "cacheWriteTokens": "0",
       "reasoningTokens": "0",
       "totalTokens": "9",
-      "estimatedCostUsd": "0.15000000000000002"
+      "estimatedCostUSD": "0.15000000000000002"
     },
     "fragments": 2,
     "reasons": {
