@@ -263,7 +263,7 @@ ln -s /usr/bin/mktemp "$fake_bin_without_shasum/mktemp"
 ln -s "$(command -v bash)" "$fake_bin_without_shasum/bash"
 ln -s "$(command -v dirname)" "$fake_bin_without_shasum/dirname"
 ln -s "$(command -v rm)" "$fake_bin_without_shasum/rm"
-for real_tool in cat cp chmod sed grep awk basename; do
+for real_tool in cat cp chmod sed grep awk basename mkdir; do
   ln -s "$(command -v "$real_tool")" "$fake_bin_without_shasum/$real_tool"
 done
 
