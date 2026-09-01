@@ -6,9 +6,14 @@ Needlbar is local-first. It requires no Needlbar account, backend, hosted sync, 
 
 ## Availability
 
-Needlbar is currently unreleased. The current source includes the completed v0.2.2 local repository analytics implementation and the unreleased v0.2.1 widgets/notifications implementation; native signed macOS 14 acceptance for v0.2.1 remains pending. No public GitHub Release or notarized download is available yet. The source tree can be built and tested locally, and `make package` creates a local Apple Silicon bundle for evaluation. That pre-release bundle is ad-hoc signed and is not a substitute for the future Developer ID-signed, notarized release.
+The reviewed public availability copy for the tag-triggered release is:
 
-Maintainer-only release validation is performed through a protected, tagless GitHub Actions workflow. It can sign, notarize, staple, and validate a workflow artifact without creating a public release; it does not make a release available for download. Creating a version tag or public GitHub Release requires separate explicit authorization.
+Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.
+[Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)
+
+The public artifact is Developer ID-signed and notarized for macOS 14 or later on Apple Silicon. The link becomes downloadable only when the tag-triggered workflow publishes it; until then, this preparation copy is not a claim that a current public asset exists. The source tree can be built and tested locally, and `make package` creates a local Apple Silicon bundle for evaluation. That local bundle is ad-hoc signed and is not a substitute for the public Developer ID-signed, notarized artifact.
+
+Maintainer-only release validation is performed through a protected, tagless GitHub Actions workflow. It can sign, notarize, staple, and validate a workflow artifact without creating a public release; this remains historical/pre-release validation and does not make a release available for download. Creating a version tag or public GitHub Release requires separate explicit authorization.
 
 ## Requirements
 
@@ -45,7 +50,7 @@ Quota notifications are off by default, require explicit macOS permission, run o
 
 This branch contains the widget and notification implementation and automated package checks, but it is not a release. Cursor remains usage-only with quota unavailable. Native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance still require external evidence; the local macOS 26 build is not that acceptance.
 
-## v0.2.2 local repository analytics (unreleased)
+## v0.2.2 local repository analytics (released)
 
 Open **Overview → Analytics…** for a manual, on-demand view over the fixed,
 closed 30-day interval ending at that analysis's capture time. It uses only
@@ -72,11 +77,10 @@ v0.2.0 export schema and v0.2.1 widget/notification behavior are unchanged;
 Analytics data is not added to exports or sent to widgets or notifications.
 
 To use it, click the menu-bar Overview, choose **Analytics…**, then choose
-**Refresh** in the Analytics window. The feature is unreleased and remains
-local-only; no analytics history is retained after the in-memory state is
-discarded. A later failed refresh can leave the last successful in-memory
-snapshot marked stale, while an analysis with no successful result is
-Unavailable.
+**Refresh** in the Analytics window. The released feature remains local-only;
+no analytics history is retained after the in-memory state is discarded. A
+later failed refresh can leave the last successful in-memory snapshot marked
+stale, while an analysis with no successful result is Unavailable.
 
 ## Provider authentication and recovery
 
@@ -119,7 +123,7 @@ The package command writes `dist/Needlbar.app` and `dist/Needlbar-macos-arm64.zi
 
 ## Privacy and local-first boundaries
 
-Needlbar has no backend, account system, cloud sync, hosted analytics service, or telemetry. Its unreleased local Analytics window does not upload data or create an analytics database. Needlbar does not upload token history, prompts, assistant responses, source code, raw paths, account identifiers, or provider credentials. It displays normalized counts, estimated costs, quota percentages, reset timestamps, freshness, and safe error states—not conversation or source content.
+Needlbar has no backend, account system, cloud sync, hosted analytics service, or telemetry. Its local Analytics window does not upload data or create an analytics database. Needlbar does not upload token history, prompts, assistant responses, source code, raw paths, account identifiers, or provider credentials. It displays normalized counts, estimated costs, quota percentages, reset timestamps, freshness, and safe error states—not conversation or source content.
 
 Usage reads only the documented provider-local sources above. Claude and Codex quota requests go directly to their providers over bounded HTTPS (with the Codex CLI fallback when applicable); Needlbar does not proxy them. Cursor usage is local-only and Cursor quota is represented by the fixed Spending dashboard action; Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration. Credentials, cookies, raw provider responses, and raw local paths remain out of Swift presentation state, diagnostics, logs, and bridge errors. On startup, the bridge may remove only an obsolete Needlbar-owned Cursor session file, without reading it; the local usage cache is preserved.
 
