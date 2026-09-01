@@ -7,9 +7,9 @@ use std::{
 };
 
 use needlbar_bridge::{
-    needlbar_claude_user_initiated_quota_snapshot_json, needlbar_codex_quota_snapshot_json,
-    needlbar_diagnostics_json, needlbar_free_string, needlbar_quota_snapshot_json,
-    needlbar_usage_snapshot_json, test_runtime,
+    needlbar_analytics_snapshot_json, needlbar_claude_user_initiated_quota_snapshot_json,
+    needlbar_codex_quota_snapshot_json, needlbar_diagnostics_json, needlbar_free_string,
+    needlbar_quota_snapshot_json, needlbar_usage_snapshot_json, test_runtime,
 };
 use needlbar_quota::ProviderId;
 use tempfile::TempDir;
@@ -40,6 +40,7 @@ fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
     let usage = ffi_json(needlbar_usage_snapshot_json);
     let quota = ffi_json(needlbar_quota_snapshot_json);
     let diagnostics = ffi_json(needlbar_diagnostics_json);
+    let analytics = ffi_json(needlbar_analytics_snapshot_json);
     let error = test_runtime::error_envelope_json(format!(
         "response {CLAUDE_CANARY} {CODEX_CANARY} {CURSOR_CANARY} {RAW_PATH} {EMAIL}"
     ));
@@ -47,6 +48,11 @@ fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
     assert_safe_output(&usage);
     assert_safe_output(&quota);
     assert_safe_output(&diagnostics);
+    assert_safe_output(&analytics);
+    let analytics_value: serde_json::Value =
+        serde_json::from_str(&analytics).expect("analytics JSON");
+    assert_eq!(analytics_value["schemaVersion"], "needlbar.analytics.v1");
+    assert!(analytics_value["errors"].is_array());
     assert_safe_output(&error);
 
     let usage_value: serde_json::Value = serde_json::from_str(&usage).expect("usage JSON");
@@ -409,6 +415,19 @@ fn assert_safe_output(json: &str) {
         EMAIL,
         "connectCursor",
         "cursorSyncFailed",
+        "raw-remote.example",
+        "feature/canary",
+        "author@example.com",
+        "message-canary",
+        "session-canary",
+        "prompt-canary",
+        "response-canary",
+        "source-canary",
+        "credential-canary",
+        "account-canary",
+        "full-oid-canary",
+        "stdout-canary",
+        "stderr-canary",
     ] {
         assert!(
             !json.contains(forbidden),

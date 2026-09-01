@@ -354,6 +354,13 @@ pub fn clear_runtime_for_rust_tests() {
     }
 }
 
+/// Returns the currently installed fixture home to feature-gated bridge
+/// callers. Production builds do not compile this module or this accessor.
+pub fn analytics_home() -> Option<PathBuf> {
+    let home = fixture_runtime()?.home;
+    (!home.as_os_str().is_empty()).then_some(home)
+}
+
 #[no_mangle]
 pub extern "C" fn needlbar_test_clear_fixture_runtime(session: u64) -> bool {
     if session == 0 {

@@ -1,3 +1,4 @@
+pub mod analytics;
 pub mod cursor_credential_cleanup;
 pub mod diagnostics;
 mod envelope;
@@ -22,7 +23,10 @@ use std::sync::LazyLock;
 use std::sync::Mutex;
 
 use chrono::{SecondsFormat, Utc};
-use envelope::{BridgeError, Envelope, SCHEMA_VERSION};
+use envelope::{
+    analytics_timestamp, AnalyticsBridgeError, AnalyticsEnvelope, BridgeError, Envelope,
+    ANALYTICS_SCHEMA_VERSION, SCHEMA_VERSION,
+};
 use serde::Serialize;
 
 fn internal_error_json() -> String {
@@ -50,6 +54,65 @@ fn ffi_string_pointer(json: String) -> *const c_char {
             .0 += 1;
     }
     pointer
+}
+
+const ANALYTICS_MAX_BYTES: usize = 256 * 1024;
+
+fn analytics_failure_json(scope: &str, code: &str) -> String {
+    let generated_at = analytics_timestamp(Utc::now());
+    format!(
+        "{{\"schemaVersion\":\"{ANALYTICS_SCHEMA_VERSION}\",\"ok\":false,\"generatedAt\":\"{generated_at}\",\"data\":null,\"errors\":[{{\"scope\":\"{scope}\",\"code\":\"{code}\"}}]}}"
+    )
+}
+
+fn analytics_fallback_json() -> String {
+    analytics_failure_json("analytics", "internalError")
+}
+
+fn analytics_string_pointer(json: String) -> *const c_char {
+    // Analytics values are sanitized before this boundary, but keep a
+    // schema-valid fallback for any unexpected interior NUL from a future
+    // serializer or allocator path.
+    let fallback = analytics_fallback_json();
+    let pointer = CString::new(json)
+        .unwrap_or_else(|_| CString::new(fallback).expect("literal analytics fallback"))
+        .into_raw();
+    #[cfg(feature = "bridge-test-runtime")]
+    {
+        FFI_ALLOCATION_COUNTS
+            .lock()
+            .expect("ffi allocation counts")
+            .0 += 1;
+    }
+    pointer
+}
+
+fn ffi_analytics_envelope(
+    f: impl FnOnce() -> Result<
+            AnalyticsEnvelope<needlbar_project_analytics::AnalyticsPayload>,
+            AnalyticsBridgeError,
+        > + UnwindSafe,
+) -> *const c_char {
+    let result = catch_unwind(f);
+    let json = match result {
+        Ok(Ok(envelope)) => match serde_json::to_string(&envelope) {
+            Ok(json) if json.len() <= ANALYTICS_MAX_BYTES => json,
+            Ok(_) => analytics_failure_json("analytics", "payloadTooLarge"),
+            Err(_) => analytics_fallback_json(),
+        },
+        Ok(Err(error)) => {
+            let envelope = AnalyticsEnvelope::<serde_json::Value> {
+                schema_version: ANALYTICS_SCHEMA_VERSION,
+                ok: false,
+                generated_at: analytics_timestamp(Utc::now()),
+                data: None,
+                errors: vec![error],
+            };
+            serde_json::to_string(&envelope).unwrap_or_else(|_| analytics_fallback_json())
+        }
+        Err(_) => analytics_fallback_json(),
+    };
+    analytics_string_pointer(json)
 }
 
 fn ffi_envelope<T: Serialize + UnwindSafe>(
@@ -193,6 +256,33 @@ pub unsafe extern "C" fn needlbar_diagnostics_json() -> *const c_char {
 
 /// # Safety
 ///
+/// The returned non-null pointer is Rust-owned and must be passed exactly once
+/// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
+#[no_mangle]
+pub unsafe extern "C" fn needlbar_analytics_snapshot_json() -> *const c_char {
+    ffi_analytics_envelope(|| {
+        let (generated_at, payload) =
+            analytics::collect_analytics().map_err(|code| AnalyticsBridgeError {
+                scope: if code == "usageReportUnavailable" {
+                    "usage".to_owned()
+                } else {
+                    "analytics".to_owned()
+                },
+                code: if code == "usageReportUnavailable" {
+                    code.to_owned()
+                } else {
+                    "internalError".to_owned()
+                },
+            })?;
+        Ok(AnalyticsEnvelope::success(
+            payload,
+            analytics_timestamp(generated_at),
+        ))
+    })
+}
+
+/// # Safety
+///
 /// A non-null pointer must have been returned by this bridge, must not have
 /// been mutated, and must be freed exactly once. Null is accepted as a no-op.
 #[no_mangle]
@@ -295,6 +385,33 @@ mod tests {
         assert_eq!(value["errors"][0]["code"], "internalError");
 
         unsafe { needlbar_free_string(ptr) };
+    }
+
+    #[test]
+    fn analytics_invalid_c_string_uses_schema_valid_fallback() {
+        let pointer = analytics_string_pointer("not\0json".to_owned());
+        let text = unsafe { CStr::from_ptr(pointer) }
+            .to_str()
+            .expect("fallback UTF-8")
+            .to_owned();
+        unsafe { needlbar_free_string(pointer) };
+        let value: serde_json::Value = serde_json::from_str(&text).expect("fallback JSON");
+        assert_eq!(value["schemaVersion"], ANALYTICS_SCHEMA_VERSION);
+        assert_eq!(value["ok"], false);
+        assert_eq!(value["errors"][0]["code"], "internalError");
+    }
+
+    #[test]
+    fn analytics_panic_uses_schema_valid_fallback() {
+        let pointer = ffi_analytics_envelope(|| panic!("analytics panic"));
+        let text = unsafe { CStr::from_ptr(pointer) }
+            .to_str()
+            .expect("fallback UTF-8")
+            .to_owned();
+        unsafe { needlbar_free_string(pointer) };
+        let value: serde_json::Value = serde_json::from_str(&text).expect("fallback JSON");
+        assert_eq!(value["schemaVersion"], ANALYTICS_SCHEMA_VERSION);
+        assert_eq!(value["ok"], false);
     }
 
     #[test]

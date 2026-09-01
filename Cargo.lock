@@ -856,6 +856,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "libc",
+ "needlbar-project-analytics",
  "needlbar-quota",
  "serde",
  "serde_json",

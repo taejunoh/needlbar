@@ -16,6 +16,7 @@ const char *needlbar_claude_user_initiated_quota_snapshot_json(void);
 // needlbar_quota_snapshot_json.
 const char *needlbar_codex_quota_snapshot_json(void);
 const char *needlbar_diagnostics_json(void);
+const char *needlbar_analytics_snapshot_json(void);
 void needlbar_free_string(const char *ptr);
 
 #ifdef __cplusplus
