@@ -209,8 +209,8 @@ record_stage() {
 if [[ "${3:-}" == '-c' ]]; then
   check_file="${4:-}"
   [[ -f "$check_file" ]] || exit 64
-  line="$(<"$check_file")"
-  [[ "$line" =~ ^([[:xdigit:]]{64})[[:space:]][[:space:]](.+)$" ]] || exit 65
+  line="$(cat "$check_file")"
+  [[ "$line" =~ ^([[:xdigit:]]{64})[[:space:]][[:space:]](.+)$ ]] || exit 65
   [[ "${BASH_REMATCH[1],,}" == "$(printf '%064x' 0)" ]] || exit 66
   [[ -f "$(dirname "$check_file")/${BASH_REMATCH[2]}" ]] || exit 67
   record_stage shasum:check
@@ -218,14 +218,56 @@ if [[ "${3:-}" == '-c' ]]; then
 else
   archive_path="${3:-}"
   [[ -f "$archive_path" ]] || exit 64
+  [[ "$archive_path" != */Needlbar-macos-arm64.zip ]] || exit 68
   record_stage shasum:sha256
   printf '%064x  %s\n' 0 "$(basename "$archive_path")"
 fi
 EOF
 
+cat > "$fake_bin/mv" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+record_stage() {
+  printf '%s\n' "$1" >> "$FAKE_COMMAND_LOG"
+}
+
+destination="${@: -1}"
+case "$destination" in
+  */Needlbar-macos-arm64.zip) record_stage install:zip ;;
+  */Needlbar-macos-arm64.zip.sha256) record_stage install:checksum ;;
+esac
+exec /bin/mv "$@"
+EOF
+
 chmod 755 "$fake_bin/security" "$fake_bin/codesign" "$fake_bin/xcrun" \
   "$fake_bin/spctl" "$fake_bin/zip" "$fake_bin/ditto" "$fake_bin/base64" "$fake_bin/uuidgen" \
-  "$fake_bin/shasum"
+  "$fake_bin/shasum" "$fake_bin/mv"
+
+for fake_tool in "$fake_bin"/*; do
+  bash -n "$fake_tool" || fail "generated fake tool failed syntax check: $fake_tool"
+done
+
+fake_bin_without_shasum="$temp_root/fake-bin-without-shasum"
+mkdir -p "$fake_bin_without_shasum"
+for fake_tool in "$fake_bin"/*; do
+  [[ "$(basename "$fake_tool")" == shasum ]] && continue
+  ln -s "$fake_tool" "$fake_bin_without_shasum/$(basename "$fake_tool")"
+done
+ln -s /usr/bin/mktemp "$fake_bin_without_shasum/mktemp"
+
+fake_checksum_input="$temp_root/fake.zip"
+fake_checksum_sidecar="$temp_root/fake.zip.sha256"
+fake_checksum_log="$temp_root/fake-shasum.log"
+printf '%s\n' fake-archive > "$fake_checksum_input"
+: > "$fake_checksum_log"
+generated_checksum="$(FAKE_COMMAND_LOG="$fake_checksum_log" "$fake_bin/shasum" -a 256 "$fake_checksum_input" | awk '{print $1}')"
+[[ "$generated_checksum" =~ ^[[:xdigit:]]{64}$ ]] || fail 'fake shasum did not generate a 64-hex digest'
+printf '%s  fake.zip\n' "$generated_checksum" > "$fake_checksum_sidecar"
+FAKE_COMMAND_LOG="$fake_checksum_log" "$fake_bin/shasum" -a 256 -c "$fake_checksum_sidecar" >/dev/null ||
+  fail 'fake shasum checksum verification fixture failed'
+grep -Fx shasum:sha256 "$fake_checksum_log" >/dev/null || fail 'fake shasum generation stage was not logged'
+grep -Fx shasum:check "$fake_checksum_log" >/dev/null || fail 'fake shasum check stage was not logged'
 
 new_case() {
   case_root="$(mktemp -d "$temp_root/case.XXXXXX")"
@@ -261,6 +303,9 @@ run_case_exec() {
   local omitted_name="${1:-}"
   cd "$ROOT"
   export PATH="$fake_bin:$PATH"
+  if [[ "${OMIT_FAKE_SHASUM:-}" == 1 ]]; then
+    export PATH="$fake_bin_without_shasum"
+  fi
   export FAKE_COMMAND_LOG="$case_root/commands.log"
   export FAKE_STATE_DIR="$case_root/state"
   export NEEDLBAR_NOTARIZE_APP_PATH="$case_root/repo/dist/Needlbar.app"
@@ -352,6 +397,8 @@ assert_stage_subsequence() {
     xcrun:stapler-validate
     spctl:assess
     shasum:sha256
+    install:zip
+    install:checksum
     security:restore-list
     security:delete-keychain
   )
@@ -1109,6 +1156,22 @@ RUBY
 
 test_release_workflow_contract
 
+new_case
+export OMIT_FAKE_SHASUM=1
+if invoke_case; then
+  fail 'missing shasum prerequisite case unexpectedly succeeded'
+fi
+unset OMIT_FAKE_SHASUM
+[[ "$status" -ne 0 ]] || fail 'missing shasum prerequisite case must fail'
+grep -F 'required command not found: shasum' "$case_root/output.txt" >/dev/null ||
+  fail 'missing shasum prerequisite was not reported during preflight'
+assert_stage_absent "$case_root" security:create-keychain
+assert_original_zip
+! find "$case_root/private-temp" -mindepth 1 -print -quit | grep -q . ||
+  fail 'missing shasum preflight left private temp child'
+! find "$case_root/repo/dist" -maxdepth 1 -name '.needlbar-final.*.zip' -print -quit | grep -q . ||
+  fail 'missing shasum preflight left candidate ZIP'
+
 for missing_name in \
   DEVELOPER_ID_APPLICATION \
   DEVELOPER_ID_APPLICATION_CERTIFICATE \
@@ -1306,9 +1369,9 @@ checksum_sidecar="$case_root/repo/dist/Needlbar-macos-arm64.zip.sha256"
 [[ "$(wc -l < "$checksum_sidecar")" -eq 1 ]] || fail 'checksum sidecar must contain one line'
 grep -Eq '^[0-9a-f]{64}  Needlbar-macos-arm64\.zip$' "$checksum_sidecar" ||
   fail 'checksum sidecar must name only the final ZIP'
+assert_stage_subsequence "$case_root"
 PATH="$fake_bin:$PATH" shasum -a 256 -c "$checksum_sidecar" > "$case_root/checksum-output.txt" ||
   fail 'checksum sidecar failed shasum verification'
-assert_stage_subsequence "$case_root"
 assert_private_cleanup "$case_root"
 assert_no_canary "$case_root"
 
