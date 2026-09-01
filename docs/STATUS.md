@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-01
-**Branch:** `main` (v0.2.2 public-release preparation based on signed tagless RC source HEAD `15c229f19a8c74417e11092873b947e8ca368e7d`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.2.2 public-release preparation: host/widget build 2, reviewed future-download copy, and ZIP/checksum artifact preparation. No v0.2.2 tag, GitHub Release, public download, or public notarization claim has been made. The v0.2.1 widgets/notifications implementation remains incomplete at the exact native macOS 14 Widget Gallery/App Group acceptance gate.
-**Next action:** Select a later exact green `main` commit and obtain separate authorization for any tag-triggered v0.2.2 publication. Retain the outstanding v0.2.1 exact macOS 14 Widget Gallery/App Group acceptance caveat; do not claim that native acceptance has been established.
+**Branch:** `main` (v0.2.2 public release verified at source commit `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`; v0.2.1 remains an earlier integrated line of work)
+**Current phase:** v0.2.2 public release verified: GitHub Release `v0.2.2` contains the downloaded ZIP and checksum sidecar, and the fresh public asset checks passed. The v0.2.1 widgets/notifications implementation remains incomplete at the exact native macOS 14 Widget Gallery/App Group acceptance gate.
+**Next action:** Preserve the factual v0.2.2 public release record and retain the outstanding v0.2.1 exact macOS 14 Widget Gallery/App Group acceptance caveat; do not claim that native macOS 14 acceptance has been established.
 
 ## v0.2.2 Public Release Preparation — 2026-09-01
 
@@ -13,6 +13,27 @@ release artifacts. This records preparation only: no v0.2.2 tag, GitHub Release,
 public download, or public notarization claim has been made. The signed tagless RC
 run 33524771615 at `15c229f` and docs CI run 33526409582 remain pre-release
 evidence only; a later exact green `main` commit is required for public release.
+
+## v0.2.2 Public Release Record — 2026-09-01
+
+Public release source commit: `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`.
+The tag-triggered public Release workflow [33554577457](https://github.com/taejunoh/needlbar/actions/runs/33554577457)
+completed successfully and published [v0.2.2](https://github.com/taejunoh/needlbar/releases/tag/v0.2.2).
+Fresh downloads from that GitHub Release contained exactly the ZIP and its
+SHA-256 sidecar. The sidecar verified `Needlbar-macos-arm64.zip` with digest
+`cf2b8b0eb1c3afeee34f9ee29efbedc8eec1c1d5d7844376864da370cf7cf086`.
+
+Downloaded-asset verification passed: both executables were arm64; host and
+widget bundle values were `0.2.2`/`2`; deep strict code-signature validation,
+Developer ID authority presence, hardened-runtime presence, stapler validation,
+Gatekeeper assessment, and smoke testing of the extracted downloaded app all
+passed. Only safe command outcomes are recorded here; certificate, account,
+team, token, keychain, and app-specific-password values are not recorded.
+
+This public release is distinct from the signed tagless RC [33524771615](https://github.com/taejunoh/needlbar/actions/runs/33524771615).
+The unresolved v0.2.1 native macOS 14 Widget Gallery/App Group and
+notification-permission acceptance caveat remains unchanged; this record does
+not claim native macOS 14 acceptance.
 
 ## Source of Truth
 
