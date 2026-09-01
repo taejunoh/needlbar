@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-01
-**Branch:** `main` (local merged HEAD `28af5dd`; v0.2.1 remains an earlier integrated line of work)
+**Branch:** `main` (pushed and CI-verified through `ad02662`; v0.2.1 remains an earlier integrated line of work)
 **Current phase:** v0.2.2 implementation is complete through final review, verification, and local integration. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
-**Next action:** Resolve the vendor revision's reachable-remote publication before any superproject push/CI/release, then consider a signed RC only with explicit user authorization. No further v0.2.2 feature implementation is planned; push, tag, release, notarization, and credentialed provider actions remain unauthorized. Preserve the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates.
+**Next action:** Consider a signed RC only with explicit user authorization. No further v0.2.2 feature implementation is planned; tag, release, notarization, and credentialed provider actions remain unauthorized. Preserve the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates.
 
 ## Source of Truth
 
@@ -278,6 +278,29 @@ The vendor-publication blocker is resolved. The next continuation is the
 separately authorized superproject push and CI confirmation, followed by a
 signed RC only with explicit authorization. No tag, release, notarization, or
 credentialed provider action was performed.
+
+## v0.2.2 Push and CI Verification — 2026-09-01
+
+The initial CI run [33515294154](https://github.com/taejunoh/needlbar/actions/runs/33515294154)
+failed because `analytics_contract` imported bridge runtime symbols without the
+required feature. Commit `c8972d5` gates those imports behind that feature.
+
+A local high-parallel test exposed a process-fixture timing flake. Commit
+`193dd8a` serializes only the test process fixtures; production behavior is
+unchanged.
+
+Rerun [33517179792](https://github.com/taejunoh/needlbar/actions/runs/33517179792)
+passed the Rust tests, lints, and vendor suite, but the Xcode 16.2 full
+`make test` failed on an actor-isolated `Optional.map` call. Commit `ad02662`
+uses a direct actor-isolated call. Final code run
+[33519496485](https://github.com/taejunoh/needlbar/actions/runs/33519496485)
+succeeded through all CI stages.
+
+A fresh local full `make test` at `ad02662` passed: all Needlbar Rust suites,
+vendor 1,396 passed / 1 ignored, Swift 277 tests in 12 suites, and the
+widget/package/notarization contracts. The vendor-publication blocker is
+resolved. No tag, release, or notarization was performed. The next
+continuation is a signed RC only with explicit user authorization.
 
 ## v0.2.1 Widgets and Notifications — Design Continuation
 
