@@ -28,7 +28,7 @@ public struct AnalyticsBridgeDecoder: Sendable {
         let range = AnalyticsDateRange(start: rangeStart, end: rangeEnd)
         let rangeIsValid = range.end == generatedAt && range.end.timeIntervalSince(range.start) == 30 * 24 * 60 * 60
         guard rangeIsValid else { throw AnalyticsDecodeSupport.fail([], "Analytics range must be exactly 30 days ending at generatedAt.") }
-        let repositories = try (array(payload["repositories"]) ?? []).map(repository)
+        let repositories = try requiredArray(payload, "repositories").map(repository)
         guard repositories.count <= 64 else { throw AnalyticsDecodeSupport.fail([], "Too many repositories.") }
         var repositoryIDs = Set<String>()
         for repository in repositories { guard repositoryIDs.insert(repository.repositoryID).inserted else { throw AnalyticsDecodeSupport.fail([], "Duplicate repository ID.") } }
@@ -54,14 +54,14 @@ public struct AnalyticsBridgeDecoder: Sendable {
         let id = try requiredString(value, "repositoryID")
         guard id.range(of: #"^r[0-9a-f]{8}$"#, options: .regularExpression) != nil else { throw AnalyticsDecodeSupport.fail([], "Invalid repository ID.") }
         let label = try requiredString(value, "label")
-        guard !label.isEmpty, label.utf8.count <= 128, label.unicodeScalars.allSatisfy({ !$0.properties.isWhitespace || $0 == " " }) && label.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7f }) else { throw AnalyticsDecodeSupport.fail([], "Invalid repository label.") }
+        guard !label.isEmpty, label.utf8.count <= 80, label.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else { throw AnalyticsDecodeSupport.fail([], "Invalid repository label.") }
         let state = try requiredString(value, "state")
         guard AnalyticsDecodeSupport.states.contains(state) else { throw AnalyticsDecodeSupport.fail([], "Unknown repository state.") }
         let active = try integer(value["observedActiveTimeSeconds"])
-        let models = try (array(value["providerModels"]) ?? []).map(providerModel)
+        let models = try requiredArray(value, "providerModels").map(providerModel)
         guard models.count <= 256 else { throw AnalyticsDecodeSupport.fail([], "Too many provider model rows.") }
         for pair in zip(models, models.dropFirst()) { guard (pair.0.provider, pair.0.model) <= (pair.1.provider, pair.1.model) else { throw AnalyticsDecodeSupport.fail([], "Provider models are not ordered.") } }
-        let commits = try (array(value["commits"]) ?? []).map(commit)
+        let commits = try requiredArray(value, "commits").map(commit)
         guard commits.count <= 200 else { throw AnalyticsDecodeSupport.fail([], "Too many commits.") }
         var ids = Set<String>()
         for commit in commits {
@@ -78,10 +78,10 @@ public struct AnalyticsBridgeDecoder: Sendable {
         let provider = try requiredString(value, "provider")
         guard AnalyticsDecodeSupport.providers.contains(provider) else { throw AnalyticsDecodeSupport.fail([], "Unknown provider.") }
         let model = try requiredString(value, "model")
-        guard model.range(of: #"^(Other model|[A-Za-z0-9][A-Za-z0-9._:/-]{0,127})$"#, options: .regularExpression) != nil else { throw AnalyticsDecodeSupport.fail([], "Invalid model name.") }
+        guard model.range(of: #"^(Other model|[A-Za-z0-9][A-Za-z0-9._:-]{0,79})$"#, options: .regularExpression) != nil else { throw AnalyticsDecodeSupport.fail([], "Invalid model name.") }
         let costCoverage = try requiredString(value, "costCoverage")
         let timingCoverage = try requiredString(value, "timingCoverage")
-        guard AnalyticsDecodeSupport.coverage.contains(costCoverage), AnalyticsDecodeSupport.coverage.contains(timingCoverage) else { throw AnalyticsDecodeSupport.fail([], "Unknown coverage.") }
+        guard AnalyticsDecodeSupport.costCoverage.contains(costCoverage), AnalyticsDecodeSupport.timingCoverage.contains(timingCoverage) else { throw AnalyticsDecodeSupport.fail([], "Unknown coverage.") }
         return AnalyticsProviderModelAnalytics(provider: provider, model: model, usage: try usage(value["usage"]),
                                                 costPer1KTokens: try optionalDecimal(value["costPer1KTokens"]),
                                                 tokensPerObservedActiveHour: try optionalDecimal(value["tokensPerObservedActiveHour"]),
@@ -98,7 +98,7 @@ public struct AnalyticsBridgeDecoder: Sendable {
         if value["pullRequestNumber"] is NSNull { pr = nil }
         else { guard let number = int(value["pullRequestNumber"]), number > 0, number <= 2_147_483_647 else { throw AnalyticsDecodeSupport.fail([], "Invalid PR number.") }; pr = number }
         let coverage = try requiredString(value, "coverage")
-        guard AnalyticsDecodeSupport.coverage.contains(coverage) else { throw AnalyticsDecodeSupport.fail([], "Unknown coverage.") }
+        guard AnalyticsDecodeSupport.commitCoverage.contains(coverage) else { throw AnalyticsDecodeSupport.fail([], "Unknown coverage.") }
         return AnalyticsCommitAnalytics(commitID: id, committedAt: try date(value["committedAt"]), correlatedUsage: try usage(value["correlatedUsage"]), pullRequestNumber: pr, coverage: coverage)
     }
 
@@ -147,6 +147,10 @@ public struct AnalyticsBridgeDecoder: Sendable {
     private func keys(_ value: [String: Any], _ allowed: [String]) throws { try keys(value, Set(allowed)) }
     private func object(_ raw: Any?) throws -> [String: Any] { guard let value = raw as? [String: Any] else { throw AnalyticsDecodeSupport.fail([], "Expected object.") }; return value }
     private func array(_ raw: Any?) -> [Any]? { raw as? [Any] }
+    private func requiredArray(_ value: [String: Any], _ key: String) throws -> [Any] {
+        guard let result = array(value[key]) else { throw AnalyticsDecodeSupport.fail([], "Expected required array.") }
+        return result
+    }
     private func string(_ value: [String: Any], _ key: String) -> String? { value[key] as? String }
     private func requiredString(_ value: [String: Any], _ key: String) throws -> String { guard let result = value[key] as? String else { throw AnalyticsDecodeSupport.fail([], "Expected string.") }; return result }
     private func integer(_ raw: Any?) throws -> String { guard let value = raw as? String, AnalyticsDecodeSupport.canonicalInteger(value) != nil else { throw AnalyticsDecodeSupport.fail([], "Expected canonical integer string.") }; return value }

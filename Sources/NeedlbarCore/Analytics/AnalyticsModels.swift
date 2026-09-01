@@ -148,7 +148,9 @@ enum AnalyticsDecodeSupport {
     static let scopes: Set<String> = ["usage", "repository", "git", "analytics"]
     static let providers: Set<String> = ["claude", "codex", "cursor"]
     static let states: Set<String> = ["available", "unavailable"]
-    static let coverage: Set<String> = ["complete", "partial", "none"]
+    static let costCoverage: Set<String> = ["complete", "partial", "none"]
+    static let timingCoverage: Set<String> = ["complete", "partial", "missingDuration"]
+    static let commitCoverage: Set<String> = ["correlated", "partial"]
     static let reasons: Set<String> = ["missingWorkspace", "invalidWorkspace", "nonRepositoryWorkspace", "ambiguousRepository", "repositoryUnavailable", "missingTimestamp", "missingCost", "missingDuration", "noEligibleCommit", "pendingCommitWindow", "recordLimitReached", "gitOutputLimitReached", "gitTimedOut", "gitUnavailable"]
     static let errorCodes = reasons.union(["internalError", "runtimeUnavailable", "usageReportUnavailable", "payloadTooLarge"])
 

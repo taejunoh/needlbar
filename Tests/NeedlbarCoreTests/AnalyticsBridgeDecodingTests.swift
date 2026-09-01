@@ -14,7 +14,7 @@ private let analyticsFixture = """
       "usage":{"inputTokens":"10","outputTokens":"20","cacheReadTokens":"30","cacheWriteTokens":"40","reasoningTokens":"5","totalTokens":"105","estimatedCostUSD":"1.25"},
       "observedActiveTimeSeconds":"60",
       "providerModels":[{"provider":"claude","model":"claude-3-5-sonnet","usage":{"inputTokens":"10","outputTokens":"20","cacheReadTokens":"30","cacheWriteTokens":"40","reasoningTokens":"5","totalTokens":"105","estimatedCostUSD":"1.25"},"costPer1KTokens":"11.9047619","tokensPerObservedActiveHour":"6300","millisecondsPer1KTokens":null,"costCoverage":"complete","timingCoverage":"partial"}],
-      "commits":[{"commitID":"abcdef012345","committedAt":"2026-09-01T10:00:00.000Z","correlatedUsage":{"inputTokens":"10","outputTokens":"20","cacheReadTokens":"30","cacheWriteTokens":"40","reasoningTokens":"5","totalTokens":"105","estimatedCostUSD":"1.25"},"pullRequestNumber":42,"coverage":"complete"}],
+      "commits":[{"commitID":"abcdef012345","committedAt":"2026-09-01T10:00:00.000Z","correlatedUsage":{"inputTokens":"10","outputTokens":"20","cacheReadTokens":"30","cacheWriteTokens":"40","reasoningTokens":"5","totalTokens":"105","estimatedCostUSD":"1.25"},"pullRequestNumber":42,"coverage":"correlated"}],
       "coverage":{"assignedFragments":1,"unassignedFragments":0,"timingPartial":false,"reasons":{}}
     }],
     "unattributed":{"usage":{"inputTokens":"0","outputTokens":"0","cacheReadTokens":"0","cacheWriteTokens":"0","reasoningTokens":"0","totalTokens":"0","estimatedCostUSD":"0"},"fragments":0,"reasons":{}},
@@ -26,6 +26,18 @@ private let analyticsFixture = """
 """
 
 private func analyticsData(_ text: String = analyticsFixture) -> Data { Data(text.utf8) }
+
+private let minimalAnalyticsFixture = """
+{"schemaVersion":"needlbar.analytics.v1","ok":true,"generatedAt":"2026-09-01T12:00:00.000Z","data":{"analysisRange":{"start":"2026-08-02T12:00:00.000Z","end":"2026-09-01T12:00:00.000Z"},"repositories":[],"unattributed":{"usage":{"inputTokens":"0","outputTokens":"0","cacheReadTokens":"0","cacheWriteTokens":"0","reasoningTokens":"0","totalTokens":"0","estimatedCostUSD":"0"},"fragments":0,"reasons":{}},"coverage":{"attributedFragments":0,"unattributedFragments":0,"reasons":{}},"errors":[]},"errors":[]}
+"""
+
+private let minimalRepositoryFixture = """
+{"schemaVersion":"needlbar.analytics.v1","ok":true,"generatedAt":"2026-09-01T12:00:00.000Z","data":{"analysisRange":{"start":"2026-08-02T12:00:00.000Z","end":"2026-09-01T12:00:00.000Z"},"repositories":[{"repositoryID":"r00000001","label":"repo","state":"available","usage":{"inputTokens":"0","outputTokens":"0","cacheReadTokens":"0","cacheWriteTokens":"0","reasoningTokens":"0","totalTokens":"0","estimatedCostUSD":"0"},"observedActiveTimeSeconds":"0","providerModels":[],"commits":[],"coverage":{"assignedFragments":0,"unassignedFragments":0,"timingPartial":false,"reasons":{}}}],"unattributed":{"usage":{"inputTokens":"0","outputTokens":"0","cacheReadTokens":"0","cacheWriteTokens":"0","reasoningTokens":"0","totalTokens":"0","estimatedCostUSD":"0"},"fragments":0,"reasons":{}},"coverage":{"attributedFragments":0,"unattributedFragments":0,"reasons":{}},"errors":[]},"errors":[]}
+"""
+
+private let repositoryOneJSON = "{\"repositoryID\":\"r00000001\",\"label\":\"one\",\"state\":\"available\",\"usage\":{\"inputTokens\":\"0\",\"outputTokens\":\"0\",\"cacheReadTokens\":\"0\",\"cacheWriteTokens\":\"0\",\"reasoningTokens\":\"0\",\"totalTokens\":\"0\",\"estimatedCostUSD\":\"2\"},\"observedActiveTimeSeconds\":\"0\",\"providerModels\":[],\"commits\":[],\"coverage\":{\"assignedFragments\":0,\"unassignedFragments\":0,\"timingPartial\":false,\"reasons\":{}}}"
+private let repositoryTwoJSON = "{\"repositoryID\":\"r00000002\",\"label\":\"two\",\"state\":\"available\",\"usage\":{\"inputTokens\":\"0\",\"outputTokens\":\"0\",\"cacheReadTokens\":\"0\",\"cacheWriteTokens\":\"0\",\"reasoningTokens\":\"0\",\"totalTokens\":\"0\",\"estimatedCostUSD\":\"1\"},\"observedActiveTimeSeconds\":\"0\",\"providerModels\":[],\"commits\":[],\"coverage\":{\"assignedFragments\":0,\"unassignedFragments\":0,\"timingPartial\":false,\"reasons\":{}}}"
+private let correlatedCommitJSON = "{\"commitID\":\"abcdef012345\",\"committedAt\":\"2026-09-01T10:00:00.000Z\",\"correlatedUsage\":{\"inputTokens\":\"0\",\"outputTokens\":\"0\",\"cacheReadTokens\":\"0\",\"cacheWriteTokens\":\"0\",\"reasoningTokens\":\"0\",\"totalTokens\":\"0\",\"estimatedCostUSD\":\"0\"},\"pullRequestNumber\":null,\"coverage\":\"correlated\"}"
 
 private final class AnalyticsFreeRecorder: @unchecked Sendable {
     private let lock = NSLock(); private(set) var count = 0
@@ -89,6 +101,45 @@ private final class AnalyticsRawPointer: @unchecked Sendable {
     for replacement in replacements {
         #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(analyticsFixture.replacingOccurrences(of: replacement.0, with: replacement.1))) }
     }
+}
+
+@Test func acceptsEveryCoverageValueProducedByRustAndRejectsUnknownValues() throws {
+    for value in ["complete", "partial", "none"] {
+        let changed = analyticsFixture.replacingOccurrences(of: "\"costCoverage\":\"complete\"", with: "\"costCoverage\":\"\(value)\"")
+        _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(changed))
+    }
+    for value in ["complete", "partial", "missingDuration"] {
+        let changed = analyticsFixture.replacingOccurrences(of: "\"timingCoverage\":\"partial\"", with: "\"timingCoverage\":\"\(value)\"")
+        _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(changed))
+    }
+    for value in ["correlated", "partial"] {
+        let changed = analyticsFixture.replacingOccurrences(of: "\"coverage\":\"correlated\"", with: "\"coverage\":\"\(value)\"")
+        _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(changed))
+    }
+    for mutation in [
+        ("\"costCoverage\":\"complete\"", "\"costCoverage\":\"unknown\""),
+        ("\"timingCoverage\":\"partial\"", "\"timingCoverage\":\"unknown\""),
+        ("\"coverage\":\"correlated\"", "\"coverage\":\"complete\"")
+    ] {
+        #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(analyticsFixture.replacingOccurrences(of: mutation.0, with: mutation.1))) }
+    }
+}
+
+@Test func rejectsWrongTypesForRequiredArraysAndUnicodeC1Label() {
+    #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(minimalAnalyticsFixture.replacingOccurrences(of: "\"repositories\":[]", with: "\"repositories\":{}"))) }
+    #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(minimalRepositoryFixture.replacingOccurrences(of: "\"providerModels\":[]", with: "\"providerModels\":{}"))) }
+    #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(minimalRepositoryFixture.replacingOccurrences(of: "\"commits\":[]", with: "\"commits\":{}"))) }
+    let c1Label = analyticsFixture.replacingOccurrences(of: "\"label\":\"needlbar\"", with: "\"label\":\"repo\u{0085}name\"")
+    #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(c1Label)) }
+}
+
+@Test func rejectsReversedRepositoryCostIDOrderAndDuplicateCommitID() throws {
+    let sorted = minimalAnalyticsFixture.replacingOccurrences(of: "\"repositories\":[]", with: "\"repositories\":[\(repositoryOneJSON),\(repositoryTwoJSON)]")
+    _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(sorted))
+    let reversed = minimalAnalyticsFixture.replacingOccurrences(of: "\"repositories\":[]", with: "\"repositories\":[\(repositoryTwoJSON),\(repositoryOneJSON)]")
+    #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(reversed)) }
+    let duplicate = minimalRepositoryFixture.replacingOccurrences(of: "\"commits\":[]", with: "\"commits\":[\(correlatedCommitJSON),\(correlatedCommitJSON)]")
+    #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(duplicate)) }
 }
 
 @Test func rejectsControlLabelAndOversizedDocument() {
