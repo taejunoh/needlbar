@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-01
 **Branch:** `codex/v022-project-cost-analytics` (baseline HEAD `d1b13d1`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.2.2 Tasks 1–3 are complete; next is Task 4 Swift Core. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
-**Next action:** Start Task 4 Swift Core while preserving the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates. The user pre-approved the subagent-driven (recommended) execution choice; push, tag, and release actions remain unauthorized.
+**Current phase:** v0.2.2 Tasks 1–4 are complete; next is Task 5 Analytics window. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
+**Next action:** Start Task 5 Analytics window while preserving the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates. The user pre-approved the subagent-driven (recommended) execution choice; push, tag, and release actions remain unauthorized.
 
 ## Source of Truth
 
@@ -18,7 +18,7 @@ The active Needlbar work is governed by:
 - `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1–W4, Notification Tasks N1–N4, and automated Integration Task 1 verification are complete on the code path, with native acceptance still pending.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widgets-notifications.md` — reviewed v0.2.1 implementation index: four widget tasks, four notification tasks, then combined acceptance.
 - `docs/superpowers/specs/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics-design.md` — approved v0.2.2 local repository cost analytics design; its implementation plan is recorded below.
-- `docs/superpowers/plans/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics.md` — approved v0.2.2 implementation plan; Tasks 1–3 are complete and Task 4 Swift Core is next.
+- `docs/superpowers/plans/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics.md` — approved v0.2.2 implementation plan; Tasks 1–4 are complete and Task 5 Analytics window is next.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget.md` — W1–W4, including Swift-only day provenance, sanitized projection, and medium Overview presentation.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-notifications.md` — N1–N4, including fresh quota observation, durable policy, explicit permission, and lifecycle tests.
@@ -114,6 +114,26 @@ Verification recorded for the completed task:
 - Worktree status: clean.
 
 The next continuation point is Task 4 Swift Core. The v0.2.1 native
+acceptance caveats remain unchanged. No push, tag, or release was performed or
+authorized.
+
+## v0.2.2 Task 4 — Swift Core Analytics State — 2026-09-01
+
+Task 4 is complete. Commits `7c926a9`, `2f42976`, and `17d512e` add the strict
+analytics DTO/decoder with the actual allowlisted enums and enforce the 256 KiB
+input bound, exact timestamp round trips, canonical number strings, ordering,
+duplicate rejection, and control-character rejection. `RustBridge` owns each
+analytics pointer exactly once; the repository is detached from production
+sources, and the actor provides one in-flight operation with cancellation
+isolation plus fresh, stale, and unavailable states.
+
+Verification recorded for the completed task:
+
+- `make swift-test` Analytics suites: 259 tests in 11 suites passed.
+- Spec and quality reviews: approved.
+- Worktree status: clean.
+
+The next continuation point is Task 5 Analytics window. The v0.2.1 native
 acceptance caveats remain unchanged. No push, tag, or release was performed or
 authorized.
 
