@@ -372,8 +372,13 @@ match = document.match(/^## v0.2.2 Public Release Preparation — 2026-09-01\n(.
 abort 'documentation contract: missing v0.2.2 public release preparation section' unless match
 
 section = match[1].gsub(/\s+/, ' ').strip
-required_fact = 'This records preparation only: no v0.2.2 tag, GitHub Release, public download, or public notarization claim has been made.'
-abort "documentation contract: preparation is missing #{required_fact.inspect}" unless section.include?(required_fact)
+required_facts = [
+  'This records preparation only: no v0.2.2 tag, GitHub Release, public download, or public notarization claim has been made.',
+  'adds the reviewed future-download copy'
+]
+required_facts.each do |fact|
+  abort "documentation contract: preparation is missing #{fact.inspect}" unless section.include?(fact)
+end
 RUBY
 }
 
@@ -392,8 +397,6 @@ published_state_contract_is_valid() {
 
   grep -F '[Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)' "$readme_file" >/dev/null ||
     { echo 'documentation contract: README missing exact v0.2.2 download link' >&2; return 1; }
-  grep -F 'Developer ID-signed and notarized' "$readme_file" >/dev/null ||
-    { echo 'documentation contract: README missing Developer ID signing/notarization fact' >&2; return 1; }
   grep -F 'ad-hoc signed and is not a substitute' "$readme_file" >/dev/null ||
     { echo 'documentation contract: README missing ad-hoc package caveat' >&2; return 1; }
   grep -F 'Native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance still require external evidence; the local macOS 26 build is not that acceptance.' "$readme_file" >/dev/null ||
@@ -402,19 +405,55 @@ published_state_contract_is_valid() {
     { echo 'documentation contract: README missing Cursor privacy boundary' >&2; return 1; }
 
   if grep -Fx '## v0.2.2 Public Release Record — 2026-09-01' "$status_file" >/dev/null; then
+    if grep -F 'The future public artifact will be Developer ID-signed and notarized.' "$readme_file" >/dev/null; then
+      echo 'documentation contract: post-public README contains future signing wording' >&2
+      return 1
+    fi
+    grep -F 'The public artifact is Developer ID-signed and notarized.' "$readme_file" >/dev/null ||
+      { echo 'documentation contract: README missing public signing wording' >&2; return 1; }
     if grep -F 'Needlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.' "$readme_file" >/dev/null; then
       echo 'documentation contract: post-public README contains preparation availability claim' >&2
       return 1
     fi
     grep -F 'Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.' "$readme_file" >/dev/null ||
       { echo 'documentation contract: README missing published availability statement' >&2; return 1; }
+    if grep -Fx '## v0.2.2 local repository analytics (prepared for public release)' "$readme_file" >/dev/null; then
+      echo 'documentation contract: post-public README contains prepared analytics heading' >&2
+      return 1
+    fi
+    if grep -F 'The feature is prepared for public release and remains local-only; no analytics history is retained after the in-memory state is discarded.' "$readme_file" >/dev/null; then
+      echo 'documentation contract: post-public README contains prepared analytics copy' >&2
+      return 1
+    fi
+    grep -Fx '## v0.2.2 local repository analytics' "$readme_file" >/dev/null ||
+      { echo 'documentation contract: README missing public analytics heading' >&2; return 1; }
+    grep -F 'The feature is released and remains local-only; no analytics history is retained after the in-memory state is discarded.' "$readme_file" >/dev/null ||
+      { echo 'documentation contract: README missing public analytics copy' >&2; return 1; }
   else
+    if grep -F 'The public artifact is Developer ID-signed and notarized' "$readme_file" >/dev/null; then
+      echo 'documentation contract: pre-public README contains present public signing wording' >&2
+      return 1
+    fi
+    grep -F 'The future public artifact will be Developer ID-signed and notarized.' "$readme_file" >/dev/null ||
+      { echo 'documentation contract: README missing future signing wording' >&2; return 1; }
     if grep -F 'Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.' "$readme_file" >/dev/null; then
       echo 'documentation contract: pre-public README contains public availability claim' >&2
       return 1
     fi
     grep -F 'Needlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.' "$readme_file" >/dev/null ||
       { echo 'documentation contract: README missing prepared availability statement' >&2; return 1; }
+    if grep -Fx '## v0.2.2 local repository analytics' "$readme_file" >/dev/null; then
+      echo 'documentation contract: pre-public README contains public analytics heading' >&2
+      return 1
+    fi
+    if grep -F 'The feature is released and remains local-only; no analytics history is retained after the in-memory state is discarded.' "$readme_file" >/dev/null; then
+      echo 'documentation contract: pre-public README contains released analytics copy' >&2
+      return 1
+    fi
+    grep -Fx '## v0.2.2 local repository analytics (prepared for public release)' "$readme_file" >/dev/null ||
+      { echo 'documentation contract: README missing prepared analytics heading' >&2; return 1; }
+    grep -F 'The feature is prepared for public release and remains local-only; no analytics history is retained after the in-memory state is discarded.' "$readme_file" >/dev/null ||
+      { echo 'documentation contract: README missing prepared analytics copy' >&2; return 1; }
   fi
 
   release_preparation_status_contract_is_valid "$status_file"
@@ -436,6 +475,10 @@ test_documentation_contract() {
   local post_public_status="$temp_root/status-post-public-fixture.md"
   local phase_decoy_pre_public="$temp_root/readme-pre-public-wrongly-public.md"
   local phase_decoy_post_prepared="$temp_root/readme-post-public-still-prepared.md"
+  local phase_decoy_pre_public_signing="$temp_root/readme-pre-public-present-signing.md"
+  local phase_decoy_post_future_signing="$temp_root/readme-post-public-future-signing.md"
+  local phase_decoy_pre_public_analytics="$temp_root/readme-pre-public-released-analytics.md"
+  local phase_decoy_post_prepared_analytics="$temp_root/readme-post-public-prepared-analytics.md"
   local status_heading_mention="$temp_root/status-heading-mention.md"
   local decoy_readme_url="$temp_root/readme-wrong-release-url.md"
   local decoy_readme_cursor="$temp_root/readme-missing-cursor-sentence.md"
@@ -462,10 +505,14 @@ destination = ARGV.fetch(0)
 File.write(destination, <<~'MARKDOWN')
   Needlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.
   [Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)
-  Developer ID-signed and notarized.
+  The future public artifact will be Developer ID-signed and notarized.
   The local package is ad-hoc signed and is not a substitute for the public artifact.
   Native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance still require external evidence; the local macOS 26 build is not that acceptance.
   Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration.
+
+  ## v0.2.2 local repository analytics (prepared for public release)
+
+  The feature is prepared for public release and remains local-only; no analytics history is retained after the in-memory state is discarded.
 MARKDOWN
 RUBY
   ruby - "$published_readme" "$post_public_readme" <<'RUBY'
@@ -473,7 +520,16 @@ source, destination = ARGV
 document = File.read(source)
 prepared = 'Needlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.'
 public = 'Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.'
+future_signing = 'The future public artifact will be Developer ID-signed and notarized.'
+public_signing = 'The public artifact is Developer ID-signed and notarized.'
+prepared_heading = '## v0.2.2 local repository analytics (prepared for public release)'
+public_heading = '## v0.2.2 local repository analytics'
+prepared_copy = 'The feature is prepared for public release and remains local-only; no analytics history is retained after the in-memory state is discarded.'
+public_copy = 'The feature is released and remains local-only; no analytics history is retained after the in-memory state is discarded.'
 abort 'fixture setup: expected prepared availability statement was not found' unless document.sub!(prepared, public)
+abort 'fixture setup: expected future signing wording was not found' unless document.sub!(future_signing, public_signing)
+abort 'fixture setup: expected prepared analytics heading was not found' unless document.sub!(prepared_heading, public_heading)
+abort 'fixture setup: expected prepared analytics copy was not found' unless document.sub!(prepared_copy, public_copy)
 File.write(destination, document)
 RUBY
   ruby - "$published_status" <<'RUBY'
@@ -491,7 +547,7 @@ File.write(destination, <<~'MARKDOWN')
   ## v0.2.2 Public Release Preparation — 2026-09-01
 
   Release preparation updates the host and widget to version 0.2.2 (build 2),
-  adds the reviewed public-download copy, and prepares validated ZIP and checksum
+  adds the reviewed future-download copy, and prepares validated ZIP and checksum
   release artifacts. This records preparation only: no v0.2.2 tag, GitHub Release,
   public download, or public notarization claim has been made. The signed tagless RC
   run 33524771615 at `15c229f` and docs CI run 33526409582 remain pre-release
@@ -542,6 +598,72 @@ RUBY
   [[ "$decoy_rc" -ne 0 ]] || fail 'post-public prepared-claim decoy was accepted'
   [[ "$decoy_output" == *'post-public README contains preparation availability claim'* ]] ||
     fail 'post-public prepared-claim decoy failed for an unexpected reason'
+
+  ruby - "$published_readme" "$phase_decoy_pre_public_signing" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document << "\nThe public artifact is Developer ID-signed and notarized.\n"
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(published_state_contract_is_valid "$phase_decoy_pre_public_signing" "$published_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'pre-public signing decoy was accepted'
+  [[ "$decoy_output" == *'pre-public README contains present public signing wording'* ]] ||
+    fail 'pre-public signing decoy failed for an unexpected reason'
+
+  ruby - "$post_public_readme" "$phase_decoy_post_future_signing" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document << "\nThe future public artifact will be Developer ID-signed and notarized.\n"
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(published_state_contract_is_valid "$phase_decoy_post_future_signing" "$post_public_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'post-public signing decoy was accepted'
+  [[ "$decoy_output" == *'post-public README contains future signing wording'* ]] ||
+    fail 'post-public signing decoy failed for an unexpected reason'
+
+  ruby - "$published_readme" "$phase_decoy_pre_public_analytics" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document << <<~'MARKDOWN'
+
+  ## v0.2.2 local repository analytics
+
+  The feature is released and remains local-only; no analytics history is retained after the in-memory state is discarded.
+MARKDOWN
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(published_state_contract_is_valid "$phase_decoy_pre_public_analytics" "$published_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'pre-public analytics decoy was accepted'
+  [[ "$decoy_output" == *'pre-public README contains public analytics heading'* ]] ||
+    fail 'pre-public analytics decoy failed for an unexpected reason'
+
+  ruby - "$post_public_readme" "$phase_decoy_post_prepared_analytics" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document << <<~'MARKDOWN'
+
+  ## v0.2.2 local repository analytics (prepared for public release)
+
+  The feature is prepared for public release and remains local-only; no analytics history is retained after the in-memory state is discarded.
+MARKDOWN
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(published_state_contract_is_valid "$phase_decoy_post_prepared_analytics" "$post_public_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'post-public analytics decoy was accepted'
+  [[ "$decoy_output" == *'post-public README contains prepared analytics heading'* ]] ||
+    fail 'post-public analytics decoy failed for an unexpected reason'
 
   ruby - "$published_status" "$status_heading_mention" <<'RUBY'
 source, destination = ARGV
