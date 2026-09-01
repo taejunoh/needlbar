@@ -60,7 +60,7 @@ public struct AnalyticsBridgeDecoder: Sendable {
         let active = try integer(value["observedActiveTimeSeconds"])
         let models = try requiredArray(value, "providerModels").map(providerModel)
         guard models.count <= 256 else { throw AnalyticsDecodeSupport.fail([], "Too many provider model rows.") }
-        for pair in zip(models, models.dropFirst()) { guard (pair.0.provider, pair.0.model) <= (pair.1.provider, pair.1.model) else { throw AnalyticsDecodeSupport.fail([], "Provider models are not ordered.") } }
+        for pair in zip(models, models.dropFirst()) { guard (pair.0.provider, pair.0.model) < (pair.1.provider, pair.1.model) else { throw AnalyticsDecodeSupport.fail([], "Provider models are not uniquely ordered.") } }
         let commits = try requiredArray(value, "commits").map(commit)
         guard commits.count <= 200 else { throw AnalyticsDecodeSupport.fail([], "Too many commits.") }
         var ids = Set<String>()
@@ -134,14 +134,21 @@ public struct AnalyticsBridgeDecoder: Sendable {
     private func errors(_ raw: Any?) throws -> [AnalyticsBridgeError] {
         guard let values = array(raw) else { throw AnalyticsDecodeSupport.fail([], "Invalid errors.") }
         let result = try values.map { raw in let value = try object(raw); try keys(value, ["scope", "code"]); let scope = try requiredString(value, "scope"); let code = try requiredString(value, "code"); guard AnalyticsDecodeSupport.scopes.contains(scope), AnalyticsDecodeSupport.errorCodes.contains(code) else { throw AnalyticsDecodeSupport.fail([], "Unknown analytics error.") }; return AnalyticsBridgeError(scope: scope, code: code) }
-        for pair in zip(result, result.dropFirst()) { guard (pair.0.scope, pair.0.code) <= (pair.1.scope, pair.1.code) else { throw AnalyticsDecodeSupport.fail([], "Errors are not ordered.") } }
+        for pair in zip(result, result.dropFirst()) { guard (pair.0.scope, pair.0.code) < (pair.1.scope, pair.1.code) else { throw AnalyticsDecodeSupport.fail([], "Errors are not uniquely ordered.") } }
         return result
     }
 
     private func date(_ raw: Any?) throws -> Date {
         guard let value = raw as? String, value.range(of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$"#, options: .regularExpression) != nil else { throw AnalyticsDecodeSupport.fail([], "Expected UTC millisecond timestamp.") }
-        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        guard let parsed = formatter.date(from: value) else { throw AnalyticsDecodeSupport.fail([], "Invalid timestamp.") }; return parsed
+        let parser = ISO8601DateFormatter(); parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; parser.timeZone = TimeZone(secondsFromGMT: 0)
+        guard let parsed = parser.date(from: value) else { throw AnalyticsDecodeSupport.fail([], "Invalid timestamp.") }
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+        guard formatter.string(from: parsed) == value else { throw AnalyticsDecodeSupport.fail([], "Timestamp is not a valid UTC millisecond instant.") }
+        return parsed
     }
     private func keys(_ value: [String: Any], _ allowed: Set<String>) throws { guard Set(value.keys) == allowed else { throw AnalyticsDecodeSupport.fail([], "Unknown or missing analytics field.") } }
     private func keys(_ value: [String: Any], _ allowed: [String]) throws { try keys(value, Set(allowed)) }

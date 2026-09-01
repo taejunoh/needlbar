@@ -38,6 +38,12 @@ private let minimalRepositoryFixture = """
 private let repositoryOneJSON = "{\"repositoryID\":\"r00000001\",\"label\":\"one\",\"state\":\"available\",\"usage\":{\"inputTokens\":\"0\",\"outputTokens\":\"0\",\"cacheReadTokens\":\"0\",\"cacheWriteTokens\":\"0\",\"reasoningTokens\":\"0\",\"totalTokens\":\"0\",\"estimatedCostUSD\":\"2\"},\"observedActiveTimeSeconds\":\"0\",\"providerModels\":[],\"commits\":[],\"coverage\":{\"assignedFragments\":0,\"unassignedFragments\":0,\"timingPartial\":false,\"reasons\":{}}}"
 private let repositoryTwoJSON = "{\"repositoryID\":\"r00000002\",\"label\":\"two\",\"state\":\"available\",\"usage\":{\"inputTokens\":\"0\",\"outputTokens\":\"0\",\"cacheReadTokens\":\"0\",\"cacheWriteTokens\":\"0\",\"reasoningTokens\":\"0\",\"totalTokens\":\"0\",\"estimatedCostUSD\":\"1\"},\"observedActiveTimeSeconds\":\"0\",\"providerModels\":[],\"commits\":[],\"coverage\":{\"assignedFragments\":0,\"unassignedFragments\":0,\"timingPartial\":false,\"reasons\":{}}}"
 private let correlatedCommitJSON = "{\"commitID\":\"abcdef012345\",\"committedAt\":\"2026-09-01T10:00:00.000Z\",\"correlatedUsage\":{\"inputTokens\":\"0\",\"outputTokens\":\"0\",\"cacheReadTokens\":\"0\",\"cacheWriteTokens\":\"0\",\"reasoningTokens\":\"0\",\"totalTokens\":\"0\",\"estimatedCostUSD\":\"0\"},\"pullRequestNumber\":null,\"coverage\":\"correlated\"}"
+private let providerModelJSON = "{\"provider\":\"claude\",\"model\":\"claude-3-5-sonnet\",\"usage\":{\"inputTokens\":\"0\",\"outputTokens\":\"0\",\"cacheReadTokens\":\"0\",\"cacheWriteTokens\":\"0\",\"reasoningTokens\":\"0\",\"totalTokens\":\"0\",\"estimatedCostUSD\":\"0\"},\"costPer1KTokens\":null,\"tokensPerObservedActiveHour\":null,\"millisecondsPer1KTokens\":null,\"costCoverage\":\"complete\",\"timingCoverage\":\"missingDuration\"}"
+
+private func replaceFirst(_ source: String, _ needle: String, _ replacement: String) -> String {
+    guard let range = source.range(of: needle) else { return source }
+    return source.replacingCharacters(in: range, with: replacement)
+}
 
 private final class AnalyticsFreeRecorder: @unchecked Sendable {
     private let lock = NSLock(); private(set) var count = 0
@@ -140,6 +146,27 @@ private final class AnalyticsRawPointer: @unchecked Sendable {
     #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(reversed)) }
     let duplicate = minimalRepositoryFixture.replacingOccurrences(of: "\"commits\":[]", with: "\"commits\":[\(correlatedCommitJSON),\(correlatedCommitJSON)]")
     #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(duplicate)) }
+}
+
+@Test func acceptsValidGregorianLeapDateAndRejectsNormalizedOrImpossibleUTCDate() throws {
+    let leap = minimalAnalyticsFixture
+        .replacingOccurrences(of: "2026-09-01T12:00:00.000Z", with: "2028-02-29T12:00:00.000Z")
+        .replacingOccurrences(of: "2026-08-02T12:00:00.000Z", with: "2028-01-30T12:00:00.000Z")
+    _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(leap))
+    for invalid in ["2026-02-29T12:00:00.000Z", "2026-09-01T24:00:00.000Z", "2026-13-01T12:00:00.000Z", "2026-09-00T12:00:00.000Z", "2026-09-32T12:00:00.000Z"] {
+        let changed = minimalAnalyticsFixture.replacingOccurrences(of: "2026-09-01T12:00:00.000Z", with: invalid)
+        #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(changed)) }
+    }
+    let invalidCommit = analyticsFixture.replacingOccurrences(of: "2026-09-01T10:00:00.000Z", with: "2026-02-29T10:00:00.000Z")
+    #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(invalidCommit)) }
+}
+
+@Test func rejectsDuplicateProviderModelAndErrorRows() {
+    let duplicateModels = minimalRepositoryFixture.replacingOccurrences(of: "\"providerModels\":[]", with: "\"providerModels\":[\(providerModelJSON),\(providerModelJSON)]")
+    #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(duplicateModels)) }
+    let duplicateError = "{\"scope\":\"analytics\",\"code\":\"internalError\"}"
+    let duplicateErrors = replaceFirst(minimalAnalyticsFixture, "\"errors\":[]", "\"errors\":[\(duplicateError),\(duplicateError)]")
+    #expect(throws: Error.self) { _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(duplicateErrors)) }
 }
 
 @Test func rejectsControlLabelAndOversizedDocument() {
