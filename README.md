@@ -2,11 +2,11 @@
 
 Needlbar is a native macOS menu-bar monitor for Claude Code, Codex, and Cursor. It presents locally aggregated token usage and estimated cost together with provider quota windows and reset times.
 
-Needlbar v0.1 is local-first. It requires no Needlbar account, backend, hosted sync, or telemetry. Usage and quota are independent refresh streams, so a usable last-known-good value can remain visible when the other stream is unavailable.
+Needlbar is local-first. It requires no Needlbar account, backend, hosted sync, or telemetry. Usage and quota are independent refresh streams, so a usable last-known-good value can remain visible when the other stream is unavailable.
 
 ## Availability
 
-Needlbar v0.1 is currently unreleased. No public GitHub Release or notarized download is available yet. The source tree can be built and tested locally, and `make package` creates a local Apple Silicon bundle for evaluation. That pre-release bundle is ad-hoc signed and is not a substitute for the future Developer ID-signed, notarized release.
+Needlbar is currently unreleased. The current source includes the completed v0.2.2 local repository analytics implementation and the unreleased v0.2.1 widgets/notifications implementation; native signed macOS 14 acceptance for v0.2.1 remains pending. No public GitHub Release or notarized download is available yet. The source tree can be built and tested locally, and `make package` creates a local Apple Silicon bundle for evaluation. That pre-release bundle is ad-hoc signed and is not a substitute for the future Developer ID-signed, notarized release.
 
 Maintainer-only release validation is performed through a protected, tagless GitHub Actions workflow. It can sign, notarize, staple, and validate a workflow artifact without creating a public release; it does not make a release available for download. Creating a version tag or public GitHub Release requires separate explicit authorization.
 
@@ -47,28 +47,36 @@ This branch contains the widget and notification implementation and automated pa
 
 ## v0.2.2 local repository analytics (unreleased)
 
-The **Analytics…** window is a manual, on-demand view over the last 30 days of
-automatically observed local Claude, Codex, and Cursor workspaces. It reports
-repository and provider/model totals, estimated cost, coverage, and
-**observed active AI-session time**. That timing is derived from local session
-timestamps and is not human coding time, keyboard time, or a productivity
-measure.
+Open **Overview → Analytics…** for a manual, on-demand view over the fixed,
+closed 30-day interval ending at that analysis's capture time. It uses only
+automatically observed local Claude, Codex, and Cursor workspaces: there is no
+startup scan, timer, watcher, or background refresh. The view reports repository
+totals, provider/model breakdowns, local commit rows, optional local PR-number
+metadata, estimated cost, coverage, and **observed active AI-session time**.
+That timing is derived from local session timestamps and is not human coding
+time, keyboard time, elapsed wall time, or a productivity measure.
 
 Analytics reads local Git metadata only for an observed workspace. It uses a
 four-hour local commit-correlation window and may show a PR number only when a
 local commit message contains one unambiguous marker such as `(#42)`; this is a
 deterministic local time-window association, not causal attribution or measured
-commit cost, and is best-effort local metadata rather than pull-request or forge
-integration. The analysis has no remote Git command, forge API, provider
-authentication, network request, backend, database, export-field, widget, or
-notification change. Pricing uses
-the existing cached/local cost basis and labels partial coverage when evidence
-is missing.
+commit cost, and is best-effort local metadata. There is no remote PR or forge
+integration. Estimated cost uses the existing cached/local cost basis; it is
+not an invoice or subscription charge. Missing workspace, timestamp, pricing,
+duration, provider, repository, or Git evidence remains visible as partial
+coverage or Unattributed data rather than being converted to zero.
+
+The analysis is local-only: it makes no remote Git command, forge API call,
+provider authentication, network request, backend, or database access. The
+v0.2.0 export schema and v0.2.1 widget/notification behavior are unchanged;
+Analytics data is not added to exports or sent to widgets or notifications.
 
 To use it, click the menu-bar Overview, choose **Analytics…**, then choose
 **Refresh** in the Analytics window. The feature is unreleased and remains
 local-only; no analytics history is retained after the in-memory state is
-discarded.
+discarded. A later failed refresh can leave the last successful in-memory
+snapshot marked stale, while an analysis with no successful result is
+Unavailable.
 
 ## Provider authentication and recovery
 
