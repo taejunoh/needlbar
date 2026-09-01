@@ -367,13 +367,9 @@ fn invalid_numbers_models_and_task_one_partial_flags_are_folded_safely() {
         )),
     ]);
     let payload = build_analytics_payload(source, time("2026-09-01T20:00:00Z"), &git);
-    assert_eq!(payload.repositories[0].usage.input_tokens, "0");
-    assert_eq!(payload.repositories[0].usage.estimated_cost_usd, "1.23");
-    assert_eq!(
-        payload.repositories[0].provider_models[0].model,
-        "Other model"
-    );
-    assert_eq!(payload.repositories[0].commits[0].commit_id, "abcdefabcdef");
+    assert!(payload.repositories.is_empty());
+    assert_eq!(payload.unattributed.usage.input_tokens, "10");
+    assert_eq!(payload.unattributed.reasons["missingCost"], 1);
     assert_eq!(payload.coverage.reasons["recordLimitReached"], 1);
     assert_eq!(payload.coverage.reasons["missingDuration"], 1);
     assert_eq!(payload.unattributed.reasons["missingWorkspace"], 1);

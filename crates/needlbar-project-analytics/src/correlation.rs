@@ -62,12 +62,23 @@ pub(crate) fn build(
     let mut unattributed = MutableBucket::default();
     let mut coverage = AnalyticsCoverage::default();
     let mut errors = BTreeSet::new();
-    if report.record_limit_reached {
+    let overflow = report
+        .overflowed_fragment_observations
+        .saturating_add(report.overflowed_model_observations)
+        .saturating_add(u64::from(report.record_limit_reached));
+    for _ in 0..overflow {
         bump(&mut coverage.reasons, "recordLimitReached");
+        unattributed.reason("recordLimitReached");
+    }
+    if overflow > 0 {
         errors.insert(error("analytics", "recordLimitReached"));
     }
-    if report.timing_coverage_partial {
+    for _ in 0..report
+        .overflowed_timing_observations
+        .saturating_add(u64::from(report.timing_coverage_partial))
+    {
         bump(&mut coverage.reasons, "missingDuration");
+        unattributed.reason("missingDuration");
     }
     let mut mapped = Vec::new();
     for fragment in report.fragments {
@@ -83,12 +94,14 @@ pub(crate) fn build(
             continue;
         }
         if !valid_fragment(&fragment, start, generated_at) {
-            let reason =
-                if !fragment.estimated_cost_usd.is_finite() || fragment.estimated_cost_usd < 0.0 {
-                    "missingCost"
-                } else {
-                    "missingTimestamp"
-                };
+            let reason = if !fragment.estimated_cost_usd.is_finite()
+                || fragment.estimated_cost_usd < 0.0
+                || !nonnegative_tokens(&fragment.tokens)
+            {
+                "missingCost"
+            } else {
+                "missingTimestamp"
+            };
             unattributed.add(&fragment, reason);
             coverage.unattributed_fragments += 1;
             bump(&mut coverage.reasons, reason);
@@ -200,6 +213,14 @@ fn valid_fragment(f: &WorkspaceSessionFragment, start: DateTime<Utc>, end: DateT
             .is_some_and(|time| time >= start && time <= end)
         && f.estimated_cost_usd.is_finite()
         && f.estimated_cost_usd >= 0.0
+        && nonnegative_tokens(&f.tokens)
+}
+fn nonnegative_tokens(tokens: &tokscale_core::TokenBreakdown) -> bool {
+    tokens.input >= 0
+        && tokens.output >= 0
+        && tokens.cache_read >= 0
+        && tokens.cache_write >= 0
+        && tokens.reasoning >= 0
 }
 fn root_contains(root: &str, workspace: &str) -> bool {
     workspace == root
@@ -234,6 +255,7 @@ fn git_code(error: &GitRunnerError) -> &'static str {
         GitRunnerError::TimedOut => "gitTimedOut",
         GitRunnerError::OutputLimitReached => "gitOutputLimitReached",
         GitRunnerError::RecordLimitReached => "recordLimitReached",
+        GitRunnerError::CleanupFailed => "gitUnavailable",
         GitRunnerError::NotRepository => "nonRepositoryWorkspace",
         GitRunnerError::Unavailable => "gitUnavailable",
     }
@@ -419,17 +441,26 @@ fn parse_commits(output: &GitOutput) -> Result<(Vec<RawCommit>, bool), &'static 
     if output.stdout.len() > MAX_STDOUT_BYTES || output.stderr.len() > MAX_STDERR_BYTES {
         return Err("gitOutputLimitReached");
     }
-    let fields = output.stdout.split(|b| *b == 0).collect::<Vec<_>>();
+    let mut fields = output.stdout.split(|b| *b == 0).collect::<Vec<_>>();
+    if fields.last().is_some_and(|field| field.is_empty()) {
+        fields.pop();
+    }
+    if fields.is_empty() {
+        return Ok((Vec::new(), false));
+    }
+    if fields.len() % 3 != 0 {
+        return Err("repositoryUnavailable");
+    }
     let mut parsed = Vec::new();
     let mut ids = BTreeSet::new();
-    for chunk in fields.chunks(3) {
-        if chunk.len() < 3 || chunk[0].is_empty() {
-            continue;
+    for chunk in fields.chunks_exact(3) {
+        if chunk[0].is_empty() || chunk[1].is_empty() || chunk[2].len() > 8192 {
+            return Err("repositoryUnavailable");
         }
         let oid = std::str::from_utf8(chunk[0])
             .map_err(|_| "repositoryUnavailable")?
             .to_ascii_lowercase();
-        if !(40..=128).contains(&oid.len())
+        if oid.len() != 40
             || !oid.bytes().all(|b| b.is_ascii_hexdigit())
             || !ids.insert(oid.clone())
         {
@@ -445,7 +476,7 @@ fn parse_commits(output: &GitOutput) -> Result<(Vec<RawCommit>, bool), &'static 
             committed_at,
             pr: parse_pr(message),
         });
-        if parsed.len() > MAX_PARSED_COMMITS {
+        if parsed.len() == MAX_PARSED_COMMITS + 1 {
             parsed.truncate(MAX_PARSED_COMMITS);
             return Ok((parsed, true));
         }

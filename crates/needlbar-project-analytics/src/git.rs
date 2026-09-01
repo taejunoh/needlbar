@@ -1,7 +1,10 @@
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio as ProcessStdio};
-use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex,
+};
 use std::thread;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -36,11 +39,14 @@ pub enum GitRunnerError {
     OutputLimitReached,
     #[error("git record limit reached")]
     RecordLimitReached,
+    #[error("git child cleanup failed")]
+    CleanupFailed,
 }
 
 #[derive(Default)]
 pub struct BoundedGitRunner {
     budget_started: Mutex<Option<Instant>>,
+    poisoned: AtomicBool,
     #[cfg(test)]
     test_executable: Option<PathBuf>,
 }
@@ -49,6 +55,7 @@ impl BoundedGitRunner {
     fn with_test_executable(executable: PathBuf) -> Self {
         Self {
             budget_started: Mutex::new(None),
+            poisoned: AtomicBool::new(false),
             test_executable: Some(executable),
         }
     }
@@ -66,6 +73,9 @@ impl BoundedGitRunner {
 }
 impl GitRunner for BoundedGitRunner {
     fn run(&self, request: GitRequest) -> Result<GitOutput, GitRunnerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(GitRunnerError::CleanupFailed);
+        }
         let remaining = self.remaining_budget()?;
         let discovery = matches!(&request, GitRequest::DiscoverRepository { .. });
         let (directory, arguments): (PathBuf, Vec<String>) = match request {
@@ -85,7 +95,7 @@ impl GitRunner for BoundedGitRunner {
                     "--no-color".into(),
                     "--no-decorate".into(),
                     "--no-show-signature".into(),
-                    "--format=%H%x00%cI%x00%B".into(),
+                    "--format=%H%x00%cI%x00%s".into(),
                     "-z".into(),
                     "--max-count=500".into(),
                 ],
@@ -121,21 +131,28 @@ impl GitRunner for BoundedGitRunner {
             .env("GIT_CONFIG_KEY_0", "core.hooksPath")
             .env("GIT_CONFIG_VALUE_0", "/dev/null");
         let mut child = command.spawn().map_err(|_| GitRunnerError::Unavailable)?;
-        let out = child.stdout.take().ok_or(GitRunnerError::Unavailable)?;
-        let err = child.stderr.take().ok_or(GitRunnerError::Unavailable)?;
+        let Some(out) = child.stdout.take() else {
+            return self.cleanup_failure(&mut child, None, None);
+        };
+        let Some(err) = child.stderr.take() else {
+            return self.cleanup_failure(&mut child, None, None);
+        };
         let stdout = spawn_reader(out, MAX_STDOUT_BYTES);
         let stderr = spawn_reader(err, MAX_STDERR_BYTES);
         let deadline = Instant::now() + PROCESS_TIMEOUT.min(remaining);
         let status = loop {
-            if let Some(status) = child.try_wait().map_err(|_| GitRunnerError::Unavailable)? {
-                break status;
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {}
+                Err(_) => return self.cleanup_failure(&mut child, Some(stdout), Some(stderr)),
             }
             if Instant::now() >= deadline {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = stdout.join();
-                let _ = stderr.join();
-                return Err(GitRunnerError::TimedOut);
+                let cleaned = self.cleanup_failure(&mut child, Some(stdout), Some(stderr));
+                return if matches!(cleaned, Err(GitRunnerError::CleanupFailed)) {
+                    cleaned
+                } else {
+                    Err(GitRunnerError::TimedOut)
+                };
             }
             thread::sleep(Duration::from_millis(5));
         };
@@ -152,6 +169,24 @@ impl GitRunner for BoundedGitRunner {
             });
         }
         Ok(GitOutput { stdout, stderr })
+    }
+}
+impl BoundedGitRunner {
+    fn cleanup_failure(
+        &self,
+        child: &mut std::process::Child,
+        stdout: Option<thread::JoinHandle<(Vec<u8>, bool)>>,
+        stderr: Option<thread::JoinHandle<(Vec<u8>, bool)>>,
+    ) -> Result<GitOutput, GitRunnerError> {
+        let killed = child.kill().is_ok();
+        let waited = child.wait().is_ok();
+        let drained = stdout.map(|thread| thread.join().is_ok()).unwrap_or(true)
+            && stderr.map(|thread| thread.join().is_ok()).unwrap_or(true);
+        if !killed || !waited || !drained {
+            self.poisoned.store(true, Ordering::Release);
+            return Err(GitRunnerError::CleanupFailed);
+        }
+        Err(GitRunnerError::Unavailable)
     }
 }
 fn spawn_reader<R: Read + Send + 'static>(
@@ -197,6 +232,7 @@ mod tests {
     fn cumulative_budget_refuses_a_new_process_after_ten_seconds() {
         let runner = BoundedGitRunner {
             budget_started: Mutex::new(Some(Instant::now() - TOTAL_GIT_BUDGET)),
+            poisoned: AtomicBool::new(false),
             test_executable: None,
         };
         assert!(matches!(
