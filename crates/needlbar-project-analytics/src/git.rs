@@ -474,6 +474,36 @@ mod tests {
     }
 
     #[test]
+    fn exited_parent_pipe_cleanup_returns_timeout_and_runner_is_reusable() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("already-ran");
+        let child = directory.path().join("descendant-pid");
+        let script = format!(
+            "#!/bin/sh\nif [ -e '{}' ]; then\n  exit 0\nfi\ntouch '{}'\n/bin/sleep 30 &\necho $! > '{}'\nexit 0\n",
+            marker.display(),
+            marker.display(),
+            child.display(),
+        );
+        let (_fixture_directory, path) = executable(&script);
+        let runner = BoundedGitRunner::with_test_executable(path);
+        let started = Instant::now();
+        assert!(matches!(
+            runner.run(GitRequest::discover(std::env::temp_dir())),
+            Err(GitRunnerError::TimedOut)
+        ));
+        assert!(started.elapsed() < Duration::from_secs(3));
+        let pid = fs::read_to_string(child).unwrap();
+        assert!(!TestCommand::new("/bin/kill")
+            .args(["-0", pid.trim()])
+            .status()
+            .unwrap()
+            .success());
+        assert!(runner
+            .run(GitRequest::discover(std::env::temp_dir()))
+            .is_ok());
+    }
+
+    #[test]
     fn lifecycle_mutex_serializes_two_runs() {
         let count = tempfile::NamedTempFile::new().unwrap();
         let script = format!(

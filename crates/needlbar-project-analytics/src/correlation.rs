@@ -66,6 +66,7 @@ pub(crate) fn build(
     git: &dyn GitRunner,
 ) -> AnalyticsPayload {
     let start = generated_at - Duration::days(30);
+    let global_timing_partial = report.timing_coverage_partial;
     let mut unattributed = MutableBucket::default();
     let mut coverage = AnalyticsCoverage::default();
     let mut errors = BTreeSet::new();
@@ -170,6 +171,7 @@ pub(crate) fn build(
             fragments,
             BuildState {
                 generated_at,
+                global_timing_partial,
                 git,
                 unattributed: &mut unattributed,
                 coverage: &mut coverage,
@@ -271,6 +273,7 @@ fn scope_for(error: &GitRunnerError) -> &'static str {
 
 struct BuildState<'a> {
     generated_at: DateTime<Utc>,
+    global_timing_partial: bool,
     git: &'a dyn GitRunner,
     unattributed: &'a mut MutableBucket,
     coverage: &'a mut AnalyticsCoverage,
@@ -293,9 +296,10 @@ fn repository(
         add_models(&mut models, &value.fragment);
     }
     let mut repo_coverage = RepositoryCoverage {
-        timing_partial: fragments
-            .iter()
-            .any(|value| value.fragment.timing_coverage_partial),
+        timing_partial: state.global_timing_partial
+            || fragments
+                .iter()
+                .any(|value| value.fragment.timing_coverage_partial),
         ..Default::default()
     };
     if total.cost_partial {
@@ -371,7 +375,11 @@ fn repository(
                     committed_at: raw.committed_at,
                     correlated_usage: usage.dto(),
                     pull_request_number: raw.pr,
-                    coverage: "correlated".into(),
+                    coverage: if usage.cost_partial {
+                        "partial".into()
+                    } else {
+                        "correlated".into()
+                    },
                 })
             })
         })

@@ -498,3 +498,101 @@ fn finite_cost_totals_agree_across_repository_model_commit_and_input_order() {
         serde_json::to_string(&second).unwrap()
     );
 }
+
+#[test]
+fn tokens_per_observed_active_hour_uses_milliseconds_without_truncation() {
+    for (milliseconds, expected) in [(500, "72000"), (1500, "24000")] {
+        let mut source = report(fragment("/repos/a", "2026-09-01T10:00:00Z"));
+        source.fragments[0].active_time_ms = milliseconds;
+        let payload = build_analytics_payload(
+            source,
+            time("2026-09-01T20:00:00Z"),
+            &FakeGitRunner::new(vec![output("/repos/a\n"), output("")]),
+        );
+        assert_eq!(
+            payload.repositories[0].provider_models[0]
+                .tokens_per_observed_active_hour
+                .as_deref(),
+            Some(expected)
+        );
+    }
+}
+
+#[test]
+fn repository_timing_coverage_folds_global_and_fragment_partial_flags() {
+    for (global_partial, fragment_partial) in [(true, false), (false, true), (false, false)] {
+        let mut source = report(fragment("/repos/a", "2026-09-01T10:00:00Z"));
+        source.timing_coverage_partial = global_partial;
+        source.fragments[0].timing_coverage_partial = fragment_partial;
+        let payload = build_analytics_payload(
+            source,
+            time("2026-09-01T20:00:00Z"),
+            &FakeGitRunner::new(vec![output("/repos/a\n"), output("")]),
+        );
+        assert_eq!(
+            payload.repositories[0].coverage.timing_partial,
+            global_partial || fragment_partial
+        );
+    }
+}
+
+#[test]
+fn huge_finite_cost_order_retains_partial_subtotal_across_repository_model_and_commit() {
+    let build = |reverse: bool| {
+        let mut source = report(fragment("/repos/a", "2026-09-01T10:00:00Z"));
+        source.fragments[0].estimated_cost_usd = f64::MAX;
+        source.fragments[0].models[0].estimated_cost_usd = f64::MAX;
+        let mut next = fragment("/repos/a", "2026-09-01T11:00:00Z");
+        next.estimated_cost_usd = f64::MAX;
+        next.models[0].estimated_cost_usd = f64::MAX;
+        source.fragments.push(next);
+        if reverse {
+            source.fragments.reverse();
+        }
+        build_analytics_payload(
+            source,
+            time("2026-09-01T20:00:00Z"),
+            &FakeGitRunner::new(vec![
+                output("/repos/a\n"),
+                output("/repos/a\n"),
+                output(&commit(
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "2026-09-01T12:00:00Z",
+                    "",
+                )),
+            ]),
+        )
+    };
+    let first = build(false);
+    let second = build(true);
+    let repository = &first.repositories[0];
+    assert_eq!(repository.coverage.reasons["missingCost"], 1);
+    assert_eq!(repository.coverage.reasons.len(), 1);
+    assert_eq!(
+        first
+            .errors
+            .iter()
+            .filter(|error| error.scope == "repository" && error.code == "missingCost")
+            .count(),
+        1
+    );
+    assert_eq!(repository.provider_models[0].cost_coverage, "partial");
+    assert_eq!(repository.commits[0].coverage, "partial");
+    assert_ne!(repository.usage.estimated_cost_usd, "0");
+    assert!(!repository
+        .usage
+        .estimated_cost_usd
+        .contains(['e', 'E', '-']));
+    assert_eq!(
+        repository.usage.estimated_cost_usd,
+        repository.provider_models[0].usage.estimated_cost_usd
+    );
+    assert_eq!(
+        repository.usage.estimated_cost_usd,
+        repository.commits[0].correlated_usage.estimated_cost_usd
+    );
+    assert_eq!(
+        repository.usage.estimated_cost_usd,
+        second.repositories[0].usage.estimated_cost_usd
+    );
+}
