@@ -390,8 +390,6 @@ published_state_contract_is_valid() {
     return 1
   fi
 
-  grep -F 'Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.' "$readme_file" >/dev/null ||
-    { echo 'documentation contract: README missing published availability statement' >&2; return 1; }
   grep -F '[Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)' "$readme_file" >/dev/null ||
     { echo 'documentation contract: README missing exact v0.2.2 download link' >&2; return 1; }
   grep -F 'Developer ID-signed and notarized' "$readme_file" >/dev/null ||
@@ -402,6 +400,23 @@ published_state_contract_is_valid() {
     { echo 'documentation contract: README missing native macOS 14 acceptance caveat' >&2; return 1; }
   grep -F 'Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration.' "$readme_file" >/dev/null ||
     { echo 'documentation contract: README missing Cursor privacy boundary' >&2; return 1; }
+
+  if grep -Fx '## v0.2.2 Public Release Record — 2026-09-01' "$status_file" >/dev/null; then
+    if grep -F 'Needlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.' "$readme_file" >/dev/null; then
+      echo 'documentation contract: post-public README contains preparation availability claim' >&2
+      return 1
+    fi
+    grep -F 'Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.' "$readme_file" >/dev/null ||
+      { echo 'documentation contract: README missing published availability statement' >&2; return 1; }
+  else
+    if grep -F 'Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.' "$readme_file" >/dev/null; then
+      echo 'documentation contract: pre-public README contains public availability claim' >&2
+      return 1
+    fi
+    grep -F 'Needlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.' "$readme_file" >/dev/null ||
+      { echo 'documentation contract: README missing prepared availability statement' >&2; return 1; }
+  fi
+
   release_preparation_status_contract_is_valid "$status_file"
 }
 
@@ -415,8 +430,13 @@ assert_plist_value() {
 test_documentation_contract() {
   local readme_file="$ROOT/README.md"
   local status_file="$ROOT/docs/STATUS.md"
-  local published_readme="$temp_root/readme-published-fixture.md"
-  local published_status="$temp_root/status-published-fixture.md"
+  local published_readme="$temp_root/readme-pre-public-fixture.md"
+  local published_status="$temp_root/status-pre-public-fixture.md"
+  local post_public_readme="$temp_root/readme-post-public-fixture.md"
+  local post_public_status="$temp_root/status-post-public-fixture.md"
+  local phase_decoy_pre_public="$temp_root/readme-pre-public-wrongly-public.md"
+  local phase_decoy_post_prepared="$temp_root/readme-post-public-still-prepared.md"
+  local status_heading_mention="$temp_root/status-heading-mention.md"
   local decoy_readme_url="$temp_root/readme-wrong-release-url.md"
   local decoy_readme_cursor="$temp_root/readme-missing-cursor-sentence.md"
   local decoy_readme_native="$temp_root/readme-missing-native-caveat.md"
@@ -440,13 +460,21 @@ test_documentation_contract() {
   ruby - "$published_readme" <<'RUBY'
 destination = ARGV.fetch(0)
 File.write(destination, <<~'MARKDOWN')
-  Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.
+  Needlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.
   [Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)
   Developer ID-signed and notarized.
   The local package is ad-hoc signed and is not a substitute for the public artifact.
   Native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance still require external evidence; the local macOS 26 build is not that acceptance.
   Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration.
 MARKDOWN
+RUBY
+  ruby - "$published_readme" "$post_public_readme" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+prepared = 'Needlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.'
+public = 'Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.'
+abort 'fixture setup: expected prepared availability statement was not found' unless document.sub!(prepared, public)
+File.write(destination, document)
 RUBY
   ruby - "$published_status" <<'RUBY'
 destination = ARGV.fetch(0)
@@ -470,9 +498,59 @@ File.write(destination, <<~'MARKDOWN')
   evidence only; a later exact green `main` commit is required for public release.
 MARKDOWN
 RUBY
+  ruby - "$published_status" "$post_public_status" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document << <<~'MARKDOWN'
+
+  ## v0.2.2 Public Release Record — 2026-09-01
+
+  The public release record is selected only by this exact heading.
+MARKDOWN
+File.write(destination, document)
+RUBY
 
   published_state_contract_is_valid "$published_readme" "$published_status" ||
     fail 'published-state fixture is unexpectedly invalid'
+  published_state_contract_is_valid "$post_public_readme" "$post_public_status" ||
+    fail 'post-public-state fixture is unexpectedly invalid'
+
+  ruby - "$published_readme" "$phase_decoy_pre_public" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document << "\nNeedlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.\n"
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(published_state_contract_is_valid "$phase_decoy_pre_public" "$published_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'pre-public public-claim decoy was accepted'
+  [[ "$decoy_output" == *'pre-public README contains public availability claim'* ]] ||
+    fail 'pre-public public-claim decoy failed for an unexpected reason'
+
+  ruby - "$post_public_readme" "$phase_decoy_post_prepared" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document << "\nNeedlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.\n"
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(published_state_contract_is_valid "$phase_decoy_post_prepared" "$post_public_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'post-public prepared-claim decoy was accepted'
+  [[ "$decoy_output" == *'post-public README contains preparation availability claim'* ]] ||
+    fail 'post-public prepared-claim decoy failed for an unexpected reason'
+
+  ruby - "$published_status" "$status_heading_mention" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document << "\nThe prose mention `## v0.2.2 Public Release Record — 2026-09-01` is not an exact heading.\n"
+File.write(destination, document)
+RUBY
+  published_state_contract_is_valid "$published_readme" "$status_heading_mention" ||
+    fail 'non-heading Public Release Record mention changed the pre-public phase'
 
   ruby - "$published_readme" "$decoy_readme_unreleased" <<'RUBY'
 source, destination = ARGV
