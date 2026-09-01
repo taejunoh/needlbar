@@ -292,7 +292,16 @@ fn repository(
         active_ms = active_ms.saturating_add(value.fragment.active_time_ms.max(0));
         add_models(&mut models, &value.fragment);
     }
-    let mut repo_coverage = RepositoryCoverage::default();
+    let mut repo_coverage = RepositoryCoverage {
+        timing_partial: fragments
+            .iter()
+            .any(|value| value.fragment.timing_coverage_partial),
+        ..Default::default()
+    };
+    if total.cost_partial {
+        bump(&mut repo_coverage.reasons, "missingCost");
+        state.errors.insert(error("repository", "missingCost"));
+    }
     let (repository_state, mut parsed) = match state.git.run(GitRequest::commits(root.into())) {
         Ok(output) => match parse_commits(&output) {
             Ok((items, record_cap)) => {
@@ -383,8 +392,8 @@ fn repository(
                 .then(|| nonzero_ratio(values.total.cost * 1000.0, values.total.tokens.total()))
                 .flatten(),
             tokens_per_observed_active_hour: nonzero_ratio(
-                values.total.tokens.total() as f64 * 3600.0,
-                values.active_ms / 1000,
+                values.total.tokens.total() as f64 * 3_600_000.0,
+                values.active_ms,
             ),
             milliseconds_per_1k_tokens: nonzero_ratio(
                 values.timed_duration_ms as f64 * 1000.0,
@@ -434,6 +443,9 @@ fn add_models(target: &mut BTreeMap<(String, String), ModelTotal>, f: &Workspace
             .saturating_add(entry.timed_duration_ms.max(0));
         item.timed_tokens = item.timed_tokens.saturating_add(entry.timed_tokens.max(0));
         item.cost_coverage = fold_coverage(&item.cost_coverage, entry.cost_coverage);
+        if item.total.cost_partial {
+            item.cost_coverage = "partial".into();
+        }
         item.timing_partial |= f.timing_coverage_partial || entry.timed_tokens <= 0;
     }
 }

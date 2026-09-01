@@ -5,6 +5,7 @@ use tokscale_core::TokenBreakdown;
 pub(crate) struct Totals {
     pub tokens: TokenBreakdown,
     pub cost: f64,
+    pub cost_partial: bool,
 }
 
 impl Totals {
@@ -30,6 +31,8 @@ impl Totals {
             let candidate = self.cost + cost;
             if candidate.is_finite() {
                 self.cost = candidate;
+            } else {
+                self.cost_partial = true;
             }
         }
     }

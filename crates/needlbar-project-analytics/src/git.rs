@@ -221,9 +221,11 @@ impl GitRunner for BoundedGitRunner {
                 unsafe {
                     libc::kill(-process_group, libc::SIGKILL);
                 }
-                let _ = child.wait();
-                let _ = stdout.join();
-                let _ = stderr.join();
+                let waited = child.wait().is_ok();
+                let drained = stdout.join().is_ok() && stderr.join().is_ok();
+                if waited && drained {
+                    return Err(GitRunnerError::TimedOut);
+                }
                 self.poisoned.store(true, Ordering::Release);
                 return Err(GitRunnerError::CleanupFailed);
             }
@@ -251,7 +253,7 @@ impl BoundedGitRunner {
         stdout: Option<thread::JoinHandle<(Vec<u8>, bool)>>,
         stderr: Option<thread::JoinHandle<(Vec<u8>, bool)>>,
     ) -> Result<GitOutput, GitRunnerError> {
-        let killed = child.kill().is_ok();
+        let killed = child.kill().is_ok() || child.try_wait().ok().flatten().is_some();
         let waited = child.wait().is_ok();
         let drained = stdout.map(|thread| thread.join().is_ok()).unwrap_or(true)
             && stderr.map(|thread| thread.join().is_ok()).unwrap_or(true);
