@@ -381,6 +381,15 @@ published_state_contract_is_valid() {
   local readme_file="$1"
   local status_file="$2"
 
+  if grep -F 'Needlbar is currently unreleased.' "$readme_file" >/dev/null; then
+    echo 'documentation contract: README contains stale unreleased availability claim' >&2
+    return 1
+  fi
+  if grep -F 'No public GitHub Release or notarized download is available yet.' "$readme_file" >/dev/null; then
+    echo 'documentation contract: README contains stale no-public-download claim' >&2
+    return 1
+  fi
+
   grep -F 'Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.' "$readme_file" >/dev/null ||
     { echo 'documentation contract: README missing published availability statement' >&2; return 1; }
   grep -F '[Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)' "$readme_file" >/dev/null ||
@@ -411,6 +420,8 @@ test_documentation_contract() {
   local decoy_readme_url="$temp_root/readme-wrong-release-url.md"
   local decoy_readme_cursor="$temp_root/readme-missing-cursor-sentence.md"
   local decoy_readme_native="$temp_root/readme-missing-native-caveat.md"
+  local decoy_readme_unreleased="$temp_root/readme-stale-unreleased-claim.md"
+  local decoy_readme_no_download="$temp_root/readme-stale-no-download-claim.md"
   local decoy_status="$temp_root/status-release-preparation-decoy.md"
   local decoy_output decoy_rc
 
@@ -426,21 +437,28 @@ test_documentation_contract() {
   grep -F 'no tag or release action is authorized' "$status_file" >/dev/null ||
     fail 'STATUS must state that no tag or release action is authorized'
 
-  ruby - "$readme_file" "$published_readme" <<'RUBY'
-source, destination = ARGV
-document = File.read(source)
-document << <<~MARKDOWN
-
+  ruby - "$published_readme" <<'RUBY'
+destination = ARGV.fetch(0)
+File.write(destination, <<~'MARKDOWN')
   Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.
   [Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)
-  Developer ID-signed and notarized
+  Developer ID-signed and notarized.
+  The local package is ad-hoc signed and is not a substitute for the public artifact.
+  Native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance still require external evidence; the local macOS 26 build is not that acceptance.
+  Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration.
 MARKDOWN
-File.write(destination, document)
 RUBY
-  ruby - "$status_file" "$published_status" <<'RUBY'
-source, destination = ARGV
-document = File.read(source)
-document << <<~MARKDOWN
+  ruby - "$published_status" <<'RUBY'
+destination = ARGV.fetch(0)
+File.write(destination, <<~'MARKDOWN')
+  ## Release Validation Continuation — 2026-08-27
+
+  The reusable fake-tested `scripts/notarize-app.sh` and split `.github/workflows/release.yml` validate/publish workflow are implemented.
+  Manual dispatch is tagless and produces only an Actions artifact
+  `validate` is read-only, while `publish` is write-enabled only for future `v*` push tags
+  This implementation did not configure or read a protected GitHub Environment secret.
+  No real notarization, stapling, Gatekeeper acceptance, merge to `main`, tag, public GitHub Release, or distribution is claimed here.
+  The next gate is merge to `main`, authorized protected Environment setup outside chat, then tagless manual validation.
 
   ## v0.2.2 Public Release Preparation — 2026-09-01
 
@@ -451,11 +469,38 @@ document << <<~MARKDOWN
   run 33524771615 at `15c229f` and docs CI run 33526409582 remain pre-release
   evidence only; a later exact green `main` commit is required for public release.
 MARKDOWN
-File.write(destination, document)
 RUBY
 
   published_state_contract_is_valid "$published_readme" "$published_status" ||
     fail 'published-state fixture is unexpectedly invalid'
+
+  ruby - "$published_readme" "$decoy_readme_unreleased" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document << "\nNeedlbar is currently unreleased.\n"
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(published_state_contract_is_valid "$decoy_readme_unreleased" "$published_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'README stale-unreleased decoy was accepted'
+  [[ "$decoy_output" == *'README contains stale unreleased availability claim'* ]] ||
+    fail 'README stale-unreleased decoy failed for an unexpected reason'
+
+  ruby - "$published_readme" "$decoy_readme_no_download" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document << "\nNo public GitHub Release or notarized download is available yet.\n"
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(published_state_contract_is_valid "$decoy_readme_no_download" "$published_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'README stale-no-download decoy was accepted'
+  [[ "$decoy_output" == *'README contains stale no-public-download claim'* ]] ||
+    fail 'README stale-no-download decoy failed for an unexpected reason'
 
   ruby - "$published_readme" "$decoy_readme_url" <<'RUBY'
 source, destination = ARGV
