@@ -14,7 +14,7 @@ pub const MAX_STDERR_BYTES: usize = 8 * 1024;
 pub const PROCESS_TIMEOUT: Duration = Duration::from_secs(2);
 pub const TOTAL_GIT_BUDGET: Duration = Duration::from_secs(10);
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GitRequest {
     kind: GitRequestKind,
     path: PathBuf,
@@ -41,7 +41,15 @@ impl GitRequest {
         }
     }
 }
-#[derive(Debug, Clone)]
+impl std::fmt::Debug for GitRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("GitRequest")
+            .field("kind", &self.kind)
+            .finish()
+    }
+}
+#[derive(Clone)]
 pub struct GitOutput {
     pub(crate) stdout: Vec<u8>,
     pub(crate) stderr: Vec<u8>,
@@ -49,6 +57,15 @@ pub struct GitOutput {
 impl GitOutput {
     pub fn new(stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
         Self { stdout, stderr }
+    }
+}
+impl std::fmt::Debug for GitOutput {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("GitOutput")
+            .field("stdoutBytes", &self.stdout.len())
+            .field("stderrBytes", &self.stderr.len())
+            .finish()
     }
 }
 pub trait GitRunner: Send + Sync {
@@ -266,6 +283,29 @@ mod tests {
         assert_eq!(MAX_STDERR_BYTES, 8 * 1024);
         assert_eq!(PROCESS_TIMEOUT, Duration::from_secs(2));
         assert_eq!(TOTAL_GIT_BUDGET, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn debug_output_never_exposes_request_paths_or_raw_command_bytes() {
+        let request = GitRequest::discover(PathBuf::from("/private/debug-path-canary"));
+        let output = GitOutput::new(
+            b"stdout-debug-canary".to_vec(),
+            b"stderr-debug-canary".to_vec(),
+        );
+        for text in [
+            format!("{request:?}"),
+            format!("{output:?}"),
+            format!("{:?}", GitRunnerError::Unavailable),
+            GitRunnerError::Unavailable.to_string(),
+        ] {
+            for forbidden in [
+                "/private/debug-path-canary",
+                "stdout-debug-canary",
+                "stderr-debug-canary",
+            ] {
+                assert!(!text.contains(forbidden), "{text}");
+            }
+        }
     }
 
     #[test]
