@@ -571,33 +571,37 @@ RUBY
   published_state_contract_is_valid "$post_public_readme" "$post_public_status" ||
     fail 'post-public-state fixture is unexpectedly invalid'
 
-  ruby - "$published_readme" "$phase_decoy_pre_public" <<'RUBY'
+  ruby - "$post_public_readme" "$phase_decoy_pre_public" <<'RUBY'
 source, destination = ARGV
 document = File.read(source)
-document << "\nNeedlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.\n"
+public = 'Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.'
+prepared = 'Needlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.'
+abort 'fixture setup: expected public availability statement was not found' unless document.sub!(public, prepared)
 File.write(destination, document)
 RUBY
   set +e
-  decoy_output="$(published_state_contract_is_valid "$phase_decoy_pre_public" "$published_status" 2>&1)"
-  decoy_rc=$?
-  set -e
-  [[ "$decoy_rc" -ne 0 ]] || fail 'pre-public public-claim decoy was accepted'
-  [[ "$decoy_output" == *'pre-public README contains public availability claim'* ]] ||
-    fail 'pre-public public-claim decoy failed for an unexpected reason'
-
-  ruby - "$post_public_readme" "$phase_decoy_post_prepared" <<'RUBY'
-source, destination = ARGV
-document = File.read(source)
-document << "\nNeedlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.\n"
-File.write(destination, document)
-RUBY
-  set +e
-  decoy_output="$(published_state_contract_is_valid "$phase_decoy_post_prepared" "$post_public_status" 2>&1)"
+  decoy_output="$(published_state_contract_is_valid "$phase_decoy_pre_public" "$post_public_status" 2>&1)"
   decoy_rc=$?
   set -e
   [[ "$decoy_rc" -ne 0 ]] || fail 'post-public prepared-claim decoy was accepted'
   [[ "$decoy_output" == *'post-public README contains preparation availability claim'* ]] ||
     fail 'post-public prepared-claim decoy failed for an unexpected reason'
+
+  ruby - "$published_readme" "$phase_decoy_post_prepared" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+prepared = 'Needlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.'
+public = 'Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.'
+abort 'fixture setup: expected prepared availability statement was not found' unless document.sub!(prepared, public)
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(published_state_contract_is_valid "$phase_decoy_post_prepared" "$published_status" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'pre-public public-claim decoy was accepted'
+  [[ "$decoy_output" == *'pre-public README contains public availability claim'* ]] ||
+    fail 'pre-public public-claim decoy failed for an unexpected reason'
 
   ruby - "$published_readme" "$phase_decoy_pre_public_signing" <<'RUBY'
 source, destination = ARGV
