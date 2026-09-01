@@ -202,6 +202,10 @@ impl GitRunner for BoundedGitRunner {
                 Err(_) => return self.cleanup_failure(&mut child, Some(stdout), Some(stderr)),
             }
             if Instant::now() >= deadline {
+                #[cfg(unix)]
+                unsafe {
+                    libc::kill(-process_group, libc::SIGKILL);
+                }
                 let cleaned = self.cleanup_failure(&mut child, Some(stdout), Some(stderr));
                 return if matches!(cleaned, Err(GitRunnerError::CleanupFailed)) {
                     cleaned
