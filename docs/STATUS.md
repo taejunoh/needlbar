@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-01
-**Branch:** `codex/v022-project-cost-analytics` (baseline HEAD `d1b13d1`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.2.2 implementation is complete through final review and verification. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
-**Next action:** No further v0.2.2 feature implementation is planned. Optional local integration/release work requires explicit user authorization; push, tag, release, notarization, and credentialed provider actions remain unauthorized. Preserve the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates.
+**Branch:** `main` (local merged HEAD `28af5dd`; v0.2.1 remains an earlier integrated line of work)
+**Current phase:** v0.2.2 implementation is complete through final review, verification, and local integration. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
+**Next action:** Resolve the vendor revision's reachable-remote publication before any superproject push/CI/release, then consider a signed RC only with explicit user authorization. No further v0.2.2 feature implementation is planned; push, tag, release, notarization, and credentialed provider actions remain unauthorized. Preserve the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates.
 
 ## Source of Truth
 
@@ -248,6 +248,28 @@ macOS 26 host. No push, tag, release, notarization, or credentialed provider
 action was performed or authorized. The next continuation is optional local
 integration/release only with explicit user authorization, not additional
 feature implementation.
+
+## v0.2.2 Local Integration Completion — 2026-09-01
+
+`main` was fast-forwarded locally from `d1b13d1` to `28af5dd`, incorporating
+the former `codex/v022-project-cost-analytics` branch. The former v0.2.2
+worktree and branch were cleaned after the merged-result `make test` passed:
+all Needlbar Rust suites passed, vendor reported 1,396 passed / 1 ignored,
+Swift reported 277 tests in 12 suites, and the widget/package/notarization
+shell contracts passed.
+
+The initial `git submodule update --init --recursive` from the fresh main
+worktree failed because pinned vendor revision `ecfb694` is local-only and is
+not advertised by `https://github.com/Nanako0129/tokscale-core.git`. The main
+worktree obtained that exact commit through a local fetch from the former
+feature worktree, after which the merged-result tests passed. Before any
+superproject push, CI, or release, the vendor commit must be published to an
+authorized reachable remote/ref, or the pin must be changed to a published
+equivalent and re-verified.
+
+No push, tag, release, notarization, or credentialed provider action was
+performed. Next continuation: resolve vendor remote publication first, then
+prepare a signed RC only with explicit user authorization.
 
 ## v0.2.1 Widgets and Notifications — Design Continuation
 
