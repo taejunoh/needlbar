@@ -22,6 +22,12 @@ public struct AnalyticsView: View {
                     Text(viewModel.statusCopy)
                         .foregroundStyle(.secondary)
                 }
+                GroupBox("About these estimates") {
+                    Text(AnalyticsDisplayFormatter.aboutEstimates)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
             }
             .padding(24)
         }
@@ -66,7 +72,7 @@ public struct AnalyticsView: View {
         VStack(alignment: .leading, spacing: 16) {
             GroupBox("Summary") {
                 HStack(spacing: 26) {
-                    summaryMetric("Estimated cost", AnalyticsDisplayFormatter.cost(totalCost))
+                    summaryMetric("Estimated cost", AnalyticsDisplayFormatter.summaryCost(totalCost, snapshot: snapshot))
                     summaryMetric("Observed active AI-session time", AnalyticsDisplayFormatter.duration(observedTime(in: snapshot.repositories)))
                     summaryMetric("Coverage", coverageCopy(snapshot.coverage))
                 }
@@ -98,9 +104,16 @@ public struct AnalyticsView: View {
                         .foregroundStyle(.secondary)
                 }
                 if !snapshot.unattributed.reasons.isEmpty {
-                    Text("Some local usage could not be matched to a repository or timestamp.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Some local usage could not be matched to a repository or timestamp.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach(AnalyticsDisplayFormatter.unattributedReasonCopy(snapshot.unattributed.reasons), id: \.self) { reason in
+                            Text(reason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }
@@ -111,23 +124,51 @@ public struct AnalyticsView: View {
             HStack {
                 Text(repository.label).font(.headline)
                 Spacer()
+                Text(AnalyticsDisplayFormatter.repositoryState(repository.state))
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(repository.state == "available" ? Color.secondary.opacity(0.12) : Color.orange.opacity(0.2))
+                    .clipShape(Capsule())
+            }
+            if repository.state == "unavailable" {
+                Text(AnalyticsDisplayFormatter.repositoryStateCopy(repository.state))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
                 Text(AnalyticsDisplayFormatter.cost(repository.usage.estimatedCostUSDValue ?? .zero))
                     .font(.headline.monospacedDigit())
+                Text("Estimated cost · \(AnalyticsDisplayFormatter.repositoryCostCoverage(repository.coverage, state: repository.state))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             HStack(spacing: 16) {
                 Text("\(AnalyticsDisplayFormatter.tokens(repository.usage.totalTokens)) tokens")
                 Text(AnalyticsDisplayFormatter.duration(repository.observedActiveTimeSecondsValue))
-                Text("Coverage \(repositoryCoverageCopy(repository.coverage))")
+                Text("Timing \(AnalyticsDisplayFormatter.repositoryTimingCoverage(repository.coverage, state: repository.state))")
             }
             .font(.caption)
             .foregroundStyle(.secondary)
-            if !repository.providerModels.isEmpty {
+            Text(AnalyticsDisplayFormatter.correlationCoverage(repository.coverage))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if !AnalyticsDisplayFormatter.gitReasonCopy(repository.coverage.reasons).isEmpty {
+                Text(AnalyticsDisplayFormatter.gitReasonCopy(repository.coverage.reasons).joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if repository.state == "available" && !repository.providerModels.isEmpty {
                 DisclosureGroup("Provider and model metrics") {
                     ForEach(Array(repository.providerModels.enumerated()), id: \.offset) { _, model in
                         HStack {
                             Text("\(model.provider) · \(model.model)")
                             Spacer()
                             Text(AnalyticsDisplayFormatter.cost(model.usage.estimatedCostUSDValue ?? .zero))
+                            Text("Cost \(AnalyticsDisplayFormatter.providerCoverage(model.costCoverage))")
+                                .foregroundStyle(.secondary)
+                            Text("Timing \(AnalyticsDisplayFormatter.providerTimingCoverage(model.timingCoverage))")
+                                .foregroundStyle(.secondary)
                             Text(AnalyticsDisplayFormatter.metric(model.costPer1KTokens).map { "\($0)/1K" } ?? "Unavailable")
                                 .foregroundStyle(.secondary)
                             Text(AnalyticsDisplayFormatter.metric(model.tokensPerObservedActiveHour).map { "\($0)/hr" } ?? "Unavailable")
@@ -177,7 +218,8 @@ public struct AnalyticsView: View {
         let (total, overflow) = coverage.attributedFragments.addingReportingOverflow(coverage.unattributedFragments)
         guard !overflow, total > 0 else { return "Unavailable" }
         let percent = (Double(coverage.attributedFragments) / Double(total)) * 100
-        return String(format: "%.0f%%", locale: Locale(identifier: "en_US_POSIX"), percent)
+        let value = String(format: "%.0f%%", locale: Locale(identifier: "en_US_POSIX"), percent)
+        return coverage.reasons.isEmpty ? value : "\(value) · Partial"
     }
 
     private func repositoryCoverageCopy(_ coverage: RepositoryCoverage) -> String {
@@ -200,6 +242,100 @@ public struct AnalyticsView: View {
 }
 
 public enum AnalyticsDisplayFormatter {
+    private static let reasonLabels: [String: String] = [
+        "missingWorkspace": "Missing workspace",
+        "invalidWorkspace": "Invalid workspace",
+        "nonRepositoryWorkspace": "Non-repository workspace",
+        "ambiguousRepository": "Ambiguous repository",
+        "repositoryUnavailable": "Repository unavailable",
+        "missingTimestamp": "Missing timestamp",
+        "missingCost": "Missing pricing",
+        "missingDuration": "Missing duration",
+        "noEligibleCommit": "No eligible commit",
+        "pendingCommitWindow": "Pending 4-hour window",
+        "recordLimitReached": "Record/output limit",
+        "gitOutputLimitReached": "Record/output limit",
+        "gitTimedOut": "Git timeout",
+        "gitUnavailable": "Git unavailable",
+    ]
+
+    public static let aboutEstimates = """
+    Estimated cost uses local engine pricing and is not an invoice or subscription charge.
+    Observed active AI-session time uses timestamp gaps no greater than three minutes and is not human coding time, keyboard time, or elapsed wall time.
+    Correlated estimated AI cost is a deterministic same-repository four-hour association, not causal or measured commit cost.
+    Coverage indicates eligible workspace, timestamp, pricing, duration, and Git evidence.
+    A local PR number is metadata-only; it has no remote validation.
+    """
+
+    public static func repositoryState(_ state: String?) -> String {
+        state == "available" ? "Available" : "Unavailable"
+    }
+
+    public static func repositoryStateCopy(_ state: String?) -> String {
+        state == "available" ? "Git metadata available." : "Git metadata could not be safely read."
+    }
+
+    public static func repositoryCostCoverage(_ coverage: RepositoryCoverage, state: String? = nil) -> String {
+        guard state != "unavailable" else { return "Unavailable" }
+        return coverage.reasons["missingCost"] == nil ? "Complete" : "Partial"
+    }
+
+    public static func repositoryTimingCoverage(_ coverage: RepositoryCoverage, state: String? = nil) -> String {
+        guard state != "unavailable" else { return "Unavailable" }
+        if coverage.reasons["missingDuration"] != nil { return "Missing duration" }
+        return coverage.timingPartial ? "Partial" : "Complete"
+    }
+
+    public static func providerCoverage(_ coverage: String) -> String {
+        switch coverage {
+        case "complete": "Complete"
+        case "partial": "Partial"
+        default: "Unavailable"
+        }
+    }
+
+    public static func providerTimingCoverage(_ coverage: String) -> String {
+        switch coverage {
+        case "complete": "Complete"
+        case "partial": "Partial"
+        case "missingDuration": "Missing duration"
+        default: "Unavailable"
+        }
+    }
+
+    public static func correlationCoverage(_ coverage: RepositoryCoverage) -> String {
+        let statusReasons = unattributedReasonCopy(
+            coverage.reasons.filter { $0.key == "noEligibleCommit" || $0.key == "pendingCommitWindow" }
+        )
+        let status = statusReasons.isEmpty ? "" : " · " + statusReasons.joined(separator: ", ")
+        return "Assigned \(coverage.assignedFragments) · Unassigned \(coverage.unassignedFragments)\(status)"
+    }
+
+    public static func unattributedReasonCopy(_ reasons: [String: UInt64]) -> [String] {
+        reasons.keys.sorted().compactMap { key in
+            guard let label = reasonLabels[key], let count = reasons[key] else { return nil }
+            return "\(label) (\(count))"
+        }
+    }
+
+    public static func gitReasonCopy(_ reasons: [String: UInt64]) -> [String] {
+        let gitReasons = Set(["recordLimitReached", "gitOutputLimitReached", "gitTimedOut", "gitUnavailable"])
+        return unattributedReasonCopy(reasons.filter { gitReasons.contains($0.key) })
+            .map { value in
+                guard value.hasPrefix("Record/output limit"),
+                      let countStart = value.firstIndex(of: "(") else { return value }
+                return "Repository inspection stopped at a safe limit " + String(value[countStart...])
+            }
+    }
+
+    public static func summaryCost(_ cost: Decimal, snapshot: AnalyticsSnapshot) -> String {
+        let hasPartialCost = snapshot.coverage.reasons["missingCost"] != nil ||
+            snapshot.coverage.reasons["recordLimitReached"] != nil ||
+            snapshot.coverage.reasons["gitOutputLimitReached"] != nil ||
+            snapshot.repositories.contains { $0.coverage.reasons["missingCost"] != nil }
+        return hasPartialCost ? "\(AnalyticsDisplayFormatter.cost(cost)) (known subtotal)" : AnalyticsDisplayFormatter.cost(cost)
+    }
+
     public static func tokens(_ canonical: String) -> String {
         guard let value = UInt64(canonical) else { return "Unavailable" }
         return MetricFormatter.tokens(value)
