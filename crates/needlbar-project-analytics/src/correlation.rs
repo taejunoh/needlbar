@@ -159,6 +159,15 @@ pub(crate) fn build(
             },
         ));
     }
+    let mut labels = BTreeMap::<String, usize>::new();
+    for repository in &repositories {
+        *labels.entry(repository.label.clone()).or_default() += 1;
+    }
+    for repository in &mut repositories {
+        if labels.get(&repository.label).copied().unwrap_or_default() > 1 {
+            repository.label = format!("Repository {}", &repository.repository_id[..8]);
+        }
+    }
     repositories.sort_by(|a, b| {
         b.usage
             .estimated_cost_usd
@@ -205,6 +214,9 @@ fn parse_root(output: &GitOutput) -> Result<String, &'static str> {
     let root = std::str::from_utf8(&output.stdout)
         .map_err(|_| "invalidWorkspace")?
         .trim_end_matches(['\r', '\n']);
+    if root.contains('\n') || root.contains('\r') {
+        return Err("ambiguousRepository");
+    }
     if root.is_empty() || root.len() > 4096 || root.chars().any(char::is_control) {
         Err("invalidWorkspace")
     } else {
