@@ -1399,7 +1399,7 @@ checksum_sidecar="$case_root/repo/dist/Needlbar-macos-arm64.zip.sha256"
 grep -Eq '^[0-9a-f]{64}  Needlbar-macos-arm64\.zip$' "$checksum_sidecar" ||
   fail 'checksum sidecar must name only the final ZIP'
 assert_stage_subsequence "$case_root"
-PATH="$fake_bin:$PATH" shasum -a 256 -c "$checksum_sidecar" > "$case_root/checksum-output.txt" ||
+FAKE_COMMAND_LOG="$case_root/commands.log" FAKE_STATE_DIR="$case_root/state" PATH="$fake_bin:$PATH" shasum -a 256 -c "$checksum_sidecar" > "$case_root/checksum-output.txt" ||
   fail 'checksum sidecar failed shasum verification'
 assert_private_cleanup "$case_root"
 assert_no_canary "$case_root"

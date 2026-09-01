@@ -6,22 +6,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_PATH="${NEEDLBAR_NOTARIZE_APP_PATH:-$ROOT/dist/Needlbar.app}"
 ZIP_PATH="${NEEDLBAR_NOTARIZE_ZIP_PATH:-$ROOT/dist/Needlbar-macos-arm64.zip}"
+CHECKSUM_PATH="${NEEDLBAR_NOTARIZE_CHECKSUM_PATH:-$ZIP_PATH.sha256}"
 TEMP_PARENT="${NEEDLBAR_NOTARIZE_TEMP_PARENT:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}}"
 work_dir=''
 candidate_zip=''
+candidate_checksum=''
 original_keychains=()
 keychain_search_list_replaced=0
 
 fail() { echo "notarize-app: $*" >&2; exit 1; }
 
 zip_parent="$(dirname "$ZIP_PATH")"
+[[ "$(dirname "$CHECKSUM_PATH")" == "$zip_parent" ]] ||
+  fail "checksum path must share ZIP parent directory: $CHECKSUM_PATH"
 
 [[ -d "$APP_PATH" ]] || fail "app bundle not found: $APP_PATH"
 [[ -d "$zip_parent" ]] || fail "ZIP parent directory not found: $zip_parent"
 [[ -f "$ZIP_PATH" ]] || fail "ZIP archive not found: $ZIP_PATH"
 [[ -d "$TEMP_PARENT" ]] || fail "temporary parent directory not found: $TEMP_PARENT"
 
-for required_command in base64 security codesign xcrun spctl zip ditto mktemp uuidgen; do
+for required_command in base64 security codesign xcrun spctl zip ditto mktemp uuidgen shasum; do
   command -v "$required_command" >/dev/null 2>&1 ||
     fail "required command not found: $required_command"
 done
@@ -66,6 +70,7 @@ cleanup() {
   [[ -z "${keychain_path:-}" ]] || security delete-keychain "$keychain_path" >/dev/null 2>&1 || cleanup_status=1
   [[ -z "${work_dir:-}" ]] || rm -rf -- "$work_dir" || cleanup_status=1
   [[ -z "${candidate_zip:-}" ]] || rm -f -- "$candidate_zip" || cleanup_status=1
+  [[ -z "${candidate_checksum:-}" ]] || rm -f -- "$candidate_checksum" || cleanup_status=1
   if [[ "$cleanup_status" -ne 0 ]]; then
     echo "notarize-app: cleanup failed" >&2
     [[ "$original_status" -ne 0 ]] || exit "$cleanup_status"
@@ -158,6 +163,12 @@ extracted_app="$extract_root/$(basename "$APP_PATH")"
 codesign --verify --deep --strict --verbose=2 "$extracted_app"
 xcrun stapler validate "$extracted_app"
 spctl --assess --type execute --verbose=4 "$extracted_app"
+candidate_checksum="$(mktemp "$zip_parent/.needlbar-checksum.XXXXXX.sha256")"
+checksum="$(shasum -a 256 "$candidate_zip" | awk '{print $1}')"
+[[ "$checksum" =~ ^[[:xdigit:]]{64}$ ]] || fail 'SHA-256 generation failed'
+printf '%s  %s\n' "$checksum" "$(basename "$ZIP_PATH")" > "$candidate_checksum"
 mv -f "$candidate_zip" "$ZIP_PATH"
 candidate_zip=''
+mv -f "$candidate_checksum" "$CHECKSUM_PATH"
+candidate_checksum=''
 echo "Needlbar notarized archive validated: $ZIP_PATH"
