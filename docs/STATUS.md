@@ -3,7 +3,7 @@
 **Updated:** 2026-09-01
 **Branch:** `main` (v0.2.2 public-release preparation based on signed tagless RC source HEAD `15c229f19a8c74417e11092873b947e8ca368e7d`; v0.2.1 remains an earlier integrated line of work)
 **Current phase:** v0.2.2 public-release preparation: host/widget build 2, reviewed future-download copy, and ZIP/checksum artifact preparation. No v0.2.2 tag, GitHub Release, public download, or public notarization claim has been made. The v0.2.1 widgets/notifications implementation remains incomplete at the exact native macOS 14 Widget Gallery/App Group acceptance gate.
-**Next action:** Select a later exact green `main` commit for any separately authorized tag-triggered publication; preserve the outstanding v0.2.1 exact macOS 14 Widget Gallery/App Group acceptance caveat and make no publication claim before that gate.
+**Next action:** Select a later exact green `main` commit and obtain separate authorization for any tag-triggered v0.2.2 publication. Retain the outstanding v0.2.1 exact macOS 14 Widget Gallery/App Group acceptance caveat; do not claim that native acceptance has been established.
 
 ## v0.2.2 Public Release Preparation — 2026-09-01
 
