@@ -234,6 +234,7 @@ fn git_code(error: &GitRunnerError) -> &'static str {
         GitRunnerError::TimedOut => "gitTimedOut",
         GitRunnerError::OutputLimitReached => "gitOutputLimitReached",
         GitRunnerError::RecordLimitReached => "recordLimitReached",
+        GitRunnerError::NotRepository => "nonRepositoryWorkspace",
         GitRunnerError::Unavailable => "gitUnavailable",
     }
 }

@@ -26,6 +26,8 @@ pub trait GitRunner: Send + Sync {
 }
 #[derive(Debug, Clone, Error)]
 pub enum GitRunnerError {
+    #[error("not a repository")]
+    NotRepository,
     #[error("git unavailable")]
     Unavailable,
     #[error("git timed out")]
@@ -56,6 +58,7 @@ impl BoundedGitRunner {
 impl GitRunner for BoundedGitRunner {
     fn run(&self, request: GitRequest) -> Result<GitOutput, GitRunnerError> {
         let remaining = self.remaining_budget()?;
+        let discovery = matches!(&request, GitRequest::DiscoverRepository { .. });
         let (directory, arguments): (PathBuf, Vec<String>) = match request {
             GitRequest::DiscoverRepository { workspace } => (
                 workspace,
@@ -123,7 +126,11 @@ impl GitRunner for BoundedGitRunner {
             return Err(GitRunnerError::OutputLimitReached);
         }
         if !status.success() {
-            return Err(GitRunnerError::Unavailable);
+            return Err(if discovery {
+                GitRunnerError::NotRepository
+            } else {
+                GitRunnerError::Unavailable
+            });
         }
         Ok(GitOutput { stdout, stderr })
     }
