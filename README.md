@@ -8,7 +8,7 @@ Needlbar is local-first. It requires no Needlbar account, backend, hosted sync, 
 
 The reviewed public availability copy for the tag-triggered release is:
 
-Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.
+Needlbar v0.2.2 is prepared for public release for macOS 14 or later on Apple Silicon.
 [Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)
 
 The public artifact is Developer ID-signed and notarized for macOS 14 or later on Apple Silicon. The link becomes downloadable only when the tag-triggered workflow publishes it; until then, this preparation copy is not a claim that a current public asset exists. The source tree can be built and tested locally, and `make package` creates a local Apple Silicon bundle for evaluation. That local bundle is ad-hoc signed and is not a substitute for the public Developer ID-signed, notarized artifact.
