@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-01
 **Branch:** `codex/v022-project-cost-analytics` (baseline HEAD `d1b13d1`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.2.2 Tasks 1–2 are complete; next is Task 3 sanitized analytics ABI. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
-**Next action:** Start Task 3 sanitized analytics ABI while preserving the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates. The user pre-approved the subagent-driven (recommended) execution choice; push, tag, and release actions remain unauthorized.
+**Current phase:** v0.2.2 Tasks 1–3 are complete; next is Task 4 Swift Core. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
+**Next action:** Start Task 4 Swift Core while preserving the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates. The user pre-approved the subagent-driven (recommended) execution choice; push, tag, and release actions remain unauthorized.
 
 ## Source of Truth
 
@@ -18,7 +18,7 @@ The active Needlbar work is governed by:
 - `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1–W4, Notification Tasks N1–N4, and automated Integration Task 1 verification are complete on the code path, with native acceptance still pending.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widgets-notifications.md` — reviewed v0.2.1 implementation index: four widget tasks, four notification tasks, then combined acceptance.
 - `docs/superpowers/specs/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics-design.md` — approved v0.2.2 local repository cost analytics design; its implementation plan is recorded below.
-- `docs/superpowers/plans/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics.md` — approved v0.2.2 implementation plan; Tasks 1–2 are complete and Task 3 sanitized analytics ABI is next.
+- `docs/superpowers/plans/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics.md` — approved v0.2.2 implementation plan; Tasks 1–3 are complete and Task 4 Swift Core is next.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget.md` — W1–W4, including Swift-only day provenance, sanitized projection, and medium Overview presentation.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-notifications.md` — N1–N4, including fresh quota observation, durable policy, explicit permission, and lifecycle tests.
@@ -92,6 +92,30 @@ Verification recorded for the completed task:
 The next continuation point is Task 3 sanitized analytics ABI. The v0.2.1
 native acceptance caveats remain unchanged. No push, tag, or release was
 performed or authorized.
+
+## v0.2.2 Task 3 — Sanitized Analytics Bridge — 2026-09-01
+
+Task 3 is complete. Commits `083a1fb`, `82deeae`, `f71e4ea`, and `90b23b7`
+introduce the `needlbar_analytics_snapshot_json` bridge symbol and the dedicated
+`needlbar.analytics.v1` envelope with exact 30-day/millisecond semantics, a
+256 KiB bound, and a safe fallback. Cache, provider, and Git paths remain
+isolated; pre-sanitization raw canary rows are redacted, with zero quota/auth
+or Cursor mutation. Synthetic bridge fixtures are cleaned up after use.
+
+Verification recorded for the completed task:
+
+- Analytics contract: 8 tests passed.
+- Redaction contract: 9 tests passed.
+- FFI contract: 3 tests passed.
+- Existing usage contract: 1 test passed.
+- Existing quota contract: 6 tests passed.
+- Formatting, clippy, `make rust`, and release-symbol (`nm`) checks passed.
+- Spec and quality reviews: approved.
+- Worktree status: clean.
+
+The next continuation point is Task 4 Swift Core. The v0.2.1 native
+acceptance caveats remain unchanged. No push, tag, or release was performed or
+authorized.
 
 ## v0.2.1 Widgets and Notifications — Design Continuation
 
