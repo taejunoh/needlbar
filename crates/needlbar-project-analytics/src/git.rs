@@ -1,4 +1,6 @@
 use std::io::Read;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio as ProcessStdio};
 use std::sync::{
@@ -90,6 +92,7 @@ pub enum GitRunnerError {
 #[derive(Default)]
 pub struct BoundedGitRunner {
     budget_started: Mutex<Option<Instant>>,
+    lifecycle: Mutex<()>,
     poisoned: AtomicBool,
     #[cfg(test)]
     test_executable: Option<PathBuf>,
@@ -99,6 +102,7 @@ impl BoundedGitRunner {
     fn with_test_executable(executable: PathBuf) -> Self {
         Self {
             budget_started: Mutex::new(None),
+            lifecycle: Mutex::new(()),
             poisoned: AtomicBool::new(false),
             test_executable: Some(executable),
         }
@@ -117,6 +121,10 @@ impl BoundedGitRunner {
 }
 impl GitRunner for BoundedGitRunner {
     fn run(&self, request: GitRequest) -> Result<GitOutput, GitRunnerError> {
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .map_err(|_| GitRunnerError::CleanupFailed)?;
         if self.poisoned.load(Ordering::Acquire) {
             return Err(GitRunnerError::CleanupFailed);
         }
@@ -174,7 +182,10 @@ impl GitRunner for BoundedGitRunner {
             .env("GIT_CONFIG_COUNT", "1")
             .env("GIT_CONFIG_KEY_0", "core.hooksPath")
             .env("GIT_CONFIG_VALUE_0", "/dev/null");
+        #[cfg(unix)]
+        command.process_group(0);
         let mut child = command.spawn().map_err(|_| GitRunnerError::Unavailable)?;
+        let process_group = child.id() as i32;
         let Some(out) = child.stdout.take() else {
             return self.cleanup_failure(&mut child, None, None);
         };
@@ -200,6 +211,20 @@ impl GitRunner for BoundedGitRunner {
             }
             thread::sleep(Duration::from_millis(5));
         };
+        while !stdout.is_finished() || !stderr.is_finished() {
+            if Instant::now() >= deadline {
+                #[cfg(unix)]
+                unsafe {
+                    libc::kill(-process_group, libc::SIGKILL);
+                }
+                let _ = child.wait();
+                let _ = stdout.join();
+                let _ = stderr.join();
+                self.poisoned.store(true, Ordering::Release);
+                return Err(GitRunnerError::CleanupFailed);
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
         let (stdout, out_over) = stdout.join().map_err(|_| GitRunnerError::Unavailable)?;
         let (stderr, err_over) = stderr.join().map_err(|_| GitRunnerError::Unavailable)?;
         if out_over || err_over {
@@ -312,6 +337,7 @@ mod tests {
     fn cumulative_budget_refuses_a_new_process_after_ten_seconds() {
         let runner = BoundedGitRunner {
             budget_started: Mutex::new(Some(Instant::now() - TOTAL_GIT_BUDGET)),
+            lifecycle: Mutex::new(()),
             poisoned: AtomicBool::new(false),
             test_executable: None,
         };

@@ -379,10 +379,9 @@ fn repository(
             provider,
             model: name,
             usage: values.total.dto(),
-            cost_per_1k_tokens: nonzero_ratio(
-                values.total.cost * 1000.0,
-                values.total.tokens.total(),
-            ),
+            cost_per_1k_tokens: (values.cost_coverage != "none")
+                .then(|| nonzero_ratio(values.total.cost * 1000.0, values.total.tokens.total()))
+                .flatten(),
             tokens_per_observed_active_hour: nonzero_ratio(
                 values.total.tokens.total() as f64 * 3600.0,
                 values.active_ms / 1000,
@@ -392,8 +391,10 @@ fn repository(
                 values.timed_tokens,
             ),
             cost_coverage: values.cost_coverage,
-            timing_coverage: if values.timed_tokens > 0 {
-                "full".into()
+            timing_coverage: if values.timed_tokens > 0 && !values.timing_partial {
+                "complete".into()
+            } else if values.timed_tokens > 0 {
+                "partial".into()
             } else {
                 "missingDuration".into()
             },
@@ -417,6 +418,7 @@ struct ModelTotal {
     timed_duration_ms: i64,
     timed_tokens: i64,
     cost_coverage: String,
+    timing_partial: bool,
 }
 fn add_models(target: &mut BTreeMap<(String, String), ModelTotal>, f: &WorkspaceSessionFragment) {
     for entry in &f.models {
@@ -431,7 +433,21 @@ fn add_models(target: &mut BTreeMap<(String, String), ModelTotal>, f: &Workspace
             .timed_duration_ms
             .saturating_add(entry.timed_duration_ms.max(0));
         item.timed_tokens = item.timed_tokens.saturating_add(entry.timed_tokens.max(0));
-        item.cost_coverage = format!("{:?}", entry.cost_coverage).to_ascii_lowercase();
+        item.cost_coverage = fold_coverage(&item.cost_coverage, entry.cost_coverage);
+        item.timing_partial |= f.timing_coverage_partial || entry.timed_tokens <= 0;
+    }
+}
+fn fold_coverage(current: &str, next: tokscale_core::CostCoverage) -> String {
+    let next = match next {
+        tokscale_core::CostCoverage::Complete => "complete",
+        tokscale_core::CostCoverage::Partial => "partial",
+        tokscale_core::CostCoverage::None => "none",
+    };
+    match (current, next) {
+        ("", value) => value.into(),
+        ("complete", "complete") => "complete".into(),
+        ("none", "none") => "none".into(),
+        _ => "partial".into(),
     }
 }
 fn nonzero_ratio(numerator: f64, denominator: i64) -> Option<String> {
