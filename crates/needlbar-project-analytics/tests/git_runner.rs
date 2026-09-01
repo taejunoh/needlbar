@@ -1,4 +1,4 @@
-use needlbar_project_analytics::{BoundedGitRunner, GitRequest, GitRunner};
+use needlbar_project_analytics::{BoundedGitRunner, GitRequest, GitRunner, GitRunnerError};
 use std::path::PathBuf;
 use std::process::Command;
 #[test]
@@ -8,6 +8,16 @@ fn bounded_runner_rejects_missing_workspace_without_a_shell() {
         workspace: PathBuf::from("/definitely/not/a/repository"),
     });
     assert!(result.is_err());
+}
+
+#[test]
+fn bounded_runner_marks_existing_non_git_workspace_as_non_repository() {
+    let directory = tempfile::tempdir().unwrap();
+    let runner = BoundedGitRunner::default();
+    let result = runner.run(GitRequest::DiscoverRepository {
+        workspace: directory.path().into(),
+    });
+    assert!(matches!(result, Err(GitRunnerError::NotRepository)));
 }
 
 #[test]

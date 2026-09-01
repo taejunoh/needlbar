@@ -158,3 +158,35 @@ fn spawn_reader<R: Read + Send + 'static>(
         (bytes, over)
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn byte_caps_and_time_budgets_are_exact_constants() {
+        assert_eq!(MAX_STDOUT_BYTES, 1024 * 1024);
+        assert_eq!(MAX_STDERR_BYTES, 8 * 1024);
+        assert_eq!(PROCESS_TIMEOUT, Duration::from_secs(2));
+        assert_eq!(TOTAL_GIT_BUDGET, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn cumulative_budget_refuses_a_new_process_after_ten_seconds() {
+        let runner = BoundedGitRunner {
+            budget_started: Mutex::new(Some(Instant::now() - TOTAL_GIT_BUDGET)),
+        };
+        assert!(matches!(
+            runner.remaining_budget(),
+            Err(GitRunnerError::TimedOut)
+        ));
+    }
+
+    #[test]
+    fn capped_reader_drops_excess_bytes_without_panicking() {
+        let reader = spawn_reader(std::io::Cursor::new(vec![b'x'; 9]), 8);
+        let (bytes, exceeded) = reader.join().unwrap();
+        assert!(exceeded);
+        assert!(bytes.len() <= 8);
+    }
+}

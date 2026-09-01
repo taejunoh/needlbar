@@ -77,9 +77,21 @@ fn output_never_contains_private_source_canaries() {
         "Ada <ada@example.invalid>",
         "commit secret",
         "session-canary",
+        "prompt-canary",
+        "source-canary",
+        "credential-canary",
+        "account-canary",
+        "stderr-canary",
         "abcdefabcdefabcdefabcdefabcdefabcdefabcd",
     ] {
         assert!(!json.contains(forbidden), "{forbidden}");
     }
     assert!(json.contains("\"pullRequestNumber\":7"));
+    let error = GitRunnerError::Unavailable;
+    let debug = format!("{error:?}");
+    let display = error.to_string();
+    for forbidden in ["/private/repo", "stderr-canary", "credential-canary"] {
+        assert!(!debug.contains(forbidden));
+        assert!(!display.contains(forbidden));
+    }
 }
