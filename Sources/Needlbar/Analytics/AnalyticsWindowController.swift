@@ -53,8 +53,8 @@ public final class AnalyticsViewModel: ObservableObject {
             "Open Analytics to inspect local repository usage."
         case .loading:
             "Analyzing local repository data…"
-        case .fresh:
-            snapshot.map(Self.isPartial) == true
+        case let .fresh(snapshot):
+            Self.isPartial(snapshot)
                 ? "Some local usage or repository coverage is partial."
                 : "Local analysis complete."
         case .stale:
