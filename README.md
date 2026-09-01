@@ -45,6 +45,31 @@ Quota notifications are off by default, require explicit macOS permission, run o
 
 This branch contains the widget and notification implementation and automated package checks, but it is not a release. Cursor remains usage-only with quota unavailable. Native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance still require external evidence; the local macOS 26 build is not that acceptance.
 
+## v0.2.2 local repository analytics (unreleased)
+
+The **Analytics…** window is a manual, on-demand view over the last 30 days of
+automatically observed local Claude, Codex, and Cursor workspaces. It reports
+repository and provider/model totals, estimated cost, coverage, and
+**observed active AI-session time**. That timing is derived from local session
+timestamps and is not human coding time, keyboard time, or a productivity
+measure.
+
+Analytics reads local Git metadata only for an observed workspace. It uses a
+four-hour local commit-correlation window and may show a PR number only when a
+local commit message contains one unambiguous marker such as `(#42)`; this is a
+deterministic local time-window association, not causal attribution or measured
+commit cost, and is best-effort local metadata rather than pull-request or forge
+integration. The analysis has no remote Git command, forge API, provider
+authentication, network request, backend, database, export-field, widget, or
+notification change. Pricing uses
+the existing cached/local cost basis and labels partial coverage when evidence
+is missing.
+
+To use it, click the menu-bar Overview, choose **Analytics…**, then choose
+**Refresh** in the Analytics window. The feature is unreleased and remains
+local-only; no analytics history is retained after the in-memory state is
+discarded.
+
 ## Provider authentication and recovery
 
 Needlbar reuses provider-native authentication for Claude and Codex. It does not own their credentials or provide separate disconnect controls.
@@ -86,7 +111,7 @@ The package command writes `dist/Needlbar.app` and `dist/Needlbar-macos-arm64.zi
 
 ## Privacy and local-first boundaries
 
-Needlbar has no backend, account system, cloud sync, analytics, or telemetry. It does not upload token history, prompts, assistant responses, source code, raw paths, account identifiers, or provider credentials. It displays normalized counts, estimated costs, quota percentages, reset timestamps, freshness, and safe error states—not conversation or source content.
+Needlbar has no backend, account system, cloud sync, hosted analytics service, or telemetry. Its unreleased local Analytics window does not upload data or create an analytics database. Needlbar does not upload token history, prompts, assistant responses, source code, raw paths, account identifiers, or provider credentials. It displays normalized counts, estimated costs, quota percentages, reset timestamps, freshness, and safe error states—not conversation or source content.
 
 Usage reads only the documented provider-local sources above. Claude and Codex quota requests go directly to their providers over bounded HTTPS (with the Codex CLI fallback when applicable); Needlbar does not proxy them. Cursor usage is local-only and Cursor quota is represented by the fixed Spending dashboard action; Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration. Credentials, cookies, raw provider responses, and raw local paths remain out of Swift presentation state, diagnostics, logs, and bridge errors. On startup, the bridge may remove only an obsolete Needlbar-owned Cursor session file, without reading it; the local usage cache is preserved.
 

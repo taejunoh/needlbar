@@ -13,6 +13,7 @@ Needlbar.app
     ├── independent usage and quota repositories
     ├── refresh scheduling and file watching
     ├── last-known-good and stale-state handling
+    ├── in-memory AnalyticsSnapshot state and refresh serialization
     └── module configuration and UI-free formatting
         │
         └── narrow C ABI / UTF-8 JSON envelopes
@@ -22,6 +23,8 @@ Needlbar.app
                 ├── quota aggregation
                 ├── panic/error boundary
                 └── Rust-owned allocation/freeing
+                    ├── needlbar-project-analytics
+                    │   └── observed-workspace mapping, bounded local Git, correlation, sanitization
                     ├── needlbar-quota
                     │   └── Claude and Codex quota/auth adapters; Cursor unavailable result
                     └── vendor/tokscale-core
@@ -48,6 +51,48 @@ Cursor usage has no Needlbar-owned hydration layer. The pinned `tokscale-core` e
 For the v0.2.0 local JSON export, `ProviderSnapshotStore` captures one immutable export value for all three providers in one actor turn. `NeedlbarCore` validates that value, deterministically encodes the versioned JSON document, and writes it through the private same-directory atomic writer. AppKit owns only the save panel and export UI state; it does not capture, encode, or write provider data.
 
 `Needlbar` owns AppKit lifecycle, status items, popovers, Settings, and native window presentation.
+
+### v0.2.2 local repository analytics
+
+The additive cached `WorkspaceSession` report remains owned by the pinned
+`tokscale-core` vendor. It preserves workspace/session, provider/model, token,
+cost, timestamp, active-session, duration, and coverage provenance in Rust and
+uses the established streaming, deduplication, and cached/local pricing path.
+It does not run Git, infer PRs, or construct UI data.
+
+`needlbar-project-analytics` receives that report and owns the complete local
+analytics operation: only automatically observed workspaces are eligible; each
+is mapped to a containing local repository; read-only Git metadata is gathered
+through a direct `/usr/bin/git` process with a fixed argument vector; and the
+four-hour commit correlation and local PR-marker heuristic are applied before
+sanitization. It enforces the 64-repository, 500-parsed-commit, 200-returned-
+commit, 1 MiB stdout, 8 KiB stderr, 2-second process, and 10-second total
+budgets. Raw paths, session IDs, commit messages, full OIDs, authors, remotes,
+branches, and subprocess output end at this boundary.
+
+`needlbar-bridge` exposes the sanitized result only through the additive
+`needlbar_analytics_snapshot_json()` symbol. It owns the dedicated
+`needlbar.analytics.v1` envelope, panic boundary, and exactly-once Rust string
+allocation/freeing; it does not make presentation decisions. `NeedlbarCore`
+decodes and validates the envelope, owns one in-flight analytics refresh and
+fresh/stale/unavailable in-memory state, and passes only safe labels, numeric
+strings, bounded IDs, coverage, and fixed error codes to AppKit. The AppKit
+layer owns the Overview **Analytics…** action and one separate resizable
+Analytics window; it does not inspect Git or raw bridge data.
+
+The flow is intentionally isolated:
+
+```text
+cached WorkspaceSession report
+        -> needlbar-project-analytics (local Git + correlate + sanitize)
+        -> needlbar_analytics_snapshot_json()
+        -> NeedlbarCore AnalyticsSnapshot state
+        -> AppKit Analytics window
+```
+
+Analytics is triggered only by opening that window or its explicit Refresh
+action. It does not alter usage/quota refresh, provider authentication, Cursor
+hydration, export, widget, notification, or existing menu-bar module behavior.
 
 The main app writes the sanitized widget projection to the private App Group; the WidgetKit extension reads only that DTO and never refreshes providers.
 
@@ -92,6 +137,7 @@ const char *needlbar_quota_snapshot_json(void);
 const char *needlbar_claude_user_initiated_quota_snapshot_json(void);
 const char *needlbar_codex_quota_snapshot_json(void);
 const char *needlbar_diagnostics_json(void);
+const char *needlbar_analytics_snapshot_json(void);
 void needlbar_free_string(const char *ptr);
 ```
 
@@ -102,6 +148,12 @@ Diagnostics use fixed subsystem/provider status and source labels. They do not i
 ## Local and network boundaries
 
 Known local provider roots are read only for usage token metadata or authentication evidence. Provider quota calls go directly to the relevant provider endpoint; there is no Needlbar relay or backend.
+
+The Analytics window adds a separate cached-only local path. It reads Git
+metadata only for repositories reached from automatically observed workspaces;
+it does not invoke remote Git, a forge API, provider authentication, Keychain,
+or a network request. Its result is held in NeedlbarCore memory and is not
+written to a database, export, App Group file, widget, or notification ledger.
 
 Credential resolution and provider responses stay in Rust and are redacted before any error crosses the bridge. The raw Claude credential is ephemeral and zeroizing inside
 `needlbar-quota`; it is never persisted by Needlbar or exported through the C ABI. Cursor

@@ -156,6 +156,67 @@ The next continuation point is Task 6 synthetic acceptance/docs/full matrix. The
 v0.2.1 native acceptance caveats remain unchanged. No push, tag, or release was
 performed or authorized.
 
+## v0.2.2 Task 6 — Synthetic acceptance, documentation, and final matrix — 2026-09-01
+
+Task 6 implementation and automated acceptance are complete on this worktree.
+The fixture-only acceptance uses no provider, user, repository, remote, Git
+checkout, network, credential, or authentication data. It loads
+`Fixtures/analytics/workspace-session-fixture.json` and the escaped-NUL
+`git-log-fixture.nul`, builds a `WorkspaceSessionReport`, feeds a queued fake
+`GitRunner`, and exact-compares the deterministic sanitized golden payload.
+The test proves valid/missing/non-repository workspaces, repository totals and
+provider/model order, Task-1 overflow/timing/model partial counters, the
+inclusive four-hour boundary, full-OID earliest tie break, pending and
+no-eligible windows, `(#42)` only, multiple invalid PR markers, fake-only
+read-only Git request kinds, and absence of every listed privacy canary from
+JSON, Debug output, and errors.
+
+The user-facing boundary is documented in `README.md`, `docs/architecture.md`,
+and `docs/privacy.md`: Analytics is an unreleased manual **Analytics…** window
+over 30 days of automatically observed local workspaces, with repository/model
+totals, observed active AI-session time terminology, local four-hour commit
+correlation, best-effort local PR metadata, and explicit partial/coverage
+states. No remote forge/authentication/network/backend/database/export/widget/
+notification behavior was added.
+
+### Fresh verification evidence
+
+- TDD RED: the new acceptance test failed with `No such file or directory` for
+  the absent synthetic fixture (exit 101), then GREEN: the exact golden test
+  passed (1/1).
+- `cargo fmt --check`: exit 0.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`:
+  exit 0.
+- `cargo test --workspace --features bridge-test-runtime`: exit 0; Needlbar
+  Rust workspace tests 121 passed. The workspace excludes `vendor/tokscale-core`;
+  its tests are counted only under the dedicated vendor shell command below.
+- `bash scripts/tests/vendor-tokscale-test.sh`: exit 0; vendor core 1,376
+  passed/1 ignored plus 20 integration tests passed.
+- `make test` after sourcing `/Users/taejunoh/.cargo/env`: exit 0; Swift 275
+  tests in 12 suites passed and widget/package/notarization shell contracts
+  passed. An initial unsourced `make test` was an environment-only exit 2
+  (`cargo: No such file or directory`) and was not treated as product failure.
+- `make package`: exit 0; local arm64 ad-hoc package assembled and relinked.
+- `make smoke`: exit 0; bundle metadata, architecture, signature, launch, and
+  cleanup smoke checks passed.
+- `git diff --check`: exit 0.
+
+Known warnings remain pre-existing: Swift unused-await/result diagnostics,
+macOS deployment-target linker warnings from the local macOS 26/Xcode 26
+toolchain, and benign lifecycle-test `kill: No such process` diagnostics. This
+matrix does not claim native signed macOS 14 arm64, Widget Gallery/App Group,
+or live visual acceptance.
+
+Task 6 files are committed as `docs: record local repository analytics
+acceptance` at the handoff commit recorded by `git rev-parse HEAD`; no push,
+tag, release, notarization, credentialed provider action, or remote Git action
+was performed or authorized.
+
+Next continuation: independent final whole-branch review and a native visual
+current-host check. The outstanding v0.2.1 macOS 14/installed-widget and
+related native acceptance caveats remain open and are not satisfied by this
+synthetic local matrix.
+
 ## v0.2.1 Widgets and Notifications — Design Continuation
 
 The user-approved v0.2.1 scope and reviewed implementation plans are limited to:

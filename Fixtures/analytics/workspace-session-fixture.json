@@ -1,0 +1,126 @@
+{
+  "generated_at": "2026-09-01T20:00:00Z",
+  "git_stderr_canary": "stderr-synthetic-canary",
+  "valid_workspace": "/synthetic/needlbar-fixture/repo/workspace",
+  "non_repository_workspace": "/synthetic/needlbar-fixture/not-a-repository",
+  "privacy_canaries": [
+    "/synthetic/needlbar-fixture/repo/workspace",
+    "https://remote.invalid/synthetic.git",
+    "synthetic-branch",
+    "Synthetic Author <author@invalid.example>",
+    "session-synthetic-canary",
+    "prompt-synthetic-canary",
+    "response-synthetic-canary",
+    "source-synthetic-canary",
+    "credential-synthetic-canary",
+    "account-synthetic-canary",
+    "stdout-synthetic-canary",
+    "stderr-synthetic-canary",
+    "0123456789abcdef0123456789abcdef01234567"
+  ],
+  "fragments": [
+    {
+      "client": "codex",
+      "workspace_key": "/synthetic/needlbar-fixture/repo/workspace",
+      "session_id": "session-synthetic-canary",
+      "first_seen_ms": 1788256800000,
+      "last_seen_ms": 1788256800000,
+      "active_time_ms": 120000,
+      "timing_coverage_partial": false,
+      "tokens": {"input": 100, "output": 20, "cache_read": 5, "cache_write": 2, "reasoning": 3},
+      "message_count": 2,
+      "estimated_cost_usd": 1.25,
+      "models": [{
+        "model": "gpt-5",
+        "provider": "codex",
+        "tokens": {"input": 100, "output": 20, "cache_read": 5, "cache_write": 2, "reasoning": 3},
+        "message_count": 2,
+        "estimated_cost_usd": 1.25,
+        "timed_duration_ms": 1000,
+        "timed_tokens": 120,
+        "timed_sample_count": 1,
+        "cost_coverage": "complete"
+      }]
+    },
+    {
+      "client": "claude",
+      "workspace_key": "/synthetic/needlbar-fixture/repo/workspace",
+      "session_id": "session-pending-synthetic",
+      "first_seen_ms": 1788289200000,
+      "last_seen_ms": 1788289200000,
+      "active_time_ms": 60000,
+      "timing_coverage_partial": true,
+      "tokens": {"input": 50, "output": 10, "cache_read": 0, "cache_write": 0, "reasoning": 0},
+      "message_count": 1,
+      "estimated_cost_usd": 0.75,
+      "models": [{
+        "model": "claude-synthetic",
+        "provider": "claude",
+        "tokens": {"input": 50, "output": 10, "cache_read": 0, "cache_write": 0, "reasoning": 0},
+        "message_count": 1,
+        "estimated_cost_usd": 0.75,
+        "timed_duration_ms": 0,
+        "timed_tokens": 0,
+        "timed_sample_count": 0,
+        "cost_coverage": "partial"
+      }]
+    },
+    {
+      "client": "cursor",
+      "workspace_key": "/synthetic/needlbar-fixture/repo/workspace",
+      "session_id": "session-no-commit-synthetic",
+      "first_seen_ms": 1788278400000,
+      "last_seen_ms": 1788278400000,
+      "active_time_ms": 0,
+      "timing_coverage_partial": false,
+      "tokens": {"input": 7, "output": 0, "cache_read": 0, "cache_write": 0, "reasoning": 0},
+      "message_count": 1,
+      "estimated_cost_usd": 0.2,
+      "models": [{
+        "model": "cursor-synthetic",
+        "provider": "cursor",
+        "tokens": {"input": 7, "output": 0, "cache_read": 0, "cache_write": 0, "reasoning": 0},
+        "message_count": 1,
+        "estimated_cost_usd": 0.2,
+        "timed_duration_ms": 500,
+        "timed_tokens": 7,
+        "timed_sample_count": 1,
+        "cost_coverage": "none"
+      }]
+    },
+    {
+      "client": "codex",
+      "workspace_key": null,
+      "session_id": "session-missing-workspace-synthetic",
+      "first_seen_ms": 1788256800000,
+      "last_seen_ms": 1788256800000,
+      "active_time_ms": 0,
+      "timing_coverage_partial": false,
+      "tokens": {"input": 4, "output": 1, "cache_read": 0, "cache_write": 0, "reasoning": 0},
+      "message_count": 1,
+      "estimated_cost_usd": 0.1,
+      "models": []
+    },
+    {
+      "client": "codex",
+      "workspace_key": "/synthetic/needlbar-fixture/not-a-repository",
+      "session_id": "session-nonrepository-synthetic",
+      "first_seen_ms": 1788256800000,
+      "last_seen_ms": 1788256800000,
+      "active_time_ms": 0,
+      "timing_coverage_partial": false,
+      "tokens": {"input": 3, "output": 1, "cache_read": 0, "cache_write": 0, "reasoning": 0},
+      "message_count": 1,
+      "estimated_cost_usd": 0.05,
+      "models": []
+    }
+  ],
+  "report": {
+    "processing_time_ms": 17,
+    "record_limit_reached": true,
+    "timing_coverage_partial": false,
+    "overflowed_fragment_observations": 2,
+    "overflowed_timing_observations": 1,
+    "overflowed_model_observations": 3
+  }
+}

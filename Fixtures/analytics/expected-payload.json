@@ -1,0 +1,147 @@
+{
+  "analysisRange": {
+    "start": "2026-08-02T20:00:00Z",
+    "end": "2026-09-01T20:00:00Z"
+  },
+  "repositories": [
+    {
+      "repositoryId": "r00000000",
+      "label": "repo",
+      "state": "available",
+      "usage": {
+        "inputTokens": "157",
+        "outputTokens": "30",
+        "cacheReadTokens": "5",
+        "cacheWriteTokens": "2",
+        "reasoningTokens": "3",
+        "totalTokens": "197",
+        "estimatedCostUsd": "2.2"
+      },
+      "observedActiveTimeSeconds": "180",
+      "providerModels": [
+        {
+          "provider": "claude",
+          "model": "claude-synthetic",
+          "usage": {
+            "inputTokens": "50",
+            "outputTokens": "10",
+            "cacheReadTokens": "0",
+            "cacheWriteTokens": "0",
+            "reasoningTokens": "0",
+            "totalTokens": "60",
+            "estimatedCostUsd": "0.75"
+          },
+          "costPer1kTokens": "12.5",
+          "tokensPerObservedActiveHour": "3600",
+          "millisecondsPer1kTokens": null,
+          "costCoverage": "partial",
+          "timingCoverage": "missingDuration"
+        },
+        {
+          "provider": "codex",
+          "model": "gpt-5",
+          "usage": {
+            "inputTokens": "100",
+            "outputTokens": "20",
+            "cacheReadTokens": "5",
+            "cacheWriteTokens": "2",
+            "reasoningTokens": "3",
+            "totalTokens": "130",
+            "estimatedCostUsd": "1.25"
+          },
+          "costPer1kTokens": "9.615384615384615",
+          "tokensPerObservedActiveHour": "3900",
+          "millisecondsPer1kTokens": "8333.333333333334",
+          "costCoverage": "complete",
+          "timingCoverage": "complete"
+        },
+        {
+          "provider": "cursor",
+          "model": "cursor-synthetic",
+          "usage": {
+            "inputTokens": "7",
+            "outputTokens": "0",
+            "cacheReadTokens": "0",
+            "cacheWriteTokens": "0",
+            "reasoningTokens": "0",
+            "totalTokens": "7",
+            "estimatedCostUsd": "0.2"
+          },
+          "costPer1kTokens": null,
+          "tokensPerObservedActiveHour": null,
+          "millisecondsPer1kTokens": "71428.57142857143",
+          "costCoverage": "none",
+          "timingCoverage": "complete"
+        }
+      ],
+      "commits": [
+        {
+          "commitId": "aaaaaaaaaaaa",
+          "committedAt": "2026-09-01T14:00:00Z",
+          "correlatedUsage": {
+            "inputTokens": "100",
+            "outputTokens": "20",
+            "cacheReadTokens": "5",
+            "cacheWriteTokens": "2",
+            "reasoningTokens": "3",
+            "totalTokens": "130",
+            "estimatedCostUsd": "1.25"
+          },
+          "pullRequestNumber": 42,
+          "coverage": "correlated"
+        }
+      ],
+      "coverage": {
+        "assignedFragments": 1,
+        "unassignedFragments": 2,
+        "timingPartial": true,
+        "reasons": {
+          "noEligibleCommit": 1,
+          "pendingCommitWindow": 1
+        }
+      }
+    }
+  ],
+  "unattributed": {
+    "usage": {
+      "inputTokens": "7",
+      "outputTokens": "2",
+      "cacheReadTokens": "0",
+      "cacheWriteTokens": "0",
+      "reasoningTokens": "0",
+      "totalTokens": "9",
+      "estimatedCostUsd": "0.15000000000000002"
+    },
+    "fragments": 2,
+    "reasons": {
+      "missingDuration": 1,
+      "missingWorkspace": 1,
+      "noEligibleCommit": 1,
+      "nonRepositoryWorkspace": 1,
+      "pendingCommitWindow": 1,
+      "recordLimitReached": 7
+    }
+  },
+  "coverage": {
+    "attributedFragments": 3,
+    "unattributedFragments": 2,
+    "reasons": {
+      "missingDuration": 1,
+      "missingWorkspace": 1,
+      "noEligibleCommit": 1,
+      "nonRepositoryWorkspace": 1,
+      "pendingCommitWindow": 1,
+      "recordLimitReached": 7
+    }
+  },
+  "errors": [
+    {
+      "scope": "analytics",
+      "code": "recordLimitReached"
+    },
+    {
+      "scope": "git",
+      "code": "nonRepositoryWorkspace"
+    }
+  ]
+}

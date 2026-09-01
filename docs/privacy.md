@@ -35,6 +35,48 @@ reading it; an absent file is success, and the local usage cache is never remove
 credentials are never copied into Swift or UserDefaults, and diagnostics expose fixed source
 labels rather than paths.
 
+## v0.2.2 local repository analytics
+
+Analytics runs only when the user opens the separate **Analytics…** window or
+selects its **Refresh** action. Its input is the already-local cached
+`WorkspaceSession` report and its workspace keys; a workspace is eligible only
+when it was automatically observed by the supported usage sources. The
+analytics crate may resolve that workspace to a containing local repository and
+run bounded, read-only `/usr/bin/git` discovery/log commands. It does not walk
+the home directory or inspect arbitrary folders.
+
+The process is capped at 64 repositories, 500 parsed commits per repository,
+200 returned commits per repository, 1 MiB stdout, 8 KiB stderr, 2 seconds per
+process, and 10 seconds total Git time. It uses no shell, remote command,
+`fetch`, `push`, `ls-remote`, forge API, browser action, credential helper,
+provider API, Keychain access, or authentication. No analytics database,
+history file, cache write, UserDefaults record, App Group file, export field,
+widget value, or notification ledger entry is created.
+
+The exact raw data excluded from the bridge and Swift state includes full
+workspace/repository paths, symlink or home roots, remote URLs, branch names,
+commit messages/bodies, authors and email addresses, full commit OIDs, raw
+session IDs, prompts, assistant responses, source content, subprocess stdout
+and stderr, credentials, cookies, account identifiers, and provider responses.
+Raw commit message text is held only temporarily while checking for one
+standalone local marker (`(#<n>)` or `PR #<n>`); it is discarded immediately.
+Only an abbreviated commit ID, committer timestamp, correlated normalized
+usage, an optional inferred number labelled local metadata, safe repository
+label, provider/model totals, observed active-session time, coverage, and fixed
+error codes can reach Swift. An inferred number does not establish a pull
+request, forge, title, author, state, or remote identity.
+
+Commit correlation is a deterministic local time-window association only. It
+does not attribute a commit causally to an AI session and does not measure the
+commit's implementation cost.
+
+Analytics state is in memory only. A failed refresh may leave the prior safe
+snapshot marked stale; quitting or discarding that state removes it. Observed
+active AI-session time is a timestamp-derived metric and is not human coding
+time, keyboard time, or a productivity claim. Estimated cost retains the
+existing cached/local pricing basis and is not an invoice or provider billing
+statement.
+
 ## Local JSON export
 
 Settings exposes one user-initiated JSON export for the current normalized snapshot. The destination is selected by the user and remains a local file; Needlbar does not upload it, refresh provider data, or authenticate while exporting. The writer creates or replaces the selected file with mode `0600`, using a private same-directory temporary file and an atomic commit.
