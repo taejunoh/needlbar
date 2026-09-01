@@ -197,8 +197,35 @@ record_stage() {
 printf '%s\n' '00000000-0000-0000-0000-000000000000'
 EOF
 
+cat > "$fake_bin/shasum" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+record_stage() {
+  printf '%s\n' "$1" >> "$FAKE_COMMAND_LOG"
+}
+
+[[ "${1:-}" == '-a' && "${2:-}" == '256' ]] || exit 64
+if [[ "${3:-}" == '-c' ]]; then
+  check_file="${4:-}"
+  [[ -f "$check_file" ]] || exit 64
+  line="$(<"$check_file")"
+  [[ "$line" =~ ^([[:xdigit:]]{64})[[:space:]][[:space:]](.+)$" ]] || exit 65
+  [[ "${BASH_REMATCH[1],,}" == "$(printf '%064x' 0)" ]] || exit 66
+  [[ -f "$(dirname "$check_file")/${BASH_REMATCH[2]}" ]] || exit 67
+  record_stage shasum:check
+  printf '%s: OK\n' "${BASH_REMATCH[2]}"
+else
+  archive_path="${3:-}"
+  [[ -f "$archive_path" ]] || exit 64
+  record_stage shasum:sha256
+  printf '%064x  %s\n' 0 "$(basename "$archive_path")"
+fi
+EOF
+
 chmod 755 "$fake_bin/security" "$fake_bin/codesign" "$fake_bin/xcrun" \
-  "$fake_bin/spctl" "$fake_bin/zip" "$fake_bin/ditto" "$fake_bin/base64" "$fake_bin/uuidgen"
+  "$fake_bin/spctl" "$fake_bin/zip" "$fake_bin/ditto" "$fake_bin/base64" "$fake_bin/uuidgen" \
+  "$fake_bin/shasum"
 
 new_case() {
   case_root="$(mktemp -d "$temp_root/case.XXXXXX")"
@@ -287,8 +314,14 @@ assert_private_cleanup() {
 }
 
 assert_original_zip() {
+  local zip_parent
+  zip_parent="$(dirname "$case_root/repo/dist/Needlbar-macos-arm64.zip")"
   [[ "$(<"$case_root/repo/dist/Needlbar-macos-arm64.zip")" == original-ad-hoc-zip ]] ||
     fail 'final ZIP was replaced before validation completed'
+  [[ ! -e "$case_root/repo/dist/Needlbar-macos-arm64.zip.sha256" ]] ||
+    fail 'failure case created checksum sidecar'
+  ! find "$zip_parent" -maxdepth 1 -name '.needlbar-checksum.*.sha256' -print -quit | grep -q . ||
+    fail 'failure case left checksum candidate'
 }
 
 assert_stage_present() {
@@ -318,6 +351,7 @@ assert_stage_subsequence() {
     codesign:verify
     xcrun:stapler-validate
     spctl:assess
+    shasum:sha256
     security:restore-list
     security:delete-keychain
   )
@@ -811,6 +845,25 @@ def scalar_strings(value)
   end
 end
 
+def exact_artifact_paths(value, label)
+  expected = [
+    'dist/Needlbar-macos-arm64.zip',
+    'dist/Needlbar-macos-arm64.zip.sha256'
+  ]
+  paths = case value
+          when String
+            lines = value.lines.map(&:chomp)
+            lines.pop if lines.last == ''
+            lines
+          when Array
+            value
+          else
+            nil
+          end
+  assert_contract(paths == expected, "#{label} must list ZIP and checksum exactly")
+  paths
+end
+
 def uses_values(value)
   case value
   when Hash
@@ -892,7 +945,7 @@ upload = uploads.first[2]
 upload_with = mapping(upload['with'], 'upload artifact settings')
 assert_contract(upload_index > notarize_index, 'upload must follow notarization')
 assert_contract(upload_with['name'] == 'Needlbar-macos-arm64-notarized', 'upload artifact name is wrong')
-assert_contract(upload_with['path'] == 'dist/Needlbar-macos-arm64.zip', 'upload artifact path is wrong')
+exact_artifact_paths(upload_with['path'], 'upload artifact path')
 assert_contract(upload_with['if-no-files-found'] == 'error', 'upload must fail for a missing artifact')
 
 downloads = all_steps.select { |_, _, step| step['uses'].to_s.start_with?('actions/download-artifact@') }
@@ -907,6 +960,12 @@ publish_steps.each do |step|
 end
 publish_uses = publish_steps.filter_map { |step| step['uses'] }
 assert_contract(publish_uses.length == 2 && publish_uses.any? { |value| value.start_with?('actions/download-artifact@') } && publish_uses.any? { |value| value.start_with?('softprops/action-gh-release@') }, 'publish may only download and release the validated artifact')
+release_actions = publish_steps.select { |step| step['uses'].to_s.start_with?('softprops/action-gh-release@') }
+assert_contract(release_actions.length == 1, 'publish must contain exactly one GitHub Release action')
+release_with = mapping(release_actions.first['with'], 'release action settings')
+exact_artifact_paths(release_with['files'], 'release action files')
+assert_contract(release_with['body_path'] == '.github/release-notes/v0.2.2.md', 'release action body_path is wrong')
+assert_contract(release_with['generate_release_notes'] == false, 'release action generate_release_notes must be false')
 
 all_runs = all_steps.map { |_, _, step| step['run'].to_s }
 assert_contract(all_runs.none? { |command| command.match?(/(?:^|\s)(?:git\s+(?:tag|push)|gh\s+(?:release|api))/) }, 'workflow must not create tags or releases directly')
@@ -924,11 +983,39 @@ test_release_workflow_contract() {
   # post-publish job. A correct contract checker must reject it.
   local release_workflow="$ROOT/.github/workflows/release.yml"
   local ci_workflow="$ROOT/.github/workflows/ci.yml"
+  local valid_workflow="$temp_root/release-valid-baseline.yml"
   local decoy_workflow="$temp_root/release-scope-decoy.yml"
+  local decoy_missing_upload_checksum="$temp_root/release-missing-upload-checksum.yml"
+  local decoy_zip_only_release_files="$temp_root/release-zip-only-files.yml"
+  local decoy_missing_body_path="$temp_root/release-missing-body-path.yml"
+  local decoy_generated_notes="$temp_root/release-generated-notes.yml"
   local decoy_output decoy_status
 
-  release_workflow_contract_is_valid "$release_workflow" "$ci_workflow" ||
-    fail 'release workflow contract is unexpectedly invalid'
+  set +e
+  decoy_output="$(release_workflow_contract_is_valid "$release_workflow" "$ci_workflow" 2>&1)"
+  decoy_status=$?
+  set -e
+  if [[ "$decoy_status" -ne 0 ]]; then
+    [[ "$decoy_output" == *'upload artifact path must list ZIP and checksum exactly'* ]] ||
+      fail "current release workflow RED failed for an unexpected reason: $decoy_output"
+  fi
+
+  ruby - "$release_workflow" "$valid_workflow" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+upload_paths = "          path: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n"
+unless document.sub!(/          path: (?:dist\/Needlbar-macos-arm64\.zip\n|\|\n            dist\/Needlbar-macos-arm64\.zip\n            dist\/Needlbar-macos-arm64\.zip\.sha256\n)/, upload_paths)
+  abort 'fixture setup: could not normalize artifact upload path'
+end
+release_fields = "          files: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n          body_path: .github/release-notes/v0.2.2.md\n          generate_release_notes: false\n"
+unless document.sub!(/          files: dist\/Needlbar-macos-arm64\.zip\n|          files: \|\n            dist\/Needlbar-macos-arm64\.zip\n            dist\/Needlbar-macos-arm64\.zip\.sha256\n          body_path: [^\n]+\n          generate_release_notes: (?:true|false)\n/, release_fields)
+  abort 'fixture setup: could not normalize release action settings'
+end
+File.write(destination, document)
+RUBY
+  release_workflow_contract_is_valid "$valid_workflow" "$ci_workflow" ||
+    fail 'normalized valid release workflow fixture was rejected'
+
   ruby - "$release_workflow" "$decoy_workflow" <<'RUBY'
 source, destination = ARGV
 document = File.read(source)
@@ -958,6 +1045,66 @@ RUBY
   fi
   [[ "$decoy_output" == *'validate must use the release environment'* ]] ||
     fail 'scoped-field decoy failed for an unexpected reason'
+
+  ruby - "$valid_workflow" "$decoy_missing_upload_checksum" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+old_paths = "          path: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n"
+new_paths = "          path: dist/Needlbar-macos-arm64.zip\n"
+abort 'fixture setup: valid upload path was not found' unless document.sub!(old_paths, new_paths)
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(release_workflow_contract_is_valid "$decoy_missing_upload_checksum" "$ci_workflow" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'missing-upload-checksum decoy was accepted'
+  [[ "$decoy_output" == *'upload artifact path must list ZIP and checksum exactly'* ]] ||
+    fail 'missing-upload-checksum decoy failed for an unexpected reason'
+
+  ruby - "$valid_workflow" "$decoy_zip_only_release_files" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+old_files = "          files: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n"
+new_files = "          files: dist/Needlbar-macos-arm64.zip\n"
+abort 'fixture setup: valid release files were not found' unless document.sub!(old_files, new_files)
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(release_workflow_contract_is_valid "$decoy_zip_only_release_files" "$ci_workflow" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'ZIP-only release-files decoy was accepted'
+  [[ "$decoy_output" == *'release action files must list ZIP and checksum exactly'* ]] ||
+    fail 'ZIP-only release-files decoy failed for an unexpected reason'
+
+  ruby - "$valid_workflow" "$decoy_missing_body_path" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+abort 'fixture setup: valid body_path was not found' unless document.sub!("          body_path: .github/release-notes/v0.2.2.md\n", '')
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(release_workflow_contract_is_valid "$decoy_missing_body_path" "$ci_workflow" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'missing-body-path decoy was accepted'
+  [[ "$decoy_output" == *'release action body_path is wrong'* ]] ||
+    fail 'missing-body-path decoy failed for an unexpected reason'
+
+  ruby - "$valid_workflow" "$decoy_generated_notes" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+abort 'fixture setup: valid generated-notes setting was not found' unless document.sub!("          generate_release_notes: false\n", "          generate_release_notes: true\n")
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(release_workflow_contract_is_valid "$decoy_generated_notes" "$ci_workflow" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'generated-notes decoy was accepted'
+  [[ "$decoy_output" == *'release action generate_release_notes must be false'* ]] ||
+    fail 'generated-notes decoy failed for an unexpected reason'
 }
 
 test_release_workflow_contract
@@ -980,7 +1127,7 @@ for missing_name in \
   [[ "$status" -ne 0 ]] || fail "missing $missing_name must fail"
   grep -F "$missing_name" "$output_file" >/dev/null || fail "missing name not reported"
   ! grep -Fx 'security:create-keychain' "$command_log" >/dev/null || fail 'keychain created before preflight'
-  [[ "$(<"$final_zip")" == 'original-ad-hoc-zip' ]] || fail 'preflight replaced final ZIP'
+  assert_original_zip
   assert_no_canary "$case_root"
   ! find "$case_root/private-temp" -mindepth 1 -print -quit | grep -q . ||
     fail 'missing-secret preflight left private temp child'
@@ -1141,6 +1288,7 @@ run_signal_case() {
   [[ "$status" -eq "$expected_status" ]] || fail "unexpected $signal_name status: $status"
   [[ "$(<"$case_root/repo/dist/Needlbar-macos-arm64.zip")" == original-ad-hoc-zip ]] ||
     fail 'signal case replaced final ZIP'
+  assert_original_zip
   assert_private_cleanup "$case_root"
   assert_no_canary "$case_root"
 }
@@ -1153,6 +1301,13 @@ if ! invoke_case; then
 fi
 [[ "$(<"$case_root/repo/dist/Needlbar-macos-arm64.zip")" != original-ad-hoc-zip ]] ||
   fail 'success case did not replace final ZIP'
+checksum_sidecar="$case_root/repo/dist/Needlbar-macos-arm64.zip.sha256"
+[[ -f "$checksum_sidecar" ]] || fail 'success case did not create checksum sidecar'
+[[ "$(wc -l < "$checksum_sidecar")" -eq 1 ]] || fail 'checksum sidecar must contain one line'
+grep -Eq '^[0-9a-f]{64}  Needlbar-macos-arm64\.zip$' "$checksum_sidecar" ||
+  fail 'checksum sidecar must name only the final ZIP'
+PATH="$fake_bin:$PATH" shasum -a 256 -c "$checksum_sidecar" > "$case_root/checksum-output.txt" ||
+  fail 'checksum sidecar failed shasum verification'
 assert_stage_subsequence "$case_root"
 assert_private_cleanup "$case_root"
 assert_no_canary "$case_root"
