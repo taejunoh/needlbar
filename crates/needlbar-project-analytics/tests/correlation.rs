@@ -457,3 +457,44 @@ fn task_one_overflow_counters_have_exact_fixed_reason_counts() {
     assert_eq!(payload.coverage.reasons["recordLimitReached"], 11);
     assert_eq!(payload.unattributed.reasons["recordLimitReached"], 11);
 }
+
+#[test]
+fn finite_cost_totals_agree_across_repository_model_commit_and_input_order() {
+    let make = |reverse: bool| {
+        let mut source = report(fragment("/repos/a", "2026-09-01T10:00:00Z"));
+        source
+            .fragments
+            .push(fragment("/repos/a", "2026-09-01T11:00:00Z"));
+        if reverse {
+            source.fragments.reverse();
+        }
+        build_analytics_payload(
+            source,
+            time("2026-09-01T20:00:00Z"),
+            &FakeGitRunner::new(vec![
+                output("/repos/a\n"),
+                output("/repos/a\n"),
+                output(&commit(
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "2026-09-01T12:00:00Z",
+                    "",
+                )),
+            ]),
+        )
+    };
+    let first = make(false);
+    let second = make(true);
+    let repository = &first.repositories[0];
+    assert_eq!(
+        repository.usage.estimated_cost_usd,
+        repository.provider_models[0].usage.estimated_cost_usd
+    );
+    assert_eq!(
+        repository.usage.estimated_cost_usd,
+        repository.commits[0].correlated_usage.estimated_cost_usd
+    );
+    assert_eq!(
+        serde_json::to_string(&first).unwrap(),
+        serde_json::to_string(&second).unwrap()
+    );
+}
