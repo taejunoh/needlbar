@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-01
 **Branch:** `codex/v022-project-cost-analytics` (baseline HEAD `d1b13d1`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate, and the v0.2.2 local repository cost analytics design is finalized under the user's pre-approval of the recommended three-hour option.
-**Next action:** Write and review the v0.2.2 implementation plan while preserving the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Current phase:** v0.2.2 설계+구현 계획 확정, 다음은 Task 1 cached WorkspaceSession report TDD. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
+**Next action:** Start Task 1 cached WorkspaceSession report TDD while preserving the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates. The user pre-approved the subagent-driven (recommended) execution choice; push, tag, and release actions remain unauthorized.
 
 ## Source of Truth
 
@@ -17,7 +17,8 @@ The active Needlbar work is governed by:
 - `docs/superpowers/plans/2026-08-29-needlbar-v0.2.0-local-json-export.md` — approved v0.2.0 local JSON export implementation plan; all tasks are implemented and documented below.
 - `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1–W4, Notification Tasks N1–N4, and automated Integration Task 1 verification are complete on the code path, with native acceptance still pending.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widgets-notifications.md` — reviewed v0.2.1 implementation index: four widget tasks, four notification tasks, then combined acceptance.
-- `docs/superpowers/specs/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics-design.md` — approved v0.2.2 local repository cost analytics design; implementation planning is next.
+- `docs/superpowers/specs/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics-design.md` — approved v0.2.2 local repository cost analytics design; its implementation plan is recorded below.
+- `docs/superpowers/plans/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics.md` — approved v0.2.2 implementation plan; Task 1 cached WorkspaceSession report TDD is next.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget.md` — W1–W4, including Swift-only day provenance, sanitized projection, and medium Overview presentation.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-notifications.md` — N1–N4, including fresh quota observation, durable policy, explicit permission, and lifecycle tests.
@@ -25,7 +26,7 @@ The active Needlbar work is governed by:
 
 ## v0.2.2 Design Checkpoint — 2026-09-01
 
-The v0.2.2 local repository cost analytics design is finalized under the user's pre-approval of the recommended three-hour option; implementation-plan writing is next. The bounded scope is a 30-day on-demand analysis using automatically observed local Git workspaces, local Git metadata, and best-effort local PR-number metadata. It has no network or provider-authentication activity, no database, and no raw path crossing the sanitization boundary.
+The v0.2.2 local repository cost analytics design and implementation plan are finalized under the user's pre-approval of the recommended three-hour option. The bounded scope is a 30-day on-demand analysis using automatically observed local Git workspaces, local Git metadata, and best-effort local PR-number metadata. It has no network or provider-authentication activity, no database, and no raw path crossing the sanitization boundary. Execution is pre-approved as subagent-driven (recommended); push, tag, and release actions remain unauthorized.
 
 Baseline verification from fresh HEAD `d1b13d1` passed with `make test` exit 0: Rust workspace tests passed (72), pinned vendor tests reported 1372 passed / 1 ignored, Swift reported 245 tests in 11 suites passed, and the widget-extension, package relink, and notarization shell contracts passed. Existing warnings remain (Swift unused-await/result diagnostics and macOS deployment-target linker warnings). No push, tag, or release was performed or authorized.
 
