@@ -447,4 +447,48 @@ mod tests {
             .unwrap()
             .success());
     }
+
+    #[test]
+    fn descendant_holding_pipes_is_killed_with_its_process_group_before_deadline_escape() {
+        let child = tempfile::NamedTempFile::new().unwrap();
+        let script = format!(
+            "#!/bin/sh\n/bin/sleep 30 &\necho $! > '{}'\nwait\n",
+            child.path().display()
+        );
+        let (_directory, path) = executable(&script);
+        let runner = BoundedGitRunner::with_test_executable(path);
+        let started = Instant::now();
+        assert!(matches!(
+            runner.run(GitRequest::discover(std::env::temp_dir())),
+            Err(GitRunnerError::TimedOut)
+        ));
+        assert!(started.elapsed() < Duration::from_secs(3));
+        let pid = fs::read_to_string(child.path()).unwrap();
+        assert!(!TestCommand::new("/bin/kill")
+            .args(["-0", pid.trim()])
+            .status()
+            .unwrap()
+            .success());
+    }
+
+    #[test]
+    fn lifecycle_mutex_serializes_two_runs() {
+        let count = tempfile::NamedTempFile::new().unwrap();
+        let script = format!(
+            "#!/bin/sh\necho x >> '{}'\n/bin/sleep 0.1\n",
+            count.path().display()
+        );
+        let (_directory, path) = executable(&script);
+        let runner = std::sync::Arc::new(BoundedGitRunner::with_test_executable(path));
+        let left = runner.clone();
+        let right = runner.clone();
+        let a = thread::spawn(move || left.run(GitRequest::discover(std::env::temp_dir())).is_ok());
+        let b = thread::spawn(move || {
+            right
+                .run(GitRequest::discover(std::env::temp_dir()))
+                .is_ok()
+        });
+        assert!(a.join().unwrap() && b.join().unwrap());
+        assert_eq!(fs::read_to_string(count.path()).unwrap().lines().count(), 2);
+    }
 }

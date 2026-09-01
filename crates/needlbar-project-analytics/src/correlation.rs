@@ -450,6 +450,26 @@ fn fold_coverage(current: &str, next: tokscale_core::CostCoverage) -> String {
         _ => "partial".into(),
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+mod coverage_tests {
+    use super::fold_coverage;
+    use tokscale_core::CostCoverage;
+    #[test]
+    fn coverage_fold_is_order_independent_for_complete_and_none() {
+        let left = fold_coverage(
+            &fold_coverage("", CostCoverage::Complete),
+            CostCoverage::None,
+        );
+        let right = fold_coverage(
+            &fold_coverage("", CostCoverage::None),
+            CostCoverage::Complete,
+        );
+        assert_eq!(left, "partial");
+        assert_eq!(left, right);
+    }
+}
 fn nonzero_ratio(numerator: f64, denominator: i64) -> Option<String> {
     (denominator > 0 && numerator.is_finite() && numerator >= 0.0)
         .then(|| decimal(numerator / denominator as f64))

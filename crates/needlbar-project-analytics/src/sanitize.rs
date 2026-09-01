@@ -110,9 +110,17 @@ pub(crate) fn short_oid(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::decimal;
+    use super::{decimal, Totals};
+    use tokscale_core::TokenBreakdown;
     #[test]
     fn tiny_positive_cost_is_canonical_without_an_exponent() {
         assert_eq!(decimal(1e-15), "0.000000000000001");
+    }
+    #[test]
+    fn checked_cost_addition_keeps_finite_subtotal_on_overflow() {
+        let mut totals = Totals::default();
+        totals.add(&TokenBreakdown::default(), f64::MAX);
+        totals.add(&TokenBreakdown::default(), f64::MAX);
+        assert_ne!(totals.dto().estimated_cost_usd, "0");
     }
 }
