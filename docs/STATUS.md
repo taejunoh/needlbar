@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
-**Updated:** 2026-08-31
-**Branch:** `codex/v021-widgets-notifications` (execution docs baseline `e73356e2a836930488f7a7eb5ef92af008bda809`; branched from `main` at `1ba620b35c6c4a51087be2c7cb07ce7eda738f1d`; v0.2.0 final feature commit `6f39ec6917db92a6566b545aab0eef80cfd4540f`)
-**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications written design is user-approved; W1–W4 and Notification Tasks N1–N4 are implemented on this isolated branch at `9de686e`, and the final whole-branch and scoped code reviews accepted the implementation. Integration Task 1 automated verification is green, and current-host signed native popover acceptance is partially recorded; native macOS 14 arm64 compatibility, installed-widget lifecycle, and remaining notification gates remain, so Integration Task 1 overall is not complete.
-**Next action:** Continue installed-widget acceptance using the signed outside-click-fix candidate: current-host Widget Gallery visibly shows Needlbar's medium Overview preview, Settings opens from the status-item popover, an external-app SecurityAgent Deny click dismisses the panel, and the bounded AppKit coordinate evidence satisfies the bottom-edge and centered-anchor checks. Same-app outside-click and native Escape remain unverified because the synthetic click was not focused and the nonactivating panel could not receive direct Escape injection. Widget placement, deep-link/quit/reset/midnight behavior, real threshold delivery, remaining notification acceptance, and macOS 14 arm64 compatibility still require separate evidence before finishing Integration Task 1. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
+**Updated:** 2026-09-01
+**Branch:** `codex/v022-project-cost-analytics` (baseline HEAD `d1b13d1`; v0.2.1 remains an earlier integrated line of work)
+**Current phase:** The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate, and the v0.2.2 local repository cost analytics design is finalized under the user's pre-approval of the recommended three-hour option.
+**Next action:** Write and review the v0.2.2 implementation plan while preserving the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates. The v0.1 tag/public-release gate remains separate: until explicit authorization is given, no tag or release action is authorized.
 
 ## Source of Truth
 
@@ -17,10 +17,21 @@ The active Needlbar work is governed by:
 - `docs/superpowers/plans/2026-08-29-needlbar-v0.2.0-local-json-export.md` — approved v0.2.0 local JSON export implementation plan; all tasks are implemented and documented below.
 - `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1–W4, Notification Tasks N1–N4, and automated Integration Task 1 verification are complete on the code path, with native acceptance still pending.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widgets-notifications.md` — reviewed v0.2.1 implementation index: four widget tasks, four notification tasks, then combined acceptance.
+- `docs/superpowers/specs/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics-design.md` — approved v0.2.2 local repository cost analytics design; implementation planning is next.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget.md` — W1–W4, including Swift-only day provenance, sanitized projection, and medium Overview presentation.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-notifications.md` — N1–N4, including fresh quota observation, durable policy, explicit permission, and lifecycle tests.
 - `AGENTS.md` — continuation rules for Codex/agentic workers.
+
+## v0.2.2 Design Checkpoint — 2026-09-01
+
+The v0.2.2 local repository cost analytics design is finalized under the user's pre-approval of the recommended three-hour option; implementation-plan writing is next. The bounded scope is a 30-day on-demand analysis using automatically observed local Git workspaces, local Git metadata, and best-effort local PR-number metadata. It has no network or provider-authentication activity, no database, and no raw path crossing the sanitization boundary.
+
+Baseline verification from fresh HEAD `d1b13d1` passed with `make test` exit 0: Rust workspace tests passed (72), pinned vendor tests reported 1372 passed / 1 ignored, Swift reported 245 tests in 11 suites passed, and the widget-extension, package relink, and notarization shell contracts passed. Existing warnings remain (Swift unused-await/result diagnostics and macOS deployment-target linker warnings). No push, tag, or release was performed or authorized.
+
+### v0.2.1 status preserved
+
+The v0.2.1 native macOS 14 arm64 and remaining acceptance gates are still incomplete; this v0.2.2 checkpoint does not change that outcome.
 
 ## v0.2.1 Widgets and Notifications — Design Continuation
 
