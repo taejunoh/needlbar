@@ -166,7 +166,7 @@ public struct AnalyticsView: View {
                     .foregroundStyle(.secondary)
             }
             if repository.state == "available" && !repository.providerModels.isEmpty {
-                DisclosureGroup("Provider and model metrics") {
+                DisclosureGroup(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.providerAndModel) {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(Array(repository.providerModels.enumerated()), id: \.offset) { _, model in
                             VStack(alignment: .leading, spacing: 3) {
@@ -180,15 +180,18 @@ public struct AnalyticsView: View {
                                 LabeledContent("Milliseconds per 1K tokens", value: AnalyticsDisplayFormatter.metric(model.millisecondsPer1KTokens) ?? "Unavailable")
                             }
                             .lineLimit(1)
-                            .accessibilityElement(children: .combine)
+                            .accessibilityElement(children: .contain)
                             .accessibilityLabel("\(model.provider) \(model.model)")
                             .accessibilityValue(AnalyticsDisplayFormatter.modelAccessibilityValue(model))
+                            .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
                         }
                     }
                 }
+                .accessibilityLabel(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.providerAndModel)
+                .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
             }
             if !repository.commits.isEmpty {
-                DisclosureGroup("Commits") {
+                DisclosureGroup(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.commits) {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(repository.commits, id: \.commitID) { commit in
                             VStack(alignment: .leading, spacing: 3) {
@@ -214,12 +217,11 @@ public struct AnalyticsView: View {
                         }
                     }
                 }
+                .accessibilityLabel(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.commits)
+                .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
             }
         }
         .padding(.vertical, 3)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Repository \(repository.label)")
-        .accessibilityValue(AnalyticsDisplayFormatter.repositoryAccessibilityValue(repository))
     }
 
     private func summaryMetric(_ title: String, _ value: String) -> some View {
@@ -265,6 +267,12 @@ public struct AnalyticsReasonDisplay: Identifiable, Equatable, Sendable {
 }
 
 public enum AnalyticsDisplayFormatter {
+    public static let disclosureAccessibilityLabels = (
+        providerAndModel: "Provider and model metrics",
+        commits: "Commits"
+    )
+    public static let disclosureAccessibilityHint = "Expand or collapse this section"
+
     private static let reasonLabels: [String: String] = [
         "missingWorkspace": "Missing workspace",
         "invalidWorkspace": "Invalid workspace",
@@ -375,7 +383,7 @@ public enum AnalyticsDisplayFormatter {
     }
 
     public static func modelAccessibilityValue(_ model: AnalyticsProviderModelAnalytics) -> String {
-        "Estimated cost \(cost(model.usage.estimatedCostUSDValue)); Cost coverage \(providerCoverage(model.costCoverage)); Timing coverage \(providerTimingCoverage(model.timingCoverage))"
+        "Estimated cost \(cost(model.usage.estimatedCostUSDValue)); Cost coverage \(providerCoverage(model.costCoverage)); Timing coverage \(providerTimingCoverage(model.timingCoverage)); Cost per 1K tokens \(metric(model.costPer1KTokens) ?? "Unavailable"); Tokens per observed active hour \(metric(model.tokensPerObservedActiveHour) ?? "Unavailable"); Milliseconds per 1K tokens \(metric(model.millisecondsPer1KTokens) ?? "Unavailable")"
     }
 
     public static func commitAccessibilityValue(_ commit: AnalyticsCommitAnalytics) -> String {

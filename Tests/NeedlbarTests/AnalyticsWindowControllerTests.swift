@@ -199,6 +199,27 @@ struct AnalyticsWindowControllerTests {
         #expect(AnalyticsDisplayFormatter.refreshAccessibilityValue(isLoading: false) == "Ready")
     }
 
+    @Test func analyticsDisclosuresRemainIndependentlyIdentifiedAndActionable() {
+        let labels = AnalyticsDisplayFormatter.disclosureAccessibilityLabels
+
+        #expect(labels.providerAndModel != labels.commits)
+        #expect(labels.providerAndModel == "Provider and model metrics")
+        #expect(labels.commits == "Commits")
+        #expect(AnalyticsDisplayFormatter.disclosureAccessibilityHint == "Expand or collapse this section")
+    }
+
+    @Test func modelAccessibilityCopyIncludesEveryVisibleMetricAndUnavailableValues() {
+        let model = populatedAnalyticsSnapshot().repositories[0].providerModels[0]
+        let copy = AnalyticsDisplayFormatter.modelAccessibilityValue(model)
+
+        #expect(copy.contains("Estimated cost"))
+        #expect(copy.contains("Cost coverage Partial"))
+        #expect(copy.contains("Timing coverage Missing duration"))
+        #expect(copy.contains("Cost per 1K tokens Unavailable"))
+        #expect(copy.contains("Tokens per observed active hour Unavailable"))
+        #expect(copy.contains("Milliseconds per 1K tokens Unavailable"))
+    }
+
     @Test func maximumSnapshotCanHostAtTheWindowSizeWithoutEagerMaterializationFailure() async {
         let started = ContinuousClock.now
         let snapshot = maximumAnalyticsSnapshot()
