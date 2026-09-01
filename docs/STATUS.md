@@ -267,10 +267,17 @@ feature worktree, after which the merged-result tests passed.
 With explicit user authorization, `taejunoh/tokscale-core` was created as a
 fork and the exact pinned commit was published on branch
 `needlbar-v0.2.2-workspace-session-report`. The superproject submodule URL now
-uses that authorized fork so a fresh checkout can retrieve `ecfb694`. The
-remaining gate is a clean fresh-clone submodule initialization and full
-`make test` run, followed by the separately authorized superproject push. No
-tag, release, notarization, or credentialed provider action was performed.
+uses that authorized fork so a fresh checkout can retrieve `ecfb694`. A clean
+`--no-local` clone then initialized the public submodule at that exact SHA and
+passed `make test`: all Needlbar Rust suites passed, vendor reported 1,396
+passed / 1 ignored, Swift reported 277 tests in 12 suites, and the
+widget/package/notarization shell contracts passed. The known macOS 26.5 object
+version versus macOS 14.0 link-target warnings remained non-blocking.
+
+The vendor-publication blocker is resolved. The next continuation is the
+separately authorized superproject push and CI confirmation, followed by a
+signed RC only with explicit authorization. No tag, release, notarization, or
+credentialed provider action was performed.
 
 ## v0.2.1 Widgets and Notifications — Design Continuation
 
