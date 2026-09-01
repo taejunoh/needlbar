@@ -96,6 +96,27 @@ private final class AnalyticsRawPointer: @unchecked Sendable {
     }
 }
 
+@Test func acceptsAtMostThirtyEightSignificantCostDigits() throws {
+    let accepted = String(repeating: "9", count: 38)
+    let acceptedReplacement = "\"estimatedCostUSD\":\"\(accepted)\""
+    _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(analyticsFixture.replacingOccurrences(of: "\"estimatedCostUSD\":\"1.25\"", with: acceptedReplacement)))
+
+    let rejected = String(repeating: "9", count: 39)
+    let rejectedReplacement = "\"estimatedCostUSD\":\"\(rejected)\""
+    #expect(throws: Error.self) {
+        _ = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(analyticsFixture.replacingOccurrences(of: "\"estimatedCostUSD\":\"1.25\"", with: rejectedReplacement)))
+    }
+}
+
+@Test func acceptsTheFixedRecordLimitCoverageReason() throws {
+    let partial = analyticsFixture
+        .replacingOccurrences(of: "\"coverage\":{\"attributedFragments\":1,\"unattributedFragments\":0,\"reasons\":{}}", with: "\"coverage\":{\"attributedFragments\":1,\"unattributedFragments\":0,\"reasons\":{\"recordLimitReached\":1}}")
+        .replacingOccurrences(of: "    \"errors\":[]\n  },", with: "    \"errors\":[{\"scope\":\"analytics\",\"code\":\"recordLimitReached\"}]\n  },")
+    let snapshot = try AnalyticsBridgeDecoder().decodeSnapshot(analyticsData(partial))
+    #expect(snapshot.coverage.reasons["recordLimitReached"] == 1)
+    #expect(snapshot.errors.contains(.init(scope: "analytics", code: "recordLimitReached")))
+}
+
 @Test func rejectsUnknownScopeProviderStateCoverageOrderingAndDuplicateCommit() {
     let replacements = [
         ("\"errors\":[]", "\"errors\":[{\"scope\":\"future\",\"code\":\"x\"}]"),

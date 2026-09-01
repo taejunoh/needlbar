@@ -57,6 +57,7 @@ fn ffi_string_pointer(json: String) -> *const c_char {
 }
 
 const ANALYTICS_MAX_BYTES: usize = 256 * 1024;
+const ANALYTICS_RECORD_LIMIT_REACHED: &str = "recordLimitReached";
 
 fn analytics_failure_json(scope: &str, code: &str) -> String {
     let generated_at = analytics_timestamp(Utc::now());
@@ -118,6 +119,7 @@ fn analytics_string_pointer(json: String) -> *const c_char {
     pointer
 }
 
+#[cfg(test)]
 fn ffi_analytics_envelope<T: Serialize>(
     f: impl FnOnce() -> Result<AnalyticsEnvelope<T>, AnalyticsBridgeError> + UnwindSafe,
 ) -> *const c_char {
@@ -141,6 +143,115 @@ fn ffi_analytics_envelope<T: Serialize>(
         Err(_) => analytics_fallback_json(),
     };
     analytics_string_pointer(json)
+}
+
+fn ffi_analytics_payload_envelope(
+    f: impl FnOnce() -> Result<
+            AnalyticsEnvelope<needlbar_project_analytics::AnalyticsPayload>,
+            AnalyticsBridgeError,
+        > + UnwindSafe,
+) -> *const c_char {
+    let result = catch_unwind(f);
+    let json = match result {
+        Ok(Ok(envelope)) => match serialize_byte_budgeted_analytics_envelope(envelope) {
+            Ok(json) if json.len() <= ANALYTICS_MAX_BYTES => json,
+            Ok(_) => analytics_failure_json("analytics", "payloadTooLarge"),
+            Err(_) => analytics_fallback_json(),
+        },
+        Ok(Err(error)) => {
+            let envelope = AnalyticsEnvelope::<serde_json::Value> {
+                schema_version: ANALYTICS_SCHEMA_VERSION,
+                ok: false,
+                generated_at: analytics_timestamp(Utc::now()),
+                data: None,
+                errors: vec![error],
+            };
+            serde_json::to_string(&envelope).unwrap_or_else(|_| analytics_fallback_json())
+        }
+        Err(_) => analytics_fallback_json(),
+    };
+    analytics_string_pointer(json)
+}
+
+fn serialize_byte_budgeted_analytics_envelope(
+    mut envelope: AnalyticsEnvelope<needlbar_project_analytics::AnalyticsPayload>,
+) -> Result<String, serde_json::Error> {
+    let json = serialize_analytics_envelope(&envelope)?;
+    if json.len() <= ANALYTICS_MAX_BYTES || !envelope.ok {
+        return Ok(json);
+    }
+    let Some(original) = envelope.data.as_ref().cloned() else {
+        return Ok(json);
+    };
+    let detail_count = analytics_detail_count(&original);
+    if detail_count == 0 {
+        return Ok(json);
+    }
+
+    let mut low = 1;
+    let mut high = detail_count;
+    while low < high {
+        let middle = low + (high - low) / 2;
+        let mut candidate = original.clone();
+        truncate_analytics_details(&mut candidate, middle);
+        envelope.data = Some(candidate);
+        if serialize_analytics_envelope(&envelope)?.len() <= ANALYTICS_MAX_BYTES {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    let mut bounded = original;
+    truncate_analytics_details(&mut bounded, low);
+    envelope.data = Some(bounded);
+    serialize_analytics_envelope(&envelope)
+}
+
+fn analytics_detail_count(payload: &needlbar_project_analytics::AnalyticsPayload) -> usize {
+    payload
+        .repositories
+        .iter()
+        .map(|repository| repository.commits.len() + repository.provider_models.len())
+        .sum()
+}
+
+fn truncate_analytics_details(
+    payload: &mut needlbar_project_analytics::AnalyticsPayload,
+    mut count: usize,
+) {
+    let requested = count;
+    for repository in payload.repositories.iter_mut().rev() {
+        let removed = count.min(repository.commits.len());
+        repository
+            .commits
+            .truncate(repository.commits.len() - removed);
+        count -= removed;
+    }
+    for repository in payload.repositories.iter_mut().rev() {
+        let removed = count.min(repository.provider_models.len());
+        repository
+            .provider_models
+            .truncate(repository.provider_models.len() - removed);
+        count -= removed;
+    }
+    let truncated = requested.saturating_sub(count) as u64;
+    payload
+        .coverage
+        .reasons
+        .insert(ANALYTICS_RECORD_LIMIT_REACHED.to_owned(), truncated.max(1));
+    if !payload
+        .errors
+        .iter()
+        .any(|error| error.scope == "analytics" && error.code == ANALYTICS_RECORD_LIMIT_REACHED)
+    {
+        payload
+            .errors
+            .push(needlbar_project_analytics::AnalyticsError {
+                scope: "analytics".to_owned(),
+                code: ANALYTICS_RECORD_LIMIT_REACHED.to_owned(),
+            });
+        payload.errors.sort();
+    }
 }
 
 fn ffi_envelope<T: Serialize + UnwindSafe>(
@@ -288,7 +399,7 @@ pub unsafe extern "C" fn needlbar_diagnostics_json() -> *const c_char {
 /// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_analytics_snapshot_json() -> *const c_char {
-    ffi_analytics_envelope(|| {
+    ffi_analytics_payload_envelope(|| {
         #[cfg(feature = "bridge-test-runtime")]
         if let Some(test_runtime::AnalyticsFixture::Fatal {
             generated_at,

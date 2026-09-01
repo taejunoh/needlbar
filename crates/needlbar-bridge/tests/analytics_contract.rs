@@ -7,6 +7,10 @@ use needlbar_bridge::{
     needlbar_analytics_snapshot_json, needlbar_free_string, test_analytics_interior_nul_pointer,
     test_runtime,
 };
+use needlbar_project_analytics::{
+    AnalysisRange, AnalyticsCoverage, AnalyticsPayload, AttributionBucket, CommitAnalytics,
+    RepositoryAnalytics, RepositoryCoverage, RepositoryState, UsageAggregate,
+};
 use tempfile::TempDir;
 
 struct Fixture {
@@ -91,6 +95,88 @@ fn analytics_fixture_uses_one_exact_millisecond_capture_for_range() {
     assert!(value["data"]["repositories"].is_array());
     assert!(value["data"]["unattributed"].is_object());
     assert!(value["data"]["coverage"].is_object());
+}
+
+#[test]
+fn maximum_row_payload_uses_record_limit_partial_success_within_the_abi_cap() {
+    let _fixture = fixture();
+    let generated_at = chrono::DateTime::parse_from_rfc3339("2026-09-01T12:00:00.000Z")
+        .expect("fixed analytics time")
+        .with_timezone(&chrono::Utc);
+    assert!(test_runtime::install_analytics_payload_fixture(
+        generated_at,
+        maximum_row_payload(generated_at),
+    ));
+
+    let pointer = unsafe { needlbar_analytics_snapshot_json() };
+    let json = unsafe { CStr::from_ptr(pointer) }
+        .to_str()
+        .expect("analytics bridge emits UTF-8")
+        .to_owned();
+    unsafe { needlbar_free_string(pointer) };
+
+    assert!(json.len() <= 256 * 1024);
+    let value: serde_json::Value = serde_json::from_str(&json).expect("analytics JSON");
+    assert_eq!(value["ok"], true);
+    assert_eq!(
+        value["data"]["repositories"].as_array().map(Vec::len),
+        Some(64)
+    );
+    assert!(value["data"]["repositories"]
+        .as_array()
+        .expect("repositories")
+        .iter()
+        .any(|repository| repository["commits"].as_array().map_or(0, Vec::len) < 200));
+    assert!(value["data"]["coverage"]["reasons"]["recordLimitReached"]
+        .as_u64()
+        .is_some_and(|count| count > 0));
+    assert!(value["data"]["errors"]
+        .as_array()
+        .expect("errors")
+        .iter()
+        .any(|error| { error["scope"] == "analytics" && error["code"] == "recordLimitReached" }));
+}
+
+fn maximum_row_payload(generated_at: chrono::DateTime<chrono::Utc>) -> AnalyticsPayload {
+    let usage = UsageAggregate {
+        input_tokens: "1".into(),
+        output_tokens: "0".into(),
+        cache_read_tokens: "0".into(),
+        cache_write_tokens: "0".into(),
+        reasoning_tokens: "0".into(),
+        total_tokens: "1".into(),
+        estimated_cost_usd: "1".into(),
+    };
+    let repositories = (0..64)
+        .map(|repository| RepositoryAnalytics {
+            repository_id: format!("r{repository:08x}"),
+            label: format!("repository-{repository:02}"),
+            state: RepositoryState::Available,
+            usage: usage.clone(),
+            observed_active_time_seconds: "0".into(),
+            provider_models: Vec::new(),
+            commits: (0..200)
+                .map(|commit| CommitAnalytics {
+                    commit_id: format!("{repository:04x}{commit:08x}"),
+                    committed_at: generated_at,
+                    correlated_usage: usage.clone(),
+                    pull_request_number: None,
+                    coverage: "correlated".into(),
+                })
+                .collect(),
+            coverage: RepositoryCoverage::default(),
+        })
+        .collect();
+    AnalyticsPayload {
+        analysis_range: AnalysisRange {
+            start: generated_at - chrono::Duration::days(30),
+            end: generated_at,
+        },
+        repositories,
+        unattributed: AttributionBucket::default(),
+        coverage: AnalyticsCoverage::default(),
+        errors: Vec::new(),
+    }
 }
 
 #[test]

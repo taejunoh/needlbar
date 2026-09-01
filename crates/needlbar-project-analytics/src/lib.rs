@@ -7,7 +7,11 @@ mod model;
 mod sanitize;
 
 pub use git::{BoundedGitRunner, GitOutput, GitRequest, GitRequestKind, GitRunner, GitRunnerError};
-pub use model::AnalyticsPayload;
+pub use model::{
+    AnalysisRange, AnalyticsCoverage, AnalyticsError, AnalyticsPayload, AttributionBucket,
+    CommitAnalytics, ProviderModelAnalytics, RepositoryAnalytics, RepositoryCoverage,
+    RepositoryState, UsageAggregate,
+};
 
 use chrono::{DateTime, Utc};
 use tokscale_core::WorkspaceSessionReport;

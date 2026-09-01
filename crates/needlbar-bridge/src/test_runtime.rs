@@ -381,6 +381,21 @@ pub fn install_analytics_fixture(generated_at: DateTime<Utc>) -> bool {
     true
 }
 
+/// Installs a caller-provided, already-sanitized analytics payload for ABI
+/// contract tests. This remains test-only and never enters production builds.
+pub fn install_analytics_payload_fixture(
+    generated_at: DateTime<Utc>,
+    payload: AnalyticsPayload,
+) -> bool {
+    *ANALYTICS_FIXTURE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(AnalyticsFixture::Success {
+        generated_at,
+        payload: Box::new(payload),
+    });
+    true
+}
+
 pub fn install_analytics_panic_fixture() -> bool {
     *ANALYTICS_FIXTURE
         .lock()

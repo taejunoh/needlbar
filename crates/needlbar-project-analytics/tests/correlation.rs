@@ -572,7 +572,7 @@ fn repository_timing_coverage_folds_global_and_fragment_partial_flags() {
 }
 
 #[test]
-fn huge_finite_cost_order_retains_partial_subtotal_across_repository_model_and_commit() {
+fn excessive_finite_cost_is_excluded_and_partial_across_repository_model_and_commit() {
     let build = |reverse: bool| {
         let mut source = report(fragment("/repos/a", "2026-09-01T10:00:00Z"));
         source.fragments[0].estimated_cost_usd = f64::MAX;
@@ -613,11 +613,8 @@ fn huge_finite_cost_order_retains_partial_subtotal_across_repository_model_and_c
     );
     assert_eq!(repository.provider_models[0].cost_coverage, "partial");
     assert_eq!(repository.commits[0].coverage, "partial");
-    assert_ne!(repository.usage.estimated_cost_usd, "0");
-    assert!(!repository
-        .usage
-        .estimated_cost_usd
-        .contains(['e', 'E', '-']));
+    assert_eq!(repository.usage.estimated_cost_usd, "0");
+    assert_eq!(repository.usage.total_tokens, "20");
     assert_eq!(
         repository.usage.estimated_cost_usd,
         repository.provider_models[0].usage.estimated_cost_usd
@@ -630,4 +627,34 @@ fn huge_finite_cost_order_retains_partial_subtotal_across_repository_model_and_c
         repository.usage.estimated_cost_usd,
         second.repositories[0].usage.estimated_cost_usd
     );
+}
+
+#[test]
+fn zero_cost_with_no_pricing_is_not_missing_cost() {
+    let mut source = report(fragment("/repos/a", "2026-09-01T10:00:00Z"));
+    source.fragments[0].estimated_cost_usd = 0.0;
+    source.fragments[0].models[0].estimated_cost_usd = 0.0;
+    source.fragments[0].models[0].cost_coverage = tokscale_core::CostCoverage::None;
+    let payload = build_analytics_payload(
+        source,
+        time("2026-09-01T20:00:00Z"),
+        &FakeGitRunner::new(vec![
+            output("/repos/a\n"),
+            output(&commit(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "2026-09-01T12:00:00Z",
+                "",
+            )),
+        ]),
+    );
+
+    let repository = &payload.repositories[0];
+    assert_eq!(repository.usage.estimated_cost_usd, "0");
+    assert_eq!(repository.provider_models[0].cost_coverage, "none");
+    assert_eq!(repository.commits[0].coverage, "correlated");
+    assert!(!repository.coverage.reasons.contains_key("missingCost"));
+    assert!(!payload
+        .errors
+        .iter()
+        .any(|error| error.scope == "repository" && error.code == "missingCost"));
 }

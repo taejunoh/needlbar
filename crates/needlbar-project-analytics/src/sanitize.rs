@@ -1,6 +1,11 @@
 use crate::model::UsageAggregate;
 use tokscale_core::TokenBreakdown;
 
+// Cost-per-1K is derived from this subtotal. Leave three decimal orders of
+// headroom so every derived analytics number remains within Swift Decimal's
+// strict 38-significant-digit transport contract.
+const MAX_SWIFT_DECIMAL_COST: f64 = 1e34;
+
 #[derive(Clone, Default)]
 pub(crate) struct Totals {
     pub tokens: TokenBreakdown,
@@ -27,13 +32,15 @@ impl Totals {
             .tokens
             .reasoning
             .saturating_add(nonnegative(tokens.reasoning));
-        if cost.is_finite() && cost >= 0.0 {
+        if decimal_cost_is_swift_safe(cost) {
             let candidate = self.cost + cost;
-            if candidate.is_finite() {
+            if decimal_cost_is_swift_safe(candidate) {
                 self.cost = candidate;
             } else {
                 self.cost_partial = true;
             }
+        } else if cost.is_finite() && cost >= 0.0 {
+            self.cost_partial = true;
         }
     }
     pub(crate) fn dto(&self) -> UsageAggregate {
@@ -54,7 +61,7 @@ fn nonnegative(value: i64) -> i64 {
 }
 
 pub(crate) fn decimal(value: f64) -> String {
-    if !value.is_finite() || value <= 0.0 {
+    if !decimal_cost_is_swift_safe(value) {
         return "0".into();
     }
     let mut text = value.to_string();
@@ -81,6 +88,10 @@ pub(crate) fn decimal(value: f64) -> String {
         text.pop();
     }
     text
+}
+
+pub(crate) fn decimal_cost_is_swift_safe(value: f64) -> bool {
+    value.is_finite() && (0.0..MAX_SWIFT_DECIMAL_COST).contains(&value)
 }
 
 pub(crate) fn label(root: &str, id: &str) -> String {
@@ -120,10 +131,18 @@ mod tests {
         assert_eq!(decimal(1e-15), "0.000000000000001");
     }
     #[test]
-    fn checked_cost_addition_keeps_finite_subtotal_on_overflow() {
+    fn decimal_overflow_is_excluded_and_marked_partial() {
         let mut totals = Totals::default();
         totals.add(&TokenBreakdown::default(), f64::MAX);
-        totals.add(&TokenBreakdown::default(), f64::MAX);
-        assert_ne!(totals.dto().estimated_cost_usd, "0");
+        assert_eq!(totals.dto().estimated_cost_usd, "0");
+        assert!(totals.cost_partial);
+    }
+
+    #[test]
+    fn zero_cost_is_complete_and_canonical() {
+        let mut totals = Totals::default();
+        totals.add(&TokenBreakdown::default(), 0.0);
+        assert_eq!(totals.dto().estimated_cost_usd, "0");
+        assert!(!totals.cost_partial);
     }
 }
