@@ -2,6 +2,7 @@
 //! normal production builds and release artifacts, the public C header, and
 //! `make run`.
 
+use std::collections::VecDeque;
 use std::{
     ffi::{c_char, CStr},
     path::PathBuf,
@@ -14,6 +15,7 @@ use std::{
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use needlbar_project_analytics::{build_analytics_payload, AnalyticsPayload, BoundedGitRunner};
+use needlbar_project_analytics::{GitOutput, GitRequest, GitRunner, GitRunnerError};
 use needlbar_quota::{
     ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaProvider, QuotaWindow,
 };
@@ -384,6 +386,99 @@ pub fn install_analytics_panic_fixture() -> bool {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(AnalyticsFixture::Panic);
     true
+}
+
+/// Builds a raw, pre-sanitization report and feeds it through the real
+/// analytics crate with a queued fake Git runner. No provider source, cache,
+/// subprocess, or network is touched by this fixture.
+pub fn install_analytics_redaction_fixture(generated_at: DateTime<Utc>) -> bool {
+    let end = generated_at
+        .timestamp_millis()
+        .saturating_sub(2 * 60 * 60 * 1_000);
+    let oid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let git_log = format!(
+        "{oid}\0{}\0PR #42 message-canary author-canary email-canary branch-canary remote-canary stdout-canary stderr-canary\0",
+        generated_at.to_rfc3339()
+    );
+    let runner = QueuedGitRunner {
+        outputs: Mutex::new(VecDeque::from([
+            Ok(GitOutput::new(b"/private/repo\n".to_vec(), Vec::new())),
+            Ok(GitOutput::new(git_log.into_bytes(), Vec::new())),
+        ])),
+    };
+    let report = WorkspaceSessionReport {
+        fragments: vec![toksale_fragment(end)],
+        processing_time_ms: 0,
+        record_limit_reached: false,
+        timing_coverage_partial: false,
+        overflowed_fragment_observations: 0,
+        overflowed_timing_observations: 0,
+        overflowed_model_observations: 0,
+    };
+    let payload = build_analytics_payload(report, generated_at, &runner);
+    *ANALYTICS_FIXTURE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(AnalyticsFixture::Success {
+        generated_at,
+        payload: Box::new(payload),
+    });
+    true
+}
+
+fn toksale_fragment(last_seen_ms: i64) -> tokscale_core::WorkspaceSessionFragment {
+    tokscale_core::WorkspaceSessionFragment {
+        client: "claude".to_owned(),
+        workspace_key: Some("/private/repo/workspace-canary".to_owned()),
+        session_id: "session-canary".to_owned(),
+        first_seen_ms: last_seen_ms.saturating_sub(60_000),
+        last_seen_ms,
+        active_time_ms: 60_000,
+        timing_coverage_partial: false,
+        tokens: tokscale_core::TokenBreakdown {
+            input: 100,
+            output: 50,
+            cache_read: 25,
+            cache_write: 10,
+            reasoning: 5,
+        },
+        message_count: 1,
+        estimated_cost_usd: 1.25,
+        models: vec![toksale_model()],
+    }
+}
+
+fn toksale_model() -> tokscale_core::WorkspaceSessionModel {
+    tokscale_core::WorkspaceSessionModel {
+        model: "model-canary!".to_owned(),
+        provider: "provider-canary".to_owned(),
+        tokens: tokscale_core::TokenBreakdown {
+            input: 100,
+            output: 50,
+            cache_read: 25,
+            cache_write: 10,
+            reasoning: 5,
+        },
+        message_count: 1,
+        estimated_cost_usd: 1.25,
+        timed_duration_ms: 1_000,
+        timed_tokens: 190,
+        timed_sample_count: 1,
+        cost_coverage: tokscale_core::CostCoverage::Complete,
+    }
+}
+
+struct QueuedGitRunner {
+    outputs: Mutex<VecDeque<Result<GitOutput, GitRunnerError>>>,
+}
+
+impl GitRunner for QueuedGitRunner {
+    fn run(&self, _request: GitRequest) -> Result<GitOutput, GitRunnerError> {
+        self.outputs
+            .lock()
+            .expect("fixture Git queue")
+            .pop_front()
+            .unwrap_or(Err(GitRunnerError::Unavailable))
+    }
 }
 
 pub fn install_analytics_fatal_fixture(

@@ -237,6 +237,62 @@ fn analytics_does_not_construct_or_fetch_quota_providers_or_mutate_cursor_cache(
 }
 
 #[test]
+fn analytics_sanitizes_raw_workspace_session_and_git_metadata_before_ffi() {
+    let _serial = test_runtime::serial_guard();
+    let home = TempDir::new().expect("analytics fixture home");
+    assert!(test_runtime::install_redaction_fixture(
+        home.path().to_path_buf(),
+        "credential-canary".to_owned(),
+        "account-canary".to_owned(),
+        "source-canary".to_owned(),
+    ));
+    assert!(test_runtime::install_analytics_redaction_fixture(
+        fixed_analytics_time()
+    ));
+
+    let analytics = ffi_json(needlbar_analytics_snapshot_json);
+    let value: serde_json::Value = serde_json::from_str(&analytics).expect("analytics JSON");
+    assert_eq!(value["schemaVersion"], "needlbar.analytics.v1");
+    assert_eq!(value["ok"], true);
+    let repository = &value["data"]["repositories"][0];
+    assert!(repository.is_object());
+    assert!(repository["providerModels"][0].is_object());
+    assert!(repository["commits"][0].is_object());
+    assert_eq!(repository["commits"][0]["commitId"], "aaaaaaaaaaaa");
+    assert_eq!(repository["commits"][0]["pullRequestNumber"], 42);
+    assert_eq!(repository["providerModels"][0]["provider"], "claude");
+    assert_eq!(repository["providerModels"][0]["model"], "Other model");
+    assert_no_forbidden_analytics_keys(&value);
+    for canary in [
+        "/private/repo",
+        "workspace-canary",
+        "session-canary",
+        "model-canary",
+        "provider-canary",
+        "message-canary",
+        "author-canary",
+        "email-canary",
+        "branch-canary",
+        "remote-canary",
+        "stdout-canary",
+        "stderr-canary",
+        "credential-canary",
+        "account-canary",
+        "source-canary",
+    ] {
+        assert!(
+            !analytics.contains(canary),
+            "raw canary crossed ABI: {canary}"
+        );
+    }
+    let diagnostics = ffi_json(needlbar_diagnostics_json);
+    assert_no_forbidden_analytics_keys(
+        &serde_json::from_str(&diagnostics).expect("diagnostics JSON"),
+    );
+    assert!(!diagnostics.contains("message-canary"));
+}
+
+#[test]
 fn provider_verification_preserves_unrelated_diagnostics_and_records_permission_denied() {
     // This catches provider-only verification overwriting the most recent
     // diagnostics for omitted providers, or dropping permissionDenied as an
@@ -514,6 +570,44 @@ fn fixed_analytics_time() -> chrono::DateTime<chrono::Utc> {
     chrono::DateTime::parse_from_rfc3339("2026-09-01T12:00:00.000Z")
         .expect("fixed analytics time")
         .with_timezone(&chrono::Utc)
+}
+
+fn assert_no_forbidden_analytics_keys(value: &serde_json::Value) {
+    const FORBIDDEN: &[&str] = &[
+        "path",
+        "workspace",
+        "sessionID",
+        "message",
+        "author",
+        "email",
+        "branch",
+        "remote",
+        "stdout",
+        "stderr",
+        "fullOID",
+        "prompt",
+        "response",
+        "sourceCode",
+        "credential",
+        "accountID",
+    ];
+    match value {
+        serde_json::Value::Object(fields) => {
+            for (key, child) in fields {
+                assert!(
+                    !FORBIDDEN.contains(&key.as_str()),
+                    "forbidden key crossed ABI: {key}"
+                );
+                assert_no_forbidden_analytics_keys(child);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for child in values {
+                assert_no_forbidden_analytics_keys(child);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn copy_tree(source: &Path, destination: &Path) {

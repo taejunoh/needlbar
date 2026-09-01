@@ -1,4 +1,4 @@
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::fs;
 use std::os::raw::c_char;
 use std::path::Path;
@@ -50,7 +50,8 @@ fn analytics_symbol_is_declared_and_emits_dedicated_envelope() {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Sources/CNeedlbar/include/needlbar.h"),
     )
     .expect("public C header");
-    assert!(header.contains("const char *needlbar_analytics_snapshot_json(void);"));
+    let prototype = "const char *needlbar_analytics_snapshot_json(void);";
+    assert_eq!(header.matches(prototype).count(), 1);
 
     let call: unsafe extern "C" fn() -> *const c_char = needlbar_analytics_snapshot_json;
     let pointer = unsafe { call() };
@@ -90,6 +91,34 @@ fn analytics_fixture_uses_one_exact_millisecond_capture_for_range() {
     assert!(value["data"]["repositories"].is_array());
     assert!(value["data"]["unattributed"].is_object());
     assert!(value["data"]["coverage"].is_object());
+}
+
+#[test]
+fn analytics_envelope_has_only_the_canonical_top_level_fields() {
+    let _fixture = fixture();
+    let pointer = unsafe { needlbar_analytics_snapshot_json() };
+    let json = unsafe { CStr::from_ptr(pointer) }
+        .to_str()
+        .expect("analytics bridge emits UTF-8")
+        .to_owned();
+    unsafe { needlbar_free_string(pointer) };
+    let value: serde_json::Value = serde_json::from_str(&json).expect("analytics JSON");
+    let keys = value
+        .as_object()
+        .expect("analytics envelope object")
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        keys,
+        vec![
+            "data".to_owned(),
+            "errors".to_owned(),
+            "generatedAt".to_owned(),
+            "ok".to_owned(),
+            "schemaVersion".to_owned(),
+        ]
+    );
 }
 
 #[test]
@@ -198,10 +227,4 @@ fn analytics_pointer_can_be_repeatedly_allocated_and_freed() {
     let counts = test_runtime::ffi_allocation_counts();
     assert_eq!(counts.0, 8);
     assert_eq!(counts.1, 8);
-}
-
-#[test]
-fn analytics_call_does_not_accept_or_emit_user_supplied_c_strings() {
-    // Keep this explicit: the ABI is a no-argument, read-only snapshot call.
-    let _ = CString::new("unused fixture").expect("fixture C string");
 }
