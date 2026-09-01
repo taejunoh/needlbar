@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-01
 **Branch:** `codex/v022-project-cost-analytics` (baseline HEAD `d1b13d1`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.2.2 설계+구현 계획 확정, 다음은 Task 1 cached WorkspaceSession report TDD. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
-**Next action:** Start Task 1 cached WorkspaceSession report TDD while preserving the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates. The user pre-approved the subagent-driven (recommended) execution choice; push, tag, and release actions remain unauthorized.
+**Current phase:** v0.2.2 Task 1 cached WorkspaceSession report is complete; next is Task 2 `needlbar-project-analytics` TDD. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
+**Next action:** Start Task 2 `needlbar-project-analytics` TDD while preserving the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates. The user pre-approved the subagent-driven (recommended) execution choice; push, tag, and release actions remain unauthorized.
 
 ## Source of Truth
 
@@ -18,7 +18,7 @@ The active Needlbar work is governed by:
 - `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1–W4, Notification Tasks N1–N4, and automated Integration Task 1 verification are complete on the code path, with native acceptance still pending.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widgets-notifications.md` — reviewed v0.2.1 implementation index: four widget tasks, four notification tasks, then combined acceptance.
 - `docs/superpowers/specs/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics-design.md` — approved v0.2.2 local repository cost analytics design; its implementation plan is recorded below.
-- `docs/superpowers/plans/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics.md` — approved v0.2.2 implementation plan; Task 1 cached WorkspaceSession report TDD is next.
+- `docs/superpowers/plans/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics.md` — approved v0.2.2 implementation plan; Task 1 is complete and Task 2 `needlbar-project-analytics` TDD is next.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget.md` — W1–W4, including Swift-only day provenance, sanitized projection, and medium Overview presentation.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-notifications.md` — N1–N4, including fresh quota observation, durable policy, explicit permission, and lifecycle tests.
@@ -33,6 +33,37 @@ Baseline verification from fresh HEAD `d1b13d1` passed with `make test` exit 0: 
 ### v0.2.1 status preserved
 
 The v0.2.1 native macOS 14 arm64 and remaining acceptance gates are still incomplete; this v0.2.2 checkpoint does not change that outcome.
+
+## v0.2.2 Task 1 — Cached WorkspaceSession Report — 2026-09-01
+
+Task 1 is complete. The pinned vendor now provides the additive cached-only
+streaming/cross-file-dedup `WorkspaceSession` report, including explicit missing
+timestamp/workspace coverage and provider-specific token/date/model-cost/dedup
+parity. The implementation records bounded caps `512/8192/32` and exact
+Unattributed overflow behavior without changing existing report consumers.
+
+Vendor commits:
+
+- `95e200c`, `dae421b`, `f9484d0`, `f763ea8` — additive WorkspaceSession report,
+  tests, and vendor ledger updates.
+
+Parent gitlink commits:
+
+- `e7ba0a8`, `020f357`, `09b1368`, `cd9a60d` — corresponding superproject pin
+  updates.
+
+Verification recorded for the completed task:
+
+- Focused WorkspaceSession suite: 10/10 passed.
+- `cargo clippy -D warnings`: passed.
+- Final isolated vendor suite: core 1376 passed / 1 ignored, plus 20 integration
+  tests passed.
+- Spec and quality reviews: approved.
+- Worktree status: clean.
+
+The next continuation point is Task 2 `needlbar-project-analytics` TDD. The
+v0.2.1 native acceptance caveats remain unchanged. No push, tag, or release was
+performed or authorized.
 
 ## v0.2.1 Widgets and Notifications — Design Continuation
 
