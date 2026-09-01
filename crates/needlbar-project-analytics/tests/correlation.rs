@@ -314,6 +314,41 @@ fn missing_workspace_and_unavailable_git_are_separate_partial_reasons() {
 }
 
 #[test]
+fn unavailable_commit_read_keeps_mapped_fragments_attributed_and_unassigned() {
+    let mut source = report(fragment("/repos/a", "2026-09-01T10:00:00Z"));
+    source
+        .fragments
+        .push(fragment("/repos/a", "2026-09-01T11:00:00Z"));
+    let payload = build_analytics_payload(
+        source,
+        time("2026-09-01T20:00:00Z"),
+        &FakeGitRunner::new(vec![
+            output("/repos/a\n"),
+            output("/repos/a\n"),
+            Err(GitRunnerError::Unavailable),
+        ]),
+    );
+
+    let repository = &payload.repositories[0];
+    assert_eq!(
+        serde_json::to_value(repository).unwrap()["state"],
+        "unavailable"
+    );
+    assert_eq!(repository.usage.total_tokens, "20");
+    assert_eq!(repository.coverage.assigned_fragments, 0);
+    assert_eq!(repository.coverage.unassigned_fragments, 2);
+    assert_eq!(repository.coverage.reasons["repositoryUnavailable"], 2);
+    assert_eq!(payload.coverage.attributed_fragments, 2);
+    assert_eq!(payload.coverage.unattributed_fragments, 0);
+    assert_eq!(payload.coverage.reasons["repositoryUnavailable"], 2);
+    assert_eq!(payload.unattributed.fragments, 0);
+    assert!(!payload
+        .unattributed
+        .reasons
+        .contains_key("repositoryUnavailable"));
+}
+
+#[test]
 fn duplicate_or_invalid_labels_are_replaced_with_bounded_generic_labels() {
     let git = FakeGitRunner::new(vec![
         output("/alpha/project\n"),

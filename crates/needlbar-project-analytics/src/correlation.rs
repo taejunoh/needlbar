@@ -306,38 +306,42 @@ fn repository(
         bump(&mut repo_coverage.reasons, "missingCost");
         state.errors.insert(error("repository", "missingCost"));
     }
-    let (repository_state, mut parsed) = match state.git.run(GitRequest::commits(root.into())) {
-        Ok(output) => match parse_commits(&output) {
-            Ok((items, record_cap)) => {
-                if record_cap {
-                    bump(&mut repo_coverage.reasons, "recordLimitReached");
-                    state
-                        .errors
-                        .insert(error("repository", "recordLimitReached"));
+    let (repository_state, mut parsed, correlation_failure) =
+        match state.git.run(GitRequest::commits(root.into())) {
+            Ok(output) => match parse_commits(&output) {
+                Ok((items, record_cap)) => {
+                    if record_cap {
+                        bump(&mut repo_coverage.reasons, "recordLimitReached");
+                        state
+                            .errors
+                            .insert(error("repository", "recordLimitReached"));
+                    }
+                    (RepositoryState::Available, items, None)
                 }
-                (RepositoryState::Available, items)
-            }
-            Err(code) => {
-                bump(&mut repo_coverage.reasons, code);
+                Err(code) => {
+                    state.errors.insert(error("repository", code));
+                    (RepositoryState::Unavailable, Vec::new(), Some(code))
+                }
+            },
+            Err(value) => {
+                let code = if matches!(value, GitRunnerError::Unavailable) {
+                    "repositoryUnavailable"
+                } else {
+                    git_code(&value)
+                };
                 state.errors.insert(error("repository", code));
-                (RepositoryState::Unavailable, Vec::new())
+                (RepositoryState::Unavailable, Vec::new(), Some(code))
             }
-        },
-        Err(value) => {
-            let code = if matches!(value, GitRunnerError::Unavailable) {
-                "repositoryUnavailable"
-            } else {
-                git_code(&value)
-            };
-            bump(&mut repo_coverage.reasons, code);
-            state.errors.insert(error("repository", code));
-            (RepositoryState::Unavailable, Vec::new())
-        }
-    };
+        };
     parsed.sort_by(|a, b| b.committed_at.cmp(&a.committed_at).then(a.oid.cmp(&b.oid)));
     let mut assigned: HashMap<String, Totals> = HashMap::new();
-    if matches!(repository_state, RepositoryState::Available) {
-        for value in &fragments {
+    for value in &fragments {
+        if let Some(reason) = correlation_failure {
+            repo_coverage.unassigned_fragments += 1;
+            bump(&mut repo_coverage.reasons, reason);
+            bump(&mut state.coverage.reasons, reason);
+            state.coverage.attributed_fragments += 1;
+        } else {
             let end = DateTime::from_timestamp_millis(value.fragment.last_seen_ms)
                 .expect("validated before mapping");
             let limit = end + Duration::hours(4);
