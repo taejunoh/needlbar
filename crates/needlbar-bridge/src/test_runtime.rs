@@ -12,6 +12,8 @@ use std::{
 };
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use needlbar_project_analytics::{build_analytics_payload, AnalyticsPayload, BoundedGitRunner};
 use needlbar_quota::{
     ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaProvider, QuotaWindow,
 };
@@ -21,6 +23,7 @@ use crate::{
     quota::{self},
     usage::{self, UsagePayload},
 };
+use tokscale_core::WorkspaceSessionReport;
 
 type AllQuotaProviders = (
     Arc<dyn QuotaProvider>,
@@ -54,6 +57,22 @@ static FIXTURE_RUNTIME: LazyLock<Mutex<Option<FixtureRuntime>>> =
     LazyLock::new(|| Mutex::new(None));
 static FIXTURE_SERIAL: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static NEXT_FIXTURE_SESSION: AtomicU64 = AtomicU64::new(1);
+static ANALYTICS_FIXTURE: LazyLock<Mutex<Option<AnalyticsFixture>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+#[derive(Clone)]
+pub enum AnalyticsFixture {
+    Success {
+        generated_at: DateTime<Utc>,
+        payload: Box<AnalyticsPayload>,
+    },
+    Fatal {
+        generated_at: DateTime<Utc>,
+        scope: String,
+        code: String,
+    },
+    Panic,
+}
 
 /// Keeps feature-gated integration fixtures isolated despite Rust's parallel
 /// test execution. Production bridge code never observes this lock.
@@ -334,6 +353,67 @@ pub fn install_redaction_fixture(
     })
 }
 
+/// Installs a deterministic analytics payload without entering tok-scale,
+/// pricing, Git, or provider code. The fixture exists only with the bridge
+/// test feature and is guarded by callers with `serial_guard`.
+pub fn install_analytics_fixture(generated_at: DateTime<Utc>) -> bool {
+    let payload = build_analytics_payload(
+        WorkspaceSessionReport {
+            fragments: Vec::new(),
+            processing_time_ms: 0,
+            record_limit_reached: false,
+            timing_coverage_partial: false,
+            overflowed_fragment_observations: 0,
+            overflowed_timing_observations: 0,
+            overflowed_model_observations: 0,
+        },
+        generated_at,
+        &BoundedGitRunner::default(),
+    );
+    *ANALYTICS_FIXTURE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(AnalyticsFixture::Success {
+        generated_at,
+        payload: Box::new(payload),
+    });
+    true
+}
+
+pub fn install_analytics_panic_fixture() -> bool {
+    *ANALYTICS_FIXTURE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(AnalyticsFixture::Panic);
+    true
+}
+
+pub fn install_analytics_fatal_fixture(
+    generated_at: DateTime<Utc>,
+    scope: &str,
+    code: &str,
+) -> bool {
+    *ANALYTICS_FIXTURE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(AnalyticsFixture::Fatal {
+        generated_at,
+        scope: scope.to_owned(),
+        code: code.to_owned(),
+    });
+    true
+}
+
+pub fn analytics_fixture() -> Option<AnalyticsFixture> {
+    ANALYTICS_FIXTURE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+pub fn clear_analytics_fixture() {
+    *ANALYTICS_FIXTURE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+}
+
 fn install_runtime(runtime: FixtureRuntime) -> bool {
     let mut slot = FIXTURE_RUNTIME
         .lock()
@@ -352,6 +432,7 @@ pub fn clear_runtime_for_rust_tests() {
     if slot.as_ref().is_some_and(|runtime| runtime.session == 0) {
         *slot = None;
     }
+    clear_analytics_fixture();
 }
 
 /// Returns the currently installed fixture home to feature-gated bridge

@@ -69,6 +69,37 @@ fn analytics_fallback_json() -> String {
     analytics_failure_json("analytics", "internalError")
 }
 
+fn normalize_analytics_timestamps(value: &mut serde_json::Value, key: Option<&str>) {
+    match value {
+        serde_json::Value::Object(fields) => {
+            for (name, child) in fields {
+                normalize_analytics_timestamps(child, Some(name));
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for child in values {
+                normalize_analytics_timestamps(child, key);
+            }
+        }
+        serde_json::Value::String(text) if matches!(key, Some("start" | "end" | "committedAt")) => {
+            if let Ok(timestamp) = chrono::DateTime::parse_from_rfc3339(text) {
+                *text = timestamp
+                    .with_timezone(&Utc)
+                    .to_rfc3339_opts(SecondsFormat::Millis, true);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn serialize_analytics_envelope<T: Serialize>(
+    envelope: &AnalyticsEnvelope<T>,
+) -> Result<String, serde_json::Error> {
+    let mut value = serde_json::to_value(envelope)?;
+    normalize_analytics_timestamps(&mut value, None);
+    serde_json::to_string(&value)
+}
+
 fn analytics_string_pointer(json: String) -> *const c_char {
     // Analytics values are sanitized before this boundary, but keep a
     // schema-valid fallback for any unexpected interior NUL from a future
@@ -87,15 +118,12 @@ fn analytics_string_pointer(json: String) -> *const c_char {
     pointer
 }
 
-fn ffi_analytics_envelope(
-    f: impl FnOnce() -> Result<
-            AnalyticsEnvelope<needlbar_project_analytics::AnalyticsPayload>,
-            AnalyticsBridgeError,
-        > + UnwindSafe,
+fn ffi_analytics_envelope<T: Serialize>(
+    f: impl FnOnce() -> Result<AnalyticsEnvelope<T>, AnalyticsBridgeError> + UnwindSafe,
 ) -> *const c_char {
     let result = catch_unwind(f);
     let json = match result {
-        Ok(Ok(envelope)) => match serde_json::to_string(&envelope) {
+        Ok(Ok(envelope)) => match serialize_analytics_envelope(&envelope) {
             Ok(json) if json.len() <= ANALYTICS_MAX_BYTES => json,
             Ok(_) => analytics_failure_json("analytics", "payloadTooLarge"),
             Err(_) => analytics_fallback_json(),
@@ -261,6 +289,21 @@ pub unsafe extern "C" fn needlbar_diagnostics_json() -> *const c_char {
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_analytics_snapshot_json() -> *const c_char {
     ffi_analytics_envelope(|| {
+        #[cfg(feature = "bridge-test-runtime")]
+        if let Some(test_runtime::AnalyticsFixture::Fatal {
+            generated_at,
+            scope,
+            code,
+        }) = test_runtime::analytics_fixture()
+        {
+            return Ok(AnalyticsEnvelope {
+                schema_version: ANALYTICS_SCHEMA_VERSION,
+                ok: false,
+                generated_at: analytics_timestamp(generated_at),
+                data: None::<needlbar_project_analytics::AnalyticsPayload>,
+                errors: vec![AnalyticsBridgeError { scope, code }],
+            });
+        }
         let (generated_at, payload) =
             analytics::collect_analytics().map_err(|code| AnalyticsBridgeError {
                 scope: if code == "usageReportUnavailable" {
@@ -279,6 +322,12 @@ pub unsafe extern "C" fn needlbar_analytics_snapshot_json() -> *const c_char {
             analytics_timestamp(generated_at),
         ))
     })
+}
+
+#[cfg(feature = "bridge-test-runtime")]
+#[doc(hidden)]
+pub fn test_analytics_interior_nul_pointer() -> *const c_char {
+    analytics_string_pointer("analytics\0fixture".to_owned())
 }
 
 /// # Safety
@@ -403,7 +452,11 @@ mod tests {
 
     #[test]
     fn analytics_panic_uses_schema_valid_fallback() {
-        let pointer = ffi_analytics_envelope(|| panic!("analytics panic"));
+        let pointer = ffi_analytics_envelope(
+            || -> Result<AnalyticsEnvelope<serde_json::Value>, AnalyticsBridgeError> {
+                panic!("analytics panic")
+            },
+        );
         let text = unsafe { CStr::from_ptr(pointer) }
             .to_str()
             .expect("fallback UTF-8")
@@ -412,6 +465,42 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&text).expect("fallback JSON");
         assert_eq!(value["schemaVersion"], ANALYTICS_SCHEMA_VERSION);
         assert_eq!(value["ok"], false);
+    }
+
+    #[test]
+    fn analytics_size_boundary_accepts_under_cap_and_replaces_over_cap() {
+        let under_data = serde_json::Value::String("u".repeat(ANALYTICS_MAX_BYTES - 512));
+        let under = ffi_analytics_envelope(|| {
+            Ok(AnalyticsEnvelope::success(
+                under_data,
+                analytics_timestamp(Utc::now()),
+            ))
+        });
+        let under_text = unsafe { CStr::from_ptr(under) }
+            .to_str()
+            .expect("under-cap UTF-8")
+            .to_owned();
+        unsafe { needlbar_free_string(under) };
+        assert!(under_text.len() <= ANALYTICS_MAX_BYTES);
+        assert!(serde_json::from_str::<serde_json::Value>(&under_text).is_ok());
+
+        let over_data = serde_json::Value::String("o".repeat(ANALYTICS_MAX_BYTES));
+        let over = ffi_analytics_envelope(|| {
+            Ok(AnalyticsEnvelope::success(
+                over_data,
+                analytics_timestamp(Utc::now()),
+            ))
+        });
+        let over_text = unsafe { CStr::from_ptr(over) }
+            .to_str()
+            .expect("over-cap UTF-8")
+            .to_owned();
+        unsafe { needlbar_free_string(over) };
+        assert!(over_text.len() < 1024);
+        let value: serde_json::Value = serde_json::from_str(&over_text).expect("over-cap JSON");
+        assert_eq!(value["schemaVersion"], ANALYTICS_SCHEMA_VERSION);
+        assert_eq!(value["ok"], false);
+        assert_eq!(value["errors"][0]["code"], "payloadTooLarge");
     }
 
     #[test]

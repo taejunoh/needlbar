@@ -3,7 +3,10 @@ use std::fs;
 use std::os::raw::c_char;
 use std::path::Path;
 
-use needlbar_bridge::{needlbar_analytics_snapshot_json, needlbar_free_string, test_runtime};
+use needlbar_bridge::{
+    needlbar_analytics_snapshot_json, needlbar_free_string, test_analytics_interior_nul_pointer,
+    test_runtime,
+};
 use tempfile::TempDir;
 
 struct Fixture {
@@ -27,6 +30,11 @@ fn fixture() -> Fixture {
         "credential-canary /private/repo author@example.com".to_owned(),
         "account-canary raw-remote.example".to_owned(),
         "source-canary stdout-canary stderr-canary".to_owned(),
+    ));
+    assert!(test_runtime::install_analytics_fixture(
+        chrono::DateTime::parse_from_rfc3339("2026-09-01T12:00:00.000Z")
+            .expect("fixed analytics time")
+            .with_timezone(&chrono::Utc),
     ));
     Fixture {
         _serial: serial,
@@ -55,9 +63,33 @@ fn analytics_symbol_is_declared_and_emits_dedicated_envelope() {
 
     let value: serde_json::Value = serde_json::from_str(&json).expect("analytics JSON");
     assert_eq!(value["schemaVersion"], "needlbar.analytics.v1");
+    assert_eq!(value["ok"], true);
+    assert!(value["data"].is_object());
+    assert_eq!(value["errors"], serde_json::json!([]));
     assert!(value["generatedAt"].is_string());
     assert!(value["errors"].is_array());
     assert!(json.len() <= 256 * 1024);
+}
+
+#[test]
+fn analytics_fixture_uses_one_exact_millisecond_capture_for_range() {
+    let _fixture = fixture();
+    let pointer = unsafe { needlbar_analytics_snapshot_json() };
+    let json = unsafe { CStr::from_ptr(pointer) }
+        .to_str()
+        .expect("analytics bridge emits UTF-8")
+        .to_owned();
+    unsafe { needlbar_free_string(pointer) };
+    let value: serde_json::Value = serde_json::from_str(&json).expect("analytics JSON");
+    assert_eq!(value["generatedAt"], "2026-09-01T12:00:00.000Z");
+    assert_eq!(value["data"]["analysisRange"]["end"], value["generatedAt"]);
+    assert_eq!(
+        value["data"]["analysisRange"]["start"],
+        "2026-08-02T12:00:00.000Z"
+    );
+    assert!(value["data"]["repositories"].is_array());
+    assert!(value["data"]["unattributed"].is_object());
+    assert!(value["data"]["coverage"].is_object());
 }
 
 #[test]
@@ -94,13 +126,78 @@ fn analytics_output_has_no_raw_privacy_fields() {
 }
 
 #[test]
+fn analytics_panic_fixture_returns_small_fatal_analytics_envelope() {
+    let _fixture = fixture();
+    assert!(test_runtime::install_analytics_panic_fixture());
+    let pointer = unsafe { needlbar_analytics_snapshot_json() };
+    let json = unsafe { CStr::from_ptr(pointer) }
+        .to_str()
+        .expect("analytics fallback emits UTF-8")
+        .to_owned();
+    unsafe { needlbar_free_string(pointer) };
+    assert!(json.len() < 1024);
+    let value: serde_json::Value = serde_json::from_str(&json).expect("analytics fallback JSON");
+    assert_eq!(value["schemaVersion"], "needlbar.analytics.v1");
+    assert_eq!(value["ok"], false);
+    assert!(value["data"].is_null());
+    assert_eq!(value["errors"][0]["scope"], "analytics");
+    assert_eq!(value["errors"][0]["code"], "internalError");
+}
+
+#[test]
+fn analytics_fatal_fixture_is_fixed_and_does_not_enter_collection() {
+    let _fixture = fixture();
+    assert!(test_runtime::install_analytics_fatal_fixture(
+        chrono::DateTime::parse_from_rfc3339("2026-09-01T12:00:00.000Z")
+            .expect("fixed analytics time")
+            .with_timezone(&chrono::Utc),
+        "usage",
+        "usageReportUnavailable",
+    ));
+    let pointer = unsafe { needlbar_analytics_snapshot_json() };
+    let json = unsafe { CStr::from_ptr(pointer) }
+        .to_str()
+        .expect("analytics fallback emits UTF-8")
+        .to_owned();
+    unsafe { needlbar_free_string(pointer) };
+    let value: serde_json::Value = serde_json::from_str(&json).expect("analytics fallback JSON");
+    assert_eq!(value["schemaVersion"], "needlbar.analytics.v1");
+    assert_eq!(value["generatedAt"], "2026-09-01T12:00:00.000Z");
+    assert_eq!(value["ok"], false);
+    assert!(value["data"].is_null());
+    assert_eq!(value["errors"][0]["scope"], "usage");
+    assert_eq!(value["errors"][0]["code"], "usageReportUnavailable");
+}
+
+#[test]
+fn analytics_interior_nul_uses_small_fatal_analytics_envelope() {
+    let pointer = test_analytics_interior_nul_pointer();
+    let json = unsafe { CStr::from_ptr(pointer) }
+        .to_str()
+        .expect("analytics fallback emits UTF-8")
+        .to_owned();
+    unsafe { needlbar_free_string(pointer) };
+    assert!(json.len() < 1024);
+    let value: serde_json::Value = serde_json::from_str(&json).expect("analytics fallback JSON");
+    assert_eq!(value["schemaVersion"], "needlbar.analytics.v1");
+    assert_eq!(value["ok"], false);
+    assert!(value["data"].is_null());
+    assert_eq!(value["errors"][0]["scope"], "analytics");
+    assert_eq!(value["errors"][0]["code"], "internalError");
+}
+
+#[test]
 fn analytics_pointer_can_be_repeatedly_allocated_and_freed() {
     let _fixture = fixture();
+    test_runtime::reset_ffi_allocation_counts();
     for _ in 0..8 {
         let pointer = unsafe { needlbar_analytics_snapshot_json() };
         assert!(!pointer.is_null());
         unsafe { needlbar_free_string(pointer) };
     }
+    let counts = test_runtime::ffi_allocation_counts();
+    assert_eq!(counts.0, 8);
+    assert_eq!(counts.1, 8);
 }
 
 #[test]

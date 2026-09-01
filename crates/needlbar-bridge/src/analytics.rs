@@ -8,6 +8,19 @@ const ANALYTICS_CLIENTS: [&str; 3] = ["claude", "codex", "cursor"];
 /// This keeps the bridge path local-only and reuses the same streaming scan
 /// and deduplication implementation as the existing usage report.
 pub fn collect_analytics() -> Result<(DateTime<Utc>, AnalyticsPayload), &'static str> {
+    #[cfg(feature = "bridge-test-runtime")]
+    if let Some(fixture) = crate::test_runtime::analytics_fixture() {
+        return match fixture {
+            crate::test_runtime::AnalyticsFixture::Success {
+                generated_at,
+                payload,
+            } => Ok((generated_at, *payload)),
+            crate::test_runtime::AnalyticsFixture::Fatal { .. } => {
+                unreachable!("fatal fixture is handled by the bridge envelope")
+            }
+            crate::test_runtime::AnalyticsFixture::Panic => panic!("analytics fixture panic"),
+        };
+    }
     let generated_at = Utc::now();
     let start = generated_at - Duration::days(30);
     #[cfg(feature = "bridge-test-runtime")]

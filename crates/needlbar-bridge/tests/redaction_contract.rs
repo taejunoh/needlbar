@@ -33,6 +33,9 @@ fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
         codex_failure,
         cursor_failure,
     ));
+    assert!(test_runtime::install_analytics_fixture(
+        fixed_analytics_time()
+    ));
     let _clear = RuntimeCleanup;
 
     // Each call crosses the actual exported ABI, reads Rust-owned bytes, and
@@ -196,6 +199,41 @@ fn provider_verification_exports_are_isolated_redacted_panic_contained_and_freed
         assert_eq!(value["ok"], false);
         assert_eq!(value["errors"][0]["code"], "internalError");
     }
+}
+
+#[test]
+fn analytics_does_not_construct_or_fetch_quota_providers_or_mutate_cursor_cache() {
+    let _serial = test_runtime::serial_guard();
+    let fixture = test_runtime::install_provider_verification_fixture(
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Claude,
+            "claude.session",
+            20.0,
+        )),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+    );
+    let cache = TempDir::new().expect("Cursor cache fixture");
+    let canary_path = cache.path().join("usage.csv");
+    fs::write(&canary_path, b"CURSOR-CACHE-CANARY").expect("Cursor cache canary");
+    let before = fs::read(&canary_path).expect("read cache before analytics");
+    assert!(test_runtime::install_analytics_fixture(
+        fixed_analytics_time()
+    ));
+    let analytics = ffi_json(needlbar_analytics_snapshot_json);
+    let after = fs::read(&canary_path).expect("read cache after analytics");
+    assert_eq!(before, after);
+    assert_eq!(fixture.claude_creations(), 0);
+    assert_eq!(fixture.codex_creations(), 0);
+    assert_eq!(fixture.cursor_creations(), 0);
+    assert!(fixture.claude_accesses().is_empty());
+    assert_eq!(fixture.codex_fetches(), 0);
+    assert!(!analytics.contains("CURSOR-CACHE-CANARY"));
+    assert_safe_output(&analytics);
+    test_runtime::clear_runtime_for_rust_tests();
 }
 
 #[test]
@@ -470,6 +508,12 @@ fn fixture_home() -> TempDir {
     )
     .expect("cursor fixture");
     home
+}
+
+fn fixed_analytics_time() -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::parse_from_rfc3339("2026-09-01T12:00:00.000Z")
+        .expect("fixed analytics time")
+        .with_timezone(&chrono::Utc)
 }
 
 fn copy_tree(source: &Path, destination: &Path) {
