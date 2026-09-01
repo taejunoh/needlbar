@@ -29,3 +29,7 @@ tempfile.workspace = true
 [[test]]
 name = "redaction_contract"
 required-features = ["bridge-test-runtime"]
+
+[[test]]
+name = "analytics_contract"
+required-features = ["bridge-test-runtime"]
