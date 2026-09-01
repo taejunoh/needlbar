@@ -259,17 +259,18 @@ Swift reported 277 tests in 12 suites, and the widget/package/notarization
 shell contracts passed.
 
 The initial `git submodule update --init --recursive` from the fresh main
-worktree failed because pinned vendor revision `ecfb694` is local-only and is
+worktree failed because pinned vendor revision `ecfb694` was local-only and was
 not advertised by `https://github.com/Nanako0129/tokscale-core.git`. The main
 worktree obtained that exact commit through a local fetch from the former
-feature worktree, after which the merged-result tests passed. Before any
-superproject push, CI, or release, the vendor commit must be published to an
-authorized reachable remote/ref, or the pin must be changed to a published
-equivalent and re-verified.
+feature worktree, after which the merged-result tests passed.
 
-No push, tag, release, notarization, or credentialed provider action was
-performed. Next continuation: resolve vendor remote publication first, then
-prepare a signed RC only with explicit user authorization.
+With explicit user authorization, `taejunoh/tokscale-core` was created as a
+fork and the exact pinned commit was published on branch
+`needlbar-v0.2.2-workspace-session-report`. The superproject submodule URL now
+uses that authorized fork so a fresh checkout can retrieve `ecfb694`. The
+remaining gate is a clean fresh-clone submodule initialization and full
+`make test` run, followed by the separately authorized superproject push. No
+tag, release, notarization, or credentialed provider action was performed.
 
 ## v0.2.1 Widgets and Notifications — Design Continuation
 
