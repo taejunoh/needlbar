@@ -212,13 +212,18 @@ if [[ "${3:-}" == '-c' ]]; then
   line="$(cat "$check_file")"
   [[ "$line" =~ ^([[:xdigit:]]{64})[[:space:]][[:space:]](.+)$ ]] || exit 65
   [[ "${BASH_REMATCH[1],,}" == "$(printf '%064x' 0)" ]] || exit 66
-  [[ -f "$(dirname "$check_file")/${BASH_REMATCH[2]}" ]] || exit 67
+  checked_archive="$(dirname "$check_file")/${BASH_REMATCH[2]}"
+  [[ -f "$checked_archive" ]] || exit 67
+  [[ -f "${FAKE_STATE_DIR:-}/shasum-input" ]] || exit 69
+  cmp -s "$checked_archive" "$FAKE_STATE_DIR/shasum-input" || exit 70
   record_stage shasum:check
   printf '%s: OK\n' "${BASH_REMATCH[2]}"
 else
   archive_path="${3:-}"
   [[ -f "$archive_path" ]] || exit 64
   [[ "$archive_path" != */Needlbar-macos-arm64.zip ]] || exit 68
+  [[ -d "${FAKE_STATE_DIR:-}" ]] || exit 71
+  cp "$archive_path" "$FAKE_STATE_DIR/shasum-input"
   record_stage shasum:sha256
   printf '%064x  %s\n' 0 "$(basename "$archive_path")"
 fi
@@ -262,16 +267,33 @@ for real_tool in cat cp chmod sed grep awk; do
   ln -s "$(command -v "$real_tool")" "$fake_bin_without_shasum/$real_tool"
 done
 
+PATH="$fake_bin_without_shasum" /usr/bin/env bash -c '[[ -n "$BASH_VERSION" ]]' ||
+  fail 'hermetic PATH could not start bash through /usr/bin/env'
+
 fake_checksum_input="$temp_root/fake.zip"
 fake_checksum_sidecar="$temp_root/fake.zip.sha256"
 fake_checksum_log="$temp_root/fake-shasum.log"
+fake_checksum_state="$temp_root/fake-shasum-state"
 printf '%s\n' fake-archive > "$fake_checksum_input"
+mkdir -p "$fake_checksum_state"
 : > "$fake_checksum_log"
-generated_checksum="$(FAKE_COMMAND_LOG="$fake_checksum_log" "$fake_bin/shasum" -a 256 "$fake_checksum_input" | awk '{print $1}')"
+generated_checksum="$(FAKE_COMMAND_LOG="$fake_checksum_log" FAKE_STATE_DIR="$fake_checksum_state" "$fake_bin/shasum" -a 256 "$fake_checksum_input" | awk '{print $1}')"
 [[ "$generated_checksum" =~ ^[[:xdigit:]]{64}$ ]] || fail 'fake shasum did not generate a 64-hex digest'
 printf '%s  fake.zip\n' "$generated_checksum" > "$fake_checksum_sidecar"
-FAKE_COMMAND_LOG="$fake_checksum_log" "$fake_bin/shasum" -a 256 -c "$fake_checksum_sidecar" >/dev/null ||
+FAKE_COMMAND_LOG="$fake_checksum_log" FAKE_STATE_DIR="$fake_checksum_state" "$fake_bin/shasum" -a 256 -c "$fake_checksum_sidecar" >/dev/null ||
   fail 'fake shasum checksum verification fixture failed'
+printf '%s\n' mutated-archive > "$fake_checksum_input"
+if FAKE_COMMAND_LOG="$fake_checksum_log" FAKE_STATE_DIR="$fake_checksum_state" "$fake_bin/shasum" -a 256 -c "$fake_checksum_sidecar" >/dev/null 2>&1; then
+  fail 'fake shasum accepted a mutated archive'
+fi
+printf '%s\n' replacement-archive > "$fake_checksum_input.replacement"
+mv "$fake_checksum_input.replacement" "$fake_checksum_input"
+if FAKE_COMMAND_LOG="$fake_checksum_log" FAKE_STATE_DIR="$fake_checksum_state" "$fake_bin/shasum" -a 256 -c "$fake_checksum_sidecar" >/dev/null 2>&1; then
+  fail 'fake shasum accepted a replacement archive'
+fi
+printf '%s\n' fake-archive > "$fake_checksum_input"
+FAKE_COMMAND_LOG="$fake_checksum_log" FAKE_STATE_DIR="$fake_checksum_state" "$fake_bin/shasum" -a 256 -c "$fake_checksum_sidecar" >/dev/null ||
+  fail 'fake shasum did not recover after restoring the archive'
 grep -Fx shasum:sha256 "$fake_checksum_log" >/dev/null || fail 'fake shasum generation stage was not logged'
 grep -Fx shasum:check "$fake_checksum_log" >/dev/null || fail 'fake shasum check stage was not logged'
 
@@ -1358,8 +1380,6 @@ run_signal_case() {
   fi
   unset FAKE_NOTARY_SIGNAL
   [[ "$status" -eq "$expected_status" ]] || fail "unexpected $signal_name status: $status"
-  [[ "$(<"$case_root/repo/dist/Needlbar-macos-arm64.zip")" == original-ad-hoc-zip ]] ||
-    fail 'signal case replaced final ZIP'
   assert_original_zip
   assert_private_cleanup "$case_root"
   assert_no_canary "$case_root"
