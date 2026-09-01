@@ -95,3 +95,57 @@ fn output_never_contains_private_source_canaries() {
         assert!(!display.contains(forbidden));
     }
 }
+
+#[test]
+fn analytics_json_uses_the_exact_canonical_usd_and_1k_field_names() {
+    let fragment = WorkspaceSessionFragment {
+        client: "codex".into(),
+        workspace_key: Some("/private/repo".into()),
+        session_id: "session".into(),
+        first_seen_ms: time("2026-09-01T10:00:00Z").timestamp_millis(),
+        last_seen_ms: time("2026-09-01T10:00:00Z").timestamp_millis(),
+        active_time_ms: 3_600_000,
+        timing_coverage_partial: false,
+        tokens: TokenBreakdown {
+            input: 1_000,
+            ..Default::default()
+        },
+        message_count: 1,
+        estimated_cost_usd: 0.1,
+        models: vec![WorkspaceSessionModel {
+            model: "gpt-5".into(),
+            provider: "codex".into(),
+            tokens: TokenBreakdown {
+                input: 1_000,
+                ..Default::default()
+            },
+            message_count: 1,
+            estimated_cost_usd: 0.1,
+            timed_duration_ms: 1_000,
+            timed_tokens: 1_000,
+            timed_sample_count: 1,
+            cost_coverage: tokscale_core::CostCoverage::Complete,
+        }],
+    };
+    let report = WorkspaceSessionReport {
+        fragments: vec![fragment],
+        processing_time_ms: 0,
+        record_limit_reached: false,
+        timing_coverage_partial: false,
+        overflowed_fragment_observations: 0,
+        overflowed_timing_observations: 0,
+        overflowed_model_observations: 0,
+    };
+    let payload =
+        build_analytics_payload(report, time("2026-09-01T16:00:00Z"), &Fake(Mutex::new(0)));
+    let wire = serde_json::to_value(payload).expect("analytics payload JSON");
+    let usage = &wire["repositories"][0]["usage"];
+    let model = &wire["repositories"][0]["providerModels"][0];
+
+    assert!(usage.get("estimatedCostUSD").is_some());
+    assert!(usage.get("estimatedCostUsd").is_none());
+    assert!(model.get("costPer1KTokens").is_some());
+    assert!(model.get("costPer1kTokens").is_none());
+    assert!(model.get("millisecondsPer1KTokens").is_some());
+    assert!(model.get("millisecondsPer1kTokens").is_none());
+}

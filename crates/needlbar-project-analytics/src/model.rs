@@ -48,6 +48,7 @@ pub struct UsageAggregate {
     pub cache_write_tokens: String,
     pub reasoning_tokens: String,
     pub total_tokens: String,
+    #[serde(rename = "estimatedCostUSD")]
     pub estimated_cost_usd: String,
 }
 
@@ -57,8 +58,10 @@ pub struct ProviderModelAnalytics {
     pub provider: String,
     pub model: String,
     pub usage: UsageAggregate,
+    #[serde(rename = "costPer1KTokens")]
     pub cost_per_1k_tokens: Option<String>,
     pub tokens_per_observed_active_hour: Option<String>,
+    #[serde(rename = "millisecondsPer1KTokens")]
     pub milliseconds_per_1k_tokens: Option<String>,
     pub cost_coverage: String,
     pub timing_coverage: String,
