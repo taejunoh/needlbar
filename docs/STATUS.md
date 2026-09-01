@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-01
 **Branch:** `codex/v022-project-cost-analytics` (baseline HEAD `d1b13d1`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.2.2 Tasks 1–4 are complete; next is Task 5 Analytics window. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
-**Next action:** Start Task 5 Analytics window while preserving the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates. The user pre-approved the subagent-driven (recommended) execution choice; push, tag, and release actions remain unauthorized.
+**Current phase:** v0.2.2 Tasks 1–5 are complete; next is Task 6 synthetic acceptance/docs/full matrix. The approved v0.1 implementation and credentialed tagless release validation are complete; no tag or public GitHub Release exists. All five v0.2.0 local JSON export plan tasks are complete and integrated into `main`. The v0.2.1 widgets/notifications implementation remains incomplete at the native acceptance gate.
+**Next action:** Start Task 6 synthetic acceptance/docs/full matrix while preserving the outstanding v0.2.1 native macOS 14 arm64 and acceptance gates. The user pre-approved the subagent-driven (recommended) execution choice; push, tag, and release actions remain unauthorized.
 
 ## Source of Truth
 
@@ -18,7 +18,7 @@ The active Needlbar work is governed by:
 - `docs/superpowers/specs/2026-08-31-needlbar-v0.2.1-widgets-notifications-design.md` — user-approved v0.2.1 widgets/notifications written design; W1–W4, Notification Tasks N1–N4, and automated Integration Task 1 verification are complete on the code path, with native acceptance still pending.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widgets-notifications.md` — reviewed v0.2.1 implementation index: four widget tasks, four notification tasks, then combined acceptance.
 - `docs/superpowers/specs/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics-design.md` — approved v0.2.2 local repository cost analytics design; its implementation plan is recorded below.
-- `docs/superpowers/plans/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics.md` — approved v0.2.2 implementation plan; Tasks 1–4 are complete and Task 5 Analytics window is next.
+- `docs/superpowers/plans/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics.md` — approved v0.2.2 implementation plan; Tasks 1–5 are complete and Task 6 synthetic acceptance/docs/full matrix is next.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget.md` — W1–W4, including Swift-only day provenance, sanitized projection, and medium Overview presentation.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-notifications.md` — N1–N4, including fresh quota observation, durable policy, explicit permission, and lifecycle tests.
@@ -136,6 +136,25 @@ Verification recorded for the completed task:
 The next continuation point is Task 5 Analytics window. The v0.2.1 native
 acceptance caveats remain unchanged. No push, tag, or release was performed or
 authorized.
+
+## v0.2.2 Task 5 — Analytics Window — 2026-09-01
+
+Task 5 is complete. Commits `e931a54`, `cbd42f9`, `1f056b7`, and `d621c3d`
+add one retained `760x520` resizable Analytics window, dismiss-before-open
+Overview wiring, exactly-once initial/manual refresh behavior, truthful
+unavailable/partial/coverage/Unattributed/about copy, lazy bounded `64x200`
+layout, bounded formatting/reason IDs, and disclosure accessibility.
+
+Verification recorded for the completed task:
+
+- 275 Swift tests passed, including 15 Analytics tests.
+- Build and `git diff --check` passed.
+- Spec and quality reviews: approved.
+- Worktree status: clean.
+
+The next continuation point is Task 6 synthetic acceptance/docs/full matrix. The
+v0.2.1 native acceptance caveats remain unchanged. No push, tag, or release was
+performed or authorized.
 
 ## v0.2.1 Widgets and Notifications — Design Continuation
 
