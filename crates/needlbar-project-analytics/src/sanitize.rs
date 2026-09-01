@@ -27,7 +27,10 @@ impl Totals {
             .reasoning
             .saturating_add(nonnegative(tokens.reasoning));
         if cost.is_finite() && cost >= 0.0 {
-            self.cost += cost;
+            let candidate = self.cost + cost;
+            if candidate.is_finite() {
+                self.cost = candidate;
+            }
         }
     }
     pub(crate) fn dto(&self) -> UsageAggregate {
@@ -51,7 +54,23 @@ pub(crate) fn decimal(value: f64) -> String {
     if !value.is_finite() || value <= 0.0 {
         return "0".into();
     }
-    let mut text = format!("{value:.12}");
+    let mut text = value.to_string();
+    if let Some((mantissa, exponent)) = text.split_once(['e', 'E']) {
+        let exponent = exponent.parse::<i32>().unwrap_or_default();
+        let digits = mantissa.replace('.', "");
+        let point = mantissa.find('.').unwrap_or(mantissa.len()) as i32 + exponent;
+        text = if point <= 0 {
+            format!("0.{}{}", "0".repeat((-point) as usize), digits)
+        } else if point as usize >= digits.len() {
+            format!("{}{}", digits, "0".repeat(point as usize - digits.len()))
+        } else {
+            format!(
+                "{}.{}",
+                &digits[..point as usize],
+                &digits[point as usize..]
+            )
+        };
+    }
     while text.contains('.') && text.ends_with('0') {
         text.pop();
     }
@@ -86,5 +105,14 @@ pub(crate) fn short_oid(value: &str) -> Option<String> {
         Some(value[..12].to_ascii_lowercase())
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decimal;
+    #[test]
+    fn tiny_positive_cost_is_canonical_without_an_exponent() {
+        assert_eq!(decimal(1e-15), "0.000000000000001");
     }
 }

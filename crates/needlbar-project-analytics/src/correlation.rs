@@ -39,7 +39,10 @@ impl MutableBucket {
         bump(&mut self.reasons, reason);
     }
     fn reason(&mut self, reason: &str) {
-        bump(&mut self.reasons, reason);
+        self.reason_by(reason, 1);
+    }
+    fn reason_by(&mut self, reason: &str, count: u64) {
+        bump_by(&mut self.reasons, reason, count);
     }
     fn dto(self) -> AttributionBucket {
         AttributionBucket {
@@ -50,7 +53,11 @@ impl MutableBucket {
     }
 }
 fn bump(map: &mut BTreeMap<String, u64>, code: &str) {
-    *map.entry(code.to_owned()).or_default() += 1;
+    bump_by(map, code, 1);
+}
+fn bump_by(map: &mut BTreeMap<String, u64>, code: &str, count: u64) {
+    let entry = map.entry(code.to_owned()).or_default();
+    *entry = entry.saturating_add(count);
 }
 
 pub(crate) fn build(
@@ -66,22 +73,18 @@ pub(crate) fn build(
         .overflowed_fragment_observations
         .saturating_add(report.overflowed_model_observations)
         .saturating_add(u64::from(report.record_limit_reached));
-    for _ in 0..overflow {
-        bump(&mut coverage.reasons, "recordLimitReached");
-        unattributed.reason("recordLimitReached");
-    }
+    bump_by(&mut coverage.reasons, "recordLimitReached", overflow);
+    unattributed.reason_by("recordLimitReached", overflow);
     if overflow > 0 {
         errors.insert(error("analytics", "recordLimitReached"));
     }
-    for _ in 0..report
+    let timing_overflow = report
         .overflowed_timing_observations
-        .saturating_add(u64::from(report.timing_coverage_partial))
-    {
-        bump(&mut coverage.reasons, "missingDuration");
-        unattributed.reason("missingDuration");
-        bump(&mut coverage.reasons, "recordLimitReached");
-        unattributed.reason("recordLimitReached");
-    }
+        .saturating_add(u64::from(report.timing_coverage_partial));
+    bump_by(&mut coverage.reasons, "missingDuration", timing_overflow);
+    unattributed.reason_by("missingDuration", timing_overflow);
+    bump_by(&mut coverage.reasons, "recordLimitReached", timing_overflow);
+    unattributed.reason_by("recordLimitReached", timing_overflow);
     let mut mapped = Vec::new();
     for fragment in report.fragments {
         if fragment.workspace_key.is_none()
@@ -110,9 +113,11 @@ pub(crate) fn build(
             continue;
         }
         let workspace = fragment.workspace_key.as_ref().expect("checked");
-        match git.run(GitRequest::discover(workspace.into())) {
+        let canonical_workspace =
+            std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.into());
+        match git.run(GitRequest::discover(canonical_workspace.clone())) {
             Ok(output) => match parse_root(&output) {
-                Ok(root) if root_contains(&root, workspace) => {
+                Ok(root) if root_contains(&root, &canonical_workspace) => {
                     mapped.push(MappedFragment { fragment, root })
                 }
                 Ok(_) => {
@@ -222,11 +227,8 @@ fn nonnegative_tokens(tokens: &tokscale_core::TokenBreakdown) -> bool {
         && tokens.cache_write >= 0
         && tokens.reasoning >= 0
 }
-fn root_contains(root: &str, workspace: &str) -> bool {
-    workspace == root
-        || workspace
-            .strip_prefix(root)
-            .is_some_and(|suffix| suffix.starts_with('/'))
+fn root_contains(root: &str, workspace: &std::path::Path) -> bool {
+    workspace.starts_with(std::path::Path::new(root))
 }
 fn parse_root(output: &GitOutput) -> Result<String, &'static str> {
     if output.stdout.len() > MAX_STDOUT_BYTES || output.stderr.len() > MAX_STDERR_BYTES {
@@ -321,32 +323,34 @@ fn repository(
     };
     parsed.sort_by(|a, b| b.committed_at.cmp(&a.committed_at).then(a.oid.cmp(&b.oid)));
     let mut assigned: HashMap<String, Totals> = HashMap::new();
-    for value in &fragments {
-        let end = DateTime::from_timestamp_millis(value.fragment.last_seen_ms)
-            .expect("validated before mapping");
-        let limit = end + Duration::hours(4);
-        let found = parsed
-            .iter()
-            .filter(|commit| commit.committed_at >= end && commit.committed_at <= limit)
-            .min_by(|a, b| a.committed_at.cmp(&b.committed_at).then(a.oid.cmp(&b.oid)));
-        if let Some(commit) = found {
-            assigned
-                .entry(commit.oid.clone())
-                .or_default()
-                .add(&value.fragment.tokens, value.fragment.estimated_cost_usd);
-            repo_coverage.assigned_fragments += 1;
-            state.coverage.attributed_fragments += 1;
-        } else {
-            repo_coverage.unassigned_fragments += 1;
-            let reason = if limit > state.generated_at {
-                "pendingCommitWindow"
+    if matches!(repository_state, RepositoryState::Available) {
+        for value in &fragments {
+            let end = DateTime::from_timestamp_millis(value.fragment.last_seen_ms)
+                .expect("validated before mapping");
+            let limit = end + Duration::hours(4);
+            let found = parsed
+                .iter()
+                .filter(|commit| commit.committed_at >= end && commit.committed_at <= limit)
+                .min_by(|a, b| a.committed_at.cmp(&b.committed_at).then(a.oid.cmp(&b.oid)));
+            if let Some(commit) = found {
+                assigned
+                    .entry(commit.oid.clone())
+                    .or_default()
+                    .add(&value.fragment.tokens, value.fragment.estimated_cost_usd);
+                repo_coverage.assigned_fragments += 1;
+                state.coverage.attributed_fragments += 1;
             } else {
-                "noEligibleCommit"
-            };
-            bump(&mut repo_coverage.reasons, reason);
-            state.unattributed.reason(reason);
-            bump(&mut state.coverage.reasons, reason);
-            state.coverage.attributed_fragments += 1;
+                repo_coverage.unassigned_fragments += 1;
+                let reason = if limit > state.generated_at {
+                    "pendingCommitWindow"
+                } else {
+                    "noEligibleCommit"
+                };
+                bump(&mut repo_coverage.reasons, reason);
+                state.unattributed.reason(reason);
+                bump(&mut state.coverage.reasons, reason);
+                state.coverage.attributed_fragments += 1;
+            }
         }
     }
     let mut commits = parsed
@@ -534,7 +538,7 @@ fn digits(bytes: &[u8], mut index: usize) -> (usize, String) {
     )
 }
 fn is_word(value: u8) -> bool {
-    value.is_ascii_alphanumeric() || value == b'_'
+    value >= 128 || value.is_ascii_alphanumeric() || value == b'_'
 }
 fn token_boundary(bytes: &[u8], start: usize, end: usize) -> bool {
     (start == 0 || !is_word(bytes[start - 1])) && (end == bytes.len() || !is_word(bytes[end]))
