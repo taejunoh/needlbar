@@ -66,6 +66,7 @@ public final class MenuBarController: NSObject {
     private let onRetryRequested: @MainActor () -> Void
     private let onProviderLoginRequested: @MainActor (ProviderID) -> Void
     private let onSettingsRequested: @MainActor () -> Void
+    private let onAnalyticsRequested: @MainActor () -> Void
     private let openCursorSpending: @MainActor () -> Void
     private let settingsWindowController: SettingsWindowController
     private let panelPresenter: any MenuPanelPresenting
@@ -95,6 +96,7 @@ public final class MenuBarController: NSObject {
         onRetryRequested: @escaping @MainActor () -> Void = {},
         onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
         onSettingsRequested: @escaping @MainActor () -> Void = {},
+        onAnalyticsRequested: @escaping @MainActor () -> Void = {},
         openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() }
     ) {
         self.configuration = configuration
@@ -104,6 +106,7 @@ public final class MenuBarController: NSObject {
         self.onRetryRequested = onRetryRequested
         self.onProviderLoginRequested = onProviderLoginRequested
         self.onSettingsRequested = onSettingsRequested
+        self.onAnalyticsRequested = onAnalyticsRequested
         self.openCursorSpending = openCursorSpending
         self.panelPresenter = panelPresenter
         self.globalMouseDownMonitor = globalMouseDownMonitor
@@ -248,9 +251,12 @@ public final class MenuBarController: NSObject {
         let view: AnyView
         switch module {
         case .overview:
-            view = AnyView(OverviewPopoverView(snapshots: snapshots, configuration: configuration) { [weak self] in
-                self?.performSettingsAction()
-            })
+            view = AnyView(OverviewPopoverView(
+                snapshots: snapshots,
+                configuration: configuration,
+                onShowSettings: { [weak self] in self?.performSettingsAction() },
+                onShowAnalytics: { [weak self] in self?.performAnalyticsAction() }
+            ))
         case .claude, .codex, .cursor:
             guard let provider = module.provider,
                   let snapshot = snapshots.first(where: { $0.provider == provider }) else { return }
@@ -315,6 +321,11 @@ public final class MenuBarController: NSObject {
     func performSettingsAction() {
         panelPresenter.dismiss()
         showSettings()
+    }
+
+    func performAnalyticsAction() {
+        panelPresenter.dismiss()
+        onAnalyticsRequested()
     }
 
     func performAuthenticationAction(for provider: ProviderID) {

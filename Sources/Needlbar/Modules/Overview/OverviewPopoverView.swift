@@ -95,11 +95,13 @@ public struct OverviewPopoverPresentation: Equatable, Sendable {
 public struct OverviewPopoverView: View {
     private let presentation: OverviewPopoverPresentation
     private let onShowSettings: () -> Void
+    private let onShowAnalytics: () -> Void
 
     public init(
         snapshots: [ProviderSnapshot],
         configuration: ModuleConfiguration,
-        onShowSettings: @escaping () -> Void = {}
+        onShowSettings: @escaping () -> Void = {},
+        onShowAnalytics: @escaping () -> Void = {}
     ) {
         let dailyUsage = snapshots.flatMap { snapshot in
             snapshot.usage?.last7DaysDaily.map {
@@ -115,6 +117,7 @@ public struct OverviewPopoverView: View {
             enabledProviders: enabledProviders
         )
         self.onShowSettings = onShowSettings
+        self.onShowAnalytics = onShowAnalytics
     }
 
     public var body: some View {
@@ -158,7 +161,11 @@ public struct OverviewPopoverView: View {
             }
 
             Divider()
-            Button("Settings", action: onShowSettings)
+            HStack {
+                Button("Settings", action: onShowSettings)
+                Spacer()
+                Button("Analytics…", action: onShowAnalytics)
+            }
         }
         .padding()
         .frame(width: 300)

@@ -12,6 +12,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let notificationPreferences: QuotaNotificationPreferences
     private let notificationService: QuotaNotificationService
     private let widgetPublisher: WidgetProjectionPublisher?
+    private let analyticsSnapshotStore: AnalyticsSnapshotStore
+    private let analyticsRepository: RustAnalyticsRepository
+    private let analyticsWindowController: AnalyticsWindowController
     private let menuBarController: MenuBarController
     private let terminationController = AccessoryTerminationController()
     private var lifecycleTask: Task<Void, Never>?
@@ -31,6 +34,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         self.notificationService = notificationService
         self.moduleConfiguration = moduleConfiguration
         self.widgetPublisher = makeWidgetPublisher()
+        let analyticsSnapshotStore = AnalyticsSnapshotStore()
+        let analyticsRepository = RustAnalyticsRepository()
+        let analyticsWindowController = AnalyticsWindowController(
+            store: analyticsSnapshotStore,
+            repository: analyticsRepository
+        )
+        self.analyticsSnapshotStore = analyticsSnapshotStore
+        self.analyticsRepository = analyticsRepository
+        self.analyticsWindowController = analyticsWindowController
         let refreshCoordinator = RefreshCoordinator(
             usageRepository: RustUsageRepository(),
             quotaRepository: RustQuotaRepository(),
@@ -73,6 +85,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onProviderLoginRequested: { provider in
                 _ = loginCoordinator.connect(provider)
+            },
+            onAnalyticsRequested: { [weak analyticsWindowController] in
+                analyticsWindowController?.showAnalytics()
             },
             openCursorSpending: openCursorSpending
         )

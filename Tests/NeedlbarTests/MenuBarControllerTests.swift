@@ -512,6 +512,38 @@ struct MenuBarControllerTests {
         #expect(eventLog.events.suffix(2) == ["dismiss", "settings"])
     }
 
+    @Test func analyticsDismissesThePanelBeforeInvokingItsCallbackExactlyOnce() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        let eventLog = FakeEventLog()
+        let presenter = FakeMenuPanelPresenter(eventLog: eventLog)
+        var analyticsRequests = 0
+        var retries = 0
+        var loginRequests = 0
+        var cursorRequests = 0
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            panelPresenter: presenter,
+            onRetryRequested: { retries += 1 },
+            onProviderLoginRequested: { _ in loginRequests += 1 },
+            onAnalyticsRequested: {
+                analyticsRequests += 1
+                eventLog.events.append("analytics")
+            },
+            openCursorSpending: { cursorRequests += 1 }
+        )
+
+        controller.openOverview()
+        controller.performAnalyticsAction()
+
+        #expect(eventLog.events == ["present", "dismiss", "analytics"])
+        #expect(analyticsRequests == 1)
+        #expect(retries == 0)
+        #expect(loginRequests == 0)
+        #expect(cursorRequests == 0)
+    }
+
     @Test func presentedProviderAuthenticationActionsDismissBeforeTheirCallbacks() {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
         let eventLog = FakeEventLog()
@@ -606,6 +638,7 @@ private func makeMenuBarController(
     onRetryRequested: @escaping @MainActor () -> Void = {},
     onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
     onSettingsRequested: @escaping @MainActor () -> Void = {},
+    onAnalyticsRequested: @escaping @MainActor () -> Void = {},
     openCursorSpending: @escaping @MainActor () -> Void = {}
 ) -> MenuBarController {
     let notificationPreferences = QuotaNotificationPreferences(defaults: freshMenuBarDefaults())
@@ -632,6 +665,7 @@ private func makeMenuBarController(
         onRetryRequested: onRetryRequested,
         onProviderLoginRequested: onProviderLoginRequested,
         onSettingsRequested: onSettingsRequested,
+        onAnalyticsRequested: onAnalyticsRequested,
         openCursorSpending: openCursorSpending
     )
 }
