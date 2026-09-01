@@ -255,6 +255,12 @@ for fake_tool in "$fake_bin"/*; do
   ln -s "$fake_tool" "$fake_bin_without_shasum/$(basename "$fake_tool")"
 done
 ln -s /usr/bin/mktemp "$fake_bin_without_shasum/mktemp"
+ln -s "$(command -v bash)" "$fake_bin_without_shasum/bash"
+ln -s "$(command -v dirname)" "$fake_bin_without_shasum/dirname"
+ln -s "$(command -v rm)" "$fake_bin_without_shasum/rm"
+for real_tool in cat cp chmod sed grep awk; do
+  ln -s "$(command -v "$real_tool")" "$fake_bin_without_shasum/$real_tool"
+done
 
 fake_checksum_input="$temp_root/fake.zip"
 fake_checksum_sidecar="$temp_root/fake.zip.sha256"
@@ -1158,6 +1164,9 @@ test_release_workflow_contract
 
 new_case
 export OMIT_FAKE_SHASUM=1
+if PATH="$fake_bin_without_shasum" command -v shasum >/dev/null 2>&1; then
+  fail 'missing shasum fixture unexpectedly resolved a fallback command'
+fi
 if invoke_case; then
   fail 'missing shasum prerequisite case unexpectedly succeeded'
 fi
