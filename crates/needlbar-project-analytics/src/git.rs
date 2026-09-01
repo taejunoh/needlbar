@@ -351,6 +351,10 @@ mod tests {
         std::env::remove_var("SENSITIVE_INHERITED_CANARY");
         let lines = fs::read_to_string(output.path()).unwrap();
         assert_eq!(lines, format!("-C\n{}\nrev-parse\n--path-format=absolute\n--show-toplevel\nterminal=0\nnosystem=1\nglobal=/dev/null\nlocks=0\nsensitive=\n", std::fs::canonicalize(std::env::temp_dir()).unwrap().display()));
+        runner
+            .run(GitRequest::commits(std::env::temp_dir()))
+            .unwrap();
+        assert!(fs::read_to_string(output.path()).unwrap().contains("log\n--no-ext-diff\n--no-color\n--no-decorate\n--no-show-signature\n--format=%H%x00%cI%x00%s\n-z\n--max-count=501\n"));
     }
 
     #[test]
