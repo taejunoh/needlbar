@@ -985,6 +985,14 @@ end
 
 validate_steps = sequence(validate['steps'], 'validate steps').map { |step| mapping(step, 'validate step') }
 publish_steps = sequence(publish['steps'], 'publish steps').map { |step| mapping(step, 'publish step') }
+publish_checkouts = publish_steps.select { |step| step['uses'].to_s.start_with?('actions/checkout@') }
+assert_contract(publish_checkouts.length == 1, 'publish must contain exactly one actions/checkout step')
+publish_checkout = publish_checkouts.first
+assert_contract(publish_checkout['uses'] == 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262', 'publish checkout must use the pinned actions/checkout')
+publish_checkout_with = mapping(publish_checkout['with'], 'publish checkout settings')
+assert_contract(publish_checkout_with['persist-credentials'] == false, 'publish checkout must disable credential persistence')
+publish_checkout_index = publish_steps.index(publish_checkout)
+assert_contract(publish_steps.none? { |step| step.key?('run') }, 'publish must not contain run steps')
 required_runs = ['make test', 'make package', 'make smoke', './scripts/notarize-app.sh']
 run_indices = required_runs.map do |command|
   indices = validate_steps.each_index.select { |index| validate_steps[index]['run'] == command }
@@ -1025,6 +1033,8 @@ assert_contract(upload_with['if-no-files-found'] == 'error', 'upload must fail f
 
 downloads = all_steps.select { |_, _, step| step['uses'].to_s.start_with?('actions/download-artifact@') }
 assert_contract(downloads.length == 1 && downloads.first[0] == 'publish', 'only publish may download the validated artifact')
+download_index = publish_steps.index { |step| step['uses'].to_s.start_with?('actions/download-artifact@') }
+assert_contract(publish_checkout_index < download_index, 'publish checkout must precede artifact download')
 download_with = mapping(downloads.first[2]['with'], 'download artifact settings')
 assert_contract(download_with['name'] == 'Needlbar-macos-arm64-notarized', 'download artifact name is wrong')
 assert_contract(download_with['path'] == 'dist', 'download artifact path is wrong')
@@ -1034,7 +1044,8 @@ publish_steps.each do |step|
   assert_contract(command !~ /(?:make (?:package|smoke)|notarize-app\.sh|codesign|notarytool|xcrun|security)/, 'publish must not package, sign, or notarize')
 end
 publish_uses = publish_steps.filter_map { |step| step['uses'] }
-assert_contract(publish_uses.length == 2 && publish_uses.any? { |value| value.start_with?('actions/download-artifact@') } && publish_uses.any? { |value| value.start_with?('softprops/action-gh-release@') }, 'publish may only download and release the validated artifact')
+assert_contract(publish_uses.length == 3 && publish_uses.count { |value| value.start_with?('actions/checkout@') } == 1 && publish_uses.count { |value| value.start_with?('actions/download-artifact@') } == 1 && publish_uses.count { |value| value.start_with?('softprops/action-gh-release@') } == 1, 'publish may only checkout, download, and release the validated artifact')
+assert_contract(publish_steps.all? { |step| step.keys == ['name', 'uses', 'with'] || step.keys == ['name', 'uses'] }, 'publish steps must be actions only')
 release_actions = publish_steps.select { |step| step['uses'].to_s.start_with?('softprops/action-gh-release@') }
 assert_contract(release_actions.length == 1, 'publish must contain exactly one GitHub Release action')
 release_with = mapping(release_actions.first['with'], 'release action settings')
@@ -1064,6 +1075,8 @@ test_release_workflow_contract() {
   local decoy_zip_only_release_files="$temp_root/release-zip-only-files.yml"
   local decoy_missing_body_path="$temp_root/release-missing-body-path.yml"
   local decoy_generated_notes="$temp_root/release-generated-notes.yml"
+  local decoy_missing_publish_checkout="$temp_root/release-missing-publish-checkout.yml"
+  local decoy_persisted_publish_credentials="$temp_root/release-persisted-publish-credentials.yml"
   local decoy_output decoy_status
 
   set +e
@@ -1071,7 +1084,7 @@ test_release_workflow_contract() {
   decoy_status=$?
   set -e
   if [[ "$decoy_status" -ne 0 ]]; then
-    [[ "$decoy_output" == *'upload artifact path must list ZIP and checksum exactly'* ]] ||
+    [[ "$decoy_output" == *'publish must contain exactly one actions/checkout step'* ]] ||
       fail "current release workflow RED failed for an unexpected reason: $decoy_output"
   fi
 
@@ -1085,6 +1098,13 @@ end
 release_fields = "          files: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n          body_path: .github/release-notes/v0.2.2.md\n          generate_release_notes: false\n"
 unless document.sub!(/          files: dist\/Needlbar-macos-arm64\.zip\n|          files: \|\n            dist\/Needlbar-macos-arm64\.zip\n            dist\/Needlbar-macos-arm64\.zip\.sha256\n          body_path: [^\n]+\n          generate_release_notes: (?:true|false)\n/, release_fields)
   abort 'fixture setup: could not normalize release action settings'
+end
+checkout_step = "      - name: Checkout release notes\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          persist-credentials: false\n"
+unless document.include?(checkout_step)
+  needle = "    steps:\n      - name: Download validated release artifact\n"
+  unless document.sub!(needle, "    steps:\n#{checkout_step}      - name: Download validated release artifact\n")
+    abort 'fixture setup: could not add publish release-notes checkout'
+  end
 end
 File.write(destination, document)
 RUBY
@@ -1180,8 +1200,67 @@ RUBY
   [[ "$decoy_status" -ne 0 ]] || fail 'generated-notes decoy was accepted'
   [[ "$decoy_output" == *'release action generate_release_notes must be false'* ]] ||
     fail 'generated-notes decoy failed for an unexpected reason'
+
+  ruby - "$valid_workflow" "$decoy_missing_publish_checkout" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+checkout_step = "      - name: Checkout release notes\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          persist-credentials: false\n"
+abort 'fixture setup: publish checkout was not found' unless document.sub!(checkout_step, '')
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(release_workflow_contract_is_valid "$decoy_missing_publish_checkout" "$ci_workflow" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'missing-publish-checkout decoy was accepted'
+  [[ "$decoy_output" == *'publish must contain exactly one actions/checkout step'* ]] ||
+    fail 'missing-publish-checkout decoy failed for an unexpected reason'
+
+  ruby - "$valid_workflow" "$decoy_persisted_publish_credentials" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+abort 'fixture setup: publish checkout credential setting was not found' unless document.sub!("          persist-credentials: false\n", "          persist-credentials: true\n")
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(release_workflow_contract_is_valid "$decoy_persisted_publish_credentials" "$ci_workflow" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'persisted-publish-credentials decoy was accepted'
+  [[ "$decoy_output" == *'publish checkout must disable credential persistence'* ]] ||
+    fail 'persisted-publish-credentials decoy failed for an unexpected reason'
 }
 
+test_checksum_directory_contract() {
+  local checksum_directory
+
+  new_case
+  checksum_directory="$case_root/repo/dist/checksum-target"
+  mkdir "$checksum_directory"
+  export NEEDLBAR_NOTARIZE_CHECKSUM_PATH="$checksum_directory"
+  if invoke_case; then
+    fail 'directory checksum target case unexpectedly succeeded'
+  fi
+  unset NEEDLBAR_NOTARIZE_CHECKSUM_PATH
+  [[ "$status" -ne 0 ]] || fail 'directory checksum target case must fail'
+  grep -F 'checksum path must not be an existing directory' "$case_root/output.txt" >/dev/null ||
+    fail 'directory checksum target was not rejected with the intended diagnostic'
+  assert_stage_absent "$case_root" security:create-keychain
+  assert_stage_absent "$case_root" zip:final
+  assert_stage_absent "$case_root" install:zip
+  assert_stage_absent "$case_root" install:checksum
+  assert_original_zip
+  ! find "$checksum_directory" -mindepth 1 -maxdepth 1 -print -quit | grep -q . ||
+    fail 'directory checksum target retained a candidate sidecar'
+  ! find "$(dirname "$case_root/repo/dist/Needlbar-macos-arm64.zip")" -maxdepth 1 \
+    -name '.needlbar-checksum.*.sha256' -print -quit | grep -q . ||
+    fail 'directory checksum target left a checksum candidate'
+  ! find "$case_root/private-temp" -mindepth 1 -print -quit | grep -q . ||
+    fail 'directory checksum target left private temp state'
+  assert_no_canary "$case_root"
+}
+
+test_checksum_directory_contract
 test_release_workflow_contract
 
 new_case

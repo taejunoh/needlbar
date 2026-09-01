@@ -23,6 +23,7 @@ zip_parent="$(dirname "$ZIP_PATH")"
 [[ -d "$APP_PATH" ]] || fail "app bundle not found: $APP_PATH"
 [[ -d "$zip_parent" ]] || fail "ZIP parent directory not found: $zip_parent"
 [[ -f "$ZIP_PATH" ]] || fail "ZIP archive not found: $ZIP_PATH"
+[[ ! -d "$CHECKSUM_PATH" ]] || fail "checksum path must not be an existing directory: $CHECKSUM_PATH"
 [[ -d "$TEMP_PARENT" ]] || fail "temporary parent directory not found: $TEMP_PARENT"
 
 for required_command in base64 security codesign xcrun spctl zip ditto mktemp uuidgen shasum; do
