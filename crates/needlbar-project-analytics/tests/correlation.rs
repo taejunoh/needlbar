@@ -370,7 +370,102 @@ fn invalid_numbers_models_and_task_one_partial_flags_are_folded_safely() {
     assert!(payload.repositories.is_empty());
     assert_eq!(payload.unattributed.usage.input_tokens, "10");
     assert_eq!(payload.unattributed.reasons["missingCost"], 1);
-    assert_eq!(payload.coverage.reasons["recordLimitReached"], 1);
+    assert_eq!(payload.coverage.reasons["recordLimitReached"], 2);
     assert_eq!(payload.coverage.reasons["missingDuration"], 1);
     assert_eq!(payload.unattributed.reasons["missingWorkspace"], 1);
+}
+
+#[test]
+fn exact_500_is_not_limited_but_501_sets_one_fixed_limit() {
+    for (count, limited) in [(500, false), (501, true)] {
+        let mut log = String::new();
+        for index in 0..count {
+            log.push_str(&commit(
+                &format!("{index:040x}"),
+                "2026-09-01T12:00:00Z",
+                "x",
+            ));
+        }
+        let payload = build_analytics_payload(
+            report(fragment("/repos/a", "2026-09-01T10:00:00Z")),
+            time("2026-09-01T20:00:00Z"),
+            &FakeGitRunner::new(vec![output("/repos/a\n"), output(&log)]),
+        );
+        assert_eq!(
+            payload.repositories[0]
+                .coverage
+                .reasons
+                .contains_key("recordLimitReached"),
+            limited
+        );
+        assert_eq!(
+            payload
+                .errors
+                .iter()
+                .any(|error| error.code == "recordLimitReached"),
+            limited
+        );
+    }
+}
+
+#[test]
+fn malformed_nul_records_fail_closed_while_another_repository_survives() {
+    for malformed in [
+        b"abc\0".as_slice(),
+        b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\0bad\0x\0".as_slice(),
+        b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\x002026-09-01T12:00:00Z\0x\0".as_slice(),
+        b"gggggggggggggggggggggggggggggggggggggggg\x002026-09-01T12:00:00Z\0x\0".as_slice(),
+    ] {
+        let mut source = report(fragment("/repos/a", "2026-09-01T10:00:00Z"));
+        source
+            .fragments
+            .push(fragment("/repos/b", "2026-09-01T10:00:00Z"));
+        let good = commit(
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "2026-09-01T12:00:00Z",
+            "x",
+        );
+        let payload = build_analytics_payload(
+            source,
+            time("2026-09-01T20:00:00Z"),
+            &FakeGitRunner::new(vec![
+                output("/repos/a\n"),
+                output("/repos/b\n"),
+                Ok(GitOutput {
+                    stdout: malformed.to_vec(),
+                    stderr: vec![],
+                }),
+                output(&good),
+            ]),
+        );
+        assert_eq!(payload.repositories.len(), 2);
+        assert!(payload
+            .repositories
+            .iter()
+            .any(|repository| !repository.commits.is_empty()));
+        assert!(payload
+            .errors
+            .iter()
+            .any(|error| error.code == "repositoryUnavailable"));
+    }
+}
+
+#[test]
+fn task_one_overflow_counters_have_exact_fixed_reason_counts() {
+    let mut source = report(WorkspaceSessionFragment {
+        workspace_key: None,
+        ..fragment("/ignored", "2026-09-01T10:00:00Z")
+    });
+    source.record_limit_reached = true;
+    source.timing_coverage_partial = true;
+    source.overflowed_fragment_observations = 2;
+    source.overflowed_model_observations = 3;
+    source.overflowed_timing_observations = 4;
+    let payload = build_analytics_payload(
+        source,
+        time("2026-09-01T20:00:00Z"),
+        &FakeGitRunner::new(vec![]),
+    );
+    assert_eq!(payload.coverage.reasons["recordLimitReached"], 11);
+    assert_eq!(payload.unattributed.reasons["recordLimitReached"], 11);
 }

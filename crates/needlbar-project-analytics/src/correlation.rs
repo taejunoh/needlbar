@@ -79,6 +79,8 @@ pub(crate) fn build(
     {
         bump(&mut coverage.reasons, "missingDuration");
         unattributed.reason("missingDuration");
+        bump(&mut coverage.reasons, "recordLimitReached");
+        unattributed.reason("recordLimitReached");
     }
     let mut mapped = Vec::new();
     for fragment in report.fragments {
@@ -459,9 +461,10 @@ fn parse_commits(output: &GitOutput) -> Result<(Vec<RawCommit>, bool), &'static 
         }
         let oid = std::str::from_utf8(chunk[0])
             .map_err(|_| "repositoryUnavailable")?
-            .to_ascii_lowercase();
+            .to_owned();
         if oid.len() != 40
             || !oid.bytes().all(|b| b.is_ascii_hexdigit())
+            || oid.bytes().any(|b| b.is_ascii_uppercase())
             || !ids.insert(oid.clone())
         {
             return Err("repositoryUnavailable");

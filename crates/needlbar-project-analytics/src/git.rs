@@ -182,11 +182,24 @@ impl BoundedGitRunner {
         let waited = child.wait().is_ok();
         let drained = stdout.map(|thread| thread.join().is_ok()).unwrap_or(true)
             && stderr.map(|thread| thread.join().is_ok()).unwrap_or(true);
+        self.cleanup_with(|| killed, || waited, || drained)?;
+        Err(GitRunnerError::Unavailable)
+    }
+
+    fn cleanup_with<K, W, D>(&self, kill: K, wait: W, drain: D) -> Result<(), GitRunnerError>
+    where
+        K: FnOnce() -> bool,
+        W: FnOnce() -> bool,
+        D: FnOnce() -> bool,
+    {
+        let killed = kill();
+        let waited = wait();
+        let drained = drain();
         if !killed || !waited || !drained {
             self.poisoned.store(true, Ordering::Release);
             return Err(GitRunnerError::CleanupFailed);
         }
-        Err(GitRunnerError::Unavailable)
+        Ok(())
     }
 }
 fn spawn_reader<R: Read + Send + 'static>(
@@ -247,6 +260,46 @@ mod tests {
         let (bytes, exceeded) = reader.join().unwrap();
         assert!(exceeded);
         assert!(bytes.len() <= 8);
+    }
+
+    #[test]
+    fn lifecycle_faults_attempt_kill_wait_and_poison_before_any_second_spawn() {
+        for (kill_ok, wait_ok) in [(true, true), (false, true), (true, false)] {
+            let runner =
+                BoundedGitRunner::with_test_executable(PathBuf::from("/definitely/not-run"));
+            let attempts = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let one = attempts.clone();
+            let two = attempts.clone();
+            let three = attempts.clone();
+            let result = runner.cleanup_with(
+                || {
+                    one.lock().unwrap().push("kill");
+                    kill_ok
+                },
+                || {
+                    two.lock().unwrap().push("wait");
+                    wait_ok
+                },
+                || {
+                    three.lock().unwrap().push("drain");
+                    true
+                },
+            );
+            if kill_ok && wait_ok {
+                assert!(result.is_ok());
+            } else {
+                assert!(matches!(result, Err(GitRunnerError::CleanupFailed)));
+            }
+            assert_eq!(*attempts.lock().unwrap(), vec!["kill", "wait", "drain"]);
+            if !kill_ok || !wait_ok {
+                assert!(matches!(
+                    runner.run(GitRequest::DiscoverRepository {
+                        workspace: std::env::temp_dir()
+                    }),
+                    Err(GitRunnerError::CleanupFailed)
+                ));
+            }
+        }
     }
 
     fn executable(script: &str) -> (tempfile::TempDir, PathBuf) {
