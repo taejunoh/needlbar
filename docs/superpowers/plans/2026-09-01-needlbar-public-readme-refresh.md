@@ -194,13 +194,29 @@ unsupported_providers = readme.scan(/\b(?:OpenAI|Gemini|Copilot|Aider|Windsurf)\
 abort "README names unsupported provider(s): #{unsupported_providers.join(', ')}" unless unsupported_providers.empty?
 
 links = readme.scan(/\[[^\]]+\]\(([^)]+)\)/).flatten
-tracked = IO.popen(["git", "ls-files"], &:read).lines.map(&:chomp).to_h { |path| [path, true] }
+repo_root = Pathname(Dir.pwd).realpath
+ordinary_tracked = {}
+gitlink_roots = []
+IO.popen(["git", "ls-files", "--stage"], &:read).lines.each do |line|
+  match = line.chomp.match(/\A(\d+) [0-9a-f]+ \d+\t(.+)\z/)
+  abort "cannot parse git ls-files --stage entry: #{line.inspect}" unless match
+  mode, path = match.captures
+  mode == "160000" ? gitlink_roots << path : ordinary_tracked[path] = true
+end
 links.each do |target|
   next if target.start_with?("http://", "https://", "#")
   relative = target.split("#", 2).first
-  resolved = Pathname(relative).cleanpath
+  relative_path = Pathname(relative)
+  abort "README relative link escapes repository: #{target}" if relative_path.absolute?
+  resolved = (repo_root + relative_path).cleanpath
+  abort "README relative link escapes repository: #{target}" unless resolved == repo_root || resolved.to_s.start_with?("#{repo_root}/")
   abort "README relative link does not resolve: #{target}" unless File.file?(resolved) || File.directory?(resolved)
-  abort "README relative link target is not tracked: #{target}" unless tracked.key?(resolved.to_s) || tracked.keys.any? { |entry| entry.start_with?("#{resolved}/") }
+  real_resolved = resolved.realpath
+  abort "README relative link escapes repository: #{target}" unless real_resolved == repo_root || real_resolved.to_s.start_with?("#{repo_root}/")
+  resolved_relative = resolved.relative_path_from(repo_root).to_s
+  ordinary = ordinary_tracked.key?(resolved_relative) || ordinary_tracked.keys.any? { |entry| entry.start_with?("#{resolved_relative}/") }
+  inside_gitlink = gitlink_roots.any? { |root| resolved_relative == root || resolved_relative.start_with?("#{root}/") }
+  abort "README relative link target is not tracked: #{target}" unless ordinary || inside_gitlink
 end
 
 puts "README public-refresh contract passed"
