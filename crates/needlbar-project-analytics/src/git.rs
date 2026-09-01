@@ -41,8 +41,17 @@ pub enum GitRunnerError {
 #[derive(Default)]
 pub struct BoundedGitRunner {
     budget_started: Mutex<Option<Instant>>,
+    #[cfg(test)]
+    test_executable: Option<PathBuf>,
 }
 impl BoundedGitRunner {
+    #[cfg(test)]
+    fn with_test_executable(executable: PathBuf) -> Self {
+        Self {
+            budget_started: Mutex::new(None),
+            test_executable: Some(executable),
+        }
+    }
     fn remaining_budget(&self) -> Result<Duration, GitRunnerError> {
         let mut started = self
             .budget_started
@@ -84,7 +93,17 @@ impl GitRunner for BoundedGitRunner {
         };
         let canonical =
             std::fs::canonicalize(directory).map_err(|_| GitRunnerError::Unavailable)?;
-        let mut command = Command::new("/usr/bin/git");
+        let executable = {
+            #[cfg(test)]
+            {
+                self.test_executable
+                    .as_deref()
+                    .unwrap_or_else(|| std::path::Path::new("/usr/bin/git"))
+            }
+            #[cfg(not(test))]
+            std::path::Path::new("/usr/bin/git")
+        };
+        let mut command = Command::new(executable);
         command
             .arg("-C")
             .arg(canonical)
@@ -162,6 +181,9 @@ fn spawn_reader<R: Read + Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command as TestCommand;
 
     #[test]
     fn byte_caps_and_time_budgets_are_exact_constants() {
@@ -175,6 +197,7 @@ mod tests {
     fn cumulative_budget_refuses_a_new_process_after_ten_seconds() {
         let runner = BoundedGitRunner {
             budget_started: Mutex::new(Some(Instant::now() - TOTAL_GIT_BUDGET)),
+            test_executable: None,
         };
         assert!(matches!(
             runner.remaining_budget(),
@@ -188,5 +211,56 @@ mod tests {
         let (bytes, exceeded) = reader.join().unwrap();
         assert!(exceeded);
         assert!(bytes.len() <= 8);
+    }
+
+    fn executable(script: &str) -> (tempfile::TempDir, PathBuf) {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("fixture-command");
+        fs::write(&path, script).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+        (directory, path)
+    }
+
+    #[test]
+    fn test_only_executable_observes_closed_arguments_and_allowlisted_environment() {
+        let output = tempfile::NamedTempFile::new().unwrap();
+        let script = format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nprintf 'terminal=%s\\n' \"$GIT_TERMINAL_PROMPT\" >> '{}'\nprintf 'nosystem=%s\\n' \"$GIT_CONFIG_NOSYSTEM\" >> '{}'\nprintf 'global=%s\\n' \"$GIT_CONFIG_GLOBAL\" >> '{}'\nprintf 'locks=%s\\n' \"$GIT_OPTIONAL_LOCKS\" >> '{}'\nprintf 'sensitive=%s\\n' \"$SENSITIVE_INHERITED_CANARY\" >> '{}'\n",
+            output.path().display(), output.path().display(), output.path().display(), output.path().display(), output.path().display(), output.path().display()
+        );
+        let (_directory, path) = executable(&script);
+        std::env::set_var("SENSITIVE_INHERITED_CANARY", "not-allowed");
+        let runner = BoundedGitRunner::with_test_executable(path);
+        runner
+            .run(GitRequest::DiscoverRepository {
+                workspace: std::env::temp_dir(),
+            })
+            .unwrap();
+        std::env::remove_var("SENSITIVE_INHERITED_CANARY");
+        let lines = fs::read_to_string(output.path()).unwrap();
+        assert_eq!(lines, format!("-C\n{}\nrev-parse\n--path-format=absolute\n--show-toplevel\nterminal=0\nnosystem=1\nglobal=/dev/null\nlocks=0\nsensitive=\n", std::fs::canonicalize(std::env::temp_dir()).unwrap().display()));
+    }
+
+    #[test]
+    fn timeout_kills_and_reaps_the_exact_spawned_child() {
+        let pid = tempfile::NamedTempFile::new().unwrap();
+        let script = format!(
+            "#!/bin/sh\necho $$ > '{}'\nexec /bin/sleep 30\n",
+            pid.path().display()
+        );
+        let (_directory, path) = executable(&script);
+        let runner = BoundedGitRunner::with_test_executable(path);
+        let started = Instant::now();
+        let result = runner.run(GitRequest::DiscoverRepository {
+            workspace: std::env::temp_dir(),
+        });
+        assert!(matches!(result, Err(GitRunnerError::TimedOut)));
+        assert!(started.elapsed() >= PROCESS_TIMEOUT);
+        let child = fs::read_to_string(pid.path()).unwrap();
+        assert!(!TestCommand::new("/bin/kill")
+            .args(["-0", child.trim()])
+            .status()
+            .unwrap()
+            .success());
     }
 }
