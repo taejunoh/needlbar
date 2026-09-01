@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+import SwiftUI
 @testable import NeedlbarApp
 @testable import NeedlbarCore
 
@@ -23,6 +24,7 @@ struct AnalyticsWindowControllerTests {
         #expect(window?.styleMask.contains(.miniaturizable) == true)
         #expect(window?.styleMask.contains(.resizable) == true)
         #expect(window?.isReleasedWhenClosed == false)
+        #expect(controller.viewModel.presentationState == .idle)
     }
 
     @Test func repeatedPresentationReusesTheWindowAndStartsOneInitialRefresh() async {
@@ -144,11 +146,11 @@ struct AnalyticsWindowControllerTests {
         #expect(AnalyticsDisplayFormatter.correlationCoverage(repository.coverage).contains("Unassigned 1"))
 
         let reasons = AnalyticsDisplayFormatter.unattributedReasonCopy(snapshot.unattributed.reasons)
-        #expect(reasons.contains("Missing workspace (2)"))
-        #expect(reasons.contains("Pending 4-hour window (1)"))
-        #expect(reasons.contains("Git timeout (1)"))
-        #expect(reasons.contains("Record/output limit (3)"))
-        #expect(reasons.allSatisfy { !$0.contains("gitTimedOut") && !$0.contains("raw-canary") })
+        #expect(reasons.map(\.displayText).contains("Missing workspace (2)"))
+        #expect(reasons.map(\.displayText).contains("Pending 4-hour window (1)"))
+        #expect(reasons.map(\.displayText).contains("Git timeout (1)"))
+        #expect(reasons.map(\.displayText).contains("Record/output limit (3)"))
+        #expect(reasons.allSatisfy { !$0.id.contains("raw-canary") && !$0.displayText.contains("gitTimedOut") })
     }
 
     @Test func aboutEstimatesUsesExactTruthfulTerminology() {
@@ -168,9 +170,51 @@ struct AnalyticsWindowControllerTests {
 
         #expect(commit.pullRequestNumber == 42)
         #expect(commit.coverage == "partial")
-        #expect(AnalyticsDisplayFormatter.gitReasonCopy(repository.coverage.reasons).contains("Git timeout (1)"))
-        #expect(AnalyticsDisplayFormatter.gitReasonCopy(repository.coverage.reasons).contains("Repository inspection stopped at a safe limit (3)"))
+        let gitReasons = AnalyticsDisplayFormatter.gitReasonCopy(repository.coverage.reasons)
+        #expect(gitReasons.map(\.displayText).contains("Git timeout (1)"))
+        #expect(gitReasons.map(\.displayText).contains("Repository inspection stopped at a safe limit (3)"))
         #expect(AnalyticsDisplayFormatter.repositoryStateCopy(snapshot.repositories[1].state) == "Git metadata could not be safely read.")
+    }
+
+    @Test func recordAndOutputLimitReasonsKeepDistinctStableIDs() {
+        let reasons = AnalyticsDisplayFormatter.unattributedReasonCopy([
+            "recordLimitReached": 2,
+            "gitOutputLimitReached": 2,
+        ])
+
+        #expect(reasons.count == 2)
+        #expect(Set(reasons.map(\.id)) == ["gitOutputLimitReached", "recordLimitReached"])
+        #expect(reasons.map(\.displayText) == ["Record/output limit (2)", "Record/output limit (2)"])
+    }
+
+    @Test func compactFormattersBoundLongCanonicalValuesAndReuseTheUTCDateFormatter() {
+        let longTokens = "12345678901234567890123456789012345678"
+        let longCost = "12345678901234567890123456789012345678.99"
+
+        #expect(AnalyticsDisplayFormatter.compactTokens(longTokens).count <= 8)
+        #expect(AnalyticsDisplayFormatter.tokensAccessibilityValue(longTokens) == "\(longTokens) tokens")
+        #expect(AnalyticsDisplayFormatter.compactCost(longCost).count <= 10)
+        #expect(AnalyticsDisplayFormatter.dateFormatterIdentity == AnalyticsDisplayFormatter.dateFormatterIdentity)
+        #expect(AnalyticsDisplayFormatter.refreshAccessibilityValue(isLoading: true) == "Loading; Refresh unavailable")
+        #expect(AnalyticsDisplayFormatter.refreshAccessibilityValue(isLoading: false) == "Ready")
+    }
+
+    @Test func maximumSnapshotCanHostAtTheWindowSizeWithoutEagerMaterializationFailure() async {
+        let started = ContinuousClock.now
+        let snapshot = maximumAnalyticsSnapshot()
+        let repository = ImmediateAnalyticsRepository(snapshot: snapshot)
+        let viewModel = AnalyticsViewModel(store: AnalyticsSnapshotStore(), repository: repository)
+        viewModel.loadIfNeeded()
+        #expect(await eventually { viewModel.snapshot != nil })
+        let hostingView = NSHostingView(rootView: AnalyticsView(viewModel: viewModel))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 760, height: 520)
+        hostingView.layoutSubtreeIfNeeded()
+        let elapsed = started.duration(to: .now)
+
+        #expect(snapshot.repositories.count == 64)
+        #expect(snapshot.repositories.allSatisfy { $0.commits.count == 200 })
+        #expect(hostingView.frame.size == NSSize(width: 760, height: 520))
+        #expect(elapsed < .seconds(10))
     }
 }
 
@@ -211,6 +255,14 @@ private final class TestAnalyticsRepository: AnalyticsRepository, @unchecked Sen
                 callWaiters.append((expected, continuation))
             }
         }
+    }
+}
+
+private struct ImmediateAnalyticsRepository: AnalyticsRepository {
+    let snapshot: AnalyticsSnapshot
+
+    func refreshAnalytics() async throws -> AnalyticsSnapshot {
+        snapshot
     }
 }
 
@@ -328,5 +380,71 @@ private func populatedAnalyticsSnapshot() -> AnalyticsSnapshot {
             reasons: ["gitTimedOut": 1]
         ),
         errors: [AnalyticsBridgeError(scope: "git", code: "gitTimedOut")]
+    )
+}
+
+private func maximumAnalyticsSnapshot() -> AnalyticsSnapshot {
+    let usage = AnalyticsUsageAggregate(
+        inputTokens: "12345678901234567890123456789012345678",
+        outputTokens: "50",
+        cacheReadTokens: "0",
+        cacheWriteTokens: "0",
+        reasoningTokens: "0",
+        totalTokens: "12345678901234567890123456789012345678",
+        estimatedCostUSD: "12345678901234567890123456789012345678"
+    )
+    let date = Date(timeIntervalSince1970: 1_725_182_400)
+    let commit = AnalyticsCommitAnalytics(
+        commitID: "0123456789ab",
+        committedAt: date,
+        correlatedUsage: usage,
+        pullRequestNumber: nil,
+        coverage: "correlated"
+    )
+    let repositories = (0..<64).map { index in
+        AnalyticsRepositoryAnalytics(
+            repositoryID: "repo-\(index)",
+            label: "Repository \(index)",
+            state: "available",
+            usage: usage,
+            observedActiveTimeSeconds: "120",
+            providerModels: [
+                AnalyticsProviderModelAnalytics(
+                    provider: "claude",
+                    model: "Other model",
+                    usage: usage,
+                    costPer1KTokens: nil,
+                    tokensPerObservedActiveHour: nil,
+                    millisecondsPer1KTokens: nil,
+                    costCoverage: "partial",
+                    timingCoverage: "missingDuration"
+                ),
+            ],
+            commits: Array(repeating: commit, count: 200).enumerated().map { offset, item in
+                AnalyticsCommitAnalytics(
+                    commitID: String(format: "%012x", offset),
+                    committedAt: item.committedAt,
+                    correlatedUsage: item.correlatedUsage,
+                    pullRequestNumber: nil,
+                    coverage: item.coverage
+                )
+            },
+            coverage: RepositoryCoverage(
+                assignedFragments: 1,
+                unassignedFragments: 1,
+                timingPartial: true,
+                reasons: ["missingCost": 1, "missingDuration": 1]
+            )
+        )
+    }
+    return AnalyticsSnapshot(
+        schemaVersion: "needlbar.analytics.v1",
+        ok: true,
+        generatedAt: date,
+        analysisRange: AnalyticsDateRange(start: date.addingTimeInterval(-30 * 24 * 60 * 60), end: date),
+        repositories: repositories,
+        unattributed: AnalyticsAttributionBucket(usage: usage, fragments: 1, reasons: [:]),
+        coverage: AnalyticsCoverage(attributedFragments: 12800, unattributedFragments: 1, reasons: [:]),
+        errors: []
     )
 }
