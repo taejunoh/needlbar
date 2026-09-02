@@ -1,9 +1,9 @@
 # Needlbar Development Status
 
-**Updated:** 2026-09-01
+**Updated:** 2026-09-02
 **Branch:** `main` (v0.2.2 public release verified at source commit `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.2.2 public release verified: GitHub Release `v0.2.2` contains the downloaded ZIP and checksum sidecar, and the fresh public asset checks passed. The v0.2.1 widgets/notifications implementation remains incomplete at the exact native macOS 14 Widget Gallery/App Group acceptance gate.
-**Next action:** Preserve the factual v0.2.2 public release record and retain the outstanding v0.2.1 exact macOS 14 Widget Gallery/App Group acceptance caveat; do not claim that native macOS 14 acceptance has been established.
+**Current phase:** v0.2.1 native acceptance driver Task 3 is complete; the v0.2.2 public release record remains verified. The remaining native macOS 14 Widget Gallery/App Group acceptance gate is still open.
+**Next action:** Implement Task 4, the public/acceptance artifact boundary, then retain the outstanding exact macOS 14 acceptance caveat; do not claim native macOS 14 acceptance has been established.
 
 ## v0.2.2 Public Release Preparation — 2026-09-01
 
@@ -53,6 +53,30 @@ The active Needlbar work is governed by:
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-notifications.md` — N1–N4, including fresh quota observation, durable policy, explicit permission, and lifecycle tests.
 - `AGENTS.md` — continuation rules for Codex/agentic workers.
+
+## v0.2.1 Native Acceptance Driver Task 3 — Lifecycle isolation — 2026-09-02
+
+Task 3 is complete at commit `e000679`. The acceptance-only launch parser now
+requires exactly `--acceptance-fixture <absolute-path>` beneath the configured
+input root. Acceptance startup constructs only the shared snapshot, projection,
+notification, inert Settings, and fixture-driver services; production retains
+its existing provider, Rust, login, export, and analytics construction path.
+The ordered acceptance lifecycle starts menu observation, notifications,
+widget projection, and fixture driving, and stops them in reverse order through
+the real service seams. No fixture parser or acceptance argument is exposed in
+the normal build.
+
+Verification recorded for the task:
+
+- `make swift-test`: 278 tests in 12 suites passed.
+- `make acceptance-test`: 9 acceptance fixture tests passed, including the
+  lifecycle ordering and launch-boundary contracts.
+- `git diff --check`: exit 0.
+
+The next continuation point is Task 4, public/acceptance artifact boundary
+scripts and isolation contracts. The real macOS 14 Widget Gallery/App Group,
+WidgetKit, and notification-permission acceptance caveat remains open. No
+push, tag, release, signing, or native acceptance run was performed.
 
 ## v0.2.2 Design Checkpoint — 2026-09-01
 
