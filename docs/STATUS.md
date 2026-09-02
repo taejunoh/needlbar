@@ -2,10 +2,10 @@
 
 **Updated:** 2026-09-02
 **Branch:** `main` (v0.2.2 public release verified at source commit `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.2.1 native acceptance driver Task 5 and the v0.2.2 public release are complete. Per the user's direction, the remaining native macOS 14 Widget Gallery/App Group acceptance gate is deferred while v0.3 feature work is designed.
-**Next action:** Review the v0.3 system-monitoring design, then write its implementation plan. Do not claim native macOS 14 acceptance until the maintainer-only execution matrix is run.
+**Current phase:** v0.3 system-monitor implementation is in progress. v0.2.1 native macOS 14 acceptance remains deferred per the user's direction.
+**Next action:** Implement v0.3 Task 3, `CombinedSnapshotStore`, then continue with the adaptive dashboard presentation tasks. Do not claim native macOS 14 acceptance until the maintainer-only execution matrix is run.
 
-## v0.3 System Monitor — Design Draft — 2026-09-02
+## v0.3 System Monitor — Approved Design and Implementation — 2026-09-02
 
 The approved brainstorming direction is to make Needlbar a configurable Stats
 replacement: CPU, RAM, disk, network, battery, and AI usage are combined in one
@@ -16,9 +16,54 @@ metrics refresh every second, while provider refresh ownership remains
 unchanged. Transfer speed is shown by default; local/public IP display is
 optional, with public-IP lookup disabled unless explicitly enabled.
 
-The complete draft is in
+The approved design is in
 `docs/superpowers/specs/2026-09-02-needlbar-v0.3-system-monitor-design.md`.
-Implementation has not started; the written spec is awaiting user review.
+The ordered implementation plan is in
+`docs/superpowers/plans/2026-09-02-needlbar-v0.3-system-monitor.md`.
+
+### Task 1 — Models and persisted configuration
+
+Task 1 is complete at commit `6d4a8a9`. It adds bounded system metric models,
+canonical module ordering, AI display preferences, and UserDefaults-backed
+monitor configuration with legacy provider visibility migration. Focused model
+and configuration tests passed.
+
+### Task 2 — Native collectors and supervised service
+
+Task 2 is complete at commit `4b85745`. Swift now collects CPU, memory, disk,
+network, and battery values through macOS APIs, publishes a one-second system
+snapshot stream, isolates collector failures with stale/unavailable states, and
+supports opt-in public-IP lookup at the pinned endpoint with a five-minute
+cache and two-second timeout. Focused service tests, `swift build`, formatting,
+and `git diff --check` passed.
+
+The next continuation point is Task 3, `CombinedSnapshotStore`. Native macOS 14
+Widget Gallery/App Group, WidgetKit, and notification-permission acceptance
+remain deferred and unperformed.
+
+### Task 3 — Combined snapshot store
+
+Task 3 is complete at commit `dd6fae6`. The actor-backed
+`CombinedSnapshotStore` merges provider and system streams independently,
+preserves per-module system availability and provider failures, keeps a stable
+provider order, and delivers the current combined value to new subscribers
+with newest-only buffering. Focused merge tests passed.
+
+The next continuation point is Task 4, the single adaptive menu-bar dashboard
+item and deterministic compact/expanded renderer.
+
+### Task 4 — Adaptive single-item menu bar dashboard
+
+Task 4 is complete in the current worktree. The menu bar now owns one retained
+status item, renders configured modules in expanded or compact layouts from an
+injected width budget, and subscribes to the combined snapshot stream without
+starting provider refreshes. Existing panel anchoring, outside-click/Escape
+dismissal, settings, analytics, Claude/Codex browser login, and Cursor Spending
+actions remain routed through their existing seams. Renderer and controller
+tests passed.
+
+The next continuation point is Task 5, the six-section system dashboard
+popover. Native macOS 14 acceptance remains deferred and unperformed.
 
 ## v0.2.2 Public Release Preparation — 2026-09-01
 

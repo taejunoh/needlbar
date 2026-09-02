@@ -6,7 +6,12 @@ import SwiftUI
 public protocol StatusItemHandle: AnyObject {
     var title: String { get set }
     var action: (@MainActor () -> Void)? { get set }
+    var availableWidth: Double { get }
     func presentationAnchor() -> StatusItemPresentationAnchor?
+}
+
+public extension StatusItemHandle {
+    var availableWidth: Double { 400 }
 }
 
 @MainActor
@@ -58,7 +63,7 @@ public protocol StatusItemFactory: AnyObject {
 }
 
 @MainActor
-public final class MenuBarController: NSObject {
+private final class LegacyMenuBarController: NSObject {
     private let configuration: ModuleConfiguration
     private let snapshotStore: ProviderSnapshotStore
     private let statusItemFactory: any StatusItemFactory
@@ -398,6 +403,334 @@ public final class MenuBarController: NSObject {
 }
 
 @MainActor
+public final class MenuBarController: NSObject {
+    private let configuration: ModuleConfiguration
+    private let snapshotStore: ProviderSnapshotStore
+    private let combinedSnapshotStore: CombinedSnapshotStore
+    private let statusItemFactory: any StatusItemFactory
+    private let globalMouseDownMonitor: any GlobalMouseDownMonitoring
+    private let panelPresenter: any MenuPanelPresenting
+    private let onModuleActivated: @MainActor (MenuModuleID) -> Void
+    private let onRetryRequested: @MainActor () -> Void
+    private let onProviderLoginRequested: @MainActor (ProviderID) -> Void
+    private let onSettingsRequested: @MainActor () -> Void
+    private let onAnalyticsRequested: @MainActor () -> Void
+    private let openCursorSpending: @MainActor () -> Void
+    private let settingsWindowController: SettingsWindowController
+    private var statusItem: (any StatusItemHandle)?
+    private var deepLinkStatusItem: (any StatusItemHandle)?
+    private var cachedCombinedSnapshot: CombinedUsageSnapshot
+    private var configurationObserver: NSObjectProtocol?
+    private var providerObservationTask: Task<Void, Never>?
+    private var combinedObservationTask: Task<Void, Never>?
+    private var globalMouseDownMonitoringToken: (any GlobalMouseDownMonitoringToken)?
+    private var panelPresentationGeneration: UInt64 = 0
+    private var snapshotRequestGeneration: UInt64 = 0
+    private var observationGeneration: UInt64 = 0
+    private var activeMenuModule: MenuModuleID?
+
+    public init(
+        configuration: ModuleConfiguration,
+        snapshotStore: ProviderSnapshotStore,
+        combinedSnapshotStore: CombinedSnapshotStore = CombinedSnapshotStore(),
+        actions: SettingsActions,
+        notificationPreferences: QuotaNotificationPreferences,
+        notificationService: QuotaNotificationService,
+        statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
+        globalMouseDownMonitor: any GlobalMouseDownMonitoring = AppKitGlobalMouseDownMonitor(),
+        panelPresenter: any MenuPanelPresenting = AppKitMenuPanelPresenter(),
+        onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
+        onRetryRequested: @escaping @MainActor () -> Void = {},
+        onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
+        onSettingsRequested: @escaping @MainActor () -> Void = {},
+        onAnalyticsRequested: @escaping @MainActor () -> Void = {},
+        openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() }
+    ) {
+        self.configuration = configuration
+        self.snapshotStore = snapshotStore
+        self.combinedSnapshotStore = combinedSnapshotStore
+        self.statusItemFactory = statusItemFactory
+        self.globalMouseDownMonitor = globalMouseDownMonitor
+        self.panelPresenter = panelPresenter
+        self.onModuleActivated = onModuleActivated
+        self.onRetryRequested = onRetryRequested
+        self.onProviderLoginRequested = onProviderLoginRequested
+        self.onSettingsRequested = onSettingsRequested
+        self.onAnalyticsRequested = onAnalyticsRequested
+        self.openCursorSpending = openCursorSpending
+        self.settingsWindowController = SettingsWindowController(
+            configuration: configuration,
+            actions: actions,
+            notificationPreferences: notificationPreferences,
+            notificationService: notificationService,
+            openCursorSpending: openCursorSpending
+        )
+        self.cachedCombinedSnapshot = CombinedUsageSnapshot(
+            system: nil, providers: [], capturedAt: .distantPast, systemAvailability: [:]
+        )
+        super.init()
+        panelPresenter.onDismiss = { [weak self] in
+            self?.panelDidDismiss()
+        }
+    }
+
+    public convenience init(
+        configuration: ModuleConfiguration,
+        snapshotStore: ProviderSnapshotStore,
+        combinedSnapshotStore: CombinedSnapshotStore = CombinedSnapshotStore(),
+        loginCoordinator: ProviderLoginCoordinator,
+        snapshotExportController: SnapshotExportController,
+        notificationPreferences: QuotaNotificationPreferences,
+        notificationService: QuotaNotificationService,
+        statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
+        globalMouseDownMonitor: any GlobalMouseDownMonitoring = AppKitGlobalMouseDownMonitor(),
+        panelPresenter: any MenuPanelPresenting = AppKitMenuPanelPresenter(),
+        onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
+        onRetryRequested: @escaping @MainActor () -> Void = {},
+        onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
+        onSettingsRequested: @escaping @MainActor () -> Void = {},
+        onAnalyticsRequested: @escaping @MainActor () -> Void = {},
+        openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() }
+    ) {
+        self.init(
+            configuration: configuration,
+            snapshotStore: snapshotStore,
+            combinedSnapshotStore: combinedSnapshotStore,
+            actions: SettingsActions(
+                loginCoordinator: loginCoordinator,
+                snapshotExportController: snapshotExportController
+            ),
+            notificationPreferences: notificationPreferences,
+            notificationService: notificationService,
+            statusItemFactory: statusItemFactory,
+            globalMouseDownMonitor: globalMouseDownMonitor,
+            panelPresenter: panelPresenter,
+            onModuleActivated: onModuleActivated,
+            onRetryRequested: onRetryRequested,
+            onProviderLoginRequested: onProviderLoginRequested,
+            onSettingsRequested: onSettingsRequested,
+            onAnalyticsRequested: onAnalyticsRequested,
+            openCursorSpending: openCursorSpending
+        )
+    }
+
+    public var activeModuleIDs: [MenuModuleID] {
+        statusItem == nil ? [] : [.overview]
+    }
+
+    public func refresh() async {
+        let snapshots = await snapshotStore.snapshots()
+        await combinedSnapshotStore.applyProviders(snapshots)
+        let combined = await combinedSnapshotStore.snapshot()
+        reconcile(using: combined)
+    }
+
+    public func startObserving() async {
+        guard configurationObserver == nil, providerObservationTask == nil, combinedObservationTask == nil else { return }
+        observationGeneration &+= 1
+        let generation = observationGeneration
+        let providerUpdates = await snapshotStore.updates()
+        let combinedUpdates = await combinedSnapshotStore.updates()
+        await refresh()
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: ModuleConfiguration.didChangeNotification,
+            object: configuration,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.observationGeneration == generation else { return }
+                self.reconcile(using: self.cachedCombinedSnapshot)
+            }
+        }
+        providerObservationTask = Task { @MainActor [weak self] in
+            for await snapshots in providerUpdates {
+                guard !Task.isCancelled else { return }
+                guard let self, self.observationGeneration == generation else { return }
+                await self.combinedSnapshotStore.applyProviders(snapshots)
+            }
+        }
+        combinedObservationTask = Task { @MainActor [weak self] in
+            for await snapshot in combinedUpdates {
+                guard !Task.isCancelled else { return }
+                guard let self, self.observationGeneration == generation else { return }
+                self.reconcile(using: snapshot)
+            }
+        }
+    }
+
+    public func stopObserving() {
+        observationGeneration &+= 1
+        dismissPanelAndCleanUp()
+        providerObservationTask?.cancel()
+        providerObservationTask = nil
+        combinedObservationTask?.cancel()
+        combinedObservationTask = nil
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+            self.configurationObserver = nil
+        }
+    }
+
+    public func openOverview() {
+        let item: any StatusItemHandle
+        if let statusItem {
+            item = statusItem
+        } else if let deepLinkStatusItem {
+            item = deepLinkStatusItem
+        } else {
+            let created = statusItemFactory.makeStatusItem()
+            created.title = "Needlbar"
+            deepLinkStatusItem = created
+            item = created
+        }
+        snapshotRequestGeneration &+= 1
+        showPanel(for: .overview, snapshot: cachedCombinedSnapshot, from: item)
+    }
+
+    private func reconcile(using snapshot: CombinedUsageSnapshot) {
+        cachedCombinedSnapshot = snapshot
+        let item: any StatusItemHandle
+        if let statusItem {
+            item = statusItem
+        } else {
+            let created = statusItemFactory.makeStatusItem()
+            statusItem = created
+            item = created
+        }
+        let rendered = MenuBarDashboardRenderer.render(
+            snapshot: snapshot,
+            configuration: configuration.systemMonitor,
+            availableWidth: item.availableWidth
+        )
+        item.title = rendered.title
+        item.action = { [weak self, weak item] in
+            guard let self, let item else { return }
+            self.activate(.overview, from: item)
+        }
+    }
+
+    private func activate(_ module: MenuModuleID, from item: any StatusItemHandle) {
+        onModuleActivated(module)
+        snapshotRequestGeneration &+= 1
+        let requestGeneration = snapshotRequestGeneration
+        if panelPresenter.isShown, activeMenuModule == module {
+            panelPresenter.dismiss()
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let snapshot = await self.combinedSnapshotStore.snapshot()
+            guard !Task.isCancelled, self.snapshotRequestGeneration == requestGeneration else { return }
+            self.showPanel(for: module, snapshot: snapshot, from: item)
+        }
+    }
+
+    private func showPanel(
+        for module: MenuModuleID,
+        snapshot: CombinedUsageSnapshot,
+        from item: any StatusItemHandle
+    ) {
+        if panelPresenter.isShown, activeMenuModule == module {
+            panelPresenter.dismiss()
+            return
+        }
+        guard module == .overview else { return }
+        let view = AnyView(OverviewPopoverView(
+            snapshots: snapshot.providers,
+            configuration: configuration,
+            onShowSettings: { [weak self] in self?.performSettingsAction() },
+            onShowAnalytics: { [weak self] in self?.performAnalyticsAction() }
+        ))
+        guard let anchor = item.presentationAnchor() else {
+            dismissPanelAndCleanUp()
+            return
+        }
+        cancelGlobalMouseDownMonitoring()
+        let hostingController = NSHostingController(rootView: view)
+        guard panelPresenter.present(hostingController, anchoredAt: anchor) else {
+            dismissPanelAndCleanUp()
+            return
+        }
+        activeMenuModule = module
+        panelPresentationGeneration &+= 1
+        let presentationGeneration = panelPresentationGeneration
+        globalMouseDownMonitoringToken = globalMouseDownMonitor.start { [weak self] in
+            guard let self,
+                self.panelPresentationGeneration == presentationGeneration,
+                self.panelPresenter.isShown
+            else { return }
+            self.panelPresenter.dismiss()
+        }
+    }
+
+    private func cancelGlobalMouseDownMonitoring() {
+        globalMouseDownMonitoringToken?.cancel()
+        globalMouseDownMonitoringToken = nil
+    }
+
+    private func panelDidDismiss() {
+        panelPresentationGeneration &+= 1
+        snapshotRequestGeneration &+= 1
+        cancelGlobalMouseDownMonitoring()
+        activeMenuModule = nil
+        if let temporary = deepLinkStatusItem {
+            statusItemFactory.removeStatusItem(temporary)
+            deepLinkStatusItem = nil
+        }
+    }
+
+    private func dismissPanelAndCleanUp() {
+        if panelPresenter.isShown {
+            panelPresenter.dismiss()
+        } else {
+            panelDidDismiss()
+        }
+    }
+
+    func performRetryAction() {
+        onRetryRequested()
+    }
+
+    func performSettingsAction() {
+        panelPresenter.dismiss()
+        showSettings()
+    }
+
+    func performAnalyticsAction() {
+        panelPresenter.dismiss()
+        onAnalyticsRequested()
+    }
+
+    func performAuthenticationAction(for provider: ProviderID) {
+        let action: ProviderAuthenticationAction
+        switch provider {
+        case .claude:
+            action = .browserLogin(title: "Sign in with Claude")
+        case .codex:
+            action = .browserLogin(title: "Sign in with ChatGPT")
+        case .cursor:
+            action = .openCursorSpending(title: "Open Cursor Spending")
+        }
+        performPresentedAuthenticationAction(action, for: provider)
+    }
+
+    func performPresentedAuthenticationAction(_ action: ProviderAuthenticationAction, for provider: ProviderID) {
+        panelPresenter.dismiss()
+        switch action {
+        case .browserLogin:
+            onProviderLoginRequested(provider)
+        case .openCursorSpending:
+            _ = openCursorSpending()
+        }
+    }
+
+    private func showSettings() {
+        onSettingsRequested()
+        settingsWindowController.showSettings()
+    }
+}
+
+@MainActor
 public final class AppKitStatusItemFactory: StatusItemFactory {
     private let statusBar: NSStatusBar
 
@@ -428,6 +761,11 @@ private final class AppKitStatusItemHandle: NSObject, StatusItemHandle {
     var title: String {
         get { statusItem.button?.title ?? "" }
         set { statusItem.button?.title = newValue }
+    }
+
+    var availableWidth: Double {
+        guard let screen = statusItem.button?.window?.screen else { return 400 }
+        return min(400, max(120, screen.visibleFrame.width * 0.25))
     }
 
     init(statusItem: NSStatusItem) {

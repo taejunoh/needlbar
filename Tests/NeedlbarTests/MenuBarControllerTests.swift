@@ -19,7 +19,7 @@ import Testing
 
     #expect(controller.activeModuleIDs == [.overview])
     #expect(factory.created.count == 1)
-    #expect(factory.created[0].title == "AI —")
+    #expect(factory.created[0].title.contains("CPU —"))
 }
 
 @MainActor
@@ -38,8 +38,8 @@ import Testing
     configuration.claude = ModuleSettings(isEnabled: true, metric: .quotaRemaining)
     await controller.refresh()
 
-    #expect(controller.activeModuleIDs == [.overview, .claude])
-    #expect(factory.created.count == 2)
+    #expect(controller.activeModuleIDs == [.overview])
+    #expect(factory.created.count == 1)
     #expect(factory.created[0] === overview)
     #expect(factory.removed.isEmpty)
 }
@@ -63,9 +63,8 @@ import Testing
     await controller.refresh()
 
     #expect(controller.activeModuleIDs == [.overview])
-    #expect(factory.created.count == 2)
-    #expect(factory.removed.count == 1)
-    #expect(factory.removed[0] === claude)
+    #expect(factory.created.count == 1)
+    #expect(factory.removed.isEmpty)
     #expect(factory.created[0] === overview)
 }
 
@@ -93,7 +92,7 @@ import Testing
 
     #expect(factory.created.count == 1)
     #expect(factory.removed.isEmpty)
-    #expect(overview.title == "AI 1.42K")
+    #expect(overview.title.contains("AI Claude 1.42K"))
     #expect(overview.actionAssignmentCount > initialActionAssignments)
     #expect(activatedModules == [.overview])
 }
@@ -111,10 +110,12 @@ import Testing
     await controller.startObserving()
     defer { controller.stopObserving() }
 
-    configuration.codex = ModuleSettings(isEnabled: true, metric: .costToday)
+    var monitor = configuration.systemMonitor
+    monitor.visibleModules = [.cpu]
+    configuration.setSystemMonitor(monitor)
 
     let observedChange = await eventually {
-        controller.activeModuleIDs == [.overview, .codex] && factory.created.count == 2
+        controller.activeModuleIDs == [.overview] && factory.created.count == 1
     }
     #expect(observedChange)
 }
@@ -137,7 +138,42 @@ import Testing
 
     await store.applyUsage(menuBarUsage(totalTokens: 1_420), for: .claude)
 
-    #expect(await eventually { overview.title == "AI 1.42K" })
+    #expect(await eventually { overview.title.contains("AI Claude 1.42K") })
+}
+
+@MainActor
+@Test func observingCombinedSystemSnapshotRendersCPUInTheSingleDashboardItem() async throws {
+    let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+    let combinedStore = CombinedSnapshotStore()
+    let factory = FakeStatusItemFactory()
+    let controller = makeMenuBarController(
+        configuration: configuration,
+        snapshotStore: ProviderSnapshotStore(),
+        combinedSnapshotStore: combinedStore,
+        loginCoordinator: testLoginCoordinator(),
+        statusItemFactory: factory
+    )
+    await controller.startObserving()
+    defer { controller.stopObserving() }
+    let item = try #require(factory.created.first)
+
+    await combinedStore.applySystem(
+        SystemMetricsSnapshot(
+            capturedAt: Date(timeIntervalSince1970: 10_000),
+            cpu: .init(totalUsage: MetricPercentage(24), perCoreUsage: []),
+            memory: .init(usedBytes: nil, freeBytes: nil, swapUsedBytes: nil, pressure: nil),
+            disks: [],
+            network: .init(
+                uploadBytesPerSecond: nil, downloadBytesPerSecond: nil,
+                localIPAddresses: [], publicIPAddress: nil
+            ),
+            battery: .init(level: nil, isCharging: nil, health: nil),
+            availability: [.cpu: .fresh(capturedAt: Date(timeIntervalSince1970: 10_000))]
+        ),
+        at: Date(timeIntervalSince1970: 10_000)
+    )
+
+    #expect(await eventually { item.title.contains("CPU 24%") })
 }
 
 @MainActor
@@ -362,16 +398,13 @@ struct MenuBarControllerTests {
         #expect(!presenter.isShown)
     }
 
-    @Test func clickingADifferentModuleReanchorsTheExistingPresenter() async throws {
+    @Test func singleDashboardItemUsesItsCurrentAnchorForTheDashboard() async throws {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
-        configuration.claude = ModuleSettings(isEnabled: true, metric: .quotaRemaining)
-        let store = ProviderSnapshotStore()
-        await store.applyUsage(menuBarUsage(totalTokens: 1), for: .claude)
         let factory = FakeStatusItemFactory()
         let presenter = FakeMenuPanelPresenter()
         let controller = makeMenuBarController(
             configuration: configuration,
-            snapshotStore: store,
+            snapshotStore: ProviderSnapshotStore(),
             loginCoordinator: testLoginCoordinator(),
             statusItemFactory: factory,
             panelPresenter: presenter
@@ -379,17 +412,18 @@ struct MenuBarControllerTests {
 
         await controller.refresh()
         controller.openOverview()
-        let claude = try #require(factory.created.last)
-        claude.anchorForPresentation = StatusItemPresentationAnchor(
+        let item = try #require(factory.created.first)
+        item.anchorForPresentation = StatusItemPresentationAnchor(
             buttonFrameInScreen: NSRect(x: 200, y: 500, width: 24, height: 24),
             visibleFrameInScreen: NSRect(x: 0, y: 0, width: 1_024, height: 768)
         )
-        claude.performAction()
+        presenter.dismiss()
+        item.performAction()
 
         #expect(await eventually { presenter.presentCount == 2 })
-        #expect(presenter.dismissCount == 0)
+        #expect(presenter.dismissCount == 1)
         let anchor = try #require(presenter.presentedAnchors.last)
-        #expect(anchor.buttonFrameInScreen == claude.anchorForPresentation?.buttonFrameInScreen)
+        #expect(anchor.buttonFrameInScreen == item.anchorForPresentation?.buttonFrameInScreen)
     }
 
     @Test func staleSnapshotFetchCannotReopenAPanelAfterItIsToggledClosed() async throws {
@@ -432,8 +466,8 @@ struct MenuBarControllerTests {
 
         await controller.refresh()
         controller.openOverview()
-        let claude = try #require(factory.created.last)
-        claude.performAction()
+        let item = try #require(factory.created.first)
+        item.performAction()
         presenter.dismiss()
         for _ in 0..<10 { await Task.yield() }
 
@@ -630,6 +664,7 @@ private func testLoginCoordinator() -> ProviderLoginCoordinator {
 private func makeMenuBarController(
     configuration: ModuleConfiguration,
     snapshotStore: ProviderSnapshotStore,
+    combinedSnapshotStore: CombinedSnapshotStore? = nil,
     loginCoordinator: ProviderLoginCoordinator,
     statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
     globalMouseDownMonitor: any GlobalMouseDownMonitoring = FakeGlobalMouseDownMonitor(),
@@ -649,6 +684,7 @@ private func makeMenuBarController(
     return MenuBarController(
         configuration: configuration,
         snapshotStore: snapshotStore,
+        combinedSnapshotStore: combinedSnapshotStore ?? CombinedSnapshotStore(),
         loginCoordinator: loginCoordinator,
         snapshotExportController: SnapshotExportController(
             captureSource: ProviderSnapshotStore(),
