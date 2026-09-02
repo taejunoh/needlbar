@@ -13,6 +13,10 @@ import Testing
     #expect(MonitorModuleID.defaultOrder == [.cpu, .memory, .disk, .network, .battery, .ai])
 }
 
+@Test func defaultAIProviderDisplayMetricIsRemaining() {
+    #expect(AIProviderDisplayPreference().metric == .remaining)
+}
+
 @Test func metricSnapshotPreservesCanonicalValuesAndUnknownFields() {
     let capturedAt = Date(timeIntervalSince1970: 1_000)
     let snapshot = SystemMetricsSnapshot(

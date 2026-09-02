@@ -8,6 +8,10 @@ are displayed only in the menu bar and complete dashboard popover. They are
 not added to JSON export, widgets, notifications, repository analytics, or
 provider requests.
 
+Dashboard transfer trends retain at most 60 samples in memory. They contain
+only timestamps and numeric readings, never IP addresses. There is no system
+history database or history export.
+
 - There is no Needlbar backend, account, hosted sync service, or telemetry.
 - Needlbar does not upload token history, prompts, assistant responses, source code, file paths, account identifiers, or provider credentials.
 - It does not display prompt/response text or source-code content. The local usage engine reads known provider sources only to derive token metadata and cost information.
@@ -20,7 +24,9 @@ provider requests.
   Its usage is local-only, and its quota action opens the fixed provider-owned Spending
   dashboard URL.
 - Network transfer speed and local interface addresses are collected from local macOS
-  APIs. Public-IP display is disabled by default and can be enabled in Settings; when
+  APIs. Local-IP display is off by default, independently of public-IP display;
+  enabling it shows a primary address and an optional disclosure of other addresses.
+  Public-IP display is disabled by default and can be enabled in Settings; when
   enabled, Needlbar makes a bounded HTTPS request to the fixed `api64.ipify.org` endpoint,
   caches the address in memory for at least five minutes, and applies a two-second timeout.
   The public address is never logged, exported, included in diagnostics, or sent to a

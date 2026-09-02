@@ -55,6 +55,18 @@ public final class SystemMonitorSettingsModel: ObservableObject {
         commit(next)
     }
 
+    public func setLocalIPEnabled(_ enabled: Bool) {
+        var next = value
+        next.localIPEnabled = enabled
+        commit(next)
+    }
+
+    public func useCompactDefaults() {
+        var next = value
+        next.visibleModules = [.cpu, .memory, .ai]
+        commit(next)
+    }
+
     public func setAIProvider(
         _ provider: ProviderID,
         visible: Bool? = nil,
@@ -131,6 +143,17 @@ public struct SystemMonitorSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Button("Use compact defaults", action: model.useCompactDefaults)
+                .help("Show CPU, RAM, and AI in the menu bar without changing provider preferences.")
+
+            Toggle("Show local IP addresses", isOn: Binding(
+                get: { model.value.localIPEnabled },
+                set: { model.setLocalIPEnabled($0) }
+            ))
+            Text("Shows active local IPv4 addresses in the dashboard only. Addresses are never exported.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             Toggle("Show public IP address", isOn: Binding(
                 get: { model.value.publicIPEnabled },

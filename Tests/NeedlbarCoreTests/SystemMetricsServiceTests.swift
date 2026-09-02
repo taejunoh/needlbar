@@ -92,7 +92,7 @@ import Testing
   #expect(snapshot.availability[.cpu] == .unavailable(code: "systemMetricsUnavailable"))
 }
 
-@Test func publicIPFailureIsBoundedAndDoesNotFailSystemCollector() async throws {
+@Test func publicIPFailureIsBoundedAndDoesNotEraseFreshTransferAvailability() async throws {
   let collector = FakeSystemCollector(snapshot: fixtureSnapshot())
   let publicIP = FakePublicIPProvider(result: .failure(TestFailure.publicIP))
   let service = SystemMetricsService(
@@ -107,7 +107,7 @@ import Testing
 
   #expect(snapshot.cpu.totalUsage?.value == 24.5)
   #expect(snapshot.network.publicIPAddress == nil)
-  #expect(snapshot.availability[.network] == .unavailable(code: "publicIPUnavailable"))
+  #expect(snapshot.availability[.network] == .fresh(capturedAt: Date(timeIntervalSince1970: 10_000)))
 }
 
 @Test func publicIPFetchIsCancelledAtTheTwoSecondBoundary() async throws {
@@ -123,7 +123,7 @@ import Testing
   let snapshot = try #require(await service.currentSnapshot())
 
   #expect(snapshot.network.publicIPAddress == nil)
-  #expect(snapshot.availability[.network] == .unavailable(code: "publicIPUnavailable"))
+  #expect(snapshot.availability[.network] == .fresh(capturedAt: Date(timeIntervalSince1970: 10_000)))
 }
 
 private func fixtureSnapshot(capturedAt: Date = Date(timeIntervalSince1970: 10_000))

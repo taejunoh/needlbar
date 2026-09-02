@@ -16,16 +16,63 @@ import Testing
     #expect(value.title.contains("24%"))
 }
 
-@Test func rendererUsesExpandedLayoutWhenTheMeasuredBudgetIsWide() {
+@Test func rendererUsesCompactLayoutWhenAWideCallerBudgetIsCappedConservatively() {
     let value = MenuBarDashboardRenderer.render(
         snapshot: fixtureCombinedSnapshot(),
         configuration: fixtureMonitorConfiguration(),
         availableWidth: 400
     )
 
-    #expect(value.layout == .expanded)
+    #expect(value.layout == .compact)
     #expect(value.title.contains("CPU 24%"))
-    #expect(value.title.contains("NET"))
+    #expect(value.title.contains("RAM 80%"))
+    #expect(value.title.contains("AI"))
+}
+
+@Test func rendererFitsEveryPositiveWidthBudgetAndReportsRenderedModules() {
+    var configuration = fixtureMonitorConfiguration()
+    configuration.visibleModules = Set(MonitorModuleID.allCases)
+
+    for width in [1.0, 80.0, 120.0, 240.0, 300.0] {
+        let value = MenuBarDashboardRenderer.render(
+            snapshot: fixtureCombinedSnapshot(), configuration: configuration, availableWidth: width
+        )
+        let measured = Double((value.title as NSString).size(withAttributes: [.font: NSFont.menuFont(ofSize: 0)]).width)
+        #expect(measured <= width + 0.01)
+        #expect(value.moduleIDs.count <= 3)
+        #expect(value.configuredModuleIDs == MonitorModuleID.allCases)
+        if width < 22 {
+            #expect(value.usesIconFallback)
+            #expect(!value.title.contains("+"))
+        }
+    }
+}
+
+@Test func rendererKeepsTypicalCompactDefaultsTogetherAtTheConservativeCap() {
+    let value = MenuBarDashboardRenderer.render(
+        snapshot: fixtureCombinedSnapshot(),
+        configuration: fixtureMonitorConfiguration(),
+        availableWidth: 240
+    )
+
+    #expect(value.moduleIDs == [.cpu, .memory, .ai])
+    #expect(value.title.contains("CPU 24%"))
+    #expect(value.title.contains("RAM 80%"))
+    #expect(value.title.contains("AI"))
+}
+
+@Test func rendererUsesBillionsAndOverflowForLargeProviderValues() {
+    var configuration = fixtureMonitorConfiguration()
+    configuration.visibleModules = [.ai]
+    configuration.ai[.claude] = AIProviderDisplayPreference(metric: .usage)
+    let value = MenuBarDashboardRenderer.render(
+        snapshot: fixtureCombinedSnapshot(tokens: 4_200_000_000),
+        configuration: configuration,
+        availableWidth: 240
+    )
+
+    #expect(value.title.contains("B"))
+    #expect(value.tooltip.contains("Claude"))
 }
 
 @Test func rendererPreservesConfiguredOrderAndOmitsHiddenModules() {
@@ -37,7 +84,9 @@ import Testing
         snapshot: fixtureCombinedSnapshot(), configuration: configuration, availableWidth: 400
     )
 
-    #expect(value.moduleIDs == [.network, .ai])
+    #expect(value.configuredModuleIDs == [.network, .ai])
+    #expect(!value.moduleIDs.isEmpty)
+    #expect(value.moduleIDs == Array([.network, .ai].prefix(value.moduleIDs.count)))
     #expect(value.title.hasPrefix("NET"))
     #expect(!value.title.contains("CPU"))
 }
@@ -73,15 +122,39 @@ import Testing
 
     #expect(value.moduleIDs == [.ai])
     #expect(!value.title.contains("Claude"))
-    #expect(value.title.contains("Codex"))
+    #expect(value.title.contains("CX"))
     #expect(value.title.contains("55%"))
+}
+
+@Test func rendererDefaultsToRemainingEvenWhenTokenUsageExists() {
+    var configuration = fixtureMonitorConfiguration()
+    configuration.visibleModules = [.ai]
+
+    let value = MenuBarDashboardRenderer.render(
+        snapshot: fixtureCombinedSnapshot(), configuration: configuration, availableWidth: 400
+    )
+
+    #expect(value.title.contains("AI CL 32%"))
+    #expect(!value.title.contains("1.42M"))
+}
+
+@Test func rendererDoesNotFallBackToTokensWhenDefaultRemainingHasNoQuota() {
+    var configuration = fixtureMonitorConfiguration()
+    configuration.visibleModules = [.ai]
+
+    let value = MenuBarDashboardRenderer.render(
+        snapshot: fixtureCombinedSnapshot(hasQuota: false), configuration: configuration, availableWidth: 400
+    )
+
+    #expect(value.title.contains("AI CL —"))
+    #expect(!value.title.contains("1.42M"))
 }
 
 private func fixtureMonitorConfiguration() -> SystemMonitorConfiguration {
     SystemMonitorConfiguration()
 }
 
-private func fixtureCombinedSnapshot() -> CombinedUsageSnapshot {
+private func fixtureCombinedSnapshot(tokens: UInt64 = 1_420_000, hasQuota: Bool = true) -> CombinedUsageSnapshot {
     let date = Date(timeIntervalSince1970: 10_000)
     let system = SystemMetricsSnapshot(
         capturedAt: date,
@@ -97,15 +170,15 @@ private func fixtureCombinedSnapshot() -> CombinedUsageSnapshot {
     return CombinedUsageSnapshot(
         system: system,
         providers: [
-            rendererProviderSnapshot(provider: .claude, usedPercent: 68, tokens: 1_420_000),
-            rendererProviderSnapshot(provider: .codex, usedPercent: 45, tokens: 500),
+            rendererProviderSnapshot(provider: .claude, usedPercent: 68, tokens: tokens, hasQuota: hasQuota),
+            rendererProviderSnapshot(provider: .codex, usedPercent: 45, tokens: 500, hasQuota: hasQuota),
         ],
         capturedAt: date,
         systemAvailability: system.availability
     )
 }
 
-private func rendererProviderSnapshot(provider: ProviderID, usedPercent: Double, tokens: UInt64) -> ProviderSnapshot {
+private func rendererProviderSnapshot(provider: ProviderID, usedPercent: Double, tokens: UInt64, hasQuota: Bool) -> ProviderSnapshot {
     let period = UsagePeriod(
         inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
         totalTokens: tokens, estimatedCostUSD: Decimal(string: "7.81")!
@@ -117,7 +190,9 @@ private func rendererProviderSnapshot(provider: ProviderID, usedPercent: Double,
             totalTokens: tokens, estimatedCostUSD: Decimal(string: "7.81")!, today: period,
             last7Days: period, last30Days: period
         ),
-        quota: QuotaSnapshot(windows: [try! QuotaWindow(id: "window", title: "Window", usedPercent: usedPercent, resetsAt: nil)]),
+        quota: hasQuota
+            ? QuotaSnapshot(windows: [try! QuotaWindow(id: "window", title: "Window", usedPercent: usedPercent, resetsAt: nil)])
+            : nil,
         usageStatus: .fresh,
         quotaStatus: .fresh,
         updatedAt: Date(timeIntervalSince1970: 10_000)

@@ -5,12 +5,28 @@ import SwiftUI
 @MainActor
 public protocol StatusItemHandle: AnyObject {
     var title: String { get set }
+    var tooltip: String { get set }
+    var accessibilityLabel: String { get set }
+    var usesIconFallback: Bool { get set }
     var action: (@MainActor () -> Void)? { get set }
     var availableWidth: Double { get }
     func presentationAnchor() -> StatusItemPresentationAnchor?
 }
 
 public extension StatusItemHandle {
+    /// Test doubles and non-AppKit hosts do not need to retain a tooltip.
+    var tooltip: String {
+        get { "" }
+        set {}
+    }
+    var accessibilityLabel: String {
+        get { "" }
+        set {}
+    }
+    var usesIconFallback: Bool {
+        get { false }
+        set {}
+    }
     var availableWidth: Double { 400 }
 }
 
@@ -429,6 +445,7 @@ public final class MenuBarController: NSObject {
     private var snapshotRequestGeneration: UInt64 = 0
     private var observationGeneration: UInt64 = 0
     private var activeMenuModule: MenuModuleID?
+    private var dashboardModel: SystemDashboardModel?
 
     public init(
         configuration: ModuleConfiguration,
@@ -596,6 +613,12 @@ public final class MenuBarController: NSObject {
 
     private func reconcile(using snapshot: CombinedUsageSnapshot) {
         cachedCombinedSnapshot = snapshot
+        let monitorConfiguration = configuration.systemMonitor
+        if let dashboardModel {
+            dashboardModel.update(snapshot: snapshot, configuration: monitorConfiguration)
+        } else {
+            dashboardModel = SystemDashboardModel(snapshot: snapshot, configuration: monitorConfiguration)
+        }
         let item: any StatusItemHandle
         if let statusItem {
             item = statusItem
@@ -606,10 +629,13 @@ public final class MenuBarController: NSObject {
         }
         let rendered = MenuBarDashboardRenderer.render(
             snapshot: snapshot,
-            configuration: configuration.systemMonitor,
+            configuration: monitorConfiguration,
             availableWidth: item.availableWidth
         )
         item.title = rendered.title
+        item.tooltip = rendered.tooltip
+        item.accessibilityLabel = rendered.usesIconFallback ? "Needlbar" : rendered.tooltip
+        item.usesIconFallback = rendered.usesIconFallback
         item.action = { [weak self, weak item] in
             guard let self, let item else { return }
             self.activate(.overview, from: item)
@@ -642,19 +668,31 @@ public final class MenuBarController: NSObject {
             return
         }
         guard module == .overview else { return }
+        // Resolve the current anchor before constructing SwiftUI content. Besides
+        // avoiding work when the status item is no longer on-screen, this keeps the
+        // height budget tied to the display that owns the clicked item.
+        guard let anchor = item.presentationAnchor() else {
+            dismissPanelAndCleanUp()
+            return
+        }
+        let monitorConfiguration = configuration.systemMonitor
+        let model: SystemDashboardModel
+        if let dashboardModel {
+            model = dashboardModel
+        } else {
+            model = SystemDashboardModel(snapshot: snapshot, configuration: monitorConfiguration)
+            dashboardModel = model
+        }
+        let maximumHeight = max(0, anchor.visibleFrameInScreen.height - 24)
         let view = AnyView(SystemDashboardPopoverView(
-            snapshot: snapshot,
-            configuration: configuration,
+            model: model,
+            maximumHeight: maximumHeight,
             onShowSettings: { [weak self] in self?.performSettingsAction() },
             onShowAnalytics: { [weak self] in self?.performAnalyticsAction() },
             onProviderAction: { [weak self] provider in
                 self?.performAuthenticationAction(for: provider)
             }
         ))
-        guard let anchor = item.presentationAnchor() else {
-            dismissPanelAndCleanUp()
-            return
-        }
         cancelGlobalMouseDownMonitoring()
         let hostingController = NSHostingController(rootView: view)
         guard panelPresenter.present(hostingController, anchoredAt: anchor) else {
@@ -773,14 +811,58 @@ private final class AppKitStatusItemHandle: NSObject, StatusItemHandle {
         set { statusItem.button?.title = newValue }
     }
 
+    var tooltip: String {
+        get { statusItem.button?.toolTip ?? "" }
+        set { statusItem.button?.toolTip = newValue }
+    }
+
+    var accessibilityLabel: String {
+        get { statusItem.button?.accessibilityLabel() ?? "" }
+        set { statusItem.button?.setAccessibilityLabel(newValue) }
+    }
+
+    var usesIconFallback: Bool {
+        didSet { updateIconFallbackAppearance() }
+    }
+
     var availableWidth: Double {
-        guard let screen = statusItem.button?.window?.screen else { return 400 }
-        return min(400, max(120, screen.visibleFrame.width * 0.25))
+        guard let button = statusItem.button,
+              let screen = button.window?.screen else { return 240 }
+        // There is no public API for the width occupied by neighboring menu items.
+        // Keep a conservative cap and use the notch's top-right auxiliary area when
+        // AppKit exposes it, rather than treating a fraction of the whole display as
+        // available to Needlbar.
+        if let auxiliaryArea = screen.auxiliaryTopRightArea, auxiliaryArea.width > 0 {
+            return min(240, auxiliaryArea.width)
+        }
+        return 240
     }
 
     init(statusItem: NSStatusItem) {
         self.statusItem = statusItem
+        usesIconFallback = false
+        statusItem.button?.font = NSFont.menuFont(ofSize: 0)
         super.init()
+    }
+
+    private func updateIconFallbackAppearance() {
+        guard let button = statusItem.button else { return }
+        if usesIconFallback {
+            button.image = NSImage(
+                systemSymbolName: "chart.bar.fill",
+                accessibilityDescription: "Needlbar"
+            )
+            button.imagePosition = .imageOnly
+            button.imageScaling = .scaleProportionallyDown
+            button.title = ""
+            button.setAccessibilityElement(true)
+            button.setAccessibilityLabel("Needlbar")
+            statusItem.length = 22
+        } else {
+            button.image = nil
+            button.imagePosition = .noImage
+            statusItem.length = NSStatusItem.variableLength
+        }
     }
 
     func presentationAnchor() -> StatusItemPresentationAnchor? {

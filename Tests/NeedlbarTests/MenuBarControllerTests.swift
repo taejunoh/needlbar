@@ -72,6 +72,9 @@ import Testing
 @Test func anExistingModuleUpdatesItsTitleAndActionWithoutReplacement() async throws {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     configuration.overview = ModuleSettings(isEnabled: true, metric: .tokensToday)
+    var monitor = configuration.systemMonitor
+    monitor.ai[.claude] = AIProviderDisplayPreference(metric: .usage)
+    configuration.setSystemMonitor(monitor)
     let store = ProviderSnapshotStore()
     let factory = FakeStatusItemFactory()
     var activatedModules: [MenuModuleID] = []
@@ -92,7 +95,7 @@ import Testing
 
     #expect(factory.created.count == 1)
     #expect(factory.removed.isEmpty)
-    #expect(overview.title.contains("AI Claude 1.42K"))
+    #expect(overview.title.contains("AI CL 1.42K"))
     #expect(overview.actionAssignmentCount > initialActionAssignments)
     #expect(activatedModules == [.overview])
 }
@@ -124,6 +127,9 @@ import Testing
 @Test func observingSnapshotChangesRendersTheUpdatedTitle() async throws {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     configuration.overview = ModuleSettings(isEnabled: true, metric: .tokensToday)
+    var monitor = configuration.systemMonitor
+    monitor.ai[.claude] = AIProviderDisplayPreference(metric: .usage)
+    configuration.setSystemMonitor(monitor)
     let store = ProviderSnapshotStore()
     let factory = FakeStatusItemFactory()
     let controller = makeMenuBarController(
@@ -138,7 +144,7 @@ import Testing
 
     await store.applyUsage(menuBarUsage(totalTokens: 1_420), for: .claude)
 
-    #expect(await eventually { overview.title.contains("AI Claude 1.42K") })
+    #expect(await eventually { overview.title.contains("AI CL 1.42K") })
 }
 
 @MainActor
@@ -174,6 +180,45 @@ import Testing
     )
 
     #expect(await eventually { item.title.contains("CPU 24%") })
+}
+
+@MainActor
+@Test func liveCombinedUpdatesRefreshTheDashboardModelWithoutRepresentingThePanel() async throws {
+    let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+    let combinedStore = CombinedSnapshotStore()
+    let factory = FakeStatusItemFactory()
+    let presenter = FakeMenuPanelPresenter()
+    let controller = makeMenuBarController(
+        configuration: configuration,
+        snapshotStore: ProviderSnapshotStore(),
+        combinedSnapshotStore: combinedStore,
+        loginCoordinator: testLoginCoordinator(),
+        statusItemFactory: factory,
+        panelPresenter: presenter
+    )
+    await controller.startObserving()
+    defer { controller.stopObserving() }
+    let item = try #require(factory.created.first)
+    item.performAction()
+    #expect(await eventually { presenter.presentCount == 1 && presenter.isShown })
+
+    let firstDate = Date(timeIntervalSince1970: 10_000)
+    await combinedStore.applySystem(
+        SystemMetricsSnapshot(
+            capturedAt: firstDate,
+            cpu: .init(totalUsage: MetricPercentage(24), perCoreUsage: []),
+            memory: .init(usedBytes: nil, freeBytes: nil, swapUsedBytes: nil, pressure: nil),
+            disks: [],
+            network: .init(uploadBytesPerSecond: nil, downloadBytesPerSecond: nil, localIPAddresses: [], publicIPAddress: nil),
+            battery: .init(level: nil, isCharging: nil, health: nil),
+            availability: [.cpu: .fresh(capturedAt: firstDate)]
+        ),
+        at: firstDate
+    )
+
+    #expect(await eventually { item.title.contains("CPU 24%") })
+    #expect(presenter.presentCount == 1)
+    #expect(presenter.isShown)
 }
 
 @MainActor

@@ -114,10 +114,9 @@ public actor SystemMetricsService {
       publicIPCache = PublicIPCache(address: address, fetchedAt: timestamp)
       return replacingPublicIP(in: snapshot, with: address)
     } catch {
-      return replacingNetworkAvailability(
-        replacingPublicIP(in: snapshot, with: nil),
-        with: .unavailable(code: "publicIPUnavailable")
-      )
+      // Public-IP lookup is optional and independently fallible. It must not
+      // hide a fresh local transfer-rate measurement from the same snapshot.
+      return replacingPublicIP(in: snapshot, with: nil)
     }
   }
 
@@ -222,23 +221,6 @@ public actor SystemMetricsService {
       ),
       battery: snapshot.battery,
       availability: snapshot.availability
-    )
-  }
-
-  private func replacingNetworkAvailability(
-    _ snapshot: SystemMetricsSnapshot,
-    with availability: MetricAvailability
-  ) -> SystemMetricsSnapshot {
-    var values = snapshot.availability
-    values[.network] = availability
-    return SystemMetricsSnapshot(
-      capturedAt: snapshot.capturedAt,
-      cpu: snapshot.cpu,
-      memory: snapshot.memory,
-      disks: snapshot.disks,
-      network: snapshot.network,
-      battery: snapshot.battery,
-      availability: values
     )
   }
 

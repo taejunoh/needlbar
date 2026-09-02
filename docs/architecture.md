@@ -74,16 +74,32 @@ combined stream in production, so a system tick cannot amplify provider
 refreshes or erase a provider's last-known-good value. Acceptance builds keep
 their fixture-only lifecycle and do not construct the system service.
 
-`MenuBarDashboardRenderer` uses the configured module order and visibility to
-choose expanded labels or compact icon/value text from the measured status-item
-width. `SystemDashboardPopoverView` renders every module in the configured
-order, regardless of menu-bar visibility, and preserves existing AppKit
+`MenuBarDashboardRenderer` measures text using the menu font and respects both
+a conservative point budget and a three-summary limit. Explicitly saved module
+selections/order survive the smaller CPU/RAM/AI defaults; overflow remains
+available in the dashboard and tooltip.
+
+`MenuBarController` updates one observable `SystemDashboardModel` from combined
+snapshots. The model keeps no more than 60 memory-only trend samples and does
+not duplicate them when only provider data changes. Stale/unavailable transfer
+samples are gaps. `SystemDashboardPopoverView` observes that model so an open
+panel updates without being re-presented or losing disclosure state. The
+screen-bounded dashboard retains all six sections in configured order, existing
 anchoring, outside-click dismissal, provider login, and Cursor Spending seams.
+
+Native memory accounting excludes file-backed and purgeable cache from consumed
+physical pages; Available is the complement. Swap uses `vm.swapusage`, internal
+storage throughput uses cumulative IOKit counter differences, and battery
+health uses compatible full-charge/design capacities. First samples and
+unsupported readings remain unknown. RAM uses explicitly labeled binary units;
+storage capacities and byte rates use decimal units.
 
 Public IP is a separate opt-in `URLSession` dependency. It uses the fixed
 `https://api64.ipify.org?format=json` endpoint, a two-second timeout, and a
 minimum five-minute in-memory cache. It is not included in exports, widgets,
 notifications, analytics, diagnostics, or provider requests.
+Local-IP display has its own off-by-default setting and does not enable any
+request. Public-IP lookup failure does not invalidate local transfer-rate data.
 
 ### v0.2.2 local repository analytics
 

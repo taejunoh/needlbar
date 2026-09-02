@@ -69,6 +69,7 @@ public final class ModuleConfiguration {
     public var systemMonitor: SystemMonitorConfiguration {
         let order = validOrder(from: defaults.stringArray(forKey: "needlbar.systemMonitor.order"))
         let visibleModules = validVisibleModules(from: defaults.stringArray(forKey: "needlbar.systemMonitor.visible"))
+        let localIPEnabled = defaults.object(forKey: "needlbar.systemMonitor.localIP") as? Bool ?? false
         let publicIPEnabled = defaults.object(forKey: "needlbar.systemMonitor.publicIP") as? Bool ?? false
         let aiOrder = validAIOrder(from: defaults.stringArray(forKey: "needlbar.systemMonitor.ai.order"))
         let ai = Dictionary(uniqueKeysWithValues: ProviderID.allCases.map { provider in
@@ -77,7 +78,7 @@ public final class ModuleConfiguration {
             let preference = AIProviderDisplayPreference(
                 isVisible: defaults.object(forKey: visibleKey) as? Bool ?? migratedAIVisibility(for: provider),
                 metric: defaults.string(forKey: metricKey)
-                    .flatMap(AIProviderDisplayMetric.init(rawValue:)) ?? .usage
+                    .flatMap(AIProviderDisplayMetric.init(rawValue:)) ?? .remaining
             )
             return (provider, preference)
         })
@@ -86,7 +87,8 @@ public final class ModuleConfiguration {
             visibleModules: visibleModules,
             publicIPEnabled: publicIPEnabled,
             aiOrder: aiOrder,
-            ai: ai
+            ai: ai,
+            localIPEnabled: localIPEnabled
         )
     }
 
@@ -95,6 +97,7 @@ public final class ModuleConfiguration {
         let visibleModules = configuration.visibleModules.intersection(Set(MonitorModuleID.allCases))
         defaults.set(order.map(\.rawValue), forKey: "needlbar.systemMonitor.order")
         defaults.set(visibleModules.map(\.rawValue).sorted(), forKey: "needlbar.systemMonitor.visible")
+        defaults.set(configuration.localIPEnabled, forKey: "needlbar.systemMonitor.localIP")
         defaults.set(configuration.publicIPEnabled, forKey: "needlbar.systemMonitor.publicIP")
         defaults.set(validAIOrder(configuration.aiOrder).map(\.rawValue), forKey: "needlbar.systemMonitor.ai.order")
         for provider in ProviderID.allCases {
@@ -143,7 +146,7 @@ public final class ModuleConfiguration {
     }
 
     private func validVisibleModules(from rawValues: [String]?) -> Set<MonitorModuleID> {
-        guard let rawValues else { return Set(MonitorModuleID.defaultOrder) }
+        guard let rawValues else { return Set([.cpu, .memory, .ai]) }
         return Set(rawValues.compactMap(MonitorModuleID.init(rawValue:)))
     }
 

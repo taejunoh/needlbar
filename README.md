@@ -41,18 +41,40 @@ Needlbar presents locally aggregated token usage and estimated cost together wit
 
 Settings controls visible modules and title metrics. Claude and Codex expose provider-owned browser sign-in actions (`claude auth login --claudeai` and `codex login`); Needlbar does not implement a second OAuth flow. Cursor has no Needlbar credential or connection workflow.
 
-### System monitor (v0.3)
+### System monitor (v0.3 development build)
 
-Needlbar can replace a separate Stats-style utility with one configurable
-menu-bar item for CPU, RAM, disk, network, battery, and AI usage. The title
-automatically uses expanded labels when the measured status-item width allows
-them and compact icons/core values when a notch or neighboring menu-bar items
-leave less room. Module visibility and order are configured in Settings; the
-medium dashboard popover remains complete and shows all six sections.
+The development build combines CPU, RAM, disk, network, battery, and AI usage
+in one menu-bar item. New configurations show CPU, RAM, and AI; saved selections
+and order are preserved. Titles are measured with the menu font and fit at most
+three summaries within a conservative width budget, with an overflow indicator
+and full tooltip. Settings includes a compact-defaults action.
 
-System metrics refresh locally once per second and keep explicit fresh, stale,
-or unavailable states. Transfer speed is shown by default. Local and public IP
-display is optional; public-IP lookup is off by default and, when enabled,
+<img src="docs/images/system-dashboard.png" alt="Needlbar development dashboard with system metrics and remaining AI quota" width="360" />
+
+*Development build, not the public v0.2.2 artifact: values are native macOS examples, and provider visibility is configurable.*
+
+AI summaries default to remaining subscription quota (the most constrained
+available window), not token totals. Saved metric selections are preserved;
+tokens and estimated cost remain selectable in Settings. An unavailable quota
+is not replaced by a token count, and Cursor retains its Spending dashboard link.
+
+The live dashboard shows all six sections, usage gauges, per-core CPU bars,
+and recent disk/network trends. Its fixed header and footer surround scrollable
+content sized for the current screen. Trends retain at most 60 samples in
+memory; no system-history database is created. Missing or stale readings are
+identified explicitly. These changes are not in the public v0.2.2 ZIP above.
+
+RAM excludes file-backed and purgeable cache from consumed physical memory;
+Available is the complement and includes reclaimable memory. Memory uses
+GiB/MiB, while storage capacity and transfer rates use decimal GB/MB and KB/s.
+Swap comes from macOS, disk throughput uses native counter differences, and
+battery health is full-charge capacity divided by design capacity when those
+readings exist.
+
+System metrics refresh locally once per second, including while the dashboard
+is open. Transfer speed is shown by default in the dashboard. Local and public
+IP display have separate settings, both off by default. Local IP shows a primary
+address with additional addresses in a disclosure; public-IP lookup, when enabled,
 uses only the fixed `https://api64.ipify.org?format=json` endpoint with a
 two-second timeout and at least a five-minute in-memory cache. IP values never
 enter exports, widgets, notifications, analytics, diagnostics, or provider
@@ -155,6 +177,10 @@ Read the [architecture guide](docs/architecture.md) for layer ownership and data
 For project security boundaries, see [SECURITY.md](SECURITY.md). For contributor setup and implementation rules, see [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and the [current development status](docs/STATUS.md). The approved [base design specification](docs/superpowers/specs/2026-08-13-needlbar-v0.1-design.md) and [implementation plan](docs/superpowers/plans/2026-08-13-needlbar-v0.1.md) provide the product and architecture contract.
 
 The v0.3 system-monitor design and implementation plan are [documented here](docs/superpowers/specs/2026-09-02-needlbar-v0.3-system-monitor-design.md) and [here](docs/superpowers/plans/2026-09-02-needlbar-v0.3-system-monitor.md). Native macOS 14 Widget Gallery/App Group and notification-permission acceptance remains an external maintainer gate and is not claimed by the local test matrix.
+
+The screenshot-driven dashboard refinement is documented in its
+[design amendment](docs/superpowers/specs/2026-09-02-dashboard-readability-design.md)
+and [implementation plan](docs/superpowers/plans/2026-09-02-dashboard-readability.md).
 
 ## Credits and licenses
 

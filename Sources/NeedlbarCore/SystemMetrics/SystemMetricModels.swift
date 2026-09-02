@@ -37,7 +37,7 @@ public struct AIProviderDisplayPreference: Codable, Equatable, Sendable {
     public var isVisible: Bool
     public var metric: AIProviderDisplayMetric
 
-    public init(isVisible: Bool = true, metric: AIProviderDisplayMetric = .usage) {
+    public init(isVisible: Bool = true, metric: AIProviderDisplayMetric = .remaining) {
         self.isVisible = isVisible
         self.metric = metric
     }
@@ -151,21 +151,26 @@ public struct SystemMetricsSnapshot: Equatable, Sendable {
 public struct SystemMonitorConfiguration: Codable, Equatable, Sendable {
     public var order: [MonitorModuleID]
     public var visibleModules: Set<MonitorModuleID>
+    /// Allows the dashboard to disclose active local IPv4 addresses.
+    /// Public IP display is controlled independently by `publicIPEnabled`.
+    public var localIPEnabled: Bool
     public var publicIPEnabled: Bool
     public var aiOrder: [ProviderID]
     public var ai: [ProviderID: AIProviderDisplayPreference]
 
     public init(
         order: [MonitorModuleID] = MonitorModuleID.defaultOrder,
-        visibleModules: Set<MonitorModuleID> = Set(MonitorModuleID.defaultOrder),
+        visibleModules: Set<MonitorModuleID> = Set([.cpu, .memory, .ai]),
         publicIPEnabled: Bool = false,
         aiOrder: [ProviderID] = ProviderID.allCases,
         ai: [ProviderID: AIProviderDisplayPreference] = Dictionary(
             uniqueKeysWithValues: ProviderID.allCases.map { ($0, AIProviderDisplayPreference()) }
-        )
+        ),
+        localIPEnabled: Bool = false
     ) {
         self.order = order
         self.visibleModules = visibleModules
+        self.localIPEnabled = localIPEnabled
         self.publicIPEnabled = publicIPEnabled
         self.aiOrder = aiOrder
         self.ai = ai

@@ -1,9 +1,122 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-02
-**Branch:** `main` (v0.2.2 public release verified at source commit `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.3 system-monitor implementation is in progress. v0.2.1 native macOS 14 acceptance remains deferred per the user's direction.
-**Next action:** Final v0.3 review and release-readiness verification. Do not claim native macOS 14 acceptance until the maintainer-only execution matrix is run.
+**Branch:** `codex/v03-dashboard-polish` from pushed `main` at `95d08c9` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
+**Current phase:** v0.3 dashboard refinement is implemented and packaged for local inspection. The final all-project verification gate remains open because existing process-fixture tests intermittently time out. The user has explicitly authorized publishing a development-branch checkpoint despite those unchanged failures; main integration and release remain gated on a green `make test`. Native macOS 14 acceptance remains deferred per the user's direction.
+**Next action:** Resolve or isolate the existing process-fixture timing failures and obtain a clean `make test` before main integration or release. Development-branch checkpoint publication is user-authorized, not a claim that the full gate is green.
+
+## AI remaining-quota default — 2026-09-02
+
+The user approved making remaining subscription quota the default AI value in
+the menu bar and dashboard. The scoped plan is
+`docs/superpowers/plans/2026-09-02-ai-remaining-default.md`. The code is applied:
+fresh/default and invalid persisted metric paths
+use `.remaining`, while explicit saved Usage/Cost choices remain valid. Existing
+quota selection, missing-value behavior, and provider actions are reused.
+
+The current Mac's three provider metric keys were explicitly changed from
+`usage` to `remaining` after gracefully stopping the exact development bundle;
+visibility, order, IP preferences, and other settings were not changed. Native
+picker automation exposed a non-settable AXValue, so this approved local update
+used only the corresponding `com.taejunoh.needlbar` UserDefaults keys.
+
+Regression evidence: RED reproduced the old `.usage` fallback; all 66 focused
+configuration/model/menu/dashboard/controller/settings tests then passed.
+Independent spec and quality reviews passed with no scoped issues. The current
+`make test` attempt still fails two unchanged Codex shell-process tests
+(`app_server_stderr_limit_fails_before_the_process_deadline` and
+`app_server_transport_uses_the_documented_order_and_reaps_the_child`) with the
+previously documented timeout behavior. No timeout, Rust code, or test assertion
+was weakened. Logs: `ai-default-red.log`, `ai-default-green.log`, and
+`ai-default-make-test.log` in the verification directory below. `make package`
+and `make smoke` passed. The exact rebuilt development bundle was relaunched;
+native Settings confirmed all three provider pickers read Remaining, with the
+existing Claude-only visibility and IP settings unchanged. The live dashboard
+confirmed the remaining-quota caption and displayed `—` while Claude quota was
+Unavailable, even though token usage was Fresh (no token fallback). A live
+numeric quota percentage is not claimed for that capture; fixture tests verify
+the available-quota percentage path. Screenshot: `ai-remaining-native.png` in
+the verification directory. The user has explicitly authorized committing and
+pushing this development checkpoint despite the unchanged process-fixture
+timeouts; this does not make the full gate green or authorize main integration
+or release publication.
+
+After the user completed Claude browser sign-in, a fresh native capture of the
+same development app confirmed **22% remaining**, with both Usage and Quota
+Fresh and no sign-in action. This completes the live numeric remaining-quota
+check without changing authentication code. Evidence:
+`ai-remaining-authenticated.png` in the verification directory. The existing
+branch-wide process-test gate remains unchanged.
+
+## v0.3 Dashboard Readability Follow-up — 2026-09-02
+
+The user compared the running development build with Stats and approved the
+recommended improvement direction. The design amendment is
+`docs/superpowers/specs/2026-09-02-dashboard-readability-design.md`; the
+implementation plan is `docs/superpowers/plans/2026-09-02-dashboard-readability.md`.
+
+Confirmed source-level causes before implementation:
+
+- Compact menu mode did not actually fit titles to a measured width.
+- The open dashboard retained its initial snapshot instead of observing updates.
+- Local IP always dumped all interface addresses without an opt-in setting.
+- RAM included file-backed/purgeable cache; swap and disk I/O were hardcoded nil.
+- Battery health mapped the qualitative Good state to an invented 100%.
+
+Implemented on `codex/v03-dashboard-polish` in
+`.worktrees/integration-main.d16P79` (the user has authorized a development
+checkpoint commit/push despite the open full verification gate):
+
+- Menu titles are measured using the menu font, capped at 240 points and three
+  summaries, with a genuine icon-only fallback. CPU/RAM/AI are the defaults;
+  existing saved preferences are preserved.
+- One observable model updates the open dashboard without recreating its panel.
+  CPU core bars occupy one row; gauges and bounded disk/network trends replace
+  raw tables. The dashboard is 360 points wide, at most 680 points tall, with
+  fixed header/footer and scrolling for additional content. Native inspection
+  caught and corrected both excessive height and intrinsic gauge-size overlap.
+- RAM excludes reclaimable cache, swap uses `vm.swapusage`, disk I/O follows
+  the root volume's native storage counters, and battery health uses actual
+  full-charge/design capacities. Memory pressure uses the sysctl's public
+  flags (1 normal, 2 warning, 4 critical), not XNU's internal enum.
+- Local IP is separately opt-in; public IP remains independently off by
+  default. Transfer history is limited to 60 memory-only numeric samples, with
+  gaps for missing/stale data and no IP addresses or persistence.
+- README, architecture, and privacy documents describe these development-only
+  changes. The public v0.2.2 artifact is unchanged.
+
+Verification evidence:
+
+- Independent spec/quality reviews were completed; identified regressions
+  (counter-reset handling, numeric conversion, width fallback, accessibility)
+  were addressed.
+- The complete Swift suite passed 326 tests before the final native-driven
+  layout and pressure additions. A later 329-test run passed the new tests but
+  failed four unchanged `ProviderLoginProcessRunnerTests` with `readyTimedOut`.
+- The final density/layout regression run
+  `make swift-test SWIFT_TEST_FILTER=SystemDashboardPopoverTests` passed all 10
+  tests. The subsequent gauge-only drawing adjustment was rebuilt and checked
+  in the native screenshot; no claim of a final full-suite pass is made.
+- `make package` and `make smoke` passed after the final gauge adjustment.
+- Current-host native inspection confirmed a 360 x 680 panel with all six
+  sections visible for the saved one-provider configuration, no overlapping
+  gauges, no IP dump, RAM 36.6 GiB, swap 710.8 MiB, battery health 93%, and real
+  disk/network rates. Two captures of the same open panel showed changing
+  CPU/rates without window recreation. Settings opened correctly; local-IP
+  on/off round-trip was checked and restored off, with public IP left off.
+- Earlier plain `make test` passed on an intermediate revision. Final-candidate
+  retries intermittently failed unchanged Rust analytics or Codex shell
+  fixtures; `RUST_TEST_THREADS=1 make test` passed Rust/vendor tests but then
+  encountered the Swift readiness timeouts above. These tests use short real
+  process deadlines and are scheduling-sensitive; no production timeout or
+  Rust source was changed to hide the failures.
+
+Local verification logs and the final screenshot are outside the checkout in
+`/Users/taejunoh/Developer/LFG/needlbar-dashboard-validation-aW4dTC/`
+(`dashboard-final-native.png`). The exact locally running bundle is
+`.worktrees/integration-main.d16P79/dist/Needlbar.app`. Expanded-IP disclosure,
+an explicit final outside-click action, and native macOS 14 acceptance are not
+claimed as completed by this inspection. Nothing here claims release readiness.
 
 ## v0.3 System Monitor — Approved Design and Implementation — 2026-09-02
 
