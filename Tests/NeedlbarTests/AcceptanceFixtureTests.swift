@@ -57,6 +57,63 @@ struct AcceptanceFixtureTests {
             _ = try AcceptanceFixturePath.validate(escaped, beneath: root)
         }
     }
+
+    @Test func driverWaitsForEachPriorDelayAndOnlyUsesStoreApplyAPIs() async throws {
+        let recorder = AcceptanceSleeperRecorder()
+        let store = ProviderSnapshotStore()
+        let driver = AcceptanceFixtureDriver(
+            fixture: try AcceptanceFixtureParser.parse(data: validFixtureData()),
+            store: store,
+            sleeper: recorder
+        )
+        await driver.start()
+        #expect(await recorder.durations == [.seconds(0), .seconds(1)])
+        #expect(await store.currentQuotaAlertSample(for: .claude).revision == 2)
+    }
+
+    @Test func omittedStreamMarksOnlyThatExistingStreamFailedAndRetainsLastGoodValue() async throws {
+        let store = ProviderSnapshotStore()
+        let fixture = try AcceptanceFixtureParser.parse(data: failureIsolationFixtureData())
+        await AcceptanceFixtureDriver(fixture: fixture, store: store, sleeper: ImmediateAcceptanceSleeper()).start()
+        let claude = await store.snapshot(for: .claude)
+        #expect(claude.usage?.today.totalTokens == 800)
+        #expect(claude.usageStatus != .fresh)
+        #expect(claude.quota?.windows.first?.remainingPercent == 20)
+        #expect(claude.quotaStatus == .fresh)
+    }
+
+    @Test func omittedQuotaMarksOnlyQuotaFailedAndRetainsLastGoodUsage() async throws {
+        let store = ProviderSnapshotStore()
+        let fixture = try AcceptanceFixtureParser.parse(data: quotaFailureIsolationFixtureData())
+        await AcceptanceFixtureDriver(fixture: fixture, store: store, sleeper: ImmediateAcceptanceSleeper()).start()
+        let claude = await store.snapshot(for: .claude)
+        #expect(claude.usage?.today.totalTokens == 900)
+        #expect(claude.usageStatus == .fresh)
+        #expect(claude.quota?.windows.first?.remainingPercent == 80)
+        #expect(claude.quotaStatus != .fresh)
+    }
+
+    @Test func newLocalDayDoesNotReusePriorUsageProvenance() async throws {
+        let store = ProviderSnapshotStore()
+        let fixture = try AcceptanceFixtureParser.parse(data: midnightFixtureData())
+        await AcceptanceFixtureDriver(fixture: fixture, store: store, sleeper: ImmediateAcceptanceSleeper()).start()
+        let capture = await store.captureForWidget(exportedAt: fixture.events.last!.eventDate)
+        let claude = try #require(capture.providers.first(where: { $0.provider == .claude }))
+        #expect(claude.usageDayProvenance?.provenContext?.dayKey == "2026-09-02")
+        #expect(claude.usage?.today.totalTokens == 25)
+    }
+}
+
+private actor AcceptanceSleeperRecorder: AcceptanceFixtureSleeping {
+    private(set) var durations: [Duration] = []
+
+    func sleep(for duration: Duration) async throws {
+        durations.append(duration)
+    }
+}
+
+private struct ImmediateAcceptanceSleeper: AcceptanceFixtureSleeping {
+    func sleep(for duration: Duration) async throws {}
 }
 
 private func validFixtureData() -> Data {
@@ -92,6 +149,48 @@ private func validFixtureData() -> Data {
             "codex": [{"id": "codex.primary", "remainingPercent": 80, "resetsAt": "2026-09-02T12:00:00.000Z"}]
           }
         }
+      ]
+    }
+    """#.utf8)
+}
+
+private func failureIsolationFixtureData() -> Data {
+    Data(#"""
+    {
+      "schemaVersion": 1,
+      "timeZone": "America/New_York",
+      "startAt": "2026-09-01T12:00:00.000Z",
+      "events": [
+        {"delaySeconds": 0, "localDay": "2026-09-01", "usage": {"claude": {"tokens": 800, "costUSD": "1.20"}}, "quota": {"claude": [{"id": "claude.session", "remainingPercent": 80, "resetsAt": "2026-09-02T12:00:00.000Z"}]}},
+        {"delaySeconds": 1, "localDay": "2026-09-01", "usage": {}, "quota": {"claude": [{"id": "claude.session", "remainingPercent": 20, "resetsAt": "2026-09-02T12:00:00.000Z"}]}}
+      ]
+    }
+    """#.utf8)
+}
+
+private func quotaFailureIsolationFixtureData() -> Data {
+    Data(#"""
+    {
+      "schemaVersion": 1,
+      "timeZone": "America/New_York",
+      "startAt": "2026-09-01T12:00:00.000Z",
+      "events": [
+        {"delaySeconds": 0, "localDay": "2026-09-01", "usage": {"claude": {"tokens": 800, "costUSD": "1.20"}}, "quota": {"claude": [{"id": "claude.session", "remainingPercent": 80, "resetsAt": "2026-09-02T12:00:00.000Z"}]}},
+        {"delaySeconds": 1, "localDay": "2026-09-01", "usage": {"claude": {"tokens": 900, "costUSD": "1.35"}}, "quota": {}}
+      ]
+    }
+    """#.utf8)
+}
+
+private func midnightFixtureData() -> Data {
+    Data(#"""
+    {
+      "schemaVersion": 1,
+      "timeZone": "America/New_York",
+      "startAt": "2026-09-02T03:59:59.000Z",
+      "events": [
+        {"delaySeconds": 0, "localDay": "2026-09-01", "usage": {"claude": {"tokens": 800, "costUSD": "1.20"}}, "quota": {}},
+        {"delaySeconds": 1, "localDay": "2026-09-02", "usage": {"claude": {"tokens": 25, "costUSD": "0.04"}}, "quota": {}}
       ]
     }
     """#.utf8)

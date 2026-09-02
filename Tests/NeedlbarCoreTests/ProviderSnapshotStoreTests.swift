@@ -106,6 +106,22 @@ struct ProviderSnapshotStoreTests {
     #expect(current.quota == quota)
     #expect(current.status == .error(message: "fixture-only failure", lastSuccessfulAt: date))
 }
+
+@Test func applyAPIsKeepUsageAndQuotaIndependentlyLastKnownGood() async throws {
+    let now = try #require(BridgeDecoder.date("2026-09-01T12:00:00Z"))
+    let store = ProviderSnapshotStore(now: { now })
+    await store.applyUsage(makeUsage(totalTokens: 7), for: .claude, at: now)
+    await store.applyQuota(try alertQuota(id: "claude.session", usedPercent: 80), for: .claude, at: now)
+    await store.markUsageFailure(
+        for: .claude,
+        status: .error(message: "Fixture usage unavailable.", lastSuccessfulAt: nil),
+        at: now
+    )
+    let snapshot = await store.snapshot(for: .claude)
+    #expect(snapshot.usage?.today.totalTokens == 7)
+    #expect(snapshot.usageStatus != .fresh)
+    #expect(snapshot.quotaStatus == .fresh)
+}
 }
 
 private func makeUsage(totalTokens: UInt64) -> UsageSnapshot {
