@@ -152,12 +152,14 @@ public struct SystemMonitorConfiguration: Codable, Equatable, Sendable {
     public var order: [MonitorModuleID]
     public var visibleModules: Set<MonitorModuleID>
     public var publicIPEnabled: Bool
+    public var aiOrder: [ProviderID]
     public var ai: [ProviderID: AIProviderDisplayPreference]
 
     public init(
         order: [MonitorModuleID] = MonitorModuleID.defaultOrder,
         visibleModules: Set<MonitorModuleID> = Set(MonitorModuleID.defaultOrder),
         publicIPEnabled: Bool = false,
+        aiOrder: [ProviderID] = ProviderID.allCases,
         ai: [ProviderID: AIProviderDisplayPreference] = Dictionary(
             uniqueKeysWithValues: ProviderID.allCases.map { ($0, AIProviderDisplayPreference()) }
         )
@@ -165,6 +167,7 @@ public struct SystemMonitorConfiguration: Codable, Equatable, Sendable {
         self.order = order
         self.visibleModules = visibleModules
         self.publicIPEnabled = publicIPEnabled
+        self.aiOrder = aiOrder
         self.ai = ai
     }
 }

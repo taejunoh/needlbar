@@ -70,6 +70,7 @@ public final class ModuleConfiguration {
         let order = validOrder(from: defaults.stringArray(forKey: "needlbar.systemMonitor.order"))
         let visibleModules = validVisibleModules(from: defaults.stringArray(forKey: "needlbar.systemMonitor.visible"))
         let publicIPEnabled = defaults.object(forKey: "needlbar.systemMonitor.publicIP") as? Bool ?? false
+        let aiOrder = validAIOrder(from: defaults.stringArray(forKey: "needlbar.systemMonitor.ai.order"))
         let ai = Dictionary(uniqueKeysWithValues: ProviderID.allCases.map { provider in
             let visibleKey = "needlbar.systemMonitor.ai.\(provider.rawValue).visible"
             let metricKey = "needlbar.systemMonitor.ai.\(provider.rawValue).metric"
@@ -84,6 +85,7 @@ public final class ModuleConfiguration {
             order: order,
             visibleModules: visibleModules,
             publicIPEnabled: publicIPEnabled,
+            aiOrder: aiOrder,
             ai: ai
         )
     }
@@ -94,6 +96,7 @@ public final class ModuleConfiguration {
         defaults.set(order.map(\.rawValue), forKey: "needlbar.systemMonitor.order")
         defaults.set(visibleModules.map(\.rawValue).sorted(), forKey: "needlbar.systemMonitor.visible")
         defaults.set(configuration.publicIPEnabled, forKey: "needlbar.systemMonitor.publicIP")
+        defaults.set(validAIOrder(configuration.aiOrder).map(\.rawValue), forKey: "needlbar.systemMonitor.ai.order")
         for provider in ProviderID.allCases {
             let preference = configuration.ai[provider] ?? AIProviderDisplayPreference()
             defaults.set(preference.isVisible, forKey: "needlbar.systemMonitor.ai.\(provider.rawValue).visible")
@@ -142,6 +145,20 @@ public final class ModuleConfiguration {
     private func validVisibleModules(from rawValues: [String]?) -> Set<MonitorModuleID> {
         guard let rawValues else { return Set(MonitorModuleID.defaultOrder) }
         return Set(rawValues.compactMap(MonitorModuleID.init(rawValue:)))
+    }
+
+    private func validAIOrder(from rawValues: [String]?) -> [ProviderID] {
+        guard let rawValues else { return ProviderID.allCases }
+        let parsed = rawValues.compactMap(ProviderID.init(rawValue:))
+        return Set(parsed).count == ProviderID.allCases.count && parsed.count == ProviderID.allCases.count
+            ? parsed
+            : ProviderID.allCases
+    }
+
+    private func validAIOrder(_ order: [ProviderID]) -> [ProviderID] {
+        Set(order).count == ProviderID.allCases.count && order.count == ProviderID.allCases.count
+            ? order
+            : ProviderID.allCases
     }
 
     private func migratedAIVisibility(for provider: ProviderID) -> Bool {

@@ -1,9 +1,11 @@
 import NeedlbarCore
 import SwiftUI
 
+@MainActor
 public struct SettingsView: View {
     private let configuration: ModuleConfiguration
     private let openCursorSpending: () -> Void
+    @ObservedObject private var systemMonitorModel: SystemMonitorSettingsModel
     @ObservedObject private var actions: SettingsActions
     @ObservedObject private var notificationPreferences: QuotaNotificationPreferences
     private let notificationService: QuotaNotificationService
@@ -17,6 +19,7 @@ public struct SettingsView: View {
     ) {
         self.configuration = configuration
         self.openCursorSpending = openCursorSpending
+        _systemMonitorModel = ObservedObject(wrappedValue: SystemMonitorSettingsModel(configuration: configuration))
         _actions = ObservedObject(wrappedValue: actions)
         _notificationPreferences = ObservedObject(wrappedValue: notificationPreferences)
         self.notificationService = notificationService
@@ -44,21 +47,7 @@ public struct SettingsView: View {
 
     public var body: some View {
         Form {
-            Section("Menu Bar Modules") {
-                ForEach(MenuModuleID.allCases, id: \.rawValue) { module in
-                    Toggle(module.title, isOn: enabledBinding(for: module))
-                }
-            }
-
-            Section("Metric per enabled module") {
-                ForEach(MenuModuleID.allCases, id: \.rawValue) { module in
-                    Picker(module.title, selection: metricBinding(for: module)) {
-                        ForEach(MenuBarMetric.allCases, id: \.rawValue) { metric in
-                            Text(metric.title).tag(metric)
-                        }
-                    }
-                }
-            }
+            SystemMonitorSettingsView(model: systemMonitorModel)
 
             Section("Connections") {
                 providerLoginRow(provider: .claude, title: "Claude", actionTitle: "Sign in with Claude")
@@ -98,7 +87,7 @@ public struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 420)
+        .frame(width: 520)
     }
 
     func exportSnapshot() {
@@ -171,28 +160,6 @@ public struct SettingsView: View {
             case .verificationFailed: "Sign-in completed but quota could not be verified."
             }
         }
-    }
-
-    private func enabledBinding(for module: MenuModuleID) -> Binding<Bool> {
-        Binding(
-            get: { configuration.settings(for: module).isEnabled },
-            set: { isEnabled in
-                var settings = configuration.settings(for: module)
-                settings.isEnabled = isEnabled
-                configuration.set(settings, for: module)
-            }
-        )
-    }
-
-    private func metricBinding(for module: MenuModuleID) -> Binding<MenuBarMetric> {
-        Binding(
-            get: { configuration.settings(for: module).metric },
-            set: { metric in
-                var settings = configuration.settings(for: module)
-                settings.metric = metric
-                configuration.set(settings, for: module)
-            }
-        )
     }
 
 }

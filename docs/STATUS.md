@@ -3,7 +3,7 @@
 **Updated:** 2026-09-02
 **Branch:** `main` (v0.2.2 public release verified at source commit `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`; v0.2.1 remains an earlier integrated line of work)
 **Current phase:** v0.3 system-monitor implementation is in progress. v0.2.1 native macOS 14 acceptance remains deferred per the user's direction.
-**Next action:** Implement v0.3 Task 6, module and AI display controls in Settings. Do not claim native macOS 14 acceptance until the maintainer-only execution matrix is run.
+**Next action:** Implement v0.3 Task 7, production lifecycle wiring, documentation, and full verification. Do not claim native macOS 14 acceptance until the maintainer-only execution matrix is run.
 
 ## v0.3 System Monitor — Approved Design and Implementation — 2026-09-02
 
@@ -76,6 +76,30 @@ tests passed.
 
 The next continuation point is Task 6, module and AI display controls in
 Settings. Native macOS 14 acceptance remains deferred and unperformed.
+
+### Task 6 — Settings controls for system modules and AI display
+
+Task 6 is complete in the current worktree. Settings now provides menu-bar
+visibility toggles and drag-to-reorder controls for CPU, RAM, disk, network,
+battery, and AI usage. Public-IP display is opt-in with the fixed endpoint and
+privacy explanation. Claude, Codex, and Cursor each have independent
+visibility, ordering, and display-metric preferences; changes persist through
+`ModuleConfiguration` and update the existing configuration-change
+notification without restarting the app. The complete dashboard continues to
+show all six modules regardless of menu-bar visibility.
+
+Verification recorded for the completed task:
+
+- `make swift-test SWIFT_TEST_FILTER=SystemMonitorSettingsViewTests`: 4 tests passed.
+- `make swift-test SWIFT_TEST_FILTER=ModuleConfigurationTests`: 5 tests passed.
+- `make swift-test SWIFT_TEST_FILTER=MenuBarDashboardRendererTests`: 5 tests passed.
+- `make swift-test SWIFT_TEST_FILTER=SystemDashboardPopoverTests`: 3 tests passed.
+- Settings and dashboard targets compiled successfully; existing linker and
+  unused-await warnings remain unchanged.
+
+The next continuation point is Task 7, production lifecycle wiring,
+documentation, and full verification. Native macOS 14 acceptance remains
+deferred and unperformed.
 
 ## v0.2.2 Public Release Preparation — 2026-09-01
 

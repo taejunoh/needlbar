@@ -81,7 +81,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
             status: Self.batteryStatus(system?.battery.isCharging),
             health: Self.percentage(system?.battery.health)
         )
-        ai = ProviderID.allCases.map { provider in
+        ai = configuration.aiOrder.map { provider in
             let snapshot = snapshot.providers.first { $0.provider == provider }
             let preference = configuration.ai[provider] ?? AIProviderDisplayPreference()
             return AIProvider(

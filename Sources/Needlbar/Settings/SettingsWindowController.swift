@@ -12,7 +12,7 @@ public final class SettingsWindowController: NSWindowController {
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() }
     ) {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 440, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 720),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false

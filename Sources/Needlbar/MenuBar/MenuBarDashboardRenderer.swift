@@ -63,7 +63,7 @@ public enum MenuBarDashboardRenderer {
         snapshot: CombinedUsageSnapshot,
         configuration: SystemMonitorConfiguration
     ) -> String {
-        let values = ProviderID.allCases.compactMap { provider -> String? in
+        let values = configuration.aiOrder.compactMap { provider -> String? in
             guard configuration.ai[provider]?.isVisible ?? true else { return nil }
             let preference = configuration.ai[provider] ?? AIProviderDisplayPreference()
             let providerSnapshot = snapshot.providers.first { $0.provider == provider }
