@@ -102,6 +102,31 @@ struct AcceptanceFixtureTests {
         #expect(claude.usageDayProvenance?.provenContext?.dayKey == "2026-09-02")
         #expect(claude.usage?.today.totalTokens == 25)
     }
+
+    @Test func acceptanceLaunchRequiresExactlyOneAbsoluteFixtureUnderInputRoot() throws {
+        let root = URL(fileURLWithPath: "/tmp/needlbar-acceptance-input")
+        #expect(throws: AcceptanceFixtureFailure.fixturePathInvalid) {
+            _ = try AppLaunchConfiguration.acceptance(
+                arguments: ["Needlbar", "--acceptance-fixture", "relative.json"],
+                inputRoot: root
+            )
+        }
+        #expect(throws: AcceptanceFixtureFailure.fixturePathInvalid) {
+            _ = try AppLaunchConfiguration.acceptance(
+                arguments: ["Needlbar", "--acceptance-fixture", "/tmp/a.json", "extra"],
+                inputRoot: root
+            )
+        }
+    }
+
+    @Test @MainActor func inertSettingsActionsNeverStartsExcludedActions() {
+        let actions = SettingsActions()
+        actions.connect(.claude)
+        actions.exportSnapshot()
+        #expect(actions.loginState(for: .claude) == .idle)
+        #expect(actions.exportState == .idle)
+        #expect(!actions.isExporting)
+    }
 }
 
 private actor AcceptanceSleeperRecorder: AcceptanceFixtureSleeping {

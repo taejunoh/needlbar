@@ -2,96 +2,170 @@ import AppKit
 import NeedlbarCore
 import WidgetKit
 
+#if NEEDLBAR_ACCEPTANCE_DRIVER
+@MainActor
+protocol AcceptanceLifecycleServing: AnyObject {
+    func startMenu() async
+    func startNotifications() async
+    func startPublisher() async
+    func startDriver() async
+    func stopDriver() async
+    func stopPublisher() async
+    func stopNotifications()
+    func stopMenu()
+}
+
+@MainActor
+final class AcceptanceLifecycleController {
+    private let services: any AcceptanceLifecycleServing
+    private var running = false
+
+    init(services: any AcceptanceLifecycleServing) {
+        self.services = services
+    }
+
+    func start() async {
+        guard !running else { return }
+        running = true
+        await services.startMenu()
+        guard running else { return }
+        await services.startNotifications()
+        guard running else { return }
+        await services.startPublisher()
+        guard running else { return }
+        await services.startDriver()
+    }
+
+    func stop() async {
+        guard running else { return }
+        running = false
+        await services.stopDriver()
+        await services.stopPublisher()
+        services.stopNotifications()
+        services.stopMenu()
+    }
+}
+#endif
+
 @MainActor
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let snapshotStore: ProviderSnapshotStore
-    private let refreshCoordinator: RefreshCoordinator
-    private let loginCoordinator: ProviderLoginCoordinator
     private let moduleConfiguration: ModuleConfiguration
-    private let snapshotExportController: SnapshotExportController
     private let notificationPreferences: QuotaNotificationPreferences
     private let notificationService: QuotaNotificationService
     private let widgetPublisher: WidgetProjectionPublisher?
-    private let analyticsSnapshotStore: AnalyticsSnapshotStore
-    private let analyticsRepository: RustAnalyticsRepository
-    private let analyticsWindowController: AnalyticsWindowController
     private let menuBarController: MenuBarController
     private let terminationController = AccessoryTerminationController()
+    private let launch: AppLaunchConfiguration
+    private var refreshCoordinator: RefreshCoordinator?
+    private var loginCoordinator: ProviderLoginCoordinator?
+    private var snapshotExportController: SnapshotExportController?
+    private var analyticsSnapshotStore: AnalyticsSnapshotStore?
+    private var analyticsRepository: RustAnalyticsRepository?
+    private var analyticsWindowController: AnalyticsWindowController?
+#if NEEDLBAR_ACCEPTANCE_DRIVER
+    private var acceptanceDriver: AcceptanceFixtureDriver?
+    private var acceptanceLifecycle: AcceptanceLifecycleController?
+#endif
     private var lifecycleTask: Task<Void, Never>?
 
-    public override init() {
+    public init(launch: AppLaunchConfiguration = .production) {
         let snapshotStore = ProviderSnapshotStore()
         let moduleConfiguration = ModuleConfiguration()
-        let usageFileWatcher = UsageFileWatcher()
-
-        self.snapshotStore = snapshotStore
         let notificationPreferences = QuotaNotificationPreferences()
+        self.snapshotStore = snapshotStore
+        self.moduleConfiguration = moduleConfiguration
         self.notificationPreferences = notificationPreferences
-        let notificationService = QuotaNotificationService(
+        self.notificationService = QuotaNotificationService(
             store: snapshotStore,
             preferences: notificationPreferences
         )
-        self.notificationService = notificationService
-        self.moduleConfiguration = moduleConfiguration
         self.widgetPublisher = makeWidgetPublisher()
-        let analyticsSnapshotStore = AnalyticsSnapshotStore()
-        let analyticsRepository = RustAnalyticsRepository()
-        let analyticsWindowController = AnalyticsWindowController(
-            store: analyticsSnapshotStore,
-            repository: analyticsRepository
-        )
-        self.analyticsSnapshotStore = analyticsSnapshotStore
-        self.analyticsRepository = analyticsRepository
-        self.analyticsWindowController = analyticsWindowController
-        let refreshCoordinator = RefreshCoordinator(
-            usageRepository: RustUsageRepository(),
-            quotaRepository: RustQuotaRepository(),
-            store: snapshotStore,
-            usageFileWatcher: usageFileWatcher
-        )
-        self.refreshCoordinator = refreshCoordinator
-        let loginCoordinator = ProviderLoginCoordinator(
-            refreshQuota: { provider in
-                await refreshCoordinator.refreshQuota(afterUserAuthenticationFor: provider)
-            }
-        )
-        self.loginCoordinator = loginCoordinator
-        let snapshotExportController = SnapshotExportController(
-            captureSource: snapshotStore,
-            savePanelPresenter: NSSavePanelPresenter(),
-            coreExportAction: DefaultCoreExportAction(),
-            captureClock: Date.init
-        )
-        self.snapshotExportController = snapshotExportController
-        let openCursorSpending: @MainActor () -> Void = {
-            _ = CursorSpendingAction.open()
+        self.launch = launch
+
+        switch launch {
+        case .production:
+            let usageFileWatcher = UsageFileWatcher()
+            let refreshCoordinator = RefreshCoordinator(
+                usageRepository: RustUsageRepository(),
+                quotaRepository: RustQuotaRepository(),
+                store: snapshotStore,
+                usageFileWatcher: usageFileWatcher
+            )
+            let loginCoordinator = ProviderLoginCoordinator(
+                refreshQuota: { provider in
+                    await refreshCoordinator.refreshQuota(afterUserAuthenticationFor: provider)
+                }
+            )
+            let snapshotExportController = SnapshotExportController(
+                captureSource: snapshotStore,
+                savePanelPresenter: NSSavePanelPresenter(),
+                coreExportAction: DefaultCoreExportAction(),
+                captureClock: Date.init
+            )
+            let analyticsSnapshotStore = AnalyticsSnapshotStore()
+            let analyticsRepository = RustAnalyticsRepository()
+            let analyticsWindowController = AnalyticsWindowController(
+                store: analyticsSnapshotStore,
+                repository: analyticsRepository
+            )
+            let actions = SettingsActions(
+                loginCoordinator: loginCoordinator,
+                snapshotExportController: snapshotExportController
+            )
+            self.refreshCoordinator = refreshCoordinator
+            self.loginCoordinator = loginCoordinator
+            self.snapshotExportController = snapshotExportController
+            self.analyticsSnapshotStore = analyticsSnapshotStore
+            self.analyticsRepository = analyticsRepository
+            self.analyticsWindowController = analyticsWindowController
+            self.menuBarController = MenuBarController(
+                configuration: moduleConfiguration,
+                snapshotStore: snapshotStore,
+                actions: actions,
+                notificationPreferences: self.notificationPreferences,
+                notificationService: self.notificationService,
+                onModuleActivated: { _ in
+                    Task { await refreshCoordinator.popoverOpened() }
+                },
+                onRetryRequested: {
+                    Task { await refreshCoordinator.manualRefresh() }
+                },
+                onProviderLoginRequested: { provider in
+                    _ = loginCoordinator.connect(provider)
+                },
+                onAnalyticsRequested: { [weak analyticsWindowController] in
+                    analyticsWindowController?.showAnalytics()
+                }
+            )
+#if NEEDLBAR_ACCEPTANCE_DRIVER
+            self.acceptanceDriver = nil
+#endif
+#if NEEDLBAR_ACCEPTANCE_DRIVER
+        case .acceptance(let fixture):
+            let actions = SettingsActions()
+            self.refreshCoordinator = nil
+            self.loginCoordinator = nil
+            self.snapshotExportController = nil
+            self.analyticsSnapshotStore = nil
+            self.analyticsRepository = nil
+            self.analyticsWindowController = nil
+            self.acceptanceDriver = AcceptanceFixtureDriver(fixture: fixture, store: snapshotStore)
+            self.menuBarController = MenuBarController(
+                configuration: moduleConfiguration,
+                snapshotStore: snapshotStore,
+                actions: actions,
+                notificationPreferences: self.notificationPreferences,
+                notificationService: self.notificationService
+            )
+#endif
         }
-        self.menuBarController = MenuBarController(
-            configuration: moduleConfiguration,
-            snapshotStore: snapshotStore,
-            loginCoordinator: loginCoordinator,
-            snapshotExportController: snapshotExportController,
-            notificationPreferences: notificationPreferences,
-            notificationService: notificationService,
-            onModuleActivated: { _ in
-                Task {
-                    await refreshCoordinator.popoverOpened()
-                }
-            },
-            onRetryRequested: {
-                Task {
-                    await refreshCoordinator.manualRefresh()
-                }
-            },
-            onProviderLoginRequested: { provider in
-                _ = loginCoordinator.connect(provider)
-            },
-            onAnalyticsRequested: { [weak analyticsWindowController] in
-                analyticsWindowController?.showAnalytics()
-            },
-            openCursorSpending: openCursorSpending
-        )
         super.init()
+#if NEEDLBAR_ACCEPTANCE_DRIVER
+        if case .acceptance = launch {
+            acceptanceLifecycle = AcceptanceLifecycleController(services: self)
+        }
+#endif
     }
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
@@ -99,13 +173,20 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         ApplicationMenuInstaller.install(in: NSApp)
         lifecycleTask = Task { [weak self] in
             guard let self else { return }
-            await self.menuBarController.startObserving()
-            guard !Task.isCancelled else { return }
-            await self.notificationService.start()
-            guard !Task.isCancelled else { return }
-            await self.widgetPublisher?.start(observing: self.snapshotStore)
-            guard !Task.isCancelled else { return }
-            await self.refreshCoordinator.start()
+            switch self.launch {
+            case .production:
+                await self.menuBarController.startObserving()
+                guard !Task.isCancelled else { return }
+                await self.notificationService.start()
+                guard !Task.isCancelled else { return }
+                await self.widgetPublisher?.start(observing: self.snapshotStore)
+                guard !Task.isCancelled else { return }
+                await self.refreshCoordinator?.start()
+#if NEEDLBAR_ACCEPTANCE_DRIVER
+            case .acceptance:
+                await self.acceptanceLifecycle?.start()
+#endif
+            }
         }
     }
 
@@ -118,6 +199,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
+#if NEEDLBAR_ACCEPTANCE_DRIVER
+        if case .acceptance = launch {
+            cancelLifecycleTask()
+            return
+        }
+#endif
         terminationController.performSynchronousSafetyCleanup(
             cancelStartup: { [weak self] in self?.cancelLifecycleTask() },
             stopNotifications: { [weak self] in self?.notificationService.stop() },
@@ -126,24 +213,35 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        terminationController.requestTermination(
+#if NEEDLBAR_ACCEPTANCE_DRIVER
+        if case .acceptance = launch {
+            cancelLifecycleTask()
+            lifecycleTask = Task { [weak self] in
+                await self?.acceptanceLifecycle?.stop()
+                sender.reply(toApplicationShouldTerminate: true)
+                self?.lifecycleTask = nil
+            }
+            return .terminateLater
+        }
+#endif
+        return terminationController.requestTermination(
             cancelStartup: { [weak self] in self?.cancelLifecycleTask() },
             stopNotifications: { [weak self] in self?.notificationService.stop() },
             stopMenuBarObservation: { [weak self] in self?.menuBarController.stopObserving() },
             stopLoginCoordinator: { [weak self] in
-                guard let self else { return .complete }
-                return await self.loginCoordinator.stop()
+                guard let coordinator = self?.loginCoordinator else { return .complete }
+                return await coordinator.stop()
             },
             stopRefreshCoordinator: { [weak self] in
                 guard let self else { return }
                 await self.widgetPublisher?.stop()
-                await self.refreshCoordinator.stop()
+                await self.refreshCoordinator?.stop()
             },
             reply: { shouldTerminate in
                 sender.reply(toApplicationShouldTerminate: shouldTerminate)
             },
             resumeLoginAdmission: { [weak self] in
-                self?.loginCoordinator.resumeAfterDeniedTermination()
+                self?.loginCoordinator?.resumeAfterDeniedTermination()
             },
             resumeNotifications: { [weak self] in
                 Task { await self?.notificationService.start() }
@@ -156,6 +254,43 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         lifecycleTask = nil
     }
 }
+
+#if NEEDLBAR_ACCEPTANCE_DRIVER
+@MainActor
+extension AppDelegate: AcceptanceLifecycleServing {
+    func startMenu() async {
+        await menuBarController.startObserving()
+    }
+
+    func startNotifications() async {
+        await notificationService.start()
+    }
+
+    func startPublisher() async {
+        await widgetPublisher?.start(observing: snapshotStore)
+    }
+
+    func startDriver() async {
+        await acceptanceDriver?.start()
+    }
+
+    func stopDriver() async {
+        await acceptanceDriver?.stop()
+    }
+
+    func stopPublisher() async {
+        await widgetPublisher?.stop()
+    }
+
+    func stopNotifications() {
+        notificationService.stop()
+    }
+
+    func stopMenu() {
+        menuBarController.stopObserving()
+    }
+}
+#endif
 
 @MainActor
 enum OverviewDeepLink {

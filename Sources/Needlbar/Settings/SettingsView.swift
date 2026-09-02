@@ -4,10 +4,23 @@ import SwiftUI
 public struct SettingsView: View {
     private let configuration: ModuleConfiguration
     private let openCursorSpending: () -> Void
-    @ObservedObject private var loginCoordinator: ProviderLoginCoordinator
-    @ObservedObject private var snapshotExportController: SnapshotExportController
+    @ObservedObject private var actions: SettingsActions
     @ObservedObject private var notificationPreferences: QuotaNotificationPreferences
     private let notificationService: QuotaNotificationService
+
+    public init(
+        configuration: ModuleConfiguration,
+        actions: SettingsActions,
+        notificationPreferences: QuotaNotificationPreferences,
+        notificationService: QuotaNotificationService,
+        openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() }
+    ) {
+        self.configuration = configuration
+        self.openCursorSpending = openCursorSpending
+        _actions = ObservedObject(wrappedValue: actions)
+        _notificationPreferences = ObservedObject(wrappedValue: notificationPreferences)
+        self.notificationService = notificationService
+    }
 
     public init(
         configuration: ModuleConfiguration,
@@ -17,12 +30,16 @@ public struct SettingsView: View {
         notificationService: QuotaNotificationService,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() }
     ) {
-        self.configuration = configuration
-        self.openCursorSpending = openCursorSpending
-        _loginCoordinator = ObservedObject(wrappedValue: loginCoordinator)
-        _snapshotExportController = ObservedObject(wrappedValue: snapshotExportController)
-        _notificationPreferences = ObservedObject(wrappedValue: notificationPreferences)
-        self.notificationService = notificationService
+        self.init(
+            configuration: configuration,
+            actions: SettingsActions(
+                loginCoordinator: loginCoordinator,
+                snapshotExportController: snapshotExportController
+            ),
+            notificationPreferences: notificationPreferences,
+            notificationService: notificationService,
+            openCursorSpending: openCursorSpending
+        )
     }
 
     public var body: some View {
@@ -61,10 +78,10 @@ public struct SettingsView: View {
             Section("Data Export") {
                 Button("Export snapshot…", action: exportSnapshot)
                     .disabled(isExportButtonDisabled)
-                if snapshotExportController.state == .exported {
+                if actions.exportState == .exported {
                     Text("Exported")
                 }
-                if snapshotExportController.state == .failed {
+                if actions.exportState == .failed {
                     Text("Could not export snapshot.")
                 }
             }
@@ -85,11 +102,11 @@ public struct SettingsView: View {
     }
 
     func exportSnapshot() {
-        snapshotExportController.exportSnapshot()
+        actions.exportSnapshot()
     }
 
     var isExportButtonDisabled: Bool {
-        snapshotExportController.isExporting
+        actions.isExporting
     }
 
     func setQuotaAlertsEnabled(_ enabled: Bool) {
@@ -115,14 +132,14 @@ public struct SettingsView: View {
             }
             Spacer()
             Button(actionTitle) {
-                _ = loginCoordinator.connect(provider)
+                actions.connect(provider)
             }
             .disabled(isLoginInFlight(for: provider))
         }
     }
 
     private func isLoginInFlight(for provider: ProviderID) -> Bool {
-        switch loginCoordinator.state(for: provider) {
+        switch actions.loginState(for: provider) {
         case .launching, .awaitingBrowser, .refreshingQuota:
             true
         case .idle, .connected, .failed:
@@ -131,7 +148,7 @@ public struct SettingsView: View {
     }
 
     private func loginStatusCopy(for provider: ProviderID) -> String {
-        switch loginCoordinator.state(for: provider) {
+        switch actions.loginState(for: provider) {
         case .idle:
             "Sign in opens the provider's browser flow."
         case .launching:

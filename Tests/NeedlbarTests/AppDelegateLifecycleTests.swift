@@ -5,6 +5,19 @@ import Testing
 @Suite("AppDelegateLifecycleTests", .serialized)
 @MainActor
 struct AppDelegateLifecycleTests {
+#if NEEDLBAR_ACCEPTANCE_DRIVER
+@Test func acceptanceLifecycleStartsAndStopsOnlyAcceptanceSurfacesInOrder() async {
+    let services = RecordingAcceptanceLifecycleServices()
+    let lifecycle = AcceptanceLifecycleController(services: services)
+    await lifecycle.start()
+    await lifecycle.stop()
+    #expect(await services.events == [
+        "menu.start", "notifications.start", "publisher.start", "driver.start",
+        "driver.stop", "publisher.stop", "notifications.stop", "menu.stop",
+    ])
+}
+#endif
+
 @Test func terminationStopsNotificationsBeforeLoginAndRefreshCleanup() async {
     let loginShutdown = TerminationShutdownGate()
     let refreshShutdown = TerminationShutdownGate()
@@ -140,6 +153,22 @@ struct AppDelegateLifecycleTests {
     #expect(await loginShutdown.entryCount() == 2)
     #expect(await refreshShutdown.entryCount() == 1)
 }
+
+#if NEEDLBAR_ACCEPTANCE_DRIVER
+@MainActor
+private final class RecordingAcceptanceLifecycleServices: AcceptanceLifecycleServing {
+    private(set) var events: [String] = []
+
+    func startMenu() async { events.append("menu.start") }
+    func startNotifications() async { events.append("notifications.start") }
+    func startPublisher() async { events.append("publisher.start") }
+    func startDriver() async { events.append("driver.start") }
+    func stopDriver() async { events.append("driver.stop") }
+    func stopPublisher() async { events.append("publisher.stop") }
+    func stopNotifications() { events.append("notifications.stop") }
+    func stopMenu() { events.append("menu.stop") }
+}
+#endif
 }
 
 @MainActor

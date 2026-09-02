@@ -85,8 +85,7 @@ public final class MenuBarController: NSObject {
     public init(
         configuration: ModuleConfiguration,
         snapshotStore: ProviderSnapshotStore,
-        loginCoordinator: ProviderLoginCoordinator,
-        snapshotExportController: SnapshotExportController,
+        actions: SettingsActions,
         notificationPreferences: QuotaNotificationPreferences,
         notificationService: QuotaNotificationService,
         statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
@@ -112,8 +111,7 @@ public final class MenuBarController: NSObject {
         self.globalMouseDownMonitor = globalMouseDownMonitor
         self.settingsWindowController = SettingsWindowController(
             configuration: configuration,
-            loginCoordinator: loginCoordinator,
-            snapshotExportController: snapshotExportController,
+            actions: actions,
             notificationPreferences: notificationPreferences,
             notificationService: notificationService,
             openCursorSpending: openCursorSpending
@@ -122,6 +120,44 @@ public final class MenuBarController: NSObject {
         panelPresenter.onDismiss = { [weak self] in
             self?.panelDidDismiss()
         }
+    }
+
+    public convenience init(
+        configuration: ModuleConfiguration,
+        snapshotStore: ProviderSnapshotStore,
+        loginCoordinator: ProviderLoginCoordinator,
+        snapshotExportController: SnapshotExportController,
+        notificationPreferences: QuotaNotificationPreferences,
+        notificationService: QuotaNotificationService,
+        statusItemFactory: any StatusItemFactory = AppKitStatusItemFactory(),
+        globalMouseDownMonitor: any GlobalMouseDownMonitoring = AppKitGlobalMouseDownMonitor(),
+        panelPresenter: any MenuPanelPresenting = AppKitMenuPanelPresenter(),
+        onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
+        onRetryRequested: @escaping @MainActor () -> Void = {},
+        onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
+        onSettingsRequested: @escaping @MainActor () -> Void = {},
+        onAnalyticsRequested: @escaping @MainActor () -> Void = {},
+        openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() }
+    ) {
+        self.init(
+            configuration: configuration,
+            snapshotStore: snapshotStore,
+            actions: SettingsActions(
+                loginCoordinator: loginCoordinator,
+                snapshotExportController: snapshotExportController
+            ),
+            notificationPreferences: notificationPreferences,
+            notificationService: notificationService,
+            statusItemFactory: statusItemFactory,
+            globalMouseDownMonitor: globalMouseDownMonitor,
+            panelPresenter: panelPresenter,
+            onModuleActivated: onModuleActivated,
+            onRetryRequested: onRetryRequested,
+            onProviderLoginRequested: onProviderLoginRequested,
+            onSettingsRequested: onSettingsRequested,
+            onAnalyticsRequested: onAnalyticsRequested,
+            openCursorSpending: openCursorSpending
+        )
     }
 
     public var activeModuleIDs: [MenuModuleID] {

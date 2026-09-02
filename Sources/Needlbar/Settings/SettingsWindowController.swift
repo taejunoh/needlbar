@@ -6,8 +6,7 @@ import SwiftUI
 public final class SettingsWindowController: NSWindowController {
     public init(
         configuration: ModuleConfiguration,
-        loginCoordinator: ProviderLoginCoordinator,
-        snapshotExportController: SnapshotExportController,
+        actions: SettingsActions,
         notificationPreferences: QuotaNotificationPreferences,
         notificationService: QuotaNotificationService,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() }
@@ -21,14 +20,33 @@ public final class SettingsWindowController: NSWindowController {
         window.title = "Needlbar Settings"
         window.contentView = NSHostingView(rootView: SettingsView(
             configuration: configuration,
-            loginCoordinator: loginCoordinator,
-            snapshotExportController: snapshotExportController,
+            actions: actions,
             notificationPreferences: notificationPreferences,
             notificationService: notificationService,
             openCursorSpending: openCursorSpending
         ))
         window.isReleasedWhenClosed = false
         super.init(window: window)
+    }
+
+    public convenience init(
+        configuration: ModuleConfiguration,
+        loginCoordinator: ProviderLoginCoordinator,
+        snapshotExportController: SnapshotExportController,
+        notificationPreferences: QuotaNotificationPreferences,
+        notificationService: QuotaNotificationService,
+        openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() }
+    ) {
+        self.init(
+            configuration: configuration,
+            actions: SettingsActions(
+                loginCoordinator: loginCoordinator,
+                snapshotExportController: snapshotExportController
+            ),
+            notificationPreferences: notificationPreferences,
+            notificationService: notificationService,
+            openCursorSpending: openCursorSpending
+        )
     }
 
     @available(*, unavailable)
