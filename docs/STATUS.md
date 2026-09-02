@@ -3,7 +3,7 @@
 **Updated:** 2026-09-02
 **Branch:** `main` (v0.2.2 public release verified at source commit `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`; v0.2.1 remains an earlier integrated line of work)
 **Current phase:** v0.3 system-monitor implementation is in progress. v0.2.1 native macOS 14 acceptance remains deferred per the user's direction.
-**Next action:** Implement v0.3 Task 3, `CombinedSnapshotStore`, then continue with the adaptive dashboard presentation tasks. Do not claim native macOS 14 acceptance until the maintainer-only execution matrix is run.
+**Next action:** Implement v0.3 Task 6, module and AI display controls in Settings. Do not claim native macOS 14 acceptance until the maintainer-only execution matrix is run.
 
 ## v0.3 System Monitor — Approved Design and Implementation — 2026-09-02
 
@@ -62,8 +62,20 @@ dismissal, settings, analytics, Claude/Codex browser login, and Cursor Spending
 actions remain routed through their existing seams. Renderer and controller
 tests passed.
 
-The next continuation point is Task 5, the six-section system dashboard
-popover. Native macOS 14 acceptance remains deferred and unperformed.
+### Task 5 — Complete six-section system dashboard popover
+
+Task 5 is complete in the current worktree. The combined dashboard popover now
+renders CPU, RAM, disk, network, battery, and AI sections from one immutable
+snapshot. It always includes all six sections even when menu-bar visibility is
+restricted, keeps network transfer rates visible by default, redacts public IP
+unless explicitly enabled, formats provider values from their per-provider
+preferences, and routes provider connection actions through the existing login
+and Cursor Spending seams. Existing anchor, outside-click, and generation-safe
+dismissal behavior is preserved. Focused dashboard, controller, and placement
+tests passed.
+
+The next continuation point is Task 6, module and AI display controls in
+Settings. Native macOS 14 acceptance remains deferred and unperformed.
 
 ## v0.2.2 Public Release Preparation — 2026-09-01
 

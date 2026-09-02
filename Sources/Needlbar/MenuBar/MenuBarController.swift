@@ -635,11 +635,14 @@ public final class MenuBarController: NSObject {
             return
         }
         guard module == .overview else { return }
-        let view = AnyView(OverviewPopoverView(
-            snapshots: snapshot.providers,
+        let view = AnyView(SystemDashboardPopoverView(
+            snapshot: snapshot,
             configuration: configuration,
             onShowSettings: { [weak self] in self?.performSettingsAction() },
-            onShowAnalytics: { [weak self] in self?.performAnalyticsAction() }
+            onShowAnalytics: { [weak self] in self?.performAnalyticsAction() },
+            onProviderAction: { [weak self] provider in
+                self?.performAuthenticationAction(for: provider)
+            }
         ))
         guard let anchor = item.presentationAnchor() else {
             dismissPanelAndCleanUp()
