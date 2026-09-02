@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-02
 **Branch:** `main` (v0.2.2 public release verified at source commit `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.2.1 native acceptance driver Task 3 is complete; the v0.2.2 public release record remains verified. The remaining native macOS 14 Widget Gallery/App Group acceptance gate is still open.
-**Next action:** Implement Task 4, the public/acceptance artifact boundary, then retain the outstanding exact macOS 14 acceptance caveat; do not claim native macOS 14 acceptance has been established.
+**Current phase:** v0.2.1 native acceptance driver Task 4 is complete; the v0.2.2 public release record remains verified. The remaining native macOS 14 Widget Gallery/App Group acceptance gate is still open.
+**Next action:** Implement Task 5, the bounded native acceptance harness, then retain the outstanding exact macOS 14 acceptance caveat; do not claim native macOS 14 acceptance has been established.
 
 ## v0.2.2 Public Release Preparation — 2026-09-01
 
@@ -77,6 +77,29 @@ The next continuation point is Task 4, public/acceptance artifact boundary
 scripts and isolation contracts. The real macOS 14 Widget Gallery/App Group,
 WidgetKit, and notification-permission acceptance caveat remains open. No
 push, tag, release, signing, or native acceptance run was performed.
+
+## v0.2.1 Native Acceptance Driver Task 4 — Artifact boundary — 2026-09-02
+
+Task 4 is complete at commit `c102a43`. Public packaging now rejects the
+acceptance compiler define and scans the production bundle for fixture files or
+the acceptance argument. The separate acceptance package path builds the host
+with `NEEDLBAR_ACCEPTANCE_DRIVER`, embeds the unchanged extension, signs the
+extension before the host with hardened runtime, verifies the host-only parser,
+and emits no ZIP, checksum, notarization, or release artifact.
+
+Verification recorded for the task:
+
+- `make acceptance-build-test`: acceptance build isolation contract passed.
+- `make package-test`, `make widget-extension-test`, and `make notarize-test`:
+  all passed.
+- `make test`: all Rust, vendor, Swift (278 tests in 12 suites), widget,
+  packaging, and notarization contracts passed.
+- `git diff --check`: exit 0.
+
+The next continuation point is Task 5, the bounded native macOS 14 acceptance
+harness. The real macOS 14 Widget Gallery/App Group, WidgetKit, and
+notification-permission acceptance caveat remains open. No push, tag, release,
+signing, or native acceptance run was performed.
 
 ## v0.2.2 Design Checkpoint — 2026-09-01
 
