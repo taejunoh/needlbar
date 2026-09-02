@@ -3,7 +3,7 @@
 **Updated:** 2026-09-02
 **Branch:** `main` (v0.2.2 public release verified at source commit `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`; v0.2.1 remains an earlier integrated line of work)
 **Current phase:** v0.3 system-monitor implementation is in progress. v0.2.1 native macOS 14 acceptance remains deferred per the user's direction.
-**Next action:** Implement v0.3 Task 7, production lifecycle wiring, documentation, and full verification. Do not claim native macOS 14 acceptance until the maintainer-only execution matrix is run.
+**Next action:** Final v0.3 review and release-readiness verification. Do not claim native macOS 14 acceptance until the maintainer-only execution matrix is run.
 
 ## v0.3 System Monitor — Approved Design and Implementation — 2026-09-02
 
