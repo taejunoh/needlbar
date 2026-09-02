@@ -38,6 +38,7 @@ public struct ModuleSettings: Equatable, Sendable {
 
 public final class ModuleConfiguration {
     public static let didChangeNotification = Notification.Name("needlbar.module-configuration.did-change")
+    public static let systemMonitorDidChangeNotification = Notification.Name("needlbar.system-monitor-configuration.did-change")
 
     private let defaults: UserDefaults
 
@@ -65,6 +66,43 @@ public final class ModuleConfiguration {
         set { set(newValue, for: .cursor) }
     }
 
+    public var systemMonitor: SystemMonitorConfiguration {
+        let order = validOrder(from: defaults.stringArray(forKey: "needlbar.systemMonitor.order"))
+        let visibleModules = validVisibleModules(from: defaults.stringArray(forKey: "needlbar.systemMonitor.visible"))
+        let publicIPEnabled = defaults.object(forKey: "needlbar.systemMonitor.publicIP") as? Bool ?? false
+        let ai = Dictionary(uniqueKeysWithValues: ProviderID.allCases.map { provider in
+            let visibleKey = "needlbar.systemMonitor.ai.\(provider.rawValue).visible"
+            let metricKey = "needlbar.systemMonitor.ai.\(provider.rawValue).metric"
+            let preference = AIProviderDisplayPreference(
+                isVisible: defaults.object(forKey: visibleKey) as? Bool ?? migratedAIVisibility(for: provider),
+                metric: defaults.string(forKey: metricKey)
+                    .flatMap(AIProviderDisplayMetric.init(rawValue:)) ?? .usage
+            )
+            return (provider, preference)
+        })
+        return SystemMonitorConfiguration(
+            order: order,
+            visibleModules: visibleModules,
+            publicIPEnabled: publicIPEnabled,
+            ai: ai
+        )
+    }
+
+    public func setSystemMonitor(_ configuration: SystemMonitorConfiguration) {
+        let order = validOrder(configuration.order)
+        let visibleModules = configuration.visibleModules.intersection(Set(MonitorModuleID.allCases))
+        defaults.set(order.map(\.rawValue), forKey: "needlbar.systemMonitor.order")
+        defaults.set(visibleModules.map(\.rawValue).sorted(), forKey: "needlbar.systemMonitor.visible")
+        defaults.set(configuration.publicIPEnabled, forKey: "needlbar.systemMonitor.publicIP")
+        for provider in ProviderID.allCases {
+            let preference = configuration.ai[provider] ?? AIProviderDisplayPreference()
+            defaults.set(preference.isVisible, forKey: "needlbar.systemMonitor.ai.\(provider.rawValue).visible")
+            defaults.set(preference.metric.rawValue, forKey: "needlbar.systemMonitor.ai.\(provider.rawValue).metric")
+        }
+        NotificationCenter.default.post(name: Self.systemMonitorDidChangeNotification, object: self)
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
+    }
+
     public func settings(for module: MenuModuleID) -> ModuleSettings {
         let enabledKey = key(for: module, property: "enabled")
         let metricKey = key(for: module, property: "metric")
@@ -85,6 +123,37 @@ public final class ModuleConfiguration {
 
     private func defaultSettings(for module: MenuModuleID) -> ModuleSettings {
         ModuleSettings(isEnabled: module == .overview, metric: .quotaRemaining)
+    }
+
+    private func validOrder(from rawValues: [String]?) -> [MonitorModuleID] {
+        guard let rawValues else { return MonitorModuleID.defaultOrder }
+        let parsed = rawValues.compactMap(MonitorModuleID.init(rawValue:))
+        return Set(parsed).count == MonitorModuleID.allCases.count && parsed.count == MonitorModuleID.allCases.count
+            ? parsed
+            : MonitorModuleID.defaultOrder
+    }
+
+    private func validOrder(_ order: [MonitorModuleID]) -> [MonitorModuleID] {
+        Set(order).count == MonitorModuleID.allCases.count && order.count == MonitorModuleID.allCases.count
+            ? order
+            : MonitorModuleID.defaultOrder
+    }
+
+    private func validVisibleModules(from rawValues: [String]?) -> Set<MonitorModuleID> {
+        guard let rawValues else { return Set(MonitorModuleID.defaultOrder) }
+        return Set(rawValues.compactMap(MonitorModuleID.init(rawValue:)))
+    }
+
+    private func migratedAIVisibility(for provider: ProviderID) -> Bool {
+        let legacyModule: MenuModuleID
+        switch provider {
+        case .claude: legacyModule = .claude
+        case .codex: legacyModule = .codex
+        case .cursor: legacyModule = .cursor
+        }
+        let key = key(for: legacyModule, property: "enabled")
+        guard defaults.object(forKey: key) != nil else { return true }
+        return settings(for: legacyModule).isEnabled
     }
 
     private func key(for module: MenuModuleID, property: String) -> String {
