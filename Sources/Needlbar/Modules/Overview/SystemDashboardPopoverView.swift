@@ -91,7 +91,11 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                 quotaStatus: PresentationFreshness(snapshot?.quotaStatus ?? .unavailable)
             )
         }
-        moduleIDs = MonitorModuleID.defaultOrder
+        let configuredOrder = configuration.order
+        moduleIDs = configuredOrder.count == MonitorModuleID.allCases.count
+            && Set(configuredOrder) == Set(MonitorModuleID.allCases)
+            ? configuredOrder
+            : MonitorModuleID.defaultOrder
     }
 
     private static func providerValue(_ metric: AIProviderDisplayMetric, snapshot: ProviderSnapshot?) -> String {

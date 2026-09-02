@@ -116,7 +116,7 @@ acceptance.
 
 Verification recorded for the completed task:
 
-- `make swift-test`: 309 tests in 12 suites passed.
+- `make swift-test`: 310 tests in 12 suites passed.
 - `make acceptance-test`: 9 acceptance fixture tests passed with the acceptance
   compiler define.
 - `git diff --check`: exit 0.

@@ -31,6 +31,18 @@ import Testing
     #expect(presentation.network.publicIPAddress == nil)
 }
 
+@Test func dashboardPresentationPreservesConfiguredModuleOrder() {
+    var configuration = SystemMonitorConfiguration()
+    configuration.order = [.ai, .network, .cpu, .battery, .memory, .disk]
+
+    let presentation = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(),
+        configuration: configuration
+    )
+
+    #expect(presentation.moduleIDs == configuration.order)
+}
+
 @Test func dashboardPresentationUsesConfiguredAIDisplayMetric() {
     var configuration = SystemMonitorConfiguration()
     configuration.ai[.claude] = AIProviderDisplayPreference(isVisible: true, metric: .cost)
