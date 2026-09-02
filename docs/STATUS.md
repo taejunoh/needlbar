@@ -2,8 +2,23 @@
 
 **Updated:** 2026-09-02
 **Branch:** `main` (v0.2.2 public release verified at source commit `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.2.1 native acceptance driver Task 5 is complete; the v0.2.2 public release record remains verified. The remaining native macOS 14 Widget Gallery/App Group acceptance gate is still open.
-**Next action:** Task 6 is the maintainer-only macOS 14 execution matrix; retain the outstanding exact acceptance caveat unless that external run produces evidence.
+**Current phase:** v0.2.1 native acceptance driver Task 5 and the v0.2.2 public release are complete. Per the user's direction, the remaining native macOS 14 Widget Gallery/App Group acceptance gate is deferred while v0.3 feature work is designed.
+**Next action:** Review the v0.3 system-monitoring design, then write its implementation plan. Do not claim native macOS 14 acceptance until the maintainer-only execution matrix is run.
+
+## v0.3 System Monitor — Design Draft — 2026-09-02
+
+The approved brainstorming direction is to make Needlbar a configurable Stats
+replacement: CPU, RAM, disk, network, battery, and AI usage are combined in one
+menu-bar item and popover. Menu-bar module visibility/order and AI display values
+are configurable; the renderer automatically switches between expanded text and
+compact icon/value layouts for available space and notched displays. System
+metrics refresh every second, while provider refresh ownership remains
+unchanged. Transfer speed is shown by default; local/public IP display is
+optional, with public-IP lookup disabled unless explicitly enabled.
+
+The complete draft is in
+`docs/superpowers/specs/2026-09-02-needlbar-v0.3-system-monitor-design.md`.
+Implementation has not started; the written spec is awaiting user review.
 
 ## v0.2.2 Public Release Preparation — 2026-09-01
 
