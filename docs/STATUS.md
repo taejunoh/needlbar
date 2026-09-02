@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-02
 **Branch:** `main` (v0.2.2 public release verified at source commit `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`; v0.2.1 remains an earlier integrated line of work)
-**Current phase:** v0.2.1 native acceptance driver Task 4 is complete; the v0.2.2 public release record remains verified. The remaining native macOS 14 Widget Gallery/App Group acceptance gate is still open.
-**Next action:** Implement Task 5, the bounded native acceptance harness, then retain the outstanding exact macOS 14 acceptance caveat; do not claim native macOS 14 acceptance has been established.
+**Current phase:** v0.2.1 native acceptance driver Task 5 is complete; the v0.2.2 public release record remains verified. The remaining native macOS 14 Widget Gallery/App Group acceptance gate is still open.
+**Next action:** Task 6 is the maintainer-only macOS 14 execution matrix; retain the outstanding exact acceptance caveat unless that external run produces evidence.
 
 ## v0.2.2 Public Release Preparation — 2026-09-01
 
@@ -100,6 +100,30 @@ The next continuation point is Task 5, the bounded native macOS 14 acceptance
 harness. The real macOS 14 Widget Gallery/App Group, WidgetKit, and
 notification-permission acceptance caveat remains open. No push, tag, release,
 signing, or native acceptance run was performed.
+
+## v0.2.1 Native Acceptance Driver Task 5 — Native harness — 2026-09-02
+
+Task 5 is complete in the local worktree. `scripts/native-acceptance-run.sh`
+accepts only the five bounded absolute-path options, keeps all resolved paths
+under `/Users/taejunoh/Developer/LFG`, enforces the macOS 14 arm64 and disabled
+network preflight, materializes only allowlisted sanitized case templates, and
+caps parser/runtime evidence. Parser failures are recorded with stable codes;
+the acceptance PID and generated runtime fixture are the only cleanup targets.
+The checked-in parser, widget, and notification templates contain no provider
+credentials, account identifiers, paths, prompts, responses, or raw payloads.
+
+Verification recorded for the task:
+
+- `make native-acceptance-harness-test`: native harness contract passed.
+- `make acceptance-build-test`: acceptance build isolation contract passed.
+- `make test`: all Rust, vendor, Swift (278 tests in 12 suites), widget,
+  packaging, and notarization contracts passed.
+- `git diff --check`: exit 0.
+
+The next continuation point is Task 6, the maintainer-only macOS 14 execution
+matrix. The real Widget Gallery/App Group, WidgetKit, and notification-
+permission acceptance remains unperformed and is not claimed here. No push,
+tag, release, signing, or native acceptance run was performed.
 
 ## v0.2.2 Design Checkpoint — 2026-09-01
 

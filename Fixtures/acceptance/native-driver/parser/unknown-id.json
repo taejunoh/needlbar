@@ -1,0 +1,1 @@
+{"schemaVersion":1,"timeZone":"America/New_York","startAt":"2026-09-01T12:00:00.000Z","events":[{"delaySeconds":0,"localDay":"2026-09-01","usage":{},"quota":{"claude":[{"id":"claude.untrusted","remainingPercent":80,"resetsAt":"2026-09-02T12:00:00.000Z"}]}}]}

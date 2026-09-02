@@ -49,6 +49,32 @@ Settings includes **Export snapshot…**, a user-initiated JSON export of the cu
 
 The released app includes one medium Overview widget backed by a sanitized local projection. The widget does not refresh providers. Quota notifications are off by default, require explicit macOS permission, run only while Needlbar is running, and contain no credentials or raw provider data. They evaluate fresh Claude/Codex quota observations only, use conservative at-most-once local submission state, and do not apply to Cursor quota.
 
+## Native macOS 14 acceptance (maintainer-only)
+
+The public v0.2.2 ZIP is the production Gallery and entitlement evidence. The
+separately signed fixture-driven artifact is acceptance-only and is not a
+release or notarization substitute. It uses no provider account, credential,
+network, Rust/C ABI, Keychain, or export data: sanitized fixtures are supplied
+externally to the acceptance host. The trusted host signs the artifact before a
+read-only guest transfer; credentials and keychains are never created on the
+guest.
+
+The bounded harness is run only on a disposable macOS 14 arm64 guest, with
+public and acceptance artifacts kept separate:
+
+```bash
+make native-acceptance-harness-test
+./scripts/native-acceptance-run.sh \
+  --public-zip /Users/taejunoh/Developer/LFG/public-artifacts/Needlbar-macos-arm64.zip \
+  --acceptance-app /Users/taejunoh/Developer/LFG/native-acceptance-app/Needlbar.app \
+  --fixtures-root /Users/taejunoh/Developer/LFG/native-acceptance-input \
+  --evidence-root /Users/taejunoh/Developer/LFG/native-acceptance-evidence \
+  --case widget-baseline-update
+```
+
+Native acceptance remains an external maintainer gate and is not claimed by
+the automated local or CI test matrix.
+
 ## v0.2.2 local repository analytics
 
 The feature is released and remains local-only; no analytics history is retained after the in-memory state is discarded.
