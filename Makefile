@@ -1,4 +1,4 @@
-.PHONY: rust swift swift-test widget-extension-test package-test notarize-test test run package smoke
+.PHONY: rust swift swift-test acceptance-test widget-extension-test package-test notarize-test test run package smoke
 
 rust:
 	./scripts/build-rust.sh
@@ -51,6 +51,14 @@ swift-test:
 	grep -F 'needlbar_test_clear_fixture_runtime' "$$symbols_file" >/dev/null; \
 	swift package clean; \
 	swift test $(if $(SWIFT_TEST_FILTER),--filter $(SWIFT_TEST_FILTER))
+
+acceptance-test:
+	@set -e; \
+	  status=0; \
+	  trap 'restore=$$?; ./scripts/build-rust.sh >/dev/null 2>&1 || restore=1; exit $$restore' EXIT; \
+	  ./scripts/build-rust.sh --features bridge-test-runtime; \
+	  swift package clean; \
+	  swift test -Xswiftc -DNEEDLBAR_ACCEPTANCE_DRIVER $(if $(ACCEPTANCE_TEST_FILTER),--filter $(ACCEPTANCE_TEST_FILTER),--filter AcceptanceFixtureTests)
 
 widget-extension-test:
 	./scripts/tests/widget-extension-tests.sh
