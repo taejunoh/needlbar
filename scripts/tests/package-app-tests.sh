@@ -59,6 +59,12 @@ EOF
 cat > "$fake_bin/swift" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+for argument in "$@"; do
+  [[ "$argument" != '-DNEEDLBAR_ACCEPTANCE_DRIVER' ]] || {
+    echo 'public package received acceptance compiler define' >&2
+    exit 90
+  }
+done
 if [[ "${1:-}" == "build" ]]; then
   if [[ -e "$NEEDLBAR_PACKAGE_EXECUTABLE" ]]; then
     echo 'swift stub: stale executable was not removed before release build' >&2
@@ -113,6 +119,8 @@ fi
   fail 'package did not install the freshly relinked executable'
 [[ -f "$fixture_root/dist/Needlbar-macos-arm64.zip" ]] || \
   fail 'package zip was not produced'
+! strings "$fixture_root/dist/Needlbar.app/Contents/MacOS/Needlbar" | grep -F -- '--acceptance-fixture' >/dev/null || \
+  fail 'public host contains acceptance fixture parser'
 
 embedded_app="$fixture_root/dist/Needlbar.app"
 embedded_widget="$embedded_app/Contents/PlugIns/NeedlbarWidgetExtension.appex"

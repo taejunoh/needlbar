@@ -1,4 +1,4 @@
-.PHONY: rust swift swift-test acceptance-test widget-extension-test package-test notarize-test test run package smoke
+.PHONY: rust swift swift-test acceptance-test acceptance-build-test native-acceptance-harness-test widget-extension-test package-test notarize-test test run package smoke
 
 rust:
 	./scripts/build-rust.sh
@@ -59,6 +59,12 @@ acceptance-test:
 	  ./scripts/build-rust.sh --features bridge-test-runtime; \
 	  swift package clean; \
 	  swift test -Xswiftc -DNEEDLBAR_ACCEPTANCE_DRIVER $(if $(ACCEPTANCE_TEST_FILTER),--filter $(ACCEPTANCE_TEST_FILTER),--filter AcceptanceFixtureTests)
+
+acceptance-build-test:
+	./scripts/tests/acceptance-build-isolation-tests.sh
+
+native-acceptance-harness-test:
+	./scripts/tests/native-acceptance-harness-tests.sh
 
 widget-extension-test:
 	./scripts/tests/widget-extension-tests.sh

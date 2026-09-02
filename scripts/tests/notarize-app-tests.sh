@@ -22,6 +22,11 @@ trap 'exit 143' TERM
   exit 1
 }
 
+for forbidden in NEEDLBAR_ACCEPTANCE_DRIVER package-acceptance-app.sh Fixtures/acceptance --acceptance-fixture; do
+  ! grep -F -- "$forbidden" "$ROOT/.github/workflows/release.yml" >/dev/null ||
+    fail "release workflow contains acceptance-only marker: $forbidden"
+done
+
 fail() {
   echo "notarize-app-tests: $*" >&2
   exit 1

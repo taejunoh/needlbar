@@ -33,6 +33,7 @@ if [[ "$*" == "--sdk macosx --show-sdk-path" ]]; then
 fi
 [[ "${1:-}" == swiftc ]] || { echo "unexpected xcrun argv: $*" >&2; exit 2; }
 argv="$*"
+[[ "$argv" != *NEEDLBAR_ACCEPTANCE_DRIVER* ]] || { echo 'extension received acceptance compiler define' >&2; exit 6; }
 for required in '-target arm64-apple-macosx14.0' '-swift-version 6' '-application-extension' '-Xlinker -e -Xlinker _NSExtensionMain' '-framework SwiftUI' '-framework WidgetKit' 'WidgetProjection.swift' 'WidgetPresentation.swift' 'NeedlbarOverviewWidget.swift'; do
   [[ "$argv" == *"$required"* ]] || { echo "missing swiftc argument: $required" >&2; exit 3; }
 done

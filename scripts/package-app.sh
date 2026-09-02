@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+[[ -z "${NEEDLBAR_ACCEPTANCE_DRIVER:-}" ]] || {
+  echo 'package-app: acceptance driver is forbidden in public packaging' >&2
+  exit 1
+}
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST_DIR="$ROOT/dist"
 APP_PATH="$DIST_DIR/Needlbar.app"
@@ -67,6 +72,11 @@ cp -R "$ROOT/.build/widget-extension/NeedlbarWidgetExtension.appex" "$CONTENTS_P
 appex_count="$(find "$CONTENTS_PATH/PlugIns" -maxdepth 1 -type d -name '*.appex' -print | wc -l | tr -d '[:space:]')"
 [[ "$appex_count" == 1 ]] || fail "expected exactly one embedded widget extension, found $appex_count"
 [[ -x "$WIDGET_APP/Contents/MacOS/NeedlbarWidgetExtension" ]] || fail "embedded widget executable is missing"
+
+! find "$APP_PATH" -type f \( -name '*AcceptanceFixture*' -o -path '*/Fixtures/*' \) -print -quit | grep -q . ||
+  fail 'acceptance fixture file entered public app bundle'
+! strings "$CONTENTS_PATH/MacOS/Needlbar" | grep -F -- '--acceptance-fixture' >/dev/null ||
+  fail 'public host contains acceptance fixture parser'
 
 # build-widget-extension.sh has already completed the inner signature.
 # Sign the host only after the extension is embedded; do not use --deep here.
