@@ -5,6 +5,21 @@ import Testing
 @Suite("AppDelegateLifecycleTests", .serialized)
 @MainActor
 struct AppDelegateLifecycleTests {
+#if !NEEDLBAR_ACCEPTANCE_DRIVER
+@Test func productionLifecycleStartsAndStopsSystemMetricsBeforeMenuTeardown() async {
+    let services = RecordingProductionLifecycleServices()
+    let lifecycle = ProductionLifecycleController(services: services)
+
+    await lifecycle.start()
+    await lifecycle.stop()
+
+    #expect(await services.events == [
+        "menu.start", "system.start", "notifications.start", "publisher.start", "refresh.start",
+        "refresh.stop", "publisher.stop", "notifications.stop", "system.stop", "menu.stop",
+    ])
+}
+#endif
+
 #if NEEDLBAR_ACCEPTANCE_DRIVER
 @Test func acceptanceLifecycleStartsAndStopsOnlyAcceptanceSurfacesInOrder() async {
     let services = RecordingAcceptanceLifecycleServices()
@@ -167,6 +182,24 @@ private final class RecordingAcceptanceLifecycleServices: AcceptanceLifecycleSer
     func stopPublisher() async { events.append("publisher.stop") }
     func stopNotifications() { events.append("notifications.stop") }
     func stopMenu() { events.append("menu.stop") }
+}
+#endif
+
+#if !NEEDLBAR_ACCEPTANCE_DRIVER
+@MainActor
+private final class RecordingProductionLifecycleServices: ProductionLifecycleServing {
+    private(set) var events: [String] = []
+
+    func startProductionMenu() async { events.append("menu.start") }
+    func startProductionSystem() async { events.append("system.start") }
+    func startProductionNotifications() async { events.append("notifications.start") }
+    func startProductionPublisher() async { events.append("publisher.start") }
+    func startProductionRefresh() async { events.append("refresh.start") }
+    func stopProductionRefresh() async { events.append("refresh.stop") }
+    func stopProductionPublisher() async { events.append("publisher.stop") }
+    func stopProductionNotifications() async { events.append("notifications.stop") }
+    func stopProductionSystem() async { events.append("system.stop") }
+    func stopProductionMenu() async { events.append("menu.stop") }
 }
 #endif
 }

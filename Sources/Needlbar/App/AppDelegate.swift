@@ -2,6 +2,58 @@ import AppKit
 import NeedlbarCore
 import WidgetKit
 
+@MainActor
+protocol ProductionLifecycleServing: AnyObject {
+    func startProductionMenu() async
+    func startProductionSystem() async
+    func startProductionNotifications() async
+    func startProductionPublisher() async
+    func startProductionRefresh() async
+    func stopProductionRefresh() async
+    func stopProductionPublisher() async
+    func stopProductionNotifications() async
+    func stopProductionSystem() async
+    func stopProductionMenu() async
+}
+
+@MainActor
+final class ProductionLifecycleController {
+    private let services: any ProductionLifecycleServing
+    private var running = false
+
+    init(services: any ProductionLifecycleServing) {
+        self.services = services
+    }
+
+    func start() async {
+        guard !running else { return }
+        running = true
+        await services.startProductionMenu()
+        guard running else { return }
+        await services.startProductionSystem()
+        guard running else { return }
+        await services.startProductionNotifications()
+        guard running else { return }
+        await services.startProductionPublisher()
+        guard running else { return }
+        await services.startProductionRefresh()
+    }
+
+    func stop() async {
+        guard running else { return }
+        running = false
+        await services.stopProductionRefresh()
+        await services.stopProductionPublisher()
+        await services.stopProductionNotifications()
+        await services.stopProductionSystem()
+        await services.stopProductionMenu()
+    }
+
+    func cancelStart() {
+        running = false
+    }
+}
+
 #if NEEDLBAR_ACCEPTANCE_DRIVER
 @MainActor
 protocol AcceptanceLifecycleServing: AnyObject {
@@ -50,10 +102,12 @@ final class AcceptanceLifecycleController {
 @MainActor
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let snapshotStore: ProviderSnapshotStore
+    private let combinedSnapshotStore: CombinedSnapshotStore
     private let moduleConfiguration: ModuleConfiguration
     private let notificationPreferences: QuotaNotificationPreferences
     private let notificationService: QuotaNotificationService
     private let widgetPublisher: WidgetProjectionPublisher?
+    private let systemMetricsService: SystemMetricsService?
     private let menuBarController: MenuBarController
     private let terminationController = AccessoryTerminationController()
     private let launch: AppLaunchConfiguration
@@ -63,17 +117,23 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var analyticsSnapshotStore: AnalyticsSnapshotStore?
     private var analyticsRepository: RustAnalyticsRepository?
     private var analyticsWindowController: AnalyticsWindowController?
+    private var productionLifecycle: ProductionLifecycleController?
 #if NEEDLBAR_ACCEPTANCE_DRIVER
     private var acceptanceDriver: AcceptanceFixtureDriver?
     private var acceptanceLifecycle: AcceptanceLifecycleController?
 #endif
     private var lifecycleTask: Task<Void, Never>?
+    private var providerSnapshotForwardingTask: Task<Void, Never>?
+    private var systemMetricsForwardingTask: Task<Void, Never>?
+    private var systemMonitorConfigurationObserver: NSObjectProtocol?
 
     public init(launch: AppLaunchConfiguration = .production) {
         let snapshotStore = ProviderSnapshotStore()
+        let combinedSnapshotStore = CombinedSnapshotStore()
         let moduleConfiguration = ModuleConfiguration()
         let notificationPreferences = QuotaNotificationPreferences()
         self.snapshotStore = snapshotStore
+        self.combinedSnapshotStore = combinedSnapshotStore
         self.moduleConfiguration = moduleConfiguration
         self.notificationPreferences = notificationPreferences
         self.notificationService = QuotaNotificationService(
@@ -85,6 +145,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
         switch launch {
         case .production:
+            let systemMetricsService = SystemMetricsService(collector: MacSystemMetricsCollector())
             let usageFileWatcher = UsageFileWatcher()
             let refreshCoordinator = RefreshCoordinator(
                 usageRepository: RustUsageRepository(),
@@ -119,9 +180,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             self.analyticsSnapshotStore = analyticsSnapshotStore
             self.analyticsRepository = analyticsRepository
             self.analyticsWindowController = analyticsWindowController
+            self.systemMetricsService = systemMetricsService
             self.menuBarController = MenuBarController(
                 configuration: moduleConfiguration,
                 snapshotStore: snapshotStore,
+                combinedSnapshotStore: combinedSnapshotStore,
+                observeProviderSnapshots: false,
                 actions: actions,
                 notificationPreferences: self.notificationPreferences,
                 notificationService: self.notificationService,
@@ -144,6 +208,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 #if NEEDLBAR_ACCEPTANCE_DRIVER
         case .acceptance(let fixture):
             let actions = SettingsActions()
+            self.systemMetricsService = nil
             self.refreshCoordinator = nil
             self.loginCoordinator = nil
             self.snapshotExportController = nil
@@ -154,6 +219,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             self.menuBarController = MenuBarController(
                 configuration: moduleConfiguration,
                 snapshotStore: snapshotStore,
+                combinedSnapshotStore: combinedSnapshotStore,
                 actions: actions,
                 notificationPreferences: self.notificationPreferences,
                 notificationService: self.notificationService
@@ -161,6 +227,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 #endif
         }
         super.init()
+        if case .production = launch {
+            productionLifecycle = ProductionLifecycleController(services: self)
+        }
 #if NEEDLBAR_ACCEPTANCE_DRIVER
         if case .acceptance = launch {
             acceptanceLifecycle = AcceptanceLifecycleController(services: self)
@@ -175,13 +244,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             switch self.launch {
             case .production:
-                await self.menuBarController.startObserving()
-                guard !Task.isCancelled else { return }
-                await self.notificationService.start()
-                guard !Task.isCancelled else { return }
-                await self.widgetPublisher?.start(observing: self.snapshotStore)
-                guard !Task.isCancelled else { return }
-                await self.refreshCoordinator?.start()
+                await self.productionLifecycle?.start()
 #if NEEDLBAR_ACCEPTANCE_DRIVER
             case .acceptance:
                 await self.acceptanceLifecycle?.start()
@@ -208,7 +271,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         terminationController.performSynchronousSafetyCleanup(
             cancelStartup: { [weak self] in self?.cancelLifecycleTask() },
             stopNotifications: { [weak self] in self?.notificationService.stop() },
-            stopMenuBarObservation: { [weak self] in self?.menuBarController.stopObserving() }
+            stopMenuBarObservation: { [weak self] in self?.menuBarController.stopObserving() },
+            stopSystemMetrics: { [weak self] in self?.stopSystemMetricsSynchronously() }
         )
     }
 
@@ -245,13 +309,105 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             resumeNotifications: { [weak self] in
                 Task { await self?.notificationService.start() }
-            }
+            },
+            stopSystemMetrics: { [weak self] in self?.stopSystemMetricsSynchronously() }
         )
     }
 
     private func cancelLifecycleTask() {
         lifecycleTask?.cancel()
         lifecycleTask = nil
+        productionLifecycle?.cancelStart()
+    }
+
+    private func stopSystemMetricsSynchronously() {
+        removeSystemMonitorConfigurationObserver()
+        providerSnapshotForwardingTask?.cancel()
+        providerSnapshotForwardingTask = nil
+        systemMetricsForwardingTask?.cancel()
+        systemMetricsForwardingTask = nil
+        guard let systemMetricsService else { return }
+        Task { await systemMetricsService.stop() }
+    }
+}
+
+@MainActor
+extension AppDelegate: ProductionLifecycleServing {
+    func startProductionMenu() async {
+        await menuBarController.startObserving()
+    }
+
+    func startProductionSystem() async {
+        guard providerSnapshotForwardingTask == nil, systemMetricsForwardingTask == nil else { return }
+        let providerUpdates = await snapshotStore.updates()
+        providerSnapshotForwardingTask = Task { [combinedSnapshotStore] in
+            for await snapshots in providerUpdates {
+                guard !Task.isCancelled else { return }
+                await combinedSnapshotStore.applyProviders(snapshots)
+            }
+        }
+        guard let systemMetricsService else { return }
+        let systemUpdates = await systemMetricsService.updates()
+        systemMetricsForwardingTask = Task { [combinedSnapshotStore] in
+            for await snapshot in systemUpdates {
+                guard !Task.isCancelled else { return }
+                await combinedSnapshotStore.applySystem(snapshot)
+            }
+        }
+        systemMonitorConfigurationObserver = NotificationCenter.default.addObserver(
+            forName: ModuleConfiguration.systemMonitorDidChangeNotification,
+            object: moduleConfiguration,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, let systemMetricsService = self.systemMetricsService else { return }
+                await systemMetricsService.setPublicIPEnabled(self.moduleConfiguration.systemMonitor.publicIPEnabled)
+            }
+        }
+        await systemMetricsService.start(publicIPEnabled: moduleConfiguration.systemMonitor.publicIPEnabled)
+    }
+
+    func startProductionNotifications() async {
+        await notificationService.start()
+    }
+
+    func startProductionPublisher() async {
+        await widgetPublisher?.start(observing: snapshotStore)
+    }
+
+    func startProductionRefresh() async {
+        await refreshCoordinator?.start()
+    }
+
+    func stopProductionRefresh() async {
+        await refreshCoordinator?.stop()
+    }
+
+    func stopProductionPublisher() async {
+        await widgetPublisher?.stop()
+    }
+
+    func stopProductionNotifications() async {
+        notificationService.stop()
+    }
+
+    func stopProductionSystem() async {
+        removeSystemMonitorConfigurationObserver()
+        providerSnapshotForwardingTask?.cancel()
+        providerSnapshotForwardingTask = nil
+        systemMetricsForwardingTask?.cancel()
+        systemMetricsForwardingTask = nil
+        await systemMetricsService?.stop()
+    }
+
+    func stopProductionMenu() async {
+        menuBarController.stopObserving()
+    }
+
+    private func removeSystemMonitorConfigurationObserver() {
+        guard let observer = systemMonitorConfigurationObserver else { return }
+        NotificationCenter.default.removeObserver(observer)
+        systemMonitorConfigurationObserver = nil
     }
 }
 
@@ -339,14 +495,16 @@ final class AccessoryTerminationController {
         stopRefreshCoordinator: @escaping @MainActor () async -> Void,
         reply: @escaping @MainActor (Bool) -> Void,
         resumeLoginAdmission: @escaping @MainActor () -> Void,
-        resumeNotifications: @escaping @MainActor () -> Void
+        resumeNotifications: @escaping @MainActor () -> Void,
+        stopSystemMetrics: @escaping @MainActor () -> Void = {}
     ) -> NSApplication.TerminateReply {
         guard !isTerminating else { return .terminateLater }
         isTerminating = true
         performSynchronousSafetyCleanup(
             cancelStartup: cancelStartup,
             stopNotifications: stopNotifications,
-            stopMenuBarObservation: stopMenuBarObservation
+            stopMenuBarObservation: stopMenuBarObservation,
+            stopSystemMetrics: stopSystemMetrics
         )
         terminationTask = Task { [weak self] in
             let loginCleanup = await stopLoginCoordinator()
@@ -372,12 +530,14 @@ final class AccessoryTerminationController {
     func performSynchronousSafetyCleanup(
         cancelStartup: @escaping @MainActor () -> Void,
         stopNotifications: @escaping @MainActor () -> Void,
-        stopMenuBarObservation: @escaping @MainActor () -> Void
+        stopMenuBarObservation: @escaping @MainActor () -> Void,
+        stopSystemMetrics: @escaping @MainActor () -> Void = {}
     ) {
         guard !didPerformSynchronousSafetyCleanup else { return }
         didPerformSynchronousSafetyCleanup = true
         cancelStartup()
         stopNotifications()
+        stopSystemMetrics()
         stopMenuBarObservation()
     }
 }

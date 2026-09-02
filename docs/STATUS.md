@@ -101,6 +101,30 @@ The next continuation point is Task 7, production lifecycle wiring,
 documentation, and full verification. Native macOS 14 acceptance remains
 deferred and unperformed.
 
+### Task 7 — Production lifecycle, documentation, and verification
+
+Task 7 is complete in the current worktree. Production now constructs one
+`CombinedSnapshotStore` and one `SystemMetricsService` backed by the native
+collector. AppDelegate forwards provider and system streams through separate
+cancellation-aware tasks, starts system monitoring immediately after menu
+observation, and keeps the acceptance build on its fixture-only construction
+path. Termination cancels forwarding tasks and stops system monitoring after
+notifications but before menu observation teardown. The architecture guide,
+privacy policy, and README document the six modules, adaptive title, one-second
+refresh, opt-in public-IP request/cache boundary, and deferred native macOS 14
+acceptance.
+
+Verification recorded for the completed task:
+
+- `make swift-test`: 309 tests in 12 suites passed.
+- `make acceptance-test`: 9 acceptance fixture tests passed with the acceptance
+  compiler define.
+- `git diff --check`: exit 0.
+
+The next continuation point is final v0.3 review and release-readiness
+verification. Native macOS 14 Widget Gallery/App Group and
+notification-permission acceptance remains deferred and unperformed.
+
 ## v0.2.2 Public Release Preparation — 2026-09-01
 
 Release preparation updates the host and widget to version 0.2.2 (build 2),
@@ -145,6 +169,8 @@ The active Needlbar work is governed by:
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widgets-notifications.md` — reviewed v0.2.1 implementation index: four widget tasks, four notification tasks, then combined acceptance.
 - `docs/superpowers/specs/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics-design.md` — approved v0.2.2 local repository cost analytics design; its implementation plan is recorded below.
 - `docs/superpowers/plans/2026-09-01-needlbar-v0.2.2-local-repository-cost-analytics.md` — approved v0.2.2 implementation plan; Tasks 1–6 and final verification are complete and recorded below.
+- `docs/superpowers/specs/2026-09-02-needlbar-v0.3-system-monitor-design.md` — approved v0.3 system-monitor product, privacy, and layer-ownership contract.
+- `docs/superpowers/plans/2026-09-02-needlbar-v0.3-system-monitor.md` — ordered v0.3 implementation plan; Tasks 1–7 are complete in this worktree.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget.md` — W1–W4, including Swift-only day provenance, sanitized projection, and medium Overview presentation.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-widget-packaging.md` — W3/W4 packaging and real-Team extension-first signing appendix; not an additional task.
 - `docs/superpowers/plans/2026-08-31-needlbar-v0.2.1-notifications.md` — N1–N4, including fresh quota observation, durable policy, explicit permission, and lifecycle tests.

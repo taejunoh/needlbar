@@ -2,6 +2,12 @@
 
 Needlbar v0.1 is local-first.
 
+v0.3 adds a local system-monitor surface for CPU, RAM, disk, network,
+battery, and AI usage. System metrics are collected in memory on the Mac and
+are displayed only in the menu bar and complete dashboard popover. They are
+not added to JSON export, widgets, notifications, repository analytics, or
+provider requests.
+
 - There is no Needlbar backend, account, hosted sync service, or telemetry.
 - Needlbar does not upload token history, prompts, assistant responses, source code, file paths, account identifiers, or provider credentials.
 - It does not display prompt/response text or source-code content. The local usage engine reads known provider sources only to derive token metadata and cost information.
@@ -13,6 +19,12 @@ Needlbar v0.1 is local-first.
 - Cursor has no Needlbar credential integration, private endpoint, or remote usage hydration.
   Its usage is local-only, and its quota action opens the fixed provider-owned Spending
   dashboard URL.
+- Network transfer speed and local interface addresses are collected from local macOS
+  APIs. Public-IP display is disabled by default and can be enabled in Settings; when
+  enabled, Needlbar makes a bounded HTTPS request to the fixed `api64.ipify.org` endpoint,
+  caches the address in memory for at least five minutes, and applies a two-second timeout.
+  The public address is never logged, exported, included in diagnostics, or sent to a
+  provider. Turning the setting off removes it from the next in-memory snapshot.
 
 The App Group projection and notification ledger are local, private, and credential-free; projection bytes are bounded and written with private file permissions.
 
@@ -94,6 +106,10 @@ Usage and quota have separate network behavior:
 - Cursor makes no authentication, usage-export, or personal-quota request. Clicking
   `Open Cursor Spending` hands only `https://cursor.com/dashboard/spending` to the macOS
   workspace URL opener.
+- The optional public-IP lookup uses only `https://api64.ipify.org?format=json` when the
+  user enables it. The response is bounded to an IPv4/IPv6 address, cached in memory for
+  at least five minutes, and discarded on failure or shutdown; it is not a provider or
+  analytics request.
 
 Requests are bounded and errors are redacted. Needlbar does not log authorization headers,
 cookies, response bodies, prompt text, response text, or source code. Raw Claude credential

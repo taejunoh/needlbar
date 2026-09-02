@@ -407,6 +407,7 @@ public final class MenuBarController: NSObject {
     private let configuration: ModuleConfiguration
     private let snapshotStore: ProviderSnapshotStore
     private let combinedSnapshotStore: CombinedSnapshotStore
+    private let observeProviderSnapshots: Bool
     private let statusItemFactory: any StatusItemFactory
     private let globalMouseDownMonitor: any GlobalMouseDownMonitoring
     private let panelPresenter: any MenuPanelPresenting
@@ -433,6 +434,7 @@ public final class MenuBarController: NSObject {
         configuration: ModuleConfiguration,
         snapshotStore: ProviderSnapshotStore,
         combinedSnapshotStore: CombinedSnapshotStore = CombinedSnapshotStore(),
+        observeProviderSnapshots: Bool = true,
         actions: SettingsActions,
         notificationPreferences: QuotaNotificationPreferences,
         notificationService: QuotaNotificationService,
@@ -449,6 +451,7 @@ public final class MenuBarController: NSObject {
         self.configuration = configuration
         self.snapshotStore = snapshotStore
         self.combinedSnapshotStore = combinedSnapshotStore
+        self.observeProviderSnapshots = observeProviderSnapshots
         self.statusItemFactory = statusItemFactory
         self.globalMouseDownMonitor = globalMouseDownMonitor
         self.panelPresenter = panelPresenter
@@ -478,6 +481,7 @@ public final class MenuBarController: NSObject {
         configuration: ModuleConfiguration,
         snapshotStore: ProviderSnapshotStore,
         combinedSnapshotStore: CombinedSnapshotStore = CombinedSnapshotStore(),
+        observeProviderSnapshots: Bool = true,
         loginCoordinator: ProviderLoginCoordinator,
         snapshotExportController: SnapshotExportController,
         notificationPreferences: QuotaNotificationPreferences,
@@ -496,6 +500,7 @@ public final class MenuBarController: NSObject {
             configuration: configuration,
             snapshotStore: snapshotStore,
             combinedSnapshotStore: combinedSnapshotStore,
+            observeProviderSnapshots: observeProviderSnapshots,
             actions: SettingsActions(
                 loginCoordinator: loginCoordinator,
                 snapshotExportController: snapshotExportController
@@ -529,7 +534,7 @@ public final class MenuBarController: NSObject {
         guard configurationObserver == nil, providerObservationTask == nil, combinedObservationTask == nil else { return }
         observationGeneration &+= 1
         let generation = observationGeneration
-        let providerUpdates = await snapshotStore.updates()
+        let providerUpdates = observeProviderSnapshots ? await snapshotStore.updates() : nil
         let combinedUpdates = await combinedSnapshotStore.updates()
         await refresh()
         configurationObserver = NotificationCenter.default.addObserver(
@@ -542,11 +547,13 @@ public final class MenuBarController: NSObject {
                 self.reconcile(using: self.cachedCombinedSnapshot)
             }
         }
-        providerObservationTask = Task { @MainActor [weak self] in
-            for await snapshots in providerUpdates {
-                guard !Task.isCancelled else { return }
-                guard let self, self.observationGeneration == generation else { return }
-                await self.combinedSnapshotStore.applyProviders(snapshots)
+        if let providerUpdates {
+            providerObservationTask = Task { @MainActor [weak self] in
+                for await snapshots in providerUpdates {
+                    guard !Task.isCancelled else { return }
+                    guard let self, self.observationGeneration == generation else { return }
+                    await self.combinedSnapshotStore.applyProviders(snapshots)
+                }
             }
         }
         combinedObservationTask = Task { @MainActor [weak self] in

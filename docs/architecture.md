@@ -2,6 +2,12 @@
 
 Needlbar is a native macOS menu-bar application with a Swift presentation shell and Rust-owned provider integrations. The bridge is deliberately narrow: Swift receives versioned JSON snapshots, while provider credentials and raw provider responses remain on the Rust side.
 
+The v0.3 system monitor keeps system collection and presentation in Swift. One
+adaptive status item combines CPU, RAM, disk, network, battery, and AI usage;
+the complete dashboard popover always contains all six sections. System values
+are collected on a one-second service tick and are merged with provider values
+through an in-memory `CombinedSnapshotStore`.
+
 ## Runtime layers
 
 ```text
@@ -14,6 +20,7 @@ Needlbar.app
     ├── refresh scheduling and file watching
     ├── last-known-good and stale-state handling
     ├── in-memory AnalyticsSnapshot state and refresh serialization
+    ├── system metric collection, freshness, and combined snapshots
     └── module configuration and UI-free formatting
         │
         └── narrow C ABI / UTF-8 JSON envelopes
@@ -51,6 +58,32 @@ Cursor usage has no Needlbar-owned hydration layer. The pinned `tokscale-core` e
 For the v0.2.0 local JSON export, `ProviderSnapshotStore` captures one immutable export value for all three providers in one actor turn. `NeedlbarCore` validates that value, deterministically encodes the versioned JSON document, and writes it through the private same-directory atomic writer. AppKit owns only the save panel and export UI state; it does not capture, encode, or write provider data.
 
 `Needlbar` owns AppKit lifecycle, status items, popovers, Settings, and native window presentation.
+
+### v0.3 system monitor
+
+`SystemMetricsService` owns the supervised one-second system snapshot loop. Its
+`MacSystemMetricsCollector` adapts CPU, memory pressure, mounted-volume
+capacity, network byte counters/interface addresses, and battery state from
+macOS APIs. The service keeps system failures module-local as fresh, stale, or
+unavailable values and never calls provider refresh code.
+
+`CombinedSnapshotStore` is the in-memory merge boundary. In production,
+`AppDelegate` forwards provider-store updates and system-service updates in
+separate cancellation-aware tasks. `MenuBarController` observes only the
+combined stream in production, so a system tick cannot amplify provider
+refreshes or erase a provider's last-known-good value. Acceptance builds keep
+their fixture-only lifecycle and do not construct the system service.
+
+`MenuBarDashboardRenderer` uses the configured module order and visibility to
+choose expanded labels or compact icon/value text from the measured status-item
+width. `SystemDashboardPopoverView` renders every module in the configured
+order, regardless of menu-bar visibility, and preserves existing AppKit
+anchoring, outside-click dismissal, provider login, and Cursor Spending seams.
+
+Public IP is a separate opt-in `URLSession` dependency. It uses the fixed
+`https://api64.ipify.org?format=json` endpoint, a two-second timeout, and a
+minimum five-minute in-memory cache. It is not included in exports, widgets,
+notifications, analytics, diagnostics, or provider requests.
 
 ### v0.2.2 local repository analytics
 

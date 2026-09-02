@@ -41,6 +41,27 @@ Needlbar presents locally aggregated token usage and estimated cost together wit
 
 Settings controls visible modules and title metrics. Claude and Codex expose provider-owned browser sign-in actions (`claude auth login --claudeai` and `codex login`); Needlbar does not implement a second OAuth flow. Cursor has no Needlbar credential or connection workflow.
 
+### System monitor (v0.3)
+
+Needlbar can replace a separate Stats-style utility with one configurable
+menu-bar item for CPU, RAM, disk, network, battery, and AI usage. The title
+automatically uses expanded labels when the measured status-item width allows
+them and compact icons/core values when a notch or neighboring menu-bar items
+leave less room. Module visibility and order are configured in Settings; the
+medium dashboard popover remains complete and shows all six sections.
+
+System metrics refresh locally once per second and keep explicit fresh, stale,
+or unavailable states. Transfer speed is shown by default. Local and public IP
+display is optional; public-IP lookup is off by default and, when enabled,
+uses only the fixed `https://api64.ipify.org?format=json` endpoint with a
+two-second timeout and at least a five-minute in-memory cache. IP values never
+enter exports, widgets, notifications, analytics, diagnostics, or provider
+requests.
+
+Settings also lets each Claude, Codex, and Cursor row be shown or hidden,
+reordered, and set to display usage, remaining quota, cost, or connection
+status. Existing provider refresh and browser-login ownership is unchanged.
+
 ### Local snapshot export
 
 Settings includes **Export snapshot…**, a user-initiated JSON export of the current normalized provider snapshot. It does not refresh, authenticate, access Keychain, or upload data. The export contains only the approved normalized usage, quota, freshness, and safe status fields; it excludes credentials, account identifiers, raw paths/responses, prompts, assistant responses, source code, and raw diagnostics.
@@ -132,6 +153,8 @@ make smoke
 Read the [architecture guide](docs/architecture.md) for layer ownership and data flow, the [privacy policy](docs/privacy.md) for local reads and redaction, and the [Claude](docs/providers/claude.md), [Codex](docs/providers/codex.md), and [Cursor](docs/providers/cursor.md) runbooks for provider-specific sources and recovery.
 
 For project security boundaries, see [SECURITY.md](SECURITY.md). For contributor setup and implementation rules, see [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and the [current development status](docs/STATUS.md). The approved [base design specification](docs/superpowers/specs/2026-08-13-needlbar-v0.1-design.md) and [implementation plan](docs/superpowers/plans/2026-08-13-needlbar-v0.1.md) provide the product and architecture contract.
+
+The v0.3 system-monitor design and implementation plan are [documented here](docs/superpowers/specs/2026-09-02-needlbar-v0.3-system-monitor-design.md) and [here](docs/superpowers/plans/2026-09-02-needlbar-v0.3-system-monitor.md). Native macOS 14 Widget Gallery/App Group and notification-permission acceptance remains an external maintainer gate and is not claimed by the local test matrix.
 
 ## Credits and licenses
 

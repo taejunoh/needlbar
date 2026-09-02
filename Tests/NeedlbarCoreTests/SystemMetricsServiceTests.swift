@@ -19,6 +19,23 @@ import Testing
   #expect(await collector.calls == 1)
 }
 
+@Test func publicIPToggleUpdatesAStartedServiceWithoutRestartingTheLoop() async throws {
+  let publicIP = FakePublicIPProvider(result: .success("203.0.113.8"))
+  let service = SystemMetricsService(
+    collector: FakeSystemCollector(snapshot: fixtureSnapshot()),
+    publicIPProvider: publicIP,
+    clock: TestClock(start: Date(timeIntervalSince1970: 10_000))
+  )
+
+  await service.start(publicIPEnabled: false)
+  await service.setPublicIPEnabled(true)
+  await service.tickForTesting()
+  let snapshot = try #require(await service.currentSnapshot())
+
+  #expect(snapshot.network.publicIPAddress == "203.0.113.8")
+  #expect(await publicIP.calls == 1)
+}
+
 @Test func publicIPUsesFiveMinuteCacheAndDoesNotAmplifyTheOneSecondTick() async {
   let clock = TestClock(start: Date(timeIntervalSince1970: 10_000))
   let publicIP = FakePublicIPProvider(result: .success("203.0.113.8"))

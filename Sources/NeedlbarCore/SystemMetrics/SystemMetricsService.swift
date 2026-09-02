@@ -42,6 +42,13 @@ public actor SystemMetricsService {
     loopTask = nil
   }
 
+  public func setPublicIPEnabled(_ enabled: Bool) {
+    publicIPEnabled = enabled
+    if !enabled {
+      publicIPCache = nil
+    }
+  }
+
   public func updates() -> AsyncStream<SystemMetricsSnapshot> {
     let identifier = UUID()
     return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
