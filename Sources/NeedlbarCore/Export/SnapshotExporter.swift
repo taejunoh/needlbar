@@ -219,7 +219,7 @@ private extension SnapshotExportValidation {
             guard state.provider != .cursor else {
                 throw SnapshotExportError.cursorQuotaNotAllowed
             }
-            for window in quota.windows {
+            for window in v1Windows(quota, for: state.provider) {
                 try validateWindow(
                     provider: state.provider,
                     id: window.id,
@@ -227,6 +227,12 @@ private extension SnapshotExportValidation {
                     resetsAt: window.resetsAt
                 )
             }
+        }
+    }
+
+    static func v1Windows(_ quota: QuotaSnapshot, for provider: ProviderID) -> [QuotaWindow] {
+        quota.windows.filter {
+            !(provider == .claude && $0.id == QuotaWindow.claudeFableWeeklyID)
         }
     }
 
@@ -288,8 +294,8 @@ private struct SnapshotExportProvider {
             data: state.usage.map(SnapshotExportUsage.init),
             status: .init(state.usageStatus, lastSuccessfulAt: state.usageLastSuccessfulAt)
         )
-        quota = try .init(
-            data: state.quota.map(SnapshotExportQuota.init),
+        quota = .init(
+            data: state.quota.map { SnapshotExportQuota($0, provider: state.provider) },
             status: .init(state.quotaStatus, lastSuccessfulAt: state.quotaLastSuccessfulAt)
         )
         updatedAt = state.updatedAt
@@ -463,8 +469,8 @@ private struct SnapshotExportDailyUsage {
 private struct SnapshotExportQuota {
     let windows: [SnapshotExportQuotaWindow]
 
-    init(_ quota: QuotaSnapshot) throws {
-        windows = quota.windows.map(SnapshotExportQuotaWindow.init)
+    init(_ quota: QuotaSnapshot, provider: ProviderID) {
+        windows = SnapshotExportValidation.v1Windows(quota, for: provider).map(SnapshotExportQuotaWindow.init)
     }
 
     var canonicalJSONValue: SnapshotCanonicalJSON.Value {

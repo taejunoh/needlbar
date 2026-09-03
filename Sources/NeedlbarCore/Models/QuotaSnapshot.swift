@@ -50,6 +50,10 @@ public struct QuotaWindow: Codable, Sendable, Identifiable, Equatable {
     }
 }
 
+public extension QuotaWindow {
+    static let claudeFableWeeklyID = "claude.fable.weekly"
+}
+
 public enum QuotaWindowValidationError: Error, Sendable, Equatable {
     case invalidUsedPercent(Double)
 }

@@ -26,6 +26,24 @@ import Testing
     #expect(bytes == Data(#"{"last30Days":"thirty","last7Days":"seven","last7DaysDaily":"daily"}"#.utf8))
 }
 
+@Test func fableWindowIsOmittedFromV1ExportWithoutChangingCanonicalBytes() throws {
+    let baseline = try validExportCaptureWithPrivacyCanaries()
+    let claude = baseline.providers[0]
+    let fable = try QuotaWindow(
+        id: "claude.fable.weekly",
+        title: "Fable weekly",
+        usedPercent: 100,
+        resetsAt: try date("2026-08-30T12:00:00.000Z")
+    )
+    let capture = replacingProvider(
+        claude,
+        quota: QuotaSnapshot(windows: (claude.quota?.windows ?? []) + [fable]),
+        in: baseline
+    )
+
+    #expect(try SnapshotExporter().encode(capture) == Data(completeHandWrittenV1GoldenJSONWithFinalNewline.utf8))
+}
+
 @Test(arguments: invalidExportCaptures())
 func invalidCaptureFailsBeforeWriting(_ capture: ExportCapture) {
     #expect(throws: SnapshotExportError.self) {

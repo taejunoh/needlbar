@@ -52,6 +52,45 @@ import Testing
     #expect(selected?.remainingPercent == 32)
 }
 
+@Test func fableDoesNotChangeHeadlineButOtherUnknownWindowsRemainEligible() throws {
+    func snapshot(
+        provider: ProviderID,
+        windows: [QuotaWindow]
+    ) -> ProviderSnapshot {
+        ProviderSnapshot(
+            provider: provider,
+            usage: nil,
+            quota: QuotaSnapshot(windows: windows),
+            usageStatus: .unavailable,
+            quotaStatus: .fresh,
+            updatedAt: .now
+        )
+    }
+
+    let base = snapshot(
+        provider: .claude,
+        windows: [
+            try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil)
+        ]
+    )
+    let fable = snapshot(
+        provider: .claude,
+        windows: [
+            try QuotaWindow(id: "claude.fable.weekly", title: "Fable weekly", usedPercent: 100, resetsAt: nil)
+        ]
+    )
+    let unknown = snapshot(
+        provider: .claude,
+        windows: [
+            try QuotaWindow(id: "claude.future", title: "Future", usedPercent: 99, resetsAt: nil)
+        ]
+    )
+
+    #expect(HeadlineQuotaSelector.mostConstrained([base, fable]) == base.quota?.windows.first)
+    #expect(HeadlineQuotaSelector.mostConstrained([base, fable, unknown]) == unknown.quota?.windows.first)
+    #expect(HeadlineQuotaSelector.mostConstrained([fable]) == nil)
+}
+
 @Test func metricFormatterUsesCompactMetricFormatsAndDoesNotInventResets() {
     #expect(MetricFormatter.tokens(1_420_000) == "1.42M")
     #expect(MetricFormatter.tokens(842_000) == "842K")
