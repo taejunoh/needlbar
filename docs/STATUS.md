@@ -3,7 +3,28 @@
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
 **Current phase:** The user completed provider-owned sign-in; a fresh bounded HTTP 200 response closed Task 0's Fable `percent`-meaning gate. The approved Fable implementation can now proceed. Release publication remains unauthorized, and native macOS 14 acceptance remains deferred.
-**Next action:** Tasks 1–2 passed implementation and both reviews. Execute Task 3 (separate Fable remaining/reset presentation) in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md`, then Task 4 integration/native verification. Keep the actual normal full-test result distinct from serial diagnostics; do not publish a release or claim native macOS 14 acceptance.
+**Next action:** Tasks 1–3 passed implementation, full verification, and both reviews. Execute Task 4 downstream/native verification in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md`. Keep the actual normal full-test result distinct from serial diagnostics; do not publish a release or claim native macOS 14 acceptance.
+
+## Claude Fable Task 3 — presentation verification — 2026-09-03
+
+Commit `0714bb8` implements the separate Claude Remaining child with Fable weekly remaining,
+localized absolute reset, and quota freshness. Missing data remains unavailable;
+other display metrics do not show the child. Store, generic bridge, and fixed
+360-point/short-screen layout regressions are included.
+
+Focused RED failed on the absent presentation API, then focused display,
+store, bridge, and layout checks passed. The original full log recorded Swift
+343 tests and final notarization contracts passing, but the worker session
+failed with a transport 404 before its final exit report. The primary agent
+therefore reran plain `make test` and directly captured exit 0, with all normal
+gates passing, at
+`/Users/taejunoh/Developer/LFG/needlbar-task3-root-verification.log`.
+The spec review passed (a proposed extra explicit child accessibility label
+was withdrawn because the approved combined sibling structure is implemented).
+An existing worker recovered the checkpoint without code changes after new
+worker sessions also returned 404. Existing workers may be reused as a bounded
+workflow recovery while independent reviews remain required. Code-quality
+review passed; native UI verification remains pending.
 
 ## Claude Fable Task 2 — optional source normalization — 2026-09-03
 
