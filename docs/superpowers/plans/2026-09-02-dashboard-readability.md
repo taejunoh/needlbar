@@ -82,20 +82,20 @@ portion of `SystemMetricModels.swift`, associated menu/config/settings tests.
 - [ ] Run `source /Users/taejunoh/.cargo/env && make test` and require exit 0.
 - [ ] Run `make package` and `make smoke`; relaunch the exact local bundle and
   inspect dashboard width, visual hierarchy, live updates, disclosure and dismissal.
-- [ ] Update README, privacy/architecture descriptions as needed and STATUS with
-  verified outcomes and exact continuation. The user has explicitly authorized
-  committing and pushing this reviewed development-branch checkpoint despite
-  the known unchanged process-fixture timeout failures; keep main integration
-  and release publication gated on a green `make test`.
+- [x] Update README, privacy/architecture descriptions as needed and STATUS with
+  verified outcomes and exact continuation. The reviewed checkpoint was
+  committed and fast-forward merged locally into `main` at `d719402` under the
+  user's explicit authorization despite the known unchanged process-fixture
+  failures. Release publication remains gated on a green `make test`.
 
 Integration note (2026-09-02): packaging/smoke and current-host visual checks
 passed. All six sections fit the saved one-provider configuration; the open
 panel updates live and Settings works. Local-IP settings were restored off.
 Explicit expanded-disclosure/outside-click checks remain unclaimed. The final
-full gate has existing shell/process-fixture deadline failures. The user has
-explicitly authorized a reviewed development-branch checkpoint commit/push
-despite those unchanged failures; main integration and release remain gated on
-a green full test run. See `docs/STATUS.md` for exact attempts and evidence.
+default full gate has existing shell/process-fixture deadline failures. The
+reviewed checkpoint is merged into `main` at `d719402`; no assertion of remote
+publication is made here, and release publication remains gated on a green full
+test run. See `docs/STATUS.md` for exact attempts and evidence.
 
 Self-review: all approved follow-up requirements have an owner. UI history is
 bounded and contains no IP; local-IP opt-in never enables a public request.

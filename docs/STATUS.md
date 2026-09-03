@@ -1,9 +1,36 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-02
-**Branch:** `codex/v03-dashboard-polish` from pushed `main` at `95d08c9` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** v0.3 dashboard refinement is implemented and packaged for local inspection. The final all-project verification gate remains open because existing process-fixture tests intermittently time out. The user has explicitly authorized publishing a development-branch checkpoint despite those unchanged failures; main integration and release remain gated on a green `make test`. Native macOS 14 acceptance remains deferred per the user's direction.
-**Next action:** Resolve or isolate the existing process-fixture timing failures and obtain a clean `make test` before main integration or release. Development-branch checkpoint publication is user-authorized, not a claim that the full gate is green.
+**Branch:** `main` at integration commit `d719402` (fast-forward from `95d08c9`; remote publication is not asserted here; v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
+**Current phase:** User-requested local v0.3 integration is complete at `d719402`. The default all-project verification/CI gate still needs fixture-flakiness resolution; release publication is not authorized. Native macOS 14 acceptance remains deferred per the user's direction.
+**Next action:** Investigate the default parallel process-fixture flakiness and CI result. Do not publish a release while that gate remains unresolved.
+
+## v0.3 Local integration checkpoint — 2026-09-02
+
+The approved dashboard refinement and Settings documentation were fast-forward
+merged into `main` at `d719402` from `95d08c9`. This is an integration
+checkpoint; no assertion of remote publication is made here. The README
+now includes the inspected native dashboard and Settings screenshots; the
+Settings captures show upper/lower scroll positions of one window, no IP or
+account secrets, and unchanged current settings.
+
+Verification evidence:
+
+- Plain `make test` at `00fd6a3` exited 2 with six unchanged analytics
+  process-fixture failures. `exited_parent_pipe_cleanup_returns_timeout_and_runner_is_reusable`
+  first reported `ENOENT`; the remaining five reported guard poisoning. Log:
+  `/Users/taejunoh/Developer/LFG/needlbar-make-test.XXXXXX.log`.
+- A complete `RUST_TEST_THREADS=1 make test` in the same production tree
+  exited 0, covering Rust, vendored tests, Swift (336 tests in 12 suites),
+  widget, package, and notarization contracts. Log:
+  `/Users/taejunoh/Developer/LFG/needlbar-merge-serial.tAvpVA`.
+- A second `source /Users/taejunoh/.cargo/env && RUST_TEST_THREADS=1 make test`
+  on merged HEAD `d719402` also exited 0 with the same Swift, Rust/vendor, and
+  contract coverage. Log:
+  `/Users/taejunoh/Developer/LFG/needlbar-merged-test.Hnd3Fy`.
+- The serial success does not make the default parallel `make test` or CI gate
+  green. Release publication remains unauthorized, and native macOS 14
+  acceptance remains unperformed.
 
 ## AI remaining-quota default — 2026-09-02
 
@@ -36,10 +63,9 @@ confirmed the remaining-quota caption and displayed `—` while Claude quota was
 Unavailable, even though token usage was Fresh (no token fallback). A live
 numeric quota percentage is not claimed for that capture; fixture tests verify
 the available-quota percentage path. Screenshot: `ai-remaining-native.png` in
-the verification directory. The user has explicitly authorized committing and
-pushing this development checkpoint despite the unchanged process-fixture
-timeouts; this does not make the full gate green or authorize main integration
-or release publication.
+the verification directory. The user explicitly authorized committing and
+publishing this development checkpoint; it is merged into `main` at `d719402`.
+This does not make the default full gate green or authorize release publication.
 
 After the user completed Claude browser sign-in, a fresh native capture of the
 same development app confirmed **22% remaining**, with both Usage and Quota
@@ -64,8 +90,8 @@ Confirmed source-level causes before implementation:
 - Battery health mapped the qualitative Good state to an invented 100%.
 
 Implemented on `codex/v03-dashboard-polish` in
-`.worktrees/integration-main.d16P79` (the user has authorized a development
-checkpoint commit/push despite the open full verification gate):
+`.worktrees/integration-main.d16P79` and fast-forward merged into `main` at
+`d719402` (remote publication is not asserted here):
 
 - Menu titles are measured using the menu font, capped at 240 points and three
   summaries, with a genuine icon-only fallback. CPU/RAM/AI are the defaults;

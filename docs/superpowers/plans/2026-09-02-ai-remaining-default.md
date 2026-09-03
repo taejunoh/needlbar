@@ -59,21 +59,22 @@ fixture that intentionally exercises `.usage` to select that mode explicitly.
   Settings (or its exact UserDefaults keys if native picker automation is
   unavailable) while preserving visibility/order, IP settings, and other choices;
   verify menu/popover integration with the exact rebuilt local bundle.
-- [ ] Update README/STATUS and this checklist with actual evidence. The user has
-  explicitly authorized committing and pushing this reviewed development-branch
-  checkpoint despite the known unchanged process-fixture timeout failures; keep
-  main integration and release publication gated on a green `make test`, and do
-  not describe the full gate as green.
+- [x] Update README/STATUS and this checklist with actual evidence. The reviewed
+  checkpoint was committed and fast-forward merged locally into `main` at
+  `d719402` under the user's explicit authorization despite the known unchanged
+  process-fixture failures. Do not describe the default full gate as green or
+  publish a release until `make test` is green.
 
 Verification: 66 focused tests passed after the expected RED; both reviews
 passed. Full `make test` still fails two pre-existing Codex process-fixture
 deadline tests. Package/smoke passed. Native Settings shows Remaining for all
 three providers; the live Claude row correctly shows unknown quota rather than
 its available token total. After the user completed browser sign-in, a fresh
-native capture confirmed Claude 22% remaining with Usage and Quota Fresh;
-that screenshot is included in README. README/STATUS are updated. Development-branch
-checkpoint publication is explicitly authorized despite the unchanged fixture
-timeouts; main integration and release remain gated on a green full test run.
+native capture confirmed Claude 22% remaining with Usage and Quota Fresh; that
+screenshot is included in README. README/STATUS are updated and the reviewed
+checkpoint is merged into `main` at `d719402`; no assertion of remote
+publication is made here. The default full test gate is not green and release
+publication remains gated.
 
 Self-review: both default construction paths are covered, saved choices are
 preserved for other users, and the current Mac change is an explicitly approved
