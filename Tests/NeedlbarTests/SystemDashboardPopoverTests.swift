@@ -284,6 +284,83 @@ import Testing
     #expect(shortController.view.fittingSize.height == 400)
 }
 
+@Test func dashboardReadabilitySuppressesNormalFreshnessAndPreservesActionStates() {
+    #expect(DashboardReadabilityPolicy.systemStatus(.fresh) == nil)
+    #expect(DashboardReadabilityPolicy.systemStatus(.stale) == "Stale")
+    #expect(DashboardReadabilityPolicy.systemStatus(.unavailable) == nil)
+
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .fresh, quota: .fresh) == nil)
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .stale, quota: .fresh) == "Stale")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .fresh, quota: .requiresAuthentication) == "Authentication required")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .error, quota: .fresh) == "Error")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .unavailable, quota: .unavailable) == nil)
+}
+
+@Test func dashboardReadabilityKeepsFullValueForHelpAndAccessibility() {
+    let address = "2600:1017:b82b:aeb6:819c:69d2:12ef:1fdd"
+    let descriptor = DashboardMetricValue(address, truncation: .middle)
+
+    #expect(descriptor.fullValue == address)
+    #expect(descriptor.helpValue == address)
+    #expect(descriptor.accessibilityValue == address)
+    #expect(descriptor.truncation == .middle)
+}
+
+@Test func dashboardReadabilityUsesTailTruncationForOrdinaryText() {
+    let descriptor = DashboardMetricValue("Authentication required", truncation: .tail)
+
+    #expect(descriptor.truncation == .tail)
+    #expect(descriptor.fullValue == "Authentication required")
+}
+
+@Test @MainActor func dashboardReadabilityFitsBothApprovedHeightsAndKeepsFooter() {
+    let snapshot = dashboardFixtureSnapshot(
+        claudeQuotaWindows: [
+            try! QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil),
+            try! QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", usedPercent: 25, resetsAt: Date(timeIntervalSince1970: 20_000))
+        ],
+        perCoreUsage: Array(repeating: MetricPercentage(50)!, count: 15)
+    )
+    let model = SystemDashboardModel(snapshot: snapshot, configuration: SystemMonitorConfiguration())
+    let regular = NSHostingController(rootView: SystemDashboardPopoverView(model: model, maximumHeight: 680))
+    let short = NSHostingController(rootView: SystemDashboardPopoverView(model: model, maximumHeight: 400))
+
+    #expect(regular.view.fittingSize.width == 360)
+    #expect(regular.view.fittingSize.height == 680)
+    #expect(short.view.fittingSize.width == 360)
+    #expect(short.view.fittingSize.height == 400)
+}
+
+@Test @MainActor func dashboardReadabilityPreservesConfiguredOrderAndIPPrivacy() {
+    var configuration = SystemMonitorConfiguration()
+    configuration.order = [.ai, .network, .cpu, .battery, .memory, .disk]
+    configuration.localIPEnabled = false
+    configuration.publicIPEnabled = false
+
+    let presentation = SystemDashboardPresentation(snapshot: dashboardFixtureSnapshot(), configuration: configuration)
+
+    #expect(presentation.moduleIDs == configuration.order)
+    #expect(presentation.network.primaryLocalAddress == nil)
+    #expect(presentation.network.additionalLocalAddresses.isEmpty)
+    #expect(presentation.network.publicIPAddress == nil)
+}
+
+@Test func dashboardReadabilityPreservesSeparateFableSemantics() throws {
+    let windows = [
+        try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil),
+        try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", usedPercent: 100, resetsAt: Date(timeIntervalSince1970: 20_000))
+    ]
+    let presentation = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(claudeQuotaWindows: windows),
+        configuration: SystemMonitorConfiguration()
+    )
+    let claude = try #require(presentation.ai.first { $0.provider == .claude })
+
+    #expect(claude.value == "32%")
+    #expect(claude.fable?.remaining == "0%")
+    #expect(presentation.ai.filter { $0.provider != .claude }.allSatisfy { $0.fable == nil })
+}
+
 private func dashboardFixtureSnapshot(
     capturedAt date: Date = Date(timeIntervalSince1970: 10_000),
     networkAvailability: MetricAvailability? = nil,
