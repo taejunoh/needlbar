@@ -2,7 +2,7 @@
 
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** System-dashboard readability Tasks 1–3 are committed and reviewed; Task 4 automated gates and bounded current-host native evidence are complete, with the documentation checkpoint recorded below. Bright-shell, aligned-value, live-update, fixed-header/footer, normal-`Fresh` suppression, Claude/Fable, and outside-click observations are recorded; native dark mode, short-height, tooltip/accessibility, provider/action, and forced failure-state observations remain explicitly unobserved. Native macOS 14 acceptance remains deferred.
+**Current phase:** System-dashboard readability Tasks 1–3 are committed and reviewed; review fix `43d7863` preserves Usage/Quota provenance for qualified non-normal provider states. Task 4 automated gates and bounded current-host native evidence are complete, with the documentation checkpoint recorded below. Bright-shell, aligned-value, live-update, fixed-header/footer, normal-`Fresh` suppression, Claude/Fable, and outside-click observations are recorded; native dark mode, short-height, tooltip/accessibility, provider/action, and forced failure-state observations remain explicitly unobserved. Native macOS 14 acceptance remains deferred.
 **Next action:** Preserve the verified implementation and documented native limitations. A future maintainer may repeat the unobserved native checks on a suitable host; do not infer them from automated tests. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
 
 ## Menu-bar implementation baseline — 2026-09-03
@@ -69,7 +69,7 @@ quality reviews passed with no remaining findings. The spec reviewer initially
 questioned appearance observation and injected dependencies, then withdrew both
 findings after checking the approved plan and local AppKit headers.
 
-## System-dashboard readability Task 4 — earlier current-host native overflow blocker — 2026-09-03
+## Menu-bar Task 4 — earlier current-host native overflow blocker — 2026-09-03
 
 Tasks 1–3 are committed (`488ef94`, `da513fd`, and `cfee2d4`, with the
 measured-image follow-up recorded at `bcb8afa`); this section does not mark Task
@@ -104,24 +104,30 @@ public v0.2.2 Needlbar and `/Applications/Stats.app` were restored after each
 run; the final observed main-process identities were public PID 70515 and Stats
 PID 70512. The public app and widgets were left untouched by the diagnostics.
 
-At that earlier checkpoint Task 4 therefore remained `BLOCKED/PARTIAL`:
-README and the 2026-09-03 plan could not claim native A-style acceptance yet.
-The later bounded evidence and explicit unobserved limitations are recorded in
-the documentation checkpoint below. macOS 14 acceptance remains deferred; no
-push, merge, or release was performed.
+At that earlier checkpoint menu-bar Task 4 therefore remained
+`BLOCKED/PARTIAL`: README and the 2026-09-03 plan could not claim native
+A-style menu-bar acceptance. The menu-bar overflow/order issue remains outside
+the later System-dashboard readability scope and unresolved; the later
+dashboard evidence below does not resolve menu-bar placement. macOS 14
+acceptance remains deferred; no push, merge, or release was performed.
 
 ## System-dashboard readability Task 4 — verified documentation checkpoint — 2026-09-03
 
 Tasks 1–3 are implemented and committed as `e5f021a`, `719a405`, and
-`5223e93`; independent scoped reviews found no actionable findings. The final
-automated checkpoint ran serially from this worktree with Cargo sourced before
-each Make command. Focused Swift passed with exit 0 (`210 tests` in 11 suites),
-the acceptance fixture suite passed with exit 0 (`9 tests` in 1 suite), and
-`make test` passed with exit 0: Rust/vendor reported `1530 passed`, `0 failed`,
-`1 ignored`, Swift reported `377 tests` in 15 suites, and the widget, package,
-and notarization contracts passed. `make package`, `make smoke`, and
-`git diff --check` each exited 0. Exact outputs and exit records are retained
-under `/Users/taejunoh/Developer/LFG/needlbar-dashboard-readability-task4/`.
+`5223e93`; independent scoped reviews found no actionable findings. Review fix
+`43d7863` preserves independent provider status provenance: qualified
+non-normal Usage and Quota states retain their stream labels while normal
+`Fresh` and unavailable statuses remain suppressed. The final automated
+checkpoint ran serially from this worktree with Cargo sourced before each Make
+command. The original focused Swift gate passed with exit 0 (`210 tests` in 11
+suites), and the review-fix focused suite subsequently passed exit 0 (`20
+tests`). The acceptance fixture suite passed with exit 0 (`9 tests` in 1
+suite). The latest worker-reported `make test` passed with exit 0:
+Rust/vendor reported `1530 passed`, `0 failed`, `1 ignored`, Swift reported
+`378 tests` in 15 suites, and the widget, package, and notarization contracts
+passed. `make package`, `make smoke`, and `git diff --check` each exited 0.
+Exact outputs and exit records are retained under
+`/Users/taejunoh/Developer/LFG/needlbar-dashboard-readability-task4/`.
 The focused and acceptance logs include the legacy XCTest compatibility
 summary of zero tests; the Swift Testing summaries above are the nonzero test
 counts used for this gate. The current full-run warning counts match the fresh
