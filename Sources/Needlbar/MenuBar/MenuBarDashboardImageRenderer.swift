@@ -2,8 +2,8 @@ import AppKit
 import CoreText
 
 @MainActor
-public enum MenuBarDashboardImageRenderer {
-    public static func render(layout: MenuBarDashboardTwoLineLayout, scale: CGFloat) -> NSImage? {
+enum MenuBarDashboardImageRenderer {
+    static func render(layout: MenuBarDashboardTwoLineLayout, scale: CGFloat) -> NSImage? {
         guard scale.isFinite,
               scale > 0,
               layout.size.width.isFinite,

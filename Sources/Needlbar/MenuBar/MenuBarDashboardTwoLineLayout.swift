@@ -2,7 +2,7 @@ import AppKit
 import CoreText
 import NeedlbarCore
 
-public enum MenuBarTextRole: Equatable {
+enum MenuBarTextRole: Equatable {
     case label
     case value
 }
@@ -47,12 +47,12 @@ enum MenuBarGlyphs {
     }
 }
 
-public struct MenuBarDashboardTwoLineLayout: Equatable {
-    public struct Run: Equatable {
-        public let text: String
-        public let role: MenuBarTextRole
-        public let baseline: CGPoint
-        public let inkRect: CGRect
+struct MenuBarDashboardTwoLineLayout: Equatable {
+    struct Run: Equatable {
+        let text: String
+        let role: MenuBarTextRole
+        let baseline: CGPoint
+        let inkRect: CGRect
 
         init(text: String, role: MenuBarTextRole, baseline: CGPoint, inkRect: CGRect) {
             self.text = text
@@ -65,11 +65,12 @@ public struct MenuBarDashboardTwoLineLayout: Equatable {
     static let chrome: CGFloat = 8
     private static let gap: CGFloat = 8
     private static let partGap: CGFloat = 3
+    private static let verticalBandGlyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789↑↓$%—+.,/"
 
-    public let size: CGSize
-    public let moduleIDs: [MonitorModuleID]
-    public let columnOrigins: [CGFloat]
-    public let runs: [Run]
+    let size: CGSize
+    let moduleIDs: [MonitorModuleID]
+    let columnOrigins: [CGFloat]
+    let runs: [Run]
 
     private init(size: CGSize, moduleIDs: [MonitorModuleID], columnOrigins: [CGFloat], runs: [Run]) {
         self.size = size
@@ -78,7 +79,7 @@ public struct MenuBarDashboardTwoLineLayout: Equatable {
         self.runs = runs
     }
 
-    @MainActor public static func fit(
+    @MainActor static func fit(
         segments: [MenuBarDashboardSegment],
         width: CGFloat,
         height: CGFloat,
@@ -209,7 +210,7 @@ public struct MenuBarDashboardTwoLineLayout: Equatable {
     }
 
     @MainActor private static func unionBounds(_ texts: [String], role: MenuBarTextRole) -> CGRect {
-        texts.reduce(CGRect.null) { partial, text in
+        texts.reduce(MenuBarGlyphs.bounds(verticalBandGlyphs, role: role)) { partial, text in
             let bounds = MenuBarGlyphs.bounds(text, role: role)
             return partial.isNull ? bounds : partial.union(bounds)
         }

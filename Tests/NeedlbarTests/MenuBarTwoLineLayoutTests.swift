@@ -17,6 +17,22 @@ struct MenuBarTwoLineLayoutTests {
         }
     }
 
+    @Test func sharedVerticalBandsKeepBaselinesStableAcrossDigitSuffixAndDescenderChanges() throws {
+        let digit = try #require(layout([
+            segment(.cpu, "CPU", "9%", samples: ["100%"])
+        ], width: 240, height: 24))
+        let suffix = try #require(layout([
+            segment(.cpu, "CPU", "9K", samples: ["100%"])
+        ], width: 240, height: 24))
+        let descender = try #require(layout([
+            segment(.cpu, "gy", "g", samples: ["100%"])
+        ], width: 240, height: 24))
+
+        #expect(baseline(for: .value, in: digit) == baseline(for: .value, in: suffix))
+        #expect(baseline(for: .value, in: suffix) == baseline(for: .value, in: descender))
+        #expect(baseline(for: .label, in: digit) == baseline(for: .label, in: descender))
+    }
+
     @Test func familyEnvelopesKeepStableLayout() throws {
         try assertFamily(["999", "999.99K", "999.99M", "999.99B", "—"], samples: ["999", "999.99K", "999.99M", "999.99B", "—"])
         try assertFamily(["$999,999.99", "$0.00", "$1,234.56", "—"], samples: ["$999,999.99", "—"])
@@ -99,5 +115,9 @@ struct MenuBarTwoLineLayoutTests {
 
     private func segment(_ id: MonitorModuleID, _ label: String, _ value: String, samples: [String], secondary: MenuBarDashboardValuePart? = nil, overflow: Int = 0, compact: String? = nil) -> MenuBarDashboardSegment {
         .init(id, label: label, primary: .init(value, samples: samples), secondary: secondary, providerOverflowCount: overflow, compactLabel: compact)
+    }
+
+    private func baseline(for role: MenuBarTextRole, in layout: MenuBarDashboardTwoLineLayout) -> CGFloat? {
+        layout.runs.first(where: { $0.role == role })?.baseline.y
     }
 }
