@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** Menu-bar readability Tasks 1–3 passed tests and independent spec/quality reviews; Task 4 full/package/smoke and current-host native verification is next. Fable implementation and current-host provider/value parity remain verified at the checkpoint below. Native short-display scrolling and native macOS 14 acceptance remain open/deferred as previously recorded.
-**Next action:** Execute Task 4 integration/current-host native verification and README update from `docs/superpowers/plans/2026-09-03-menubar-two-line-readability.md`, then whole-feature review. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
+**Current phase:** Menu-bar readability Tasks 1–3 are committed and reviewed; Task 4 automated gates pass, but current-host native acceptance is blocked by the macOS menu-bar camera-housing slot. Fable implementation and current-host provider/value parity remain verified at the checkpoint below. Native short-display scrolling and native macOS 14 acceptance remain open/deferred as previously recorded.
+**Next action:** Preserve the verified Task 4 blocker and wait for the user/system to hide or reorder enough unrelated menu extras to expose the Needlbar slot, then rerun native acceptance before updating README or completing the Task 4 plan. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
 
 ## Menu-bar implementation baseline — 2026-09-03
 
@@ -68,6 +68,47 @@ native package/relaunch evidence is not yet claimed. Independent spec and
 quality reviews passed with no remaining findings. The spec reviewer initially
 questioned appearance observation and injected dependencies, then withdrew both
 findings after checking the approved plan and local AppKit headers.
+
+## Menu-bar Task 4 — current-host native overflow blocker — 2026-09-03
+
+Tasks 1–3 are committed (`488ef94`, `da513fd`, and `cfee2d4`, with the
+measured-image follow-up recorded at `bcb8afa`); this section does not mark Task
+4 complete. The serial Task 4 automated gates passed: `make test` exited 0 with
+Swift 368 tests in 15 suites and the normal Rust, vendor, widget, package, and
+notarization contracts; `make package`, `make smoke`, and `git diff --check`
+also passed. The exact gate logs are
+`/Users/taejunoh/Developer/LFG/needlbar-menubar-native-qa-20260903/task4-full.log`,
+`task4-package.log`, and `task4-smoke.log`. A later diagnostic TDD experiment
+was reverted; it made no production-code change.
+
+Current-host native inspection did not establish the approved A-style
+two-line menu item. The renderer internally reported a valid cell with
+`image=(126,22)`, `button=(134,22)`, and requested length 134 points. Its
+screen rect was x=662..796 while the available left safe area ended at x=663
+and the right safe area began at x=848, leaving only one point in the left
+safe area; the remaining content was hidden by the camera housing. A forced
+22-point chart-bar icon reported x=774..796 and remained wholly within that
+camera-housing region. The explicit `isVisible` experiment did not expose the
+item and was reverted. These observations establish an overflow/order issue
+with no public placement API; they do not establish a renderer or value-format
+root cause.
+
+The throwaway diagnostics and sanitized captures are retained at
+`/Users/taejunoh/Developer/LFG/needlbar-menubar-native-qa-20260903/`, including
+`statusitem-diagnostics.log`, `statusitem-diagnostics-menu-strip.png`,
+`statusitem-force-icon.log`, `statusitem-force-icon-menu-strip-1.png`,
+`statusitem-force-icon-menu-strip-2.png`, and
+`statusitem-force-icon-menu-region.png`. All diagnostic source changes were
+reverted; no diagnostic instrumentation remains in the worktree. The exact
+public v0.2.2 Needlbar and `/Applications/Stats.app` were restored after each
+run; the final observed main-process identities were public PID 70515 and Stats
+PID 70512. The public app and widgets were left untouched by the diagnostics.
+
+Task 4 therefore remains `BLOCKED/PARTIAL`: README and the 2026-09-03 plan
+must not claim native A-style acceptance yet. The next continuation requires
+the user/system to hide or reorder enough unrelated menu extras, followed by
+a fresh two-capture native acceptance run. macOS 14 acceptance remains deferred;
+no push, merge, or release was performed.
 
 ## Menu-bar implementation plan — 2026-09-03
 
