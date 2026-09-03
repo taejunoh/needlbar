@@ -68,6 +68,15 @@ cause of the earlier stall. Task 0 remains open. Any one-off diagnostic that
 allows a Keychain prompt needs explicit user permission; this does not change
 the product's background authentication contract.
 
+After the user approved one exact-item diagnostic Keychain prompt, the
+production `UserInitiatedAllowUI` resolver returned the typed `expired` result
+after 4.868 seconds. No HTTP request or live semantic comparison occurred, and
+no dialog was reported. The one-shot authorization was consumed without retry
+or credential mutation. Provider-owned sign-in must refresh the expired
+credential before another bounded comparison can establish source semantics;
+this evidence does not close Task 0 or authorize implementing a new refresh
+flow in Needlbar.
+
 ## Source and normalization contract
 
 The quota adapter selects exactly one entry matching all of:

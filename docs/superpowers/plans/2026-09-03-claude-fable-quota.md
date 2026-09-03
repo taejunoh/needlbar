@@ -49,6 +49,10 @@ Current evidence: two earlier HTTP 200 responses established Fable identity and 
 
 Follow-up diagnostic evidence (2026-09-03): one authorized non-interactive attempt with flushed phase markers and a 20-second outer watchdog returned `credential_resolution=unavailable` after 6.849 seconds; it never reached HTTP. Synthetic tests prove actual timestamp equality (not merely format), exact-child termination, and final-output preservation. They do not close the live semantics gate. No retry or prompt occurred; the helper is recoverably in Trash. Explicit user permission for any diagnostic Keychain prompt has been requested but not granted. Do not run a prompt-capable diagnostic or implement Tasks 1–4 on this evidence alone.
 
+Subsequent authorization (2026-09-03): the user approved one diagnostic macOS Keychain prompt for the exact `Claude Code-credentials` item. A bounded `UserInitiatedAllowUI` diagnostic is now authorized as a narrow exception to the earlier no-prompt diagnostic restriction. The user must make the system permission choice; do not automate it or persist credentials. This changes neither product background behavior nor the requirement to corroborate source semantics before Tasks 1–4.
+
+Result of that one-shot authorization (2026-09-03): `UserInitiatedAllowUI` credential resolution returned `expired` after 4.868 seconds, before HTTP. No prompt was reported and no credential or HTTP body was printed or retained. The helper was returned to Trash without retry. That authorization is now consumed. Ask the user to complete provider-owned **Sign in with Claude** in Needlbar Settings; do not repeatedly request Keychain permission or silently refresh credentials. Task 0 stays unchecked until the renewed credential yields corroborating first-party semantics.
+
 ### Task 1: Protect existing headline and export projections
 
 **Files:** Task 1 row above. Add tests before implementation, using literal Fable IDs in RED tests so failure is behavioral rather than an undefined constant.

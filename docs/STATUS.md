@@ -3,7 +3,35 @@
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
 **Current phase:** The written Claude Fable design is approved and its implementation plan is written. Application implementation has not started: the source `percent`-meaning gate is still open. Release publication remains unauthorized, and native macOS 14 acceptance remains deferred.
-**Next action:** Task 0's bounded diagnostic now stops at `BackgroundNoUI` credential resolution before HTTP. Ask for explicit permission before any diagnostic Keychain prompt; none is authorized yet. With a permitted first-party response, corroborate `percent` semantics, then execute Task 1 (protect headline/export projections) and subsequent tasks in order. Do not infer remaining percentage, publish a release, or claim native macOS 14 acceptance.
+**Next action:** The one approved user-initiated diagnostic returned `expired` from Claude credential resolution before HTTP. Ask the user to refresh provider-owned authentication via Needlbar Settings → Sign in with Claude; do not repeat the permission request or silently initiate login/refresh. After the user completes sign-in, corroborate Task 0's `percent` semantics with a bounded request, then execute Tasks 1–4. Do not infer remaining percentage, publish a release, or claim native macOS 14 acceptance.
+
+## Claude Fable explicit-access diagnostic — 2026-09-03
+
+The user approved one exact-item Keychain read that could display macOS's
+permission prompt. The diagnostic reused the production resolver in
+`UserInitiatedAllowUI` mode, with a 90-second outer deadline to allow time for
+the user's system permission choice. It returned in 4.868 seconds:
+
+```text
+phase=parent_watchdog;status=user_initiated_started
+phase=credential_resolution;status=started;mode=user_initiated_allow_ui
+phase=credential_resolution;status=expired
+phase=parent_watchdog;status=child_exited;elapsed_ms=4868
+```
+
+This is a typed expired-credential result, not a generic unavailable result or
+proof that the user's account itself is signed out. No HTTP request, Fable
+value, reset value, or source-semantics comparison occurred. No permission
+dialog was reported, and no dialog choice was automated. The single-request
+authorization has been consumed; no retry, provider login/refresh, credential
+mutation, or app implementation was performed.
+
+The main agent reran synthetic percent/reset-identity and exact-child watchdog
+checks successfully. The helper was moved recoverably back to
+`/Users/taejunoh/.Trash/needlbar-fable-limits-probe-Y8R2N`.
+Task 0 remains blocked until provider-native authentication is refreshed and
+actual response semantics are corroborated. The next user action is **Sign in
+with Claude** in Needlbar Settings, not another diagnostic permission approval.
 
 ## Claude Fable bounded diagnostic checkpoint — 2026-09-03
 
@@ -38,6 +66,12 @@ was stopped. Task 0 remains open. Explicit user permission for a one-off
 diagnostic read of the exact `Claude Code-credentials` Keychain item with a
 macOS authorization prompt has been requested, not granted. No raw credential
 or HTTP body may be printed or retained if that permission is later granted.
+
+The user subsequently approved that one-off Keychain prompt on 2026-09-03.
+This approval is limited to the diagnostic's exact-item user-initiated read;
+it does not authorize automating the system permission choice, storing a
+credential, changing Keychain access policy, retrying a denied request, or
+changing Needlbar's background-authentication behavior.
 
 ## Claude Fable implementation-plan checkpoint — 2026-09-03
 
