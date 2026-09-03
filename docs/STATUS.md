@@ -2,8 +2,31 @@
 
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** Menu-bar readability design: the user approved visual A (small labels above bold values). Written spec is awaiting review; native implementation has not begun. Fable implementation and current-host provider/value parity remain verified at the checkpoint below. Native short-display scrolling and native macOS 14 acceptance remain open/deferred as previously recorded.
-**Next action:** Obtain written-spec review of `docs/superpowers/specs/2026-09-03-menubar-two-line-readability-design.md`, then write the implementation plan. Preserve this worktree/branch and existing Fable changes; push, merge, or publish only on the user's request. No new Fable implementation or authentication change is pending.
+**Current phase:** Menu-bar readability: visual A and written spec approved; four-task implementation plan written and self-reviewed. Native implementation has not begun. Fable implementation and current-host provider/value parity remain verified at the checkpoint below. Native short-display scrolling and native macOS 14 acceptance remain open/deferred as previously recorded.
+**Next action:** Execute the approved-spec plan at `docs/superpowers/plans/2026-09-03-menubar-two-line-readability.md`, starting with a fresh baseline and Task 1 raw display segments. Recommended handoff is the AGENTS-prescribed subagent workflow, one task at a time. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
+
+## Menu-bar implementation plan — 2026-09-03
+
+The four-task plan covers raw segments/legacy compatibility, measured native
+two-line layout and bitmap drawing, existing-button lifecycle integration,
+then full/current-host native verification and README documentation. Main-agent
+self-review corrected legacy-first fitting, provider/network overflow loss,
+font/baseline/scale assumptions, incomplete code examples, and geometry-loop
+risks before handoff. The plan preserves current metric/authentication behavior.
+
+Only spec/plan/STATUS documentation changed. Documentation whitespace and
+placeholder/type-reference checks were performed; proposed code was not compiled
+or installed. No fresh application test, native UI, CI, push, merge, or release
+result is claimed for this planning checkpoint. Execution starts with plain
+`make test`; earlier Fable results are separate historical evidence.
+
+## Menu-bar written-spec approval — 2026-09-03
+
+The user approved the written two-line specification after visual A selection.
+Planning retains one native button, presentation-only changes, measured
+geometry and stable finite value reservations, existing fallback semantics,
+and the prior provider/Fable boundaries. Code and native verification remain
+pending; the earlier Fable test evidence is not evidence for this new layout.
 
 ## Menu-bar two-line design — 2026-09-03
 

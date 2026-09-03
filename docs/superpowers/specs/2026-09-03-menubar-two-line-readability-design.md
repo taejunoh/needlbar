@@ -2,8 +2,8 @@
 
 **Date:** 2026-09-03
 
-**Status:** Visual direction A approved by the user (“A안 괜찮네”); written
-specification awaiting review before implementation planning.
+**Status:** Approved. The user selected visual direction A (“A안 괜찮네”)
+and subsequently approved this written specification (“승인”).
 
 ## Purpose and authority
 
