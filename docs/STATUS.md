@@ -2,8 +2,23 @@
 
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** Fable source normalization, separate Remaining/reset presentation, and downstream compatibility tests are implemented and reviewed. Final plain `make test` exited 0. Current-host native provider/value parity and display preferences are verified. Native short-display scrolling is the one open Task 4 observation; native macOS 14 acceptance remains deferred.
-**Next action:** Hand off the verified development build and preserve `codex/claude-fable-quota`; push, merge, or publish only on the user's request. The open observation in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md` is native short-screen scrolling (automated 400-point coverage passed). No further Fable implementation or authentication change is pending.
+**Current phase:** Menu-bar readability design: the user approved visual A (small labels above bold values). Written spec is awaiting review; native implementation has not begun. Fable implementation and current-host provider/value parity remain verified at the checkpoint below. Native short-display scrolling and native macOS 14 acceptance remain open/deferred as previously recorded.
+**Next action:** Obtain written-spec review of `docs/superpowers/specs/2026-09-03-menubar-two-line-readability-design.md`, then write the implementation plan. Preserve this worktree/branch and existing Fable changes; push, merge, or publish only on the user's request. No new Fable implementation or authentication change is pending.
+
+## Menu-bar two-line design — 2026-09-03
+
+The user compared Needlbar's single-line menu title with Stats and approved
+visual option A: small labels above prominent numbers, stable value slots,
+spacing instead of dot separators, and an explicit Claude label. The written
+spec preserves one status item, configured selection/order, the existing
+240-point ceiling and narrow-space fallback, metric/freshness semantics, and
+Fable's exact headline exclusion. Native drawing is planned on the existing
+button so clicking, accessibility, tooltip, and panel anchoring stay intact.
+
+Only documentation changed at this checkpoint. The local browser comparison
+contains synthetic values and is not native acceptance evidence. Application
+code, preferences, running apps, authentication, builds, and test results were
+not changed by this design step. Review/implementation planning is next.
 
 ## Claude Fable Task 4 — downstream and native evidence — 2026-09-03
 
