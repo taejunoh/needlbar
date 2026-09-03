@@ -93,6 +93,8 @@ import Testing
 
     #expect(after.title == before.title)
     #expect(after.tooltip == before.tooltip)
+    #expect(after.segments == before.segments)
+    #expect(after.textCandidates == before.textCandidates)
 }
 
 @Test func rendererUsesBillionsAndOverflowForLargeProviderValues() {
@@ -182,6 +184,76 @@ import Testing
 
     #expect(value.title.contains("AI CL —"))
     #expect(!value.title.contains("1.42M"))
+}
+
+@Test func typedSegmentsPreserveValuesAndProviderOverflow() {
+    let r = MenuBarDashboardRenderer.render(
+        snapshot: fixtureCombinedSnapshot(),
+        configuration: fixtureMonitorConfiguration(),
+        availableWidth: 240
+    )
+
+    #expect(r.segments.map(\.moduleID) == [.cpu, .memory, .ai])
+    #expect(r.segments.map(\.label) == ["CPU", "RAM", "Claude"])
+    #expect(r.segments.map(\.primary.text) == ["24%", "80%", "32%"])
+    #expect(r.segments[2].providerOverflowCount == 2)
+    #expect(r.tooltip.contains("AI Claude 32%"))
+    #expect(r.textCandidates.contains(r.title))
+}
+
+@Test func rawNetworkPartsSurviveLegacyWidthFailure() {
+    var c = fixtureMonitorConfiguration()
+    c.visibleModules = [.network]
+    let r = MenuBarDashboardRenderer.render(
+        snapshot: fixtureCombinedSnapshot(), configuration: c, availableWidth: 1
+    )
+
+    #expect(r.usesIconFallback)
+    #expect(r.segments[0].primary.text == "↑1K")
+    #expect(r.segments[0].secondary?.text == "↓2K")
+    #expect(r.segments[0].primary.widthSamples == ["↑999B", "↑999.9K", "↑999.9M", "↑999.9G", "↑—"])
+}
+
+@Test func unknownProviderRetainsItsSelectedFamily() {
+    for metric in [AIProviderDisplayMetric.remaining, .usage, .cost, .connectionStatus] {
+        var c = fixtureMonitorConfiguration()
+        c.visibleModules = [.ai]
+        c.ai[.claude] = .init(metric: metric)
+        let fresh = MenuBarDashboardRenderer.render(
+            snapshot: fixtureCombinedSnapshot(), configuration: c, availableWidth: 240
+        )
+        let empty = CombinedUsageSnapshot(
+            system: nil, providers: [], capturedAt: .distantPast, systemAvailability: [:]
+        )
+        let missing = MenuBarDashboardRenderer.render(
+            snapshot: empty, configuration: c, availableWidth: 240
+        )
+
+        #expect(fresh.segments[0].primary.widthSamples == missing.segments[0].primary.widthSamples)
+        #expect(missing.segments[0].primary.text == "—")
+        #expect(missing.segments[0].label == "Claude")
+    }
+}
+
+@Test func staleLastKnownGoodKeepsTheSameSegments() {
+    let base = fixtureCombinedSnapshot()
+    let providers = base.providers.map { p in
+        ProviderSnapshot(
+            provider: p.provider, usage: p.usage, quota: p.quota,
+            usageStatus: .stale(lastSuccessfulAt: base.capturedAt),
+            quotaStatus: .stale(lastSuccessfulAt: base.capturedAt), updatedAt: p.updatedAt
+        )
+    }
+    let stale = CombinedUsageSnapshot(
+        system: base.system, providers: providers,
+        capturedAt: base.capturedAt, systemAvailability: base.systemAvailability
+    )
+    let c = fixtureMonitorConfiguration()
+
+    #expect(
+        MenuBarDashboardRenderer.render(snapshot: base, configuration: c, availableWidth: 240).segments
+            == MenuBarDashboardRenderer.render(snapshot: stale, configuration: c, availableWidth: 240).segments
+    )
 }
 
 private func fixtureMonitorConfiguration() -> SystemMonitorConfiguration {

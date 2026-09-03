@@ -2,6 +2,41 @@ import AppKit
 import Foundation
 import NeedlbarCore
 
+public struct MenuBarDashboardValuePart: Equatable, Sendable {
+    public let text: String
+    public let widthSamples: [String]
+
+    public init(_ text: String, samples: [String]) {
+        self.text = text
+        self.widthSamples = samples
+    }
+}
+
+public struct MenuBarDashboardSegment: Equatable, Sendable {
+    public let moduleID: MonitorModuleID
+    public let label: String
+    public let compactLabel: String
+    public let primary: MenuBarDashboardValuePart
+    public let secondary: MenuBarDashboardValuePart?
+    public let providerOverflowCount: Int
+
+    public init(
+        _ moduleID: MonitorModuleID,
+        label: String,
+        primary: MenuBarDashboardValuePart,
+        secondary: MenuBarDashboardValuePart? = nil,
+        providerOverflowCount: Int = 0,
+        compactLabel: String? = nil
+    ) {
+        self.moduleID = moduleID
+        self.label = label
+        self.primary = primary
+        self.secondary = secondary
+        self.providerOverflowCount = providerOverflowCount
+        self.compactLabel = compactLabel ?? label
+    }
+}
+
 public struct MenuBarDashboardRenderResult: Equatable, Sendable {
     public enum Layout: Equatable, Sendable {
         case expanded
@@ -18,6 +53,8 @@ public struct MenuBarDashboardRenderResult: Equatable, Sendable {
     public let tooltip: String
     /// True when the available width can only accommodate the menu-bar icon.
     public let usesIconFallback: Bool
+    public let segments: [MenuBarDashboardSegment]
+    public let textCandidates: [String]
 
     public init(
         layout: Layout,
@@ -25,7 +62,9 @@ public struct MenuBarDashboardRenderResult: Equatable, Sendable {
         moduleIDs: [MonitorModuleID],
         configuredModuleIDs: [MonitorModuleID]? = nil,
         tooltip: String? = nil,
-        usesIconFallback: Bool = false
+        usesIconFallback: Bool = false,
+        segments: [MenuBarDashboardSegment] = [],
+        textCandidates: [String] = []
     ) {
         self.layout = layout
         self.title = title
@@ -33,6 +72,8 @@ public struct MenuBarDashboardRenderResult: Equatable, Sendable {
         self.configuredModuleIDs = configuredModuleIDs ?? moduleIDs
         self.tooltip = tooltip ?? title
         self.usesIconFallback = usesIconFallback
+        self.segments = segments
+        self.textCandidates = textCandidates
     }
 }
 
@@ -70,8 +111,124 @@ public enum MenuBarDashboardRenderer {
             moduleIDs: fitted.moduleIDs,
             configuredModuleIDs: configuredModuleIDs,
             tooltip: tooltip,
-            usesIconFallback: fitted.usesIconFallback
+            usesIconFallback: fitted.usesIconFallback,
+            segments: configuredModuleIDs.map {
+                segment($0, snapshot: snapshot, configuration: configuration)
+            },
+            textCandidates: textCandidates(
+                configuredModuleIDs, snapshot: snapshot, configuration: configuration
+            )
         )
+    }
+
+    private static let percentSamples = ["100%", "—"]
+
+    private static func segment(
+        _ id: MonitorModuleID,
+        snapshot: CombinedUsageSnapshot,
+        configuration: SystemMonitorConfiguration
+    ) -> MenuBarDashboardSegment {
+        switch id {
+        case .cpu:
+            return .init(
+                id,
+                label: "CPU",
+                primary: .init(percentage(snapshot.system?.cpu.totalUsage), samples: percentSamples)
+            )
+        case .memory:
+            let memory = snapshot.system?.memory
+            return .init(
+                id,
+                label: "RAM",
+                primary: .init(
+                    percentage(used: memory?.usedBytes, free: memory?.freeBytes),
+                    samples: percentSamples
+                )
+            )
+        case .disk:
+            let disk = snapshot.system?.disks.first
+            return .init(
+                id,
+                label: "Disk",
+                primary: .init(
+                    percentage(used: disk?.usedBytes, free: disk?.freeBytes),
+                    samples: percentSamples
+                ),
+                compactLabel: "DSK"
+            )
+        case .network:
+            let rates = ["999B", "999.9K", "999.9M", "999.9G", "—"]
+            return .init(
+                id,
+                label: "NET",
+                primary: .init(
+                    "↑" + compactTransfer(snapshot.system?.network.uploadBytesPerSecond),
+                    samples: rates.map { "↑" + $0 }
+                ),
+                secondary: .init(
+                    "↓" + compactTransfer(snapshot.system?.network.downloadBytesPerSecond),
+                    samples: rates.map { "↓" + $0 }
+                )
+            )
+        case .battery:
+            return .init(
+                id,
+                label: "BAT",
+                primary: .init(percentage(snapshot.system?.battery.level), samples: percentSamples)
+            )
+        case .ai:
+            let providers = configuration.aiOrder.filter {
+                configuration.ai[$0]?.isVisible ?? true
+            }
+            guard let provider = providers.first else {
+                return .init(id, label: "AI", primary: .init("—", samples: percentSamples))
+            }
+
+            let preference = configuration.ai[provider] ?? AIProviderDisplayPreference()
+            let samples: [String]
+            switch preference.metric {
+            case .remaining:
+                samples = percentSamples
+            case .usage:
+                samples = ["999", "999.99K", "999.99M", "999.99B", "—"]
+            case .cost:
+                samples = ["$999,999.99", "—"]
+            case .connectionStatus:
+                samples = ["Connected", "Unavailable", "Sign in", "Stale", "Error", "—"]
+            }
+            return .init(
+                id,
+                label: providerLabel(provider),
+                primary: .init(
+                    providerValue(
+                        preference.metric,
+                        snapshot: snapshot.providers.first { $0.provider == provider }
+                    ),
+                    samples: samples
+                ),
+                providerOverflowCount: max(0, providers.count - 1),
+                compactLabel: compactProviderLabel(provider)
+            )
+        }
+    }
+
+    private static func textCandidates(
+        _ ids: [MonitorModuleID],
+        snapshot: CombinedUsageSnapshot,
+        configuration: SystemMonitorConfiguration
+    ) -> [String] {
+        guard !ids.isEmpty else { return [] }
+        return stride(from: min(3, ids.count), through: 1, by: -1).flatMap { count in
+            [MenuBarDashboardRenderResult.Layout.compact, .expanded].map { layout in
+                title(
+                    modules: Array(ids.prefix(count)),
+                    omittedCount: ids.count - count,
+                    snapshot: snapshot,
+                    configuration: configuration,
+                    layout: layout
+                )
+            }
+        }
     }
 
     private static func fit(
