@@ -84,6 +84,14 @@ Settings also lets each Claude, Codex, and Cursor row be shown or hidden,
 reordered, and set to display usage, remaining quota, cost, or connection
 status. Existing provider refresh and browser-login ownership is unchanged.
 
+### Settings (v0.3 development build)
+
+<img src="docs/images/settings-modules.png" alt="Needlbar Settings showing module visibility and local and public IP controls" width="360" />
+
+<img src="docs/images/settings-providers.png" alt="Needlbar Settings showing provider visibility, Remaining pickers, and provider actions" width="360" />
+
+*Same development Settings window at upper and lower scroll positions; current settings were inspected without changes. Provider rows show Remaining, and local/public IP remain off.*
+
 ### Local snapshot export
 
 Settings includes **Export snapshot…**, a user-initiated JSON export of the current normalized provider snapshot. It does not refresh, authenticate, access Keychain, or upload data. The export contains only the approved normalized usage, quota, freshness, and safe status fields; it excludes credentials, account identifiers, raw paths/responses, prompts, assistant responses, source code, and raw diagnostics.
