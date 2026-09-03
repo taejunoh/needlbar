@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** Menu-bar readability Tasks 1–3 are committed and reviewed; Task 4 automated gates pass, but current-host native acceptance is blocked by the macOS menu-bar camera-housing slot. Fable implementation and current-host provider/value parity remain verified at the checkpoint below. Native short-display scrolling and native macOS 14 acceptance remain open/deferred as previously recorded.
-**Next action:** Preserve the verified Task 4 blocker and wait for the user/system to hide or reorder enough unrelated menu extras to expose the Needlbar slot, then rerun native acceptance before updating README or completing the Task 4 plan. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
+**Current phase:** System-dashboard readability Tasks 1–3 are committed and reviewed; Task 4 automated gates and bounded current-host native evidence are complete, with the documentation checkpoint recorded below. Bright-shell, aligned-value, live-update, fixed-header/footer, normal-`Fresh` suppression, Claude/Fable, and outside-click observations are recorded; native dark mode, short-height, tooltip/accessibility, provider/action, and forced failure-state observations remain explicitly unobserved. Native macOS 14 acceptance remains deferred.
+**Next action:** Preserve the verified implementation and documented native limitations. A future maintainer may repeat the unobserved native checks on a suitable host; do not infer them from automated tests. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
 
 ## Menu-bar implementation baseline — 2026-09-03
 
@@ -69,7 +69,7 @@ quality reviews passed with no remaining findings. The spec reviewer initially
 questioned appearance observation and injected dependencies, then withdrew both
 findings after checking the approved plan and local AppKit headers.
 
-## Menu-bar Task 4 — current-host native overflow blocker — 2026-09-03
+## System-dashboard readability Task 4 — earlier current-host native overflow blocker — 2026-09-03
 
 Tasks 1–3 are committed (`488ef94`, `da513fd`, and `cfee2d4`, with the
 measured-image follow-up recorded at `bcb8afa`); this section does not mark Task
@@ -104,10 +104,49 @@ public v0.2.2 Needlbar and `/Applications/Stats.app` were restored after each
 run; the final observed main-process identities were public PID 70515 and Stats
 PID 70512. The public app and widgets were left untouched by the diagnostics.
 
-Task 4 therefore remains `BLOCKED/PARTIAL`: README and the 2026-09-03 plan
-must not claim native A-style acceptance yet. The next continuation requires
-the user/system to hide or reorder enough unrelated menu extras, followed by
-a fresh two-capture native acceptance run. macOS 14 acceptance remains deferred;
+At that earlier checkpoint Task 4 therefore remained `BLOCKED/PARTIAL`:
+README and the 2026-09-03 plan could not claim native A-style acceptance yet.
+The later bounded evidence and explicit unobserved limitations are recorded in
+the documentation checkpoint below. macOS 14 acceptance remains deferred; no
+push, merge, or release was performed.
+
+## System-dashboard readability Task 4 — verified documentation checkpoint — 2026-09-03
+
+Tasks 1–3 are implemented and committed as `e5f021a`, `719a405`, and
+`5223e93`; independent scoped reviews found no actionable findings. The final
+automated checkpoint ran serially from this worktree with Cargo sourced before
+each Make command. Focused Swift passed with exit 0 (`210 tests` in 11 suites),
+the acceptance fixture suite passed with exit 0 (`9 tests` in 1 suite), and
+`make test` passed with exit 0: Rust/vendor reported `1530 passed`, `0 failed`,
+`1 ignored`, Swift reported `377 tests` in 15 suites, and the widget, package,
+and notarization contracts passed. `make package`, `make smoke`, and
+`git diff --check` each exited 0. Exact outputs and exit records are retained
+under `/Users/taejunoh/Developer/LFG/needlbar-dashboard-readability-task4/`.
+The focused and acceptance logs include the legacy XCTest compatibility
+summary of zero tests; the Swift Testing summaries above are the nonzero test
+counts used for this gate. The current full-run warning counts match the fresh
+baseline exactly: 524 total, including 434 macOS 26.5-object/macOS 14-link
+warnings and the existing Swift warnings.
+
+The exact development executable inspected was PID `31354` at
+`/Users/taejunoh/Developer/LFG/needlbar/.worktrees/integration-main.d16P79/dist/Needlbar.app/Contents/MacOS/Needlbar`.
+The sanitized identity was recorded separately with bundle identifier
+`com.taejunoh.needlbar`, version/build `0.2.2 (2)`, and the executable SHA-256.
+The stable sanitized native capture is
+`/Users/taejunoh/Developer/LFG/needlbar-dashboard-readability-task4/native-live-private-stable.png`
+at 360×680 points. It showed the bright high-contrast adaptive shell, aligned
+semibold monospaced values, stable live values, fixed header/footer, a scroll
+body, no normal `Fresh` label, and the Claude/Fable rows in the earlier safe
+capture. Outside-click dismissal was confirmed by clicking Chrome; the
+development process remained running and did not appear in the CG on-screen-only
+window list afterward. The public v0.2.2 app and widgets remained untouched.
+
+This is bounded partial native evidence, not complete native acceptance.
+Native dark mode, a 360×400 short screen, tooltip and accessibility completion,
+Settings/Analytics/provider actions, and forced stale, error, or authentication
+states were not observed and are not inferred from automated tests. Native
+macOS 14 acceptance remains deferred. No credentials, account identifiers, IP
+addresses, raw provider payloads, or full-desktop screenshots were recorded;
 no push, merge, or release was performed.
 
 ## Menu-bar implementation plan — 2026-09-03

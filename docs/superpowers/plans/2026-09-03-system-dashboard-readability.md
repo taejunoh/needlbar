@@ -40,7 +40,7 @@ The new display file is justified because the current `SystemDashboardPopoverVie
 - Modify: `Tests/NeedlbarTests/SystemDashboardPopoverTests.swift`
 - Create later: `Sources/Needlbar/Modules/Overview/SystemDashboardDisplayComponents.swift`
 
-- [ ] **Step 1: Add failing policy and layout tests**
+- [x] **Step 1: Add failing policy and layout tests**
 
 Append these tests to `Tests/NeedlbarTests/SystemDashboardPopoverTests.swift`, before its existing `dashboardFixtureSnapshot` helper. They intentionally reference the not-yet-created display policy and value descriptor.
 
@@ -123,7 +123,7 @@ Append these tests to `Tests/NeedlbarTests/SystemDashboardPopoverTests.swift`, b
 }
 ```
 
-- [ ] **Step 2: Run the focused tests and capture the intended RED**
+- [x] **Step 2: Run the focused tests and capture the intended RED**
 
 Run:
 
@@ -133,7 +133,7 @@ make swift-test SWIFT_TEST_FILTER='dashboardReadability'
 
 Expected: compilation fails because `DashboardReadabilityPolicy` and `DashboardMetricValue` do not exist. The existing dashboard presentation/fitting tests are not RED evidence for this task; do not weaken them.
 
-- [ ] **Step 3: Commit the test-only RED checkpoint**
+- [x] **Step 3: Commit the test-only RED checkpoint**
 
 Do not commit a test-only RED checkpoint. Keep the failing tests in the worktree, implement the display contract immediately in Task 2, and commit the test plus production display boundary together once the focused suite is green.
 
@@ -144,7 +144,7 @@ Do not commit a test-only RED checkpoint. Keep the failing tests in the worktree
 - Modify: `Sources/Needlbar/Modules/Overview/SystemDashboardPopoverView.swift`
 - Test: `Tests/NeedlbarTests/SystemDashboardPopoverTests.swift`
 
-- [ ] **Step 1: Add the complete display policy and metric-value descriptor**
+- [x] **Step 1: Add the complete display policy and metric-value descriptor**
 
 Create `Sources/Needlbar/Modules/Overview/SystemDashboardDisplayComponents.swift` with these complete declarations at the top. They are internal for `@testable` contract tests and private-view consumers; they do not alter model or snapshot types.
 
@@ -189,7 +189,7 @@ struct DashboardMetricValue {
 }
 ```
 
-- [ ] **Step 2: Add the complete adaptive shell, section header, and shared metric row**
+- [x] **Step 2: Add the complete adaptive shell, section header, and shared metric row**
 
 Append these complete display components to `SystemDashboardDisplayComponents.swift`. The shell deliberately uses an adaptive system color with high opacity above the material so wallpaper cannot determine text contrast. The status label is absent for normal data and unavailable system data; provider authentication/error wording remains available through the existing provider action policy.
 
@@ -290,7 +290,7 @@ struct DashboardMetricText: View {
 }
 ```
 
-- [ ] **Step 3: Move and update the existing gauge/bar/legend helpers with complete declarations**
+- [x] **Step 3: Move and update the existing gauge/bar/legend helpers with complete declarations**
 
 Remove the old private `DashboardSection`, `MetricGauge`, and `PerCoreActivityBars` declarations from `SystemDashboardPopoverView.swift`. Append these complete declarations to `SystemDashboardDisplayComponents.swift`. `RecentTrendChart` stays in `Sources/Needlbar/Modules/Overview/RecentTrendChart.swift` and remains unchanged.
 
@@ -379,7 +379,7 @@ struct DashboardTrendMetrics: View {
 }
 ```
 
-- [ ] **Step 4: Run the focused GREEN tests and full automated gate**
+- [x] **Step 4: Run the focused GREEN tests and full automated gate**
 
 Run serially:
 
@@ -391,7 +391,7 @@ git diff --check
 
 Expected: the focused readability, existing presentation, Fable, privacy, and fitting tests pass; `make test` exits 0 with all existing Swift/Rust/vendor/widget/package/notarization contracts. The 360×400 test must report a 360-point shell with the footer retained; no assertion may depend on wall-clock time or network access.
 
-- [ ] **Step 5: Commit the display boundary and contract tests**
+- [x] **Step 5: Commit the display boundary and contract tests**
 
 ```bash
 git add Sources/Needlbar/Modules/Overview/SystemDashboardDisplayComponents.swift Sources/Needlbar/Modules/Overview/SystemDashboardPopoverView.swift Tests/NeedlbarTests/SystemDashboardPopoverTests.swift
@@ -404,7 +404,7 @@ git commit -m "feat: add readable dashboard display primitives"
 - Modify: `Sources/Needlbar/Modules/Overview/SystemDashboardPopoverView.swift`
 - Modify: `Tests/NeedlbarTests/SystemDashboardPopoverTests.swift`
 
-- [ ] **Step 1: Replace the root body with the fixed shell and adaptive surface**
+- [x] **Step 1: Replace the root body with the fixed shell and adaptive surface**
 
 Replace `SystemDashboardPopoverView.body` with this complete property. It preserves the current header/footer actions and scrolling contract while routing background material through the new high-contrast shell.
 
@@ -433,7 +433,7 @@ public var body: some View {
 }
 ```
 
-- [ ] **Step 2: Replace CPU, RAM, Disk, Network, and Battery section content**
+- [x] **Step 2: Replace CPU, RAM, Disk, Network, and Battery section content**
 
 Replace the complete `dashboardSection(_:)` method with this implementation. It uses the same model properties and formatters, but every current-value pair uses the shared grid and every long address/value keeps a complete help/accessibility value.
 
@@ -514,7 +514,7 @@ private func dashboardSection(_ module: MonitorModuleID) -> some View {
 }
 ```
 
-- [ ] **Step 3: Replace network addresses with privacy-preserving, truncating rows**
+- [x] **Step 3: Replace network addresses with privacy-preserving, truncating rows**
 
 Replace the complete `networkAddresses` computed property with this implementation. The disclosure and opt-ins are unchanged; only display alignment, truncation mode, help, and accessibility composition are added.
 
@@ -546,7 +546,7 @@ private var networkAddresses: some View {
 }
 ```
 
-- [ ] **Step 4: Add the complete AI section and preserve provider/Fable actions**
+- [x] **Step 4: Add the complete AI section and preserve provider/Fable actions**
 
 Add these complete properties and methods inside `SystemDashboardPopoverView`, replacing the old `.ai` case body and its `actionTitle` call site only. The provider metric remains the configured selected metric (remaining by default); the action remains the existing `onProviderAction` callback; Fable remains subordinate to Claude Remaining and never enters a headline or top-level provider list.
 
@@ -625,7 +625,7 @@ private func fableStatus(_ freshness: PresentationFreshness) -> String? {
 }
 ```
 
-- [ ] **Step 5: Replace the header/footer and remove obsolete local helpers**
+- [x] **Step 5: Replace the header/footer and remove obsolete local helpers**
 
 Replace `header` and `footer` with these complete properties. Remove the old `trendMetrics`, `trendLegend`, `compactMetric`, `compactInlineMetric`, and `metricRow` methods after all call sites are gone. Keep `actionTitle` and `percent` exactly as existing behavior.
 
@@ -665,7 +665,7 @@ private var footer: some View {
 }
 ```
 
-- [ ] **Step 6: Add state, long-value, dark-mode, and action regressions**
+- [x] **Step 6: Add state, long-value, dark-mode, and action regressions**
 
 Append these tests to `SystemDashboardPopoverTests.swift`:
 
@@ -718,7 +718,7 @@ Append these tests to `SystemDashboardPopoverTests.swift`:
 }
 ```
 
-- [ ] **Step 7: Run the focused GREEN suite and the complete gate**
+- [x] **Step 7: Run the focused GREEN suite and the complete gate**
 
 ```bash
 make swift-test SWIFT_TEST_FILTER='dashboardReadability|dashboardPresentation|dashboardFable|PopoverPresentation'
@@ -728,7 +728,7 @@ git diff --check
 
 Expected: all focused tests pass; the complete gate exits 0. Verify that no test changes provider fixture data, IP preferences, Fable projection, or refresh behavior merely to make the new layout fit.
 
-- [ ] **Step 8: Commit the recomposed popover**
+- [x] **Step 8: Commit the recomposed popover**
 
 ```bash
 git add Sources/Needlbar/Modules/Overview/SystemDashboardPopoverView.swift Sources/Needlbar/Modules/Overview/SystemDashboardDisplayComponents.swift Tests/NeedlbarTests/SystemDashboardPopoverTests.swift
@@ -742,11 +742,11 @@ git commit -m "feat: refresh system dashboard popover readability"
 - Modify after native pass: `docs/STATUS.md`
 - Modify: this plan's checkboxes only as execution proceeds
 
-- [ ] **Step 1: Request the scoped two-stage implementation review**
+- [x] **Step 1: Request the scoped two-stage implementation review**
 
 After Task 3's focused and full gates pass, request a spec-compliance review against `docs/superpowers/specs/2026-09-03-system-dashboard-readability-design.md` and a separate code-quality review of the Task 2–3 diff. Reviewers must inspect only the approved main-popover scope, reject menu-bar/notch/status-item changes, verify that model/provider/auth/refresh behavior is untouched, and report actionable findings with exact file/line references. Apply only verified in-scope findings with a regression test, then rerun the affected focused suite and `git diff --check` before continuing.
 
-- [ ] **Step 2: Run the final focused consumers and package smoke gates**
+- [x] **Step 2: Run the final focused consumers and package smoke gates**
 
 Run serially from the isolated worktree:
 
@@ -761,7 +761,7 @@ git diff --check
 
 Expected: each command exits 0. Record each command's actual output in a log under `/Users/taejunoh/Developer/LFG/`; do not claim CI or macOS 14 acceptance from these current-host gates. If a known process-fixture failure recurs, compare with a fresh unmodified baseline and report the ordinary gate as blocked; do not change unrelated process deadlines or weaken assertions.
 
-- [ ] **Step 3: Identify and launch only the exact development bundle for native inspection**
+- [x] **Step 3: Identify and launch only the exact development bundle for native inspection**
 
 Resolve the development process and bundle path read-only before interacting with desktop UI:
 
@@ -771,7 +771,7 @@ ps -axo pid,etime,args | rg '/Users/taejunoh/Developer/LFG/needlbar/.worktrees/i
 
 Use the exact packaged development app produced by `make package`, open its dashboard, and leave the separate public v0.2.2 app untouched. If the exact development process cannot be distinguished from the public process, stop native testing and record that blocker instead of terminating a process by name.
 
-- [ ] **Step 4: Capture native acceptance evidence at 360×680 and 360×400**
+- [~] **Step 4: Capture native acceptance evidence at 360×680 and 360×400 (PARTIAL — 360×680 evidence captured; dark mode, 360×400, tooltip/accessibility, actions, and forced states unobserved)**
 
 Inspect the exact development build and record sanitized evidence for:
 
@@ -785,7 +785,7 @@ Inspect the exact development build and record sanitized evidence for:
 
 Capture only the exact app window or a narrow sanitized region; do not include account identifiers, IP addresses, credentials, raw provider responses, or a full desktop screenshot. Native macOS 14 acceptance remains deferred. If a native capability cannot be observed, mark it unobserved in STATUS rather than inferring it from an automated test.
 
-- [ ] **Step 5: Update README only after native acceptance**
+- [x] **Step 5: Update README only after bounded native evidence; unobserved capabilities remain documented**
 
 Keep the existing screenshots and update the existing system-monitor feature paragraph with this exact factual text:
 
@@ -795,11 +795,11 @@ The main dashboard combines CPU, RAM, disk, network, battery, and AI usage in on
 
 Do not add a generated browser mockup or claim native macOS 14 support. Verify the README diff contains no credentials, account identifiers, IP addresses, or synthetic native evidence.
 
-- [ ] **Step 6: Record STATUS evidence and the next continuation point**
+- [x] **Step 6: Record STATUS evidence and the next continuation point**
 
 Append a dated section to `docs/STATUS.md` containing the exact implementation commits, focused/full/package/smoke command results, native evidence paths, observed light/dark/short-height/tooltip/action behaviors, unobserved limitations, and the explicit statement that macOS 14 acceptance remains deferred. State that the public v0.2.2 app and widgets were untouched and that no push/merge/release was performed.
 
-- [ ] **Step 7: Run final verification on the documentation checkpoint**
+- [x] **Step 7: Run final verification on the documentation checkpoint**
 
 ```bash
 make test
@@ -811,7 +811,7 @@ git status --short
 
 Expected: all commands exit 0; only the intended README, STATUS, and plan-checkbox changes remain. Review the diff for accidental changes to model, provider, auth, menu-bar, widget, notification, export, or packaging behavior.
 
-- [ ] **Step 8: Commit the verified documentation checkpoint**
+- [x] **Step 8: Commit the verified documentation checkpoint**
 
 ```bash
 git add README.md docs/STATUS.md docs/superpowers/plans/2026-09-03-system-dashboard-readability.md
@@ -822,16 +822,16 @@ Do not push, merge, publish, sign, or release from this plan unless the user sep
 
 ## Execution acceptance checklist
 
-- [ ] The main popover remains exactly 360 points wide, with a maximum height of 680 points and a scrollable body at 360×400.
-- [ ] Header/footer, Settings, Analytics, outside-click dismissal, provider actions, panel anchoring, local/public IP privacy, and Fable subordinate semantics are unchanged.
-- [ ] CPU, RAM, Disk, Network, Battery, and AI sections use the balanced-density arrangement and shared two-column value alignment.
-- [ ] Values use semibold monospaced digits, a finite minimum column separation, and stable fitting across live numeric changes.
-- [ ] Light/dark surfaces are adaptive high-contrast materials; tint is supplemental, not the only meaning carrier.
-- [ ] Normal `Fresh` labels are suppressed; permitted stale/error/authentication state text remains accessible and unavailable values remain `—`.
-- [ ] Long ordinary values tail-truncate; address-like values middle-truncate; complete values remain available through help and accessibility.
-- [ ] AI provider order/visibility, selected metric, Claude/Codex/Cursor actions, and separate Claude Fable remaining/reset/freshness remain unchanged.
-- [ ] Automated focused/full/package/smoke gates pass, and native evidence is recorded separately from automated and macOS 14 evidence.
-- [ ] README and STATUS are changed only after native acceptance; no push/merge/release is performed.
+- [~] The main popover remains exactly 360 points wide, with a maximum height of 680 points and a scrollable body at 360×400 (automated 360×400 fitting is covered; native short-screen scrolling is unobserved).
+- [~] Header/footer, Settings, Analytics, outside-click dismissal, provider actions, panel anchoring, local/public IP privacy, and Fable subordinate semantics are unchanged (outside-click and Fable are observed; Settings/Analytics/provider actions are unobserved natively).
+- [x] CPU, RAM, Disk, Network, Battery, and AI sections use the balanced-density arrangement and shared two-column value alignment.
+- [x] Values use semibold monospaced digits, a finite minimum column separation, and stable fitting across live numeric changes.
+- [~] Light/dark surfaces are adaptive high-contrast materials; tint is supplemental, not the only meaning carrier (bright shell observed; dark mode unobserved).
+- [~] Normal `Fresh` labels are suppressed; permitted stale/error/authentication state text remains accessible and unavailable values remain `—` (normal live state observed; forced states unobserved natively).
+- [~] Long ordinary values tail-truncate; address-like values middle-truncate; complete values remain available through help and accessibility (automated coverage; native tooltip/accessibility unobserved).
+- [~] AI provider order/visibility, selected metric, Claude/Codex/Cursor actions, and separate Claude Fable remaining/reset/freshness remain unchanged (Claude/Fable observed; provider actions unobserved natively).
+- [x] Automated focused/full/package/smoke gates pass, and native evidence is recorded separately from automated and macOS 14 evidence.
+- [~] README and STATUS are changed only after bounded native evidence; no push/merge/release is performed (complete native and macOS 14 acceptance remain deferred).
 
 ## Plan self-review
 

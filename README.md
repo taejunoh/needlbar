@@ -43,11 +43,7 @@ Settings controls visible modules and title metrics. Claude and Codex expose pro
 
 ### System monitor (v0.3 development build)
 
-The development build combines CPU, RAM, disk, network, battery, and AI usage
-in one menu-bar item. New configurations show CPU, RAM, and AI; saved selections
-and order are preserved. Titles are measured with the menu font and fit at most
-three summaries within a conservative width budget, with an overflow indicator
-and full tooltip. Settings includes a compact-defaults action.
+The main dashboard combines CPU, RAM, disk, network, battery, and AI usage in one compact popover. It uses aligned high-contrast values, hides normal freshness noise, and keeps stale or failed states visible without changing the underlying metrics or provider actions.
 
 <img src="docs/images/system-dashboard.png" alt="Needlbar development dashboard with system metrics and remaining AI quota" width="360" />
 
