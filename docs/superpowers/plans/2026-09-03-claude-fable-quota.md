@@ -47,6 +47,8 @@ The Rust domain, C ABI, bridge envelope schema, widget/notification/acceptance a
 
 Current evidence: two earlier HTTP 200 responses established Fable identity and field types, not its numeric meaning. On 2026-09-03 a corrected diagnostic's synthetic test mapped session 37 / weekly 64 / Fable 13 correctly. Its one live attempt emitted no output and exceeded 30 seconds despite a 15-second HTTP cap. Exact process 48962 was terminated and confirmed gone; the diagnostic was returned to Trash. There was no live numeric result, no extra retry, and no product change. The cause of the delay is not established. **Leave this task unchecked.**
 
+Follow-up diagnostic evidence (2026-09-03): one authorized non-interactive attempt with flushed phase markers and a 20-second outer watchdog returned `credential_resolution=unavailable` after 6.849 seconds; it never reached HTTP. Synthetic tests prove actual timestamp equality (not merely format), exact-child termination, and final-output preservation. They do not close the live semantics gate. No retry or prompt occurred; the helper is recoverably in Trash. Explicit user permission for any diagnostic Keychain prompt has been requested but not granted. Do not run a prompt-capable diagnostic or implement Tasks 1–4 on this evidence alone.
+
 ### Task 1: Protect existing headline and export projections
 
 **Files:** Task 1 row above. Add tests before implementation, using literal Fable IDs in RED tests so failure is behavioral rather than an undefined constant.

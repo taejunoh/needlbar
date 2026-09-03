@@ -58,6 +58,16 @@ numeric value was obtained; the cause of the delay is not established. This
 does not close the semantics gate. Future diagnosis must bound credential
 resolution and transport together, not assume the HTTP timeout covers both.
 
+A subsequent single authorized non-interactive diagnostic used flushed phase
+markers and a 20-second outer watchdog. It returned credential-resolution
+`unavailable` after 6.849 seconds, before any HTTP request. Actual reset
+identity, output draining, and exact-child timeout cleanup were verified with
+synthetic checks, but no live percentage/reset was obtained. This identifies
+the current failing boundary, not the resolver's underlying error or the
+cause of the earlier stall. Task 0 remains open. Any one-off diagnostic that
+allows a Keychain prompt needs explicit user permission; this does not change
+the product's background authentication contract.
+
 ## Source and normalization contract
 
 The quota adapter selects exactly one entry matching all of:

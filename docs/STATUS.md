@@ -3,7 +3,41 @@
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
 **Current phase:** The written Claude Fable design is approved and its implementation plan is written. Application implementation has not started: the source `percent`-meaning gate is still open. Release publication remains unauthorized, and native macOS 14 acceptance remains deferred.
-**Next action:** Complete Task 0 in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md` with corroborated first-party semantics, then execute Task 1 (protect headline/export projections) and subsequent tasks in order. Do not infer remaining percentage, publish a release, or claim native macOS 14 acceptance.
+**Next action:** Task 0's bounded diagnostic now stops at `BackgroundNoUI` credential resolution before HTTP. Ask for explicit permission before any diagnostic Keychain prompt; none is authorized yet. With a permitted first-party response, corroborate `percent` semantics, then execute Task 1 (protect headline/export projections) and subsequent tasks in order. Do not infer remaining percentage, publish a release, or claim native macOS 14 acceptance.
+
+## Claude Fable bounded diagnostic checkpoint — 2026-09-03
+
+One newly authorized non-interactive diagnostic ran with flushed phase markers
+and a 20-second parent watchdog around the exact child, covering both resolver
+and transport. It returned:
+
+```text
+phase=credential_resolution;status=started
+phase=credential_resolution;status=unavailable
+phase=parent_watchdog;status=child_exited;elapsed_ms=6849
+```
+
+No HTTP request occurred. This locates the current blocker at credential
+resolution, but does not identify the underlying resolver error or explain
+the earlier greater-than-30-second stall. Do not claim the account is signed
+out or that macOS permission denial is proven. There was no live retry,
+permission prompt, credential change, or app implementation.
+
+The diagnostic also corrected two observation defects: compare actual parsed
+reset timestamps instead of timestamp shapes, and drain final child output
+after joining the reader. Synthetic checks for percent extraction, unequal
+reset timestamps, forced child termination, and immediate-exit output all
+passed. The main agent reran those synthetic checks successfully; they are
+not live semantics evidence. The exact helper was returned recoverably to
+`/Users/taejunoh/.Trash/needlbar-fable-limits-probe-Y8R2N`; no live probe remains.
+
+Public first-party documentation confirms a shared weekly pool but does not
+document the source field mapping. Native Claude UI inspection did not obtain
+the Fable usage panel or numeric/reset evidence, and further UI interaction
+was stopped. Task 0 remains open. Explicit user permission for a one-off
+diagnostic read of the exact `Claude Code-credentials` Keychain item with a
+macOS authorization prompt has been requested, not granted. No raw credential
+or HTTP body may be printed or retained if that permission is later granted.
 
 ## Claude Fable implementation-plan checkpoint — 2026-09-03
 
