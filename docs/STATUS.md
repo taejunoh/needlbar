@@ -3,7 +3,25 @@
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
 **Current phase:** The user completed provider-owned sign-in; a fresh bounded HTTP 200 response closed Task 0's Fable `percent`-meaning gate. The approved Fable implementation can now proceed. Release publication remains unauthorized, and native macOS 14 acceptance remains deferred.
-**Next action:** Execute Task 1 (headline/export compatibility protections) in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md`, then Tasks 2–4 with test-first development and reviews. Keep the actual normal full-test result distinct from serial diagnostics; do not publish a release or claim native macOS 14 acceptance.
+**Next action:** Task 1 passed implementation and both reviews. Execute Task 2 (optional Fable source normalization) in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md`, then Tasks 3–4 with test-first development and reviews. Keep the actual normal full-test result distinct from serial diagnostics; do not publish a release or claim native macOS 14 acceptance.
+
+## Claude Fable Task 1 — projection compatibility — 2026-09-03
+
+Commit `a383d33` adds the exact Claude Fable window identifier and excludes only
+that Claude window from existing headline and v1 export projections. Other
+unknown headline IDs remain eligible; other unknown export IDs still fail
+closed. The handwritten export golden remains byte-identical.
+
+Behavioral RED runs failed on the expected three headline assertions and
+`invalidQuotaWindow` export error. The focused GREEN run passed 22 tests, and
+plain `make test` exited 0 with Swift 338 tests in 12 suites plus Rust/vendor,
+widget, package, and notarization contracts. Full log:
+`/Users/taejunoh/Developer/LFG/needlbar-fable-full.log`.
+The existing Makefile expands filter text into a shell recipe, so pipe-based
+Swift filter alternatives must be escaped; no-test runs are not RED evidence.
+The scoped spec and independent code-quality reviews passed. This task
+does not yet parse or display Fable. No CI, release, or native macOS 14 result
+is implied.
 
 ## Claude Fable implementation baseline — 2026-09-03
 
