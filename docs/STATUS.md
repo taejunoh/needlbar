@@ -1,9 +1,25 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-02
-**Branch:** `main` at integration commit `d719402` (fast-forward from `95d08c9`; remote publication is not asserted here; v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** User-requested local v0.3 integration is complete at `d719402`. The default all-project verification/CI gate still needs fixture-flakiness resolution; release publication is not authorized. Native macOS 14 acceptance remains deferred per the user's direction.
-**Next action:** Investigate the default parallel process-fixture flakiness and CI result. Do not publish a release while that gate remains unresolved.
+**Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
+**Current phase:** The separate Claude Fable remaining/reset approach is approved; the written design spec is awaiting user review. No application code changed in this step. Release publication remains unauthorized, and native macOS 14 acceptance remains deferred.
+**Next action:** Review `docs/superpowers/specs/2026-09-02-claude-fable-quota-design.md`, close the Fable `percent`-meaning gate, then write the implementation plan. Do not publish a release or claim native macOS 14 acceptance.
+
+## Claude Fable quota design checkpoint — 2026-09-02
+
+The user approved a separate Fable weekly remaining/reset row beneath the
+existing Claude quota presentation; the menu-bar title and headline remain
+unchanged. The review-ready design is
+`docs/superpowers/specs/2026-09-02-claude-fable-quota-design.md`.
+
+Two bounded non-interactive Rust requests returned HTTP 200 through the current
+production resolver/background path and confirmed the exact `weekly_scoped`
+Fable identity (`group=weekly`, model display name `Fable`, null model ID and
+surface), plus `is_active`, numeric `percent`, and RFC3339 `resets_at`. The
+agent output did not emit the actual Fable numeric value, and `percent` is not
+yet proven to mean used/utilization. No live current remaining percentage is
+claimed. Implementation is blocked until first-party semantics evidence closes
+that gate; no app code changed in this step.
 
 ## v0.3 Local integration checkpoint — 2026-09-02
 
