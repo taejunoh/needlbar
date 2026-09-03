@@ -2,7 +2,8 @@
 
 **Status:** Written design approved by the user on 2026-09-03. The implementation
 plan is `docs/superpowers/plans/2026-09-03-claude-fable-quota.md`.
-Implementation remains blocked on the numeric semantics gate described below.
+The numeric semantics gate was satisfied by a fresh response on 2026-09-03;
+implementation may proceed under the approved plan.
 
 **Date:** 2026-09-02
 
@@ -19,7 +20,7 @@ and Claude popover. It adds no login flow, browser-cookie path, polling timer,
 OAuth refresh, provider, or persisted raw response. Secrets and raw HTTP bodies
 must not enter logs, state, exports, diagnostics, widgets, or notifications.
 
-## Evidence and the blocking semantics gate
+## Evidence and the resolved semantics gate
 
 Two bounded, non-interactive Rust requests used the current production exact
 resolver in its `BackgroundNoUI` path. Both returned HTTP 200 from the existing HTTPS usage
@@ -76,6 +77,21 @@ or credential mutation. Provider-owned sign-in must refresh the expired
 credential before another bounded comparison can establish source semantics;
 this evidence does not close Task 0 or authorize implementing a new refresh
 flow in Needlbar.
+
+Following provider-owned sign-in completed by the user, a fresh bounded
+`BackgroundNoUI` request returned HTTP 200 in 3.902 seconds, captured at
+`2026-09-03T14:16:43.832932Z`. Independently identified session and weekly-all
+`limits[].percent` values (59 and 12) exactly equaled legacy
+`five_hour.utilization` and `seven_day.utilization`; their respective reset
+timestamps were exactly equal as well. The exact Fable match had `percent=14`
+and reset `2026-09-10T09:59:59.792368Z`, with `is_active=false`.
+
+This satisfies the approved same-response semantics comparison: the shared
+percent field is normalized as used/utilization, so Fable remaining at capture
+was 86%. It is not a claim of independent additional capacity or a permanently
+current value. Task 0 is closed; its earlier failed probes above are historical
+evidence. Only sanitized typed comparisons were retained, not credentials or
+raw HTTP bodies. Native Needlbar presentation remains to be implemented/verified.
 
 ## Source and normalization contract
 

@@ -2,8 +2,30 @@
 
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** The written Claude Fable design is approved and its implementation plan is written. Application implementation has not started: the source `percent`-meaning gate is still open. Release publication remains unauthorized, and native macOS 14 acceptance remains deferred.
-**Next action:** The one approved user-initiated diagnostic returned `expired` from Claude credential resolution before HTTP. Ask the user to refresh provider-owned authentication via Needlbar Settings → Sign in with Claude; do not repeat the permission request or silently initiate login/refresh. After the user completes sign-in, corroborate Task 0's `percent` semantics with a bounded request, then execute Tasks 1–4. Do not infer remaining percentage, publish a release, or claim native macOS 14 acceptance.
+**Current phase:** The user completed provider-owned sign-in; a fresh bounded HTTP 200 response closed Task 0's Fable `percent`-meaning gate. The approved Fable implementation can now proceed. Release publication remains unauthorized, and native macOS 14 acceptance remains deferred.
+**Next action:** Execute Task 1 (headline/export compatibility protections) in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md`, then Tasks 2–4 with test-first development and reviews. Keep the actual normal full-test result distinct from serial diagnostics; do not publish a release or claim native macOS 14 acceptance.
+
+## Claude Fable source semantics verified — 2026-09-03
+
+After the user reported sign-in complete, one fresh `BackgroundNoUI` request
+resolved credentials and returned HTTP 200 in 3.902 seconds. Sanitized evidence
+at `2026-09-03T14:16:43.832932Z`:
+
+- Session `limits[].percent = 59` exactly matched `five_hour.utilization = 59`;
+  both resets were `2026-09-03T16:59:59.792118Z`.
+- Weekly-all `limits[].percent = 12` exactly matched `seven_day.utilization = 12`;
+  both resets were `2026-09-10T09:59:59.792142Z`.
+- Exactly one Fable entry matched `weekly_scoped`, `group=weekly`, model display
+  name `Fable`, and explicit null surface. Its `percent = 14`, with reset
+  `2026-09-10T09:59:59.792368Z`; `is_active = false` remained opaque metadata.
+
+The same-response non-50 percent and exact reset matches satisfy the approved
+semantic comparison gate: normalize source percent as used/utilization and
+derive remaining in presentation. Fable was therefore 86% remaining at that
+capture, not a guaranteed current value. No raw body, credential, account ID,
+or real fixture was retained; no extra login, prompt, refresh, or retry occurred.
+The external diagnostic helper was returned recoverably to its existing Trash
+location. This is source-data evidence, not yet a native Needlbar Fable UI check.
 
 ## Claude Fable explicit-access diagnostic — 2026-09-03
 

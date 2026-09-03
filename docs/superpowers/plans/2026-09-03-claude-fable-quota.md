@@ -16,7 +16,7 @@ Approved design: `docs/superpowers/specs/2026-09-02-claude-fable-quota-design.md
 
 Worktree: `/Users/taejunoh/Developer/LFG/needlbar/.worktrees/integration-main.d16P79`, branch `codex/claude-fable-quota`, starting implementation-plan parent `0343ccb`. Do not use Documents, modify the unrelated root checkout, or create another worktree over this work. The main agent orchestrates; use the AGENTS-prescribed Terra/Luna roles, give each worker explicit file ownership, and require spec/quality review between numbered tasks. Workers share this worktree and must preserve one another's changes. Do not push, merge, publish, alter credentials, or change user preferences without authorization.
 
-**Task 0 is BLOCKED. This plan is documentation, not evidence that source percentages mean utilization. Tasks 1–4 must not start until Task 0 passes.** All fixture values below are synthetic, not a report of the user's account.
+**Task 0 PASSED on 2026-09-03 after provider-owned sign-in.** Its same-response semantics evidence is recorded below and in the approved design/STATUS. Tasks 1–4 may now proceed. All implementation fixture values below remain synthetic, not captured account responses.
 
 Shell commands run from this worktree. Before Cargo/Make commands:
 
@@ -41,17 +41,19 @@ The Rust domain, C ABI, bridge envelope schema, widget/notification/acceptance a
 
 **Files:** Record sanitized evidence in the approved design and `docs/STATUS.md`; no application changes.
 
-- [ ] Obtain first-party evidence that the exact Fable `limits[].percent` field is used/utilization, not remaining or fraction of a shared weekly pool. Accept a first-party client/UI mapping, or a same-response comparison establishing that session/weekly `limits[].percent` equal corresponding legacy `five_hour.utilization` / `seven_day.utilization`. Reject static co-occurrence of unrelated strings, guessed legacy aliases, and token/cost-derived estimates. If evidence contradicts the mapping assumed below, revise the design with the user before implementation.
-- [ ] Keep investigation read-only and bounded. Reuse the production `BackgroundNoUI` resolver and exact existing HTTPS endpoint only; no browser cookies, raw credentials, new login, redirects, or persisted raw response. Any future diagnostic needs an outer wall-clock bound around credential resolution **and** transport, not just the HTTP timeout. Emit only phase markers and explicitly allowlisted semantic comparisons. Do not repeatedly rerun a stuck probe or open permission UI implicitly.
-- [ ] Record the source, check time, precise matching fields and conclusion without account identifiers or secrets. Task 0 passes only on actual semantics evidence; a successful synthetic test or HTTP 200 alone is insufficient.
+- [x] Obtain first-party evidence that the exact Fable `limits[].percent` field is used/utilization, not remaining or fraction of a shared weekly pool. Accept a first-party client/UI mapping, or a same-response comparison establishing that session/weekly `limits[].percent` equal corresponding legacy `five_hour.utilization` / `seven_day.utilization`. Reject static co-occurrence of unrelated strings, guessed legacy aliases, and token/cost-derived estimates. If evidence contradicts the mapping assumed below, revise the design with the user before implementation.
+- [x] Keep investigation read-only and bounded. Reuse the production `BackgroundNoUI` resolver and exact existing HTTPS endpoint only; no browser cookies, raw credentials, new login, redirects, or persisted raw response. Any future diagnostic needs an outer wall-clock bound around credential resolution **and** transport, not just the HTTP timeout. Emit only phase markers and explicitly allowlisted semantic comparisons. Do not repeatedly rerun a stuck probe or open permission UI implicitly.
+- [x] Record the source, check time, precise matching fields and conclusion without account identifiers or secrets. Task 0 passes only on actual semantics evidence; a successful synthetic test or HTTP 200 alone is insufficient.
 
-Current evidence: two earlier HTTP 200 responses established Fable identity and field types, not its numeric meaning. On 2026-09-03 a corrected diagnostic's synthetic test mapped session 37 / weekly 64 / Fable 13 correctly. Its one live attempt emitted no output and exceeded 30 seconds despite a 15-second HTTP cap. Exact process 48962 was terminated and confirmed gone; the diagnostic was returned to Trash. There was no live numeric result, no extra retry, and no product change. The cause of the delay is not established. **Leave this task unchecked.**
+Historical evidence before sign-in: two earlier HTTP 200 responses established Fable identity and field types, not its numeric meaning. On 2026-09-03 a corrected diagnostic's synthetic test mapped session 37 / weekly 64 / Fable 13 correctly. Its one live attempt emitted no output and exceeded 30 seconds despite a 15-second HTTP cap. Exact process 48962 was terminated and confirmed gone; the diagnostic was returned to Trash. There was no live numeric result, no extra retry, and no product change. The cause of that delay is not established.
 
 Follow-up diagnostic evidence (2026-09-03): one authorized non-interactive attempt with flushed phase markers and a 20-second outer watchdog returned `credential_resolution=unavailable` after 6.849 seconds; it never reached HTTP. Synthetic tests prove actual timestamp equality (not merely format), exact-child termination, and final-output preservation. They do not close the live semantics gate. No retry or prompt occurred; the helper is recoverably in Trash. Explicit user permission for any diagnostic Keychain prompt has been requested but not granted. Do not run a prompt-capable diagnostic or implement Tasks 1–4 on this evidence alone.
 
 Subsequent authorization (2026-09-03): the user approved one diagnostic macOS Keychain prompt for the exact `Claude Code-credentials` item. A bounded `UserInitiatedAllowUI` diagnostic is now authorized as a narrow exception to the earlier no-prompt diagnostic restriction. The user must make the system permission choice; do not automate it or persist credentials. This changes neither product background behavior nor the requirement to corroborate source semantics before Tasks 1–4.
 
 Result of that one-shot authorization (2026-09-03): `UserInitiatedAllowUI` credential resolution returned `expired` after 4.868 seconds, before HTTP. No prompt was reported and no credential or HTTP body was printed or retained. The helper was returned to Trash without retry. That authorization is now consumed. Ask the user to complete provider-owned **Sign in with Claude** in Needlbar Settings; do not repeatedly request Keychain permission or silently refresh credentials. Task 0 stays unchecked until the renewed credential yields corroborating first-party semantics.
+
+**Passing evidence after the user completed sign-in:** at `2026-09-03T14:16:43.832932Z`, one bounded `BackgroundNoUI` request returned HTTP 200 in 3.902 seconds. Session percent 59 equaled five-hour utilization 59 and both reset timestamps matched exactly. Weekly-all percent 12 equaled seven-day utilization 12, again with equal resets. Exactly one Fable entry matched all four identity fields, with percent 14 and reset `2026-09-10T09:59:59.792368Z` (`is_active=false`, not an availability filter). These non-50 same-response comparisons close the approved meaning gate: Fable normalized usedPercent is 14 and derived remaining at capture was 86%. No new UI/login/refresh/retry occurred, no raw body/credential was retained, and the helper was returned to Trash. The earlier blocked instructions in this history are superseded by this passing result.
 
 ### Task 1: Protect existing headline and export projections
 
@@ -683,7 +685,7 @@ Serial success is evidence only for the serial configuration. Do not claim ordin
 
 ## Execution acceptance checklist
 
-- [ ] Task 0 has first-party semantics evidence, not only identity/types or synthetic success.
+- [x] Task 0 has first-party semantics evidence, not only identity/types or synthetic success.
 - [ ] Parser matching is exact and surface must be explicitly null; is_active/model ID do not gate availability.
 - [ ] Optional malformed/duplicate data omits only Fable; required legacy validation remains intact.
 - [ ] Domain stores usedPercent, not remaining; reset is localized and unknown remains explicit.
@@ -703,5 +705,5 @@ Task 4 covers closed consumers and native/full verification. The acceptance
 fixture uses `remainingPercent`, while source/domain tests use `usedPercent`.
 The header's explicit accessibility label remains on the header only, so it
 cannot suppress the separate Fable child. Snippets are planned changes, not
-executed or compiled implementation evidence. Every execution checkbox remains
-open, including the blocking numeric semantics gate.
+executed or compiled implementation evidence. At plan creation every execution
+checkbox was open; the later Task 0 passing evidence is recorded separately above.
