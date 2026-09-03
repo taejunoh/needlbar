@@ -58,6 +58,13 @@ available window), not token totals. Saved metric selections are preserved;
 tokens and estimated cost remain selectable in Settings. An unavailable quota
 is not replaced by a token count, and Cursor retains its Spending dashboard link.
 
+Claude quota details can show Fable weekly remaining and reset when the provider
+supplies a supported Fable limit; Fable shares the plan's weekly pool and is not
+additional independent capacity. The separate Fable detail appears beneath
+Claude when its selected metric is Remaining. It does not change the menu-bar
+headline, snapshot export, widget, or quota notifications. Missing Fable data is
+shown as unavailable rather than estimated from tokens or the overall weekly quota.
+
 The live dashboard shows all six sections, usage gauges, per-core CPU bars,
 and recent disk/network trends. Its fixed header and footer surround scrollable
 content sized for the current screen. Trends retain at most 60 samples in

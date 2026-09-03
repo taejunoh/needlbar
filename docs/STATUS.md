@@ -2,8 +2,61 @@
 
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** The user completed provider-owned sign-in; a fresh bounded HTTP 200 response closed Task 0's Fable `percent`-meaning gate. The approved Fable implementation can now proceed. Release publication remains unauthorized, and native macOS 14 acceptance remains deferred.
-**Next action:** Tasks 1–3 passed implementation, full verification, and both reviews. Execute Task 4 downstream/native verification in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md`. Keep the actual normal full-test result distinct from serial diagnostics; do not publish a release or claim native macOS 14 acceptance.
+**Current phase:** Fable source normalization, separate Remaining/reset presentation, and downstream compatibility tests are implemented and reviewed. Final plain `make test` exited 0. Current-host native provider/value parity and display preferences are verified. Native short-display scrolling is the one open Task 4 observation; native macOS 14 acceptance remains deferred.
+**Next action:** Hand off the verified development build and preserve `codex/claude-fable-quota`; push, merge, or publish only on the user's request. The open observation in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md` is native short-screen scrolling (automated 400-point coverage passed). No further Fable implementation or authentication change is pending.
+
+## Claude Fable Task 4 — downstream and native evidence — 2026-09-03
+
+Commit `2d74ff4` adds six scoped compatibility regressions. Widgets, notification
+keys/delivery, legacy and adaptive menu titles/tooltips, and the separate
+acceptance fixture allowlist retain their prior contract. No allowlist was
+broadened. README documents the development-only Fable detail and shared pool.
+
+Worker verification captured exit 0 for focused Swift (146 tests / 8 suites),
+`make acceptance-test` (9 tests / 1 suite), plain `make test` (Swift 345 tests /
+12 suites plus Rust/vendor/widget/package/notarize), `make package`, `make smoke`,
+and `git diff --check`. Logs are in `/Users/taejunoh/Developer/LFG/` with prefix
+`needlbar-fable-task4-`: `focused.log`, `acceptance-final.log`, `full.log`,
+`package.log`, and `smoke.log`. The primary agent's final repeat plain `make test`
+directly returned exit 0, with Swift 345 tests in 12 suites and all final shell
+contracts passing; log `needlbar-fable-final-root-verification.log`. Final scoped
+spec and independent whole-feature quality reviews approved the changes with
+no actionable findings.
+
+After exact identity verification, the old development PID 60153 was stopped
+with TERM and the newly packaged exact worktree `dist/Needlbar.app` launched as
+PID 81456. The separate v0.2.2 release process was left untouched. The package
+contains the Task 3 production code; Task 4 changes only tests/documentation.
+
+Native evidence was captured using the bundled Mac accessibility tool after
+Orca omitted the nonactivating panel from its window list. An empty Orca list
+was therefore not proof that the panel failed to open. The native screenshot
+at 11:37:54 EDT is 360×680 pixels and shows the separate Fable child, reset and
+freshness, with all sections and the footer visible. It is retained at
+`/Users/taejunoh/Developer/LFG/needlbar-fable-native-qa-20260903/dashboard.jpeg`.
+No account identifier, IP, credential, or raw response appears in the capture.
+
+A single bounded BackgroundNoUI provider comparison at
+`2026-09-03T15:38:30.958602Z` returned HTTP 200 in 418 ms. Session used 84 gave
+16% remaining, matching the native Claude headline. Exact Fable used 22 gave
+78% remaining, matching the child; reset `2026-09-10T09:59:59.903500Z` matched
+the localized Sep 10, 5:59 AM EDT display. Values are capture-time evidence,
+not permanently current values. The helper returned to Trash without auth UI,
+credential changes, raw-body retention, or retry.
+
+Native Settings/Overview round-trips verified that Usage and Cost omit the
+Fable child and hiding Claude removes both rows. The original visible Claude
+Remaining preference was restored and read back; other providers stayed hidden,
+CPU/RAM/AI visibility and local/public IP-off settings were preserved. The AX
+tree contains Fable's label, remaining, reset and freshness outside the existing
+header label; Settings is reachable. The restored live view subsequently
+refreshed normally (77% Fable at the later observation).
+
+Limitations: the AX scroll-to-bottom action timed out and is not claimed as a
+verified native scroll movement. This screen already fit all content at 680
+points; the smaller 400-point layout is covered by automated AppKit fitting
+tests, not a native short-display observation. No spoken VoiceOver session,
+native macOS 14 run, CI run, push, merge, or release is claimed.
 
 ## Claude Fable Task 3 — presentation verification — 2026-09-03
 

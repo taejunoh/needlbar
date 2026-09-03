@@ -1,6 +1,6 @@
 # Claude Fable Quota Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Show a separate Fable weekly remaining percentage and reset beneath Claude without changing its existing headline, menu bar, exports, widgets, or notifications.
 
@@ -59,7 +59,7 @@ Result of that one-shot authorization (2026-09-03): `UserInitiatedAllowUI` crede
 
 **Files:** Task 1 row above. Add tests before implementation, using literal Fable IDs in RED tests so failure is behavioral rather than an undefined constant.
 
-- [ ] Append this regression to `HeadlineQuotaSelectorTests.swift`:
+- [x] Append this regression to `HeadlineQuotaSelectorTests.swift`:
 
 ```swift
 @Test func fableDoesNotChangeHeadlineButOtherUnknownWindowsRemainEligible() throws {
@@ -76,7 +76,7 @@ Result of that one-shot authorization (2026-09-03): `UserInitiatedAllowUI` crede
 }
 ```
 
-- [ ] Append this regression to `SnapshotExporterTests.swift`. Reuse its existing private fixture helpers and handwritten golden; `replacingProvider` returns an `ExportCapture`, not a provider state.
+- [x] Append this regression to `SnapshotExporterTests.swift`. Reuse its existing private fixture helpers and handwritten golden; `replacingProvider` returns an `ExportCapture`, not a provider state.
 
 ```swift
 @Test func fableWindowIsOmittedFromV1ExportWithoutChangingCanonicalBytes() throws {
@@ -91,7 +91,7 @@ Result of that one-shot authorization (2026-09-03): `UserInitiatedAllowUI` crede
 }
 ```
 
-- [ ] Run RED:
+- [x] Run RED:
 
 ```bash
 make swift-test SWIFT_TEST_FILTER='fableDoesNotChangeHeadline|fableWindowIsOmitted'
@@ -99,7 +99,7 @@ make swift-test SWIFT_TEST_FILTER='fableDoesNotChangeHeadline|fableWindowIsOmitt
 
 Expected: Fable wrongly wins the headline; export throws for the otherwise valid Fable window. Record those failures before changing production code.
 
-- [ ] Append the shared identifier to `QuotaSnapshot.swift`:
+- [x] Append the shared identifier to `QuotaSnapshot.swift`:
 
 ```swift
 public extension QuotaWindow {
@@ -122,7 +122,7 @@ public static func mostConstrained(_ snapshots: [ProviderSnapshot]) -> QuotaWind
 }
 ```
 
-- [ ] In the existing private `SnapshotExportValidation` extension add:
+- [x] In the existing private `SnapshotExportValidation` extension add:
 
 ```swift
 static func v1Windows(_ quota: QuotaSnapshot, for provider: ProviderID) -> [QuotaWindow] {
@@ -150,7 +150,7 @@ init(_ quota: QuotaSnapshot, provider: ProviderID) {
 }
 ```
 
-- [ ] Run GREEN and existing rejection/golden tests:
+- [x] Run GREEN and existing rejection/golden tests:
 
 ```bash
 make swift-test SWIFT_TEST_FILTER='fable|mostConstrained|Export|export'
@@ -160,7 +160,7 @@ make test
 
 Expected: focused tests pass, golden bytes unchanged, unknown IDs still rejected. Record the actual full result; a known infrastructure failure is not a passing task-completion gate. Update STATUS with evidence before committing a checkpoint.
 
-- [ ] Commit only these scoped files and STATUS:
+- [x] Commit only these scoped files and STATUS:
 
 ```bash
 git add Sources/NeedlbarCore/Models/QuotaSnapshot.swift Sources/NeedlbarCore/Presentation/HeadlineQuotaSelector.swift Sources/NeedlbarCore/Export/SnapshotExporter.swift Tests/NeedlbarCoreTests/HeadlineQuotaSelectorTests.swift Tests/NeedlbarCoreTests/SnapshotExporterTests.swift docs/STATUS.md
@@ -171,7 +171,7 @@ git commit -m "fix: preserve quota projections when Claude adds Fable"
 
 **Files:** Task 2 row above. No credential/transport/domain/bridge implementation edits.
 
-- [ ] Create synthetic `Fixtures/quota/claude/usage-fable-success.json`:
+- [x] Create synthetic `Fixtures/quota/claude/usage-fable-success.json`:
 
 ```json
 {
@@ -186,7 +186,7 @@ git commit -m "fix: preserve quota projections when Claude adds Fable"
 }
 ```
 
-- [ ] In `crates/needlbar-quota/tests/claude.rs` add these fixture-driven tests. Existing imports already expose `ClaudeQuotaProvider`; use fully qualified serde_json in the new helpers.
+- [x] In `crates/needlbar-quota/tests/claude.rs` add these fixture-driven tests. Existing imports already expose `ClaudeQuotaProvider`; use fully qualified serde_json in the new helpers.
 
 ```rust
 const FABLE_SUCCESS_FIXTURE: &str =
@@ -280,9 +280,9 @@ fn optional_fable_does_not_relax_required_base_window_validation() {
 }
 ```
 
-- [ ] Run RED: `cargo test -p needlbar-quota --test claude`. The valid additive and unknown-reset tests must fail with only two windows before the implementation.
+- [x] Run RED: `cargo test -p needlbar-quota --test claude`. The valid additive and unknown-reset tests must fail with only two windows before the implementation.
 
-- [ ] In `claude.rs`, add `use serde_json::Value;`, and add `#[serde(default)] limits: Option<Value>` to the existing `UsageResponse`. Replace only the existing associated parser:
+- [x] In `claude.rs`, add `use serde_json::Value;`, and add `#[serde(default)] limits: Option<Value>` to the existing `UsageResponse`. Replace only the existing associated parser:
 
 ```rust
 pub fn parse_usage_payload(payload: &str) -> Result<ProviderQuotaSnapshot, QuotaError> {
@@ -329,7 +329,7 @@ fn parse_fable_window(limits: Option<&Value>) -> Option<QuotaWindow> {
 
 The domain already rejects non-finite/out-of-range percentages. Optional decoding via `Value` prevents a malformed limits shape from failing required base data. Count identity matches before validating numeric/reset fields: a second matching entry is ambiguous even if malformed. Do not filter on `is_active`, or infer Fable from a model ID/legacy field.
 
-- [ ] Add this additive-envelope regression to `crates/needlbar-bridge/tests/quota_contract.rs`, reusing `RecordingClaudeSource` and existing imports. It requires no bridge implementation change:
+- [x] Add this additive-envelope regression to `crates/needlbar-bridge/tests/quota_contract.rs`, reusing `RecordingClaudeSource` and existing imports. It requires no bridge implementation change:
 
 ```rust
 #[tokio::test]
@@ -352,7 +352,7 @@ async fn bridge_keeps_fable_as_an_additive_claude_window() {
 }
 ```
 
-- [ ] Run GREEN:
+- [x] Run GREEN:
 
 ```bash
 cargo fmt --all
@@ -365,7 +365,7 @@ make test
 
 Expected: valid Fable emits a third window, optional failures preserve the two base windows, base failures still reject the snapshot. Record actual full-gate status in STATUS.
 
-- [ ] Commit scoped files:
+- [x] Commit scoped files:
 
 ```bash
 git add Fixtures/quota/claude/usage-fable-success.json crates/needlbar-quota/src/providers/claude.rs crates/needlbar-quota/tests/claude.rs crates/needlbar-bridge/tests/quota_contract.rs docs/STATUS.md
@@ -376,7 +376,7 @@ git commit -m "feat: normalize optional Claude Fable weekly quota"
 
 **Files:** Task 3 row above. Keep the fixed 360-point width, maximum height and scroll container unchanged.
 
-- [ ] Extend the existing `dashboardFixtureSnapshot` helper in `SystemDashboardPopoverTests.swift`: insert `claudeQuotaWindows: [QuotaWindow]? = nil` after `claudeHasQuota`. Replace only its provider quota expression with:
+- [x] Extend the existing `dashboardFixtureSnapshot` helper in `SystemDashboardPopoverTests.swift`: insert `claudeQuotaWindows: [QuotaWindow]? = nil` after `claudeHasQuota`. Replace only its provider quota expression with:
 
 ```swift
 quota: {
@@ -444,9 +444,9 @@ Append these tests in that file:
 }
 ```
 
-- [ ] Run RED: `make swift-test SWIFT_TEST_FILTER='dashboardFable'`. Initially expect missing `fable` presentation API; this is the intended new model contract.
+- [x] Run RED: `make swift-test SWIFT_TEST_FILTER='dashboardFable'`. Initially expect missing `fable` presentation API; this is the intended new model contract.
 
-- [ ] In `SystemDashboardPresentation`, introduce the nested detail and append the optional field to nested `AIProvider`:
+- [x] In `SystemDashboardPresentation`, introduce the nested detail and append the optional field to nested `AIProvider`:
 
 ```swift
 public struct FableQuotaDetail: Equatable, Sendable {
@@ -484,7 +484,7 @@ private static func fableDetail(
 }
 ```
 
-- [ ] In `SystemDashboardPopoverView`'s existing provider `ForEach`, wrap the existing header `HStack` **including its existing accessibility modifiers** in a `VStack(alignment: .leading, spacing: 4)`. Add the following sibling after the header. Do not put it beneath the header's explicit accessibility label, which would mask the new detail.
+- [x] In `SystemDashboardPopoverView`'s existing provider `ForEach`, wrap the existing header `HStack` **including its existing accessibility modifiers** in a `VStack(alignment: .leading, spacing: 4)`. Add the following sibling after the header. Do not put it beneath the header's explicit accessibility label, which would mask the new detail.
 
 ```swift
 if let fable = provider.fable {
@@ -506,7 +506,7 @@ if let fable = provider.fable {
 
 Use SwiftUI localized literal text and the existing absolute localized date formatter. `resetCaption` already includes its prefix; never produce “Reset Reset unavailable.” This child has no button, separate authentication action, network request, or persistent state.
 
-- [ ] Append an independent store regression in `ProviderSnapshotStoreTests.swift` (within its suite):
+- [x] Append an independent store regression in `ProviderSnapshotStoreTests.swift` (within its suite):
 
 ```swift
 @Test func fableLastKnownGoodSurvivesFailureButSuccessfulOmissionClearsIt() async throws {
@@ -527,7 +527,7 @@ Use SwiftUI localized literal text and the existing absolute localized date form
 }
 ```
 
-- [ ] Append a generic bridge-decoding regression to `BridgeDecodingTests.swift`:
+- [x] Append a generic bridge-decoding regression to `BridgeDecodingTests.swift`:
 
 ```swift
 @Test func quotaEnvelopePreservesAdditiveFableWindow() throws {
@@ -546,7 +546,7 @@ Use SwiftUI localized literal text and the existing absolute localized date form
 }
 ```
 
-- [ ] Run GREEN, including existing layout and independent freshness tests:
+- [x] Run GREEN, including existing layout and independent freshness tests:
 
 ```bash
 make swift-test SWIFT_TEST_FILTER='dashboard|ProviderSnapshotStoreTests|quotaEnvelope|PopoverPresentation'
@@ -556,7 +556,7 @@ make test
 
 Expected: fixed width/height tests remain green, no missing-data token fallback, stale label follows quota not usage, successful omission removes the old Fable detail. Existing provider detail renders the generic Fable window without another special-case view. Record full-gate status in STATUS.
 
-- [ ] Commit scoped files:
+- [x] Commit scoped files:
 
 ```bash
 git add Sources/Needlbar/Modules/Overview/SystemDashboardModel.swift Sources/Needlbar/Modules/Overview/SystemDashboardPopoverView.swift Tests/NeedlbarTests/SystemDashboardPopoverTests.swift Tests/NeedlbarCoreTests/ProviderSnapshotStoreTests.swift Tests/NeedlbarCoreTests/BridgeDecodingTests.swift docs/STATUS.md
@@ -567,7 +567,7 @@ git commit -m "feat: show separate Claude Fable remaining and reset"
 
 **Files:** `Tests/NeedlbarCoreTests/WidgetProjectionTests.swift`, `Tests/NeedlbarCoreTests/QuotaAlertPolicyTests.swift`, `Tests/NeedlbarTests/QuotaNotificationServiceTests.swift`, `Tests/NeedlbarTests/MenuBarTitleRendererTests.swift`, `Tests/NeedlbarTests/MenuBarDashboardRendererTests.swift`, `Tests/NeedlbarTests/AcceptanceFixtureTests.swift`; README and STATUS. Never broaden widget/notification/acceptance allowlists to make a test pass.
 
-- [ ] In `WidgetProjectionTests.swift`, append this entry to the local `claudeQuota` array in `mapperFiltersProviderAndBreaksHeadlineTiesByLexicalID`. Keep its expected headline `.claudeSession` unchanged:
+- [x] In `WidgetProjectionTests.swift`, append this entry to the local `claudeQuota` array in `mapperFiltersProviderAndBreaksHeadlineTiesByLexicalID`. Keep its expected headline `.claudeSession` unchanged:
 
 ```swift
 try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "private",
@@ -598,7 +598,7 @@ await fixture.applyQuota(
 )
 ```
 
-- [ ] Append these menu regressions in their named files, reusing existing helpers without broad fixture changes. `MenuBarTitleRendererTests.swift`:
+- [x] Append these menu regressions in their named files, reusing existing helpers without broad fixture changes. `MenuBarTitleRendererTests.swift`:
 
 ```swift
 @Test func fableDoesNotChangeClaudeQuotaTitle() throws {
@@ -645,13 +645,13 @@ await fixture.applyQuota(
 }
 ```
 
-- [ ] Add this tuple to the existing `malformedValuesReturnOnlyStableCode` argument table in `AcceptanceFixtureTests.swift`. It proves this narrowly scoped feature does not expand the separate acceptance fixture contract:
+- [x] Add this tuple to the existing `malformedValuesReturnOnlyStableCode` argument table in `AcceptanceFixtureTests.swift`. It proves this narrowly scoped feature does not expand the separate acceptance fixture contract:
 
 ```swift
 (#"{"schemaVersion":1,"timeZone":"America/New_York","startAt":"2026-09-01T12:00:00.000Z","events":[{"delaySeconds":0,"localDay":"2026-09-01","usage":{},"quota":{"claude":[{"id":"claude.fable.weekly","remainingPercent":75,"resetsAt":"2026-09-02T12:00:00.000Z"}]}}]}"#, "fixtureUnknownID", 0),
 ```
 
-- [ ] Run the complete focused consumer suites alongside the new Fable regressions:
+- [x] Run the complete focused consumer suites alongside the new Fable regressions:
 
 ```bash
 make swift-test SWIFT_TEST_FILTER='Fable|fable|Widget|QuotaAlert|QuotaNotification|MenuBar|Popover|SnapshotExport|Export|AcceptanceFixture'
@@ -660,7 +660,7 @@ make acceptance-test
 
 Expected: the exact additive fixtures above do not change consumer results. The dedicated acceptance target enables `NEEDLBAR_ACCEPTANCE_DRIVER`; ordinary Swift tests alone do not run those conditional tests. These are compatibility regressions expected to remain GREEN, not new product behavior requiring allowlist changes.
 
-- [ ] Run normal full verification first and retain its exit status and log:
+- [x] Run normal full verification first and retain its exit status and log:
 
 ```bash
 make test
@@ -677,23 +677,28 @@ RUST_TEST_THREADS=1 make test
 
 Serial success is evidence only for the serial configuration. Do not claim ordinary `make test`, CI, or native macOS 14 passed on that basis. Do not alter unrelated tests or process deadlines. Review all implementation diffs for auth/credential/raw-body changes; none are expected.
 
-- [ ] Load the computer-use skill before native interaction. Identify the exact development bundle/process, package and launch that build, and avoid operating on a second installed/release copy. Use the user's existing Claude login. If auth is unavailable, report the native numeric comparison as pending; do not request secret contents or synthesize a live percentage.
-- [ ] Compare actual Fable remaining and reset with first-party evidence only after Task 0 passes. Confirm the existing Claude headline/menu title/full tooltip do not change merely because Fable is lower; the child is separately labeled. Verify visible Claude Remaining, hidden Claude, and Usage/Cost configurations; restore settings changed solely for testing. Check missing Fable, unknown reset, 0% remaining and stale behavior with synthetic test data only, never spoof live state.
+- [x] Load the computer-use skill before native interaction. Identify the exact development bundle/process, package and launch that build, and avoid operating on a second installed/release copy. Use the user's existing Claude login. If auth is unavailable, report the native numeric comparison as pending; do not request secret contents or synthesize a live percentage.
+- [x] Compare actual Fable remaining and reset with first-party evidence only after Task 0 passes. Confirm the existing Claude headline/menu title/full tooltip do not change merely because Fable is lower; the child is separately labeled. Verify visible Claude Remaining, hidden Claude, and Usage/Cost configurations; restore settings changed solely for testing. Check missing Fable, unknown reset, 0% remaining and stale behavior with synthetic test data only, never spoof live state.
 - [ ] Inspect the native 360-point dashboard and short-screen scrolling, Settings reachability, and VoiceOver/accessibility tree. Confirm the Fable child is readable separately from the existing Claude header and does not add an auth button. Capture a sanitized native screenshot without account identifiers, IPs, or credentials; do not replace README screenshots with generated mockups. Native macOS 14 acceptance stays deferred.
-- [ ] Update README's existing feature description with the factual sentence: “Claude quota details can show Fable weekly remaining and reset when the provider supplies a supported Fable limit; Fable shares the plan's weekly pool and is not additional independent capacity.” Record implementation commits, exact test commands/results, native comparison evidence, and next continuation in STATUS. Leave any unfinished gate explicitly open.
-- [ ] Request scoped spec/quality review through the prescribed subagents, fix verified in-scope findings with regression tests, and rerun affected tests. Root reviews the result and only then records the feature complete if every required gate is satisfied. Commit scoped test/docs changes; stop before push/merge/release unless requested.
+
+  Partially verified on 2026-09-03: native 360×680 rendering, separate AX content,
+  Settings reachability, and sanitized screenshot passed. Native short-display
+  scrolling is not verified: the AX scroll action timed out; the 400-point layout
+  passed automated AppKit fitting tests. Spoken VoiceOver and macOS 14 remain unclaimed.
+- [x] Update README's existing feature description with the factual sentence: “Claude quota details can show Fable weekly remaining and reset when the provider supplies a supported Fable limit; Fable shares the plan's weekly pool and is not additional independent capacity.” Record implementation commits, exact test commands/results, native comparison evidence, and next continuation in STATUS. Leave any unfinished gate explicitly open.
+- [x] Request scoped spec/quality review through the prescribed subagents, fix verified in-scope findings with regression tests, and rerun affected tests. Root reviews the result and only then records the feature complete if every required gate is satisfied. Commit scoped test/docs changes; stop before push/merge/release unless requested.
 
 ## Execution acceptance checklist
 
 - [x] Task 0 has first-party semantics evidence, not only identity/types or synthetic success.
-- [ ] Parser matching is exact and surface must be explicitly null; is_active/model ID do not gate availability.
-- [ ] Optional malformed/duplicate data omits only Fable; required legacy validation remains intact.
-- [ ] Domain stores usedPercent, not remaining; reset is localized and unknown remains explicit.
-- [ ] Only Claude remaining shows the child; menu/headline/tooltip retain old behavior.
-- [ ] Export v1 is byte-identical without Fable, other unknown IDs still rejected; widget/notification/acceptance contracts unchanged.
-- [ ] Store/bridge preserve generic windows and correct LKG/omission semantics without another state machine.
-- [ ] No credential/raw response/Settings/refresh/schema/version changes; no unverified live number is claimed.
-- [ ] Normal, serial, CI, and native macOS 14 evidence are reported as separate gates.
+- [x] Parser matching is exact and surface must be explicitly null; is_active/model ID do not gate availability.
+- [x] Optional malformed/duplicate data omits only Fable; required legacy validation remains intact.
+- [x] Domain stores usedPercent, not remaining; reset is localized and unknown remains explicit.
+- [x] Only Claude remaining shows the child; menu/headline/tooltip retain old behavior.
+- [x] Export v1 is byte-identical without Fable, other unknown IDs still rejected; widget/notification/acceptance contracts unchanged.
+- [x] Store/bridge preserve generic windows and correct LKG/omission semantics without another state machine.
+- [x] No credential/raw response/Settings/refresh/schema/version changes; no unverified live number is claimed.
+- [x] Normal, serial, CI, and native macOS 14 evidence are reported as separate gates.
 
 ## Planning review — 2026-09-03
 
@@ -707,3 +712,15 @@ The header's explicit accessibility label remains on the header only, so it
 cannot suppress the separate Fable child. Snippets are planned changes, not
 executed or compiled implementation evidence. At plan creation every execution
 checkbox was open; the later Task 0 passing evidence is recorded separately above.
+
+## Execution checkpoint — 2026-09-03
+
+Tasks 1–3 and Task 4 automated/downstream checks plus current-host native value
+parity passed; independent spec and quality reviews approved the feature.
+Implementation commits: `a383d33`, `fd5da82`, `0714bb8`, `2d74ff4`.
+Native evidence and exact command/log results are recorded in `docs/STATUS.md`.
+The open native short-display item above is intentionally not marked complete.
+Fresh worker sessions returned transport 404 errors, so existing workers were
+reused for checkpoint recovery and Task 4; independent reviews were preserved.
+Pipe alternatives in Swift filters were escaped for the existing Makefile shell
+recipe. No release, push, merge, or native macOS 14 acceptance was performed.
