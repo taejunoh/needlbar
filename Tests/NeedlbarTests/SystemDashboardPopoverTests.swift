@@ -361,6 +361,53 @@ import Testing
     #expect(presentation.ai.filter { $0.provider != .claude }.allSatisfy { $0.fable == nil })
 }
 
+@Test @MainActor func dashboardReadabilityFittingIsStableAcrossLiveNumericChanges() {
+    let configuration = SystemMonitorConfiguration()
+    let first = dashboardFixtureSnapshot(capturedAt: Date(timeIntervalSince1970: 10_000))
+    let second = dashboardFixtureSnapshot(capturedAt: Date(timeIntervalSince1970: 10_001), todayTokens: 1_683_150_000)
+    let firstModel = SystemDashboardModel(snapshot: first, configuration: configuration)
+    let secondModel = SystemDashboardModel(snapshot: second, configuration: configuration)
+    let firstView = NSHostingController(rootView: SystemDashboardPopoverView(model: firstModel, maximumHeight: 680))
+    let secondView = NSHostingController(rootView: SystemDashboardPopoverView(model: secondModel, maximumHeight: 680))
+
+    #expect(firstView.view.fittingSize == secondView.view.fittingSize)
+}
+
+@Test @MainActor func dashboardReadabilityKeepsSizeStableAcrossAppearances() {
+    let model = SystemDashboardModel(snapshot: dashboardFixtureSnapshot(), configuration: SystemMonitorConfiguration())
+    let light = NSHostingController(rootView: SystemDashboardPopoverView(model: model, maximumHeight: 680))
+    let dark = NSHostingController(rootView: SystemDashboardPopoverView(model: model, maximumHeight: 680))
+    light.view.appearance = NSAppearance(named: .aqua)
+    dark.view.appearance = NSAppearance(named: .darkAqua)
+
+    #expect(light.view.fittingSize == dark.view.fittingSize)
+    #expect(light.view.fittingSize.width == 360)
+    #expect(dark.view.fittingSize.width == 360)
+}
+
+@Test func dashboardReadabilityPreservesUnavailableAndStalePresentation() {
+    let stale = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(
+            networkAvailability: .stale(lastSuccessfulAt: Date(timeIntervalSince1970: 9_999)),
+            diskAvailability: .stale(lastSuccessfulAt: Date(timeIntervalSince1970: 9_999)),
+            claudeQuotaStatus: .requiresAuthentication,
+            cursorQuotaStatus: .error(message: "refresh failed", lastSuccessfulAt: nil),
+            cursorHasQuota: false
+        ),
+        configuration: SystemMonitorConfiguration()
+    )
+
+    #expect(stale.network.download == "2.0 KB/s")
+    #expect(stale.disk.read == "10 B/s")
+    #expect(stale.ai.first { $0.provider == .claude }?.value == "32%")
+    #expect(stale.ai.first { $0.provider == .cursor }?.value == "—")
+    #expect(DashboardReadabilityPolicy.systemStatus(stale.network.freshness) == "Stale")
+    #expect(DashboardReadabilityPolicy.providerStatus(
+        usage: stale.ai.first { $0.provider == .claude }!.usageStatus,
+        quota: stale.ai.first { $0.provider == .claude }!.quotaStatus
+    ) == "Authentication required")
+}
+
 private func dashboardFixtureSnapshot(
     capturedAt date: Date = Date(timeIntervalSince1970: 10_000),
     networkAvailability: MetricAvailability? = nil,
