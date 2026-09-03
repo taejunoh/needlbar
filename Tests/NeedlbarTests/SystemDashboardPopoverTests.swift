@@ -117,6 +117,97 @@ import Testing
     #expect(presentation.ai.first(where: { $0.provider == .codex })?.action == nil)
 }
 
+@Test func dashboardFableDetailIsSeparateAndUsesQuotaFreshness() throws {
+    let reset = Date(timeIntervalSince1970: 20_000)
+    let base = try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil)
+    let fable = try QuotaWindow(
+        id: QuotaWindow.claudeFableWeeklyID,
+        title: "Fable weekly",
+        usedPercent: 100,
+        resetsAt: reset
+    )
+    let presentation = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(claudeQuotaWindows: [base, fable]),
+        configuration: SystemMonitorConfiguration()
+    )
+    let claude = try #require(presentation.ai.first { $0.provider == .claude })
+
+    #expect(claude.value == "32%")
+    #expect(claude.fable?.remaining == "0%")
+    #expect(claude.fable?.resetCaption == MetricFormatter.reset(reset).map { String(localized: "Resets \($0)") })
+    #expect(claude.fable?.freshness == .fresh)
+    #expect(presentation.ai.filter { $0.provider != .claude }.allSatisfy { $0.fable == nil })
+
+    let stale = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(
+            claudeQuotaStatus: .stale(lastSuccessfulAt: reset),
+            claudeQuotaWindows: [base, fable]
+        ),
+        configuration: SystemMonitorConfiguration()
+    )
+    #expect(stale.ai.first { $0.provider == .claude }?.fable?.freshness == .stale)
+}
+
+@Test func dashboardFableDetailHandlesMissingAndResetlessWindowsWithoutActions() throws {
+    let defaultPresentation = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(), configuration: SystemMonitorConfiguration()
+    )
+    let defaultClaude = try #require(defaultPresentation.ai.first { $0.provider == .claude })
+    #expect(defaultClaude.fable?.remaining == "—")
+    #expect(defaultClaude.fable?.resetCaption == "Reset unavailable")
+    #expect(defaultClaude.fable?.freshness == .unavailable)
+    #expect(defaultClaude.action == nil)
+
+    let fableOnly = try QuotaWindow(
+        id: QuotaWindow.claudeFableWeeklyID,
+        title: "Fable weekly",
+        usedPercent: 25,
+        resetsAt: nil
+    )
+    let resetlessPresentation = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(claudeQuotaWindows: [fableOnly]),
+        configuration: SystemMonitorConfiguration()
+    )
+    let resetlessClaude = try #require(resetlessPresentation.ai.first { $0.provider == .claude })
+    #expect(resetlessClaude.fable?.remaining == "75%")
+    #expect(resetlessClaude.fable?.resetCaption == "Reset unavailable")
+
+    let authenticationRequired = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(
+            claudeQuotaStatus: .requiresAuthentication,
+            claudeQuotaWindows: [try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil)]
+        ),
+        configuration: SystemMonitorConfiguration()
+    )
+    #expect(authenticationRequired.ai.first { $0.provider == .claude }?.fable?.remaining == "—")
+    #expect(authenticationRequired.ai.first { $0.provider == .claude }?.fable?.freshness == .unavailable)
+
+    let noQuotaAuthenticationRequired = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(claudeQuotaStatus: .requiresAuthentication, claudeHasQuota: false),
+        configuration: SystemMonitorConfiguration()
+    )
+    #expect(noQuotaAuthenticationRequired.ai.first { $0.provider == .claude }?.fable?.remaining == "—")
+    #expect(noQuotaAuthenticationRequired.ai.first { $0.provider == .claude }?.fable?.freshness == .unavailable)
+}
+
+@Test func dashboardFableDetailOnlyAppearsForClaudeRemainingMetric() {
+    for metric in [AIProviderDisplayMetric.usage, .cost, .connectionStatus] {
+        var configuration = SystemMonitorConfiguration()
+        configuration.ai[.claude] = AIProviderDisplayPreference(metric: metric)
+        let presentation = SystemDashboardPresentation(
+            snapshot: dashboardFixtureSnapshot(), configuration: configuration
+        )
+        #expect(presentation.ai.first { $0.provider == .claude }?.fable == nil)
+    }
+
+    var hiddenClaudeConfiguration = SystemMonitorConfiguration()
+    hiddenClaudeConfiguration.ai[.claude] = AIProviderDisplayPreference(isVisible: false, metric: .remaining)
+    let hiddenClaude = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(), configuration: hiddenClaudeConfiguration
+    )
+    #expect(hiddenClaude.ai.contains { $0.provider == .claude } == false)
+}
+
 @Test @MainActor func dashboardModelKeepsOnlySixtyFreshSystemSamplesAndSkipsProviderOnlyUpdates() {
     let configuration = SystemMonitorConfiguration()
     let start = Date(timeIntervalSince1970: 10_000)
@@ -171,7 +262,12 @@ import Testing
 }
 
 @Test @MainActor func dashboardPopoverFittingSizeCapsTallCoreFixturesAndRespectsSmallerHeight() {
+    let longReset = Date(timeIntervalSince1970: 20_000)
     let snapshot = dashboardFixtureSnapshot(
+        claudeQuotaWindows: [
+            try! QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil),
+            try! QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", usedPercent: 25, resetsAt: longReset)
+        ],
         perCoreUsage: Array(repeating: MetricPercentage(50)!, count: 15)
     )
     let model = SystemDashboardModel(snapshot: snapshot, configuration: SystemMonitorConfiguration())
@@ -194,6 +290,7 @@ private func dashboardFixtureSnapshot(
     diskAvailability: MetricAvailability? = nil,
     claudeQuotaStatus: DataStatus? = nil,
     claudeHasQuota: Bool = true,
+    claudeQuotaWindows: [QuotaWindow]? = nil,
     cursorQuotaStatus: DataStatus? = nil,
     cursorHasQuota: Bool = true,
     providerUpdatedAt: Date? = nil,
@@ -224,17 +321,30 @@ private func dashboardFixtureSnapshot(
         inputTokens: todayTokens, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
         totalTokens: todayTokens, estimatedCostUSD: Decimal(string: "7.81")!
     )
+    let defaultClaudeQuota = QuotaSnapshot(windows: [
+        try! QuotaWindow(id: "window", title: "Window", usedPercent: 68, resetsAt: nil)
+    ])
     let providers = ProviderID.allCases.map { provider in
-        ProviderSnapshot(
+        let quota: QuotaSnapshot?
+        if provider == .claude {
+            quota = claudeHasQuota
+                ? QuotaSnapshot(windows: claudeQuotaWindows ?? defaultClaudeQuota.windows)
+                : nil
+        } else if provider == .cursor && !cursorHasQuota {
+            quota = nil
+        } else {
+            quota = QuotaSnapshot(windows: [
+                try! QuotaWindow(id: "window", title: "Window", usedPercent: provider == .codex ? 45 : 68, resetsAt: nil)
+            ])
+        }
+        return ProviderSnapshot(
             provider: provider,
             usage: UsageSnapshot(
                 inputTokens: todayTokens, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
                 totalTokens: todayTokens, estimatedCostUSD: Decimal(string: "7.81")!, today: period,
                 last7Days: period, last30Days: period
             ),
-            quota: (provider == .claude && !claudeHasQuota) || (provider == .cursor && !cursorHasQuota)
-                ? nil
-                : QuotaSnapshot(windows: [try! QuotaWindow(id: "window", title: "Window", usedPercent: provider == .codex ? 45 : 68, resetsAt: nil)]),
+            quota: quota,
             usageStatus: .fresh,
             quotaStatus: provider == .claude ? (claudeQuotaStatus ?? .fresh) : provider == .cursor ? (cursorQuotaStatus ?? .fresh) : .fresh,
             updatedAt: providerUpdatedAt ?? date

@@ -173,30 +173,48 @@ public struct SystemDashboardPopoverView: View {
                         .foregroundStyle(.secondary)
                 }
                 ForEach(model.presentation.ai, id: \.provider) { provider in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Image(systemName: provider.provider.systemImage)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 16)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(provider.provider.displayName)
-                            Text("\(provider.caption) · Usage \(provider.usageStatus.label) · Quota \(provider.quotaStatus.label)")
-                                .font(.caption2)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Image(systemName: provider.provider.systemImage)
                                 .foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 8)
-                        VStack(alignment: .trailing, spacing: 3) {
-                            Text(provider.value).monospacedDigit()
-                            if let action = provider.action {
-                                Button(actionTitle(action)) { onProviderAction(provider.provider) }
-                                    .buttonStyle(.borderless)
-                                    .font(.caption)
+                                .frame(width: 16)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(provider.provider.displayName)
+                                Text("\(provider.caption) · Usage \(provider.usageStatus.label) · Quota \(provider.quotaStatus.label)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 8)
+                            VStack(alignment: .trailing, spacing: 3) {
+                                Text(provider.value).monospacedDigit()
+                                if let action = provider.action {
+                                    Button(actionTitle(action)) { onProviderAction(provider.provider) }
+                                        .buttonStyle(.borderless)
+                                        .font(.caption)
+                                }
                             }
                         }
+                        .padding(.vertical, 4)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("\(provider.provider.displayName), \(provider.caption), \(provider.value), usage \(provider.usageStatus.label), quota \(provider.quotaStatus.label)")
+
+                        if let fable = provider.fable {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack {
+                                    Text("Fable weekly")
+                                    Spacer(minLength: 8)
+                                    Text("\(fable.remaining) remaining").monospacedDigit()
+                                }
+                                Text("\(fable.resetCaption) · \(fable.freshness.label)")
+                                    .font(.caption2)
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 24)
+                            .accessibilityElement(children: .combine)
+                        }
                     }
-                    .padding(.vertical, 4)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(provider.provider.displayName), \(provider.caption), \(provider.value), usage \(provider.usageStatus.label), quota \(provider.quotaStatus.label)")
                 }
             }
         }

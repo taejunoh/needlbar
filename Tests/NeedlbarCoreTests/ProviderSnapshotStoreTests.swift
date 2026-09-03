@@ -122,6 +122,31 @@ struct ProviderSnapshotStoreTests {
     #expect(snapshot.usageStatus != .fresh)
     #expect(snapshot.quotaStatus == .fresh)
 }
+
+@Test func quotaRefreshReplacesFableWindowWhileFailuresRetainItsLastKnownGoodValue() async throws {
+    let now = Date(timeIntervalSince1970: 20_000)
+    let store = ProviderSnapshotStore(now: { now })
+    let base = try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil)
+    let fable = try QuotaWindow(
+        id: QuotaWindow.claudeFableWeeklyID,
+        title: "Fable weekly",
+        usedPercent: 25,
+        resetsAt: now
+    )
+
+    await store.applyQuota(QuotaSnapshot(windows: [base, fable]), for: .claude, at: now)
+    await store.markQuotaFailure(for: .claude, status: .requiresAuthentication, at: now)
+    var snapshot = await store.snapshot(for: .claude)
+    #expect(snapshot.quota?.windows == [base, fable])
+    #expect(snapshot.quotaStatus != .fresh)
+    #expect(snapshot.usageStatus == .unavailable)
+
+    await store.applyQuota(QuotaSnapshot(windows: [base]), for: .claude, at: now)
+    snapshot = await store.snapshot(for: .claude)
+    #expect(snapshot.quota?.windows == [base])
+    #expect(snapshot.quotaStatus == .fresh)
+    #expect(snapshot.usageStatus == .unavailable)
+}
 }
 
 private func makeUsage(totalTokens: UInt64) -> UsageSnapshot {

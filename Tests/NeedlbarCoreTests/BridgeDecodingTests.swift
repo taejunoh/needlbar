@@ -69,6 +69,35 @@ import Testing
     #expect(envelope.errors.first?.action == .unknown("futureCursorAction"))
 }
 
+@Test func quotaEnvelopeDecodesClaudeFableWeeklyWindowWithItsResetDate() throws {
+    let payload = """
+    {
+      "schemaVersion": "needlbar.v1",
+      "ok": true,
+      "generatedAt": "2030-02-01T00:00:00Z",
+      "data": {
+        "providers": [{
+          "provider": "claude",
+          "windows": [
+            { "id": "claude.session", "title": "Session", "usedPercent": 68, "resetsAt": null },
+            { "id": "claude.fable.weekly", "title": "Fable weekly", "usedPercent": 25, "resetsAt": "2030-02-09T01:00:00Z" }
+          ]
+        }]
+      },
+      "errors": []
+    }
+    """
+
+    let envelope = try BridgeDecoder().decodeQuotaEnvelope(Data(payload.utf8))
+    let provider = try #require(envelope.data?.providers.first)
+    let fable = try #require(provider.quota.windows.first { $0.id == QuotaWindow.claudeFableWeeklyID })
+
+    #expect(provider.providerID == .claude)
+    #expect(provider.quota.windows.map(\.id) == ["claude.session", QuotaWindow.claudeFableWeeklyID])
+    #expect(fable.remainingPercent == 75)
+    #expect(fable.resetsAt == BridgeDecoder.date("2030-02-09T01:00:00Z"))
+}
+
 @Test func quotaEnvelopeRejectsOutOfRangePercentages() throws {
     let payload = """
     {

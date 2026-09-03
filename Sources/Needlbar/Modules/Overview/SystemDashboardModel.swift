@@ -74,6 +74,12 @@ public struct SystemDashboardHistory: Equatable, Sendable {
 }
 
 public struct SystemDashboardPresentation: Equatable, Sendable {
+    public struct FableQuotaDetail: Equatable, Sendable {
+        public let remaining: String
+        public let resetCaption: String
+        public let freshness: PresentationFreshness
+    }
+
     public struct CPU: Equatable, Sendable {
         public let usage: String
         public let usagePercent: Double?
@@ -128,6 +134,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let usageStatus: PresentationFreshness
         public let quotaStatus: PresentationFreshness
         public let action: ProviderAuthenticationAction?
+        public let fable: FableQuotaDetail?
     }
 
     public let moduleIDs: [MonitorModuleID]
@@ -205,7 +212,8 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                 caption: Self.providerCaption(preference.metric),
                 usageStatus: PresentationFreshness(providerSnapshot?.usageStatus ?? .unavailable),
                 quotaStatus: PresentationFreshness(providerSnapshot?.quotaStatus ?? .unavailable),
-                action: popover.authenticationAction
+                action: popover.authenticationAction,
+                fable: Self.fableDetail(provider: provider, metric: preference.metric, snapshot: providerSnapshot)
             )
         }
 
@@ -245,6 +253,27 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         case .cost: "Estimated cost today"
         case .connectionStatus: "Connection"
         }
+    }
+
+    private static func fableDetail(
+        provider: ProviderID,
+        metric: AIProviderDisplayMetric,
+        snapshot: ProviderSnapshot?
+    ) -> FableQuotaDetail? {
+        guard provider == .claude, metric == .remaining else { return nil }
+        guard let window = snapshot?.quota?.windows.first(where: { $0.id == QuotaWindow.claudeFableWeeklyID }) else {
+            return FableQuotaDetail(
+                remaining: "—",
+                resetCaption: String(localized: "Reset unavailable"),
+                freshness: .unavailable
+            )
+        }
+        return FableQuotaDetail(
+            remaining: MetricFormatter.quotaRemaining(window.remainingPercent),
+            resetCaption: MetricFormatter.reset(window.resetsAt).map { String(localized: "Resets \($0)") }
+                ?? String(localized: "Reset unavailable"),
+            freshness: PresentationFreshness(snapshot?.quotaStatus ?? .unavailable)
+        )
     }
 
     private static func dashboardTokens(_ value: UInt64) -> String {
