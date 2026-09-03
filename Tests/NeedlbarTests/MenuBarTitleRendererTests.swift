@@ -50,6 +50,33 @@ import Testing
     ) == "Claude $7.81")
 }
 
+@Test func fableDoesNotChangeClaudeQuotaTitle() throws {
+    let base = snapshot(provider: .claude, usedPercent: 68)
+    let fable = try QuotaWindow(
+        id: QuotaWindow.claudeFableWeeklyID,
+        title: "Fable weekly",
+        usedPercent: 100,
+        resetsAt: Date(timeIntervalSinceNow: 3600)
+    )
+    let augmented = ProviderSnapshot(
+        provider: base.provider,
+        usage: base.usage,
+        quota: QuotaSnapshot(windows: (base.quota?.windows ?? []) + [fable]),
+        usageStatus: base.usageStatus,
+        quotaStatus: base.quotaStatus,
+        updatedAt: base.updatedAt
+    )
+    let configuration = ModuleConfiguration(defaults: freshDefaults())
+    configuration.claude = ModuleSettings(isEnabled: true, metric: .quotaRemaining)
+
+    #expect(MenuBarTitleRenderer.render(
+        module: .claude,
+        snapshot: augmented,
+        allSnapshots: [augmented],
+        configuration: configuration
+    ) == "Claude 32%")
+}
+
 @Test func unavailableDataUsesANeutralTitleInsteadOfZero() {
     let title = MenuBarTitleRenderer.render(
         module: .claude,

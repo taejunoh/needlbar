@@ -88,6 +88,7 @@ struct QuotaAlertPolicyTests {
         #expect(try QuotaAlertKey(provider: .codex, windowID: "codex.secondary").windowID == "codex.secondary")
         #expect(throws: QuotaAlertLedgerStoreError.self) { _ = try QuotaAlertKey(provider: .cursor, windowID: "cursor.primary") }
         #expect(throws: QuotaAlertLedgerStoreError.self) { _ = try QuotaAlertKey(provider: .claude, windowID: "untrusted") }
+        #expect(throws: QuotaAlertLedgerStoreError.self) { _ = try QuotaAlertKey(provider: .claude, windowID: QuotaWindow.claudeFableWeeklyID) }
     }
 
     @Test func realLedgerStoreTreatsMissingCorruptAndInvalidLedgersAsEmptyAndWritesPrivateFile() async throws {

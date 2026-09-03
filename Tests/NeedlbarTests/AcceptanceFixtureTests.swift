@@ -20,6 +20,7 @@ struct AcceptanceFixtureTests {
         ("{\"schemaVersion\":1,\"unknown\":true}", "fixtureUnknownKey", nil),
         ("{\"schemaVersion\":1,\"timeZone\":\"America/New_York\",\"startAt\":\"bad\",\"events\":[]}", "fixtureInvalidValue", nil),
         ("{\"schemaVersion\":1,\"timeZone\":\"America/New_York\",\"startAt\":\"2026-09-01T12:00:00.000Z\",\"events\":[{\"delaySeconds\":0,\"localDay\":\"2026-09-01\",\"usage\":{},\"quota\":{\"cursor\":[]}}]}", "fixtureUnknownID", 0),
+        ("{\"schemaVersion\":1,\"timeZone\":\"America/New_York\",\"startAt\":\"2026-09-01T12:00:00.000Z\",\"events\":[{\"delaySeconds\":0,\"localDay\":\"2026-09-01\",\"usage\":{},\"quota\":{\"claude\":[{\"id\":\"claude.fable.weekly\",\"remainingPercent\":75,\"resetsAt\":\"2026-09-02T12:00:00.000Z\"}]}}]}", "fixtureUnknownID", 0),
         ("{\"schemaVersion\":1,\"timeZone\":\"America/New_York\",\"startAt\":\"2026-09-01T12:00:00.000Z\",\"events\":[{\"delaySeconds\":0,\"localDay\":\"2026-09-01\",\"usage\":{\"claude\":{\"tokens\":1,\"costUSD\":\"1.00\",\"note\":\"secret\"}},\"quota\":{}}]}", "fixtureCanaryDetected", 0),
     ]) func malformedValuesReturnOnlyStableCode(_ text: String, _ code: String, _ index: Int?) {
         #expect(throws: AcceptanceFixtureFailure.self) {

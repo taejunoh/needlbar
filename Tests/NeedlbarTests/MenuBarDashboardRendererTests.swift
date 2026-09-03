@@ -61,6 +61,40 @@ import Testing
     #expect(value.title.contains("AI"))
 }
 
+@Test func fableDoesNotChangeAdaptiveMenuTitleOrTooltip() throws {
+    var configuration = fixtureMonitorConfiguration()
+    configuration.visibleModules = [.ai]
+    configuration.ai[.claude] = AIProviderDisplayPreference(isVisible: true, metric: .remaining)
+    let baseline = fixtureCombinedSnapshot()
+    let claude = try #require(baseline.providers.first(where: { $0.provider == .claude }))
+    let fable = try QuotaWindow(
+        id: QuotaWindow.claudeFableWeeklyID,
+        title: "Fable weekly",
+        usedPercent: 100,
+        resetsAt: baseline.capturedAt.addingTimeInterval(3600)
+    )
+    let augmentedClaude = ProviderSnapshot(
+        provider: claude.provider,
+        usage: claude.usage,
+        quota: QuotaSnapshot(windows: (claude.quota?.windows ?? []) + [fable]),
+        usageStatus: claude.usageStatus,
+        quotaStatus: claude.quotaStatus,
+        updatedAt: claude.updatedAt
+    )
+    let augmented = CombinedUsageSnapshot(
+        system: baseline.system,
+        providers: baseline.providers.map { $0.provider == .claude ? augmentedClaude : $0 },
+        capturedAt: baseline.capturedAt,
+        systemAvailability: baseline.systemAvailability
+    )
+
+    let before = MenuBarDashboardRenderer.render(snapshot: baseline, configuration: configuration, availableWidth: 240)
+    let after = MenuBarDashboardRenderer.render(snapshot: augmented, configuration: configuration, availableWidth: 240)
+
+    #expect(after.title == before.title)
+    #expect(after.tooltip == before.tooltip)
+}
+
 @Test func rendererUsesBillionsAndOverflowForLargeProviderValues() {
     var configuration = fixtureMonitorConfiguration()
     configuration.visibleModules = [.ai]

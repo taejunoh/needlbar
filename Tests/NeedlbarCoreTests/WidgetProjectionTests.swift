@@ -50,6 +50,7 @@ struct WidgetProjectionTests {
     let claudeQuota = QuotaSnapshot(windows: [
         try QuotaWindow(id: "claude.weekly", title: "private", usedPercent: 80, resetsAt: now.addingTimeInterval(3600)),
         try QuotaWindow(id: "claude.session", title: "private", usedPercent: 80, resetsAt: now.addingTimeInterval(3600)),
+        try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "private", usedPercent: 100, resetsAt: now.addingTimeInterval(3600)),
         try QuotaWindow(id: "codex.primary", title: "private", usedPercent: 99, resetsAt: now.addingTimeInterval(3600))
     ])
     let codexQuota = QuotaSnapshot(windows: [
