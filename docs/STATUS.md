@@ -5,6 +5,18 @@
 **Current phase:** The user completed provider-owned sign-in; a fresh bounded HTTP 200 response closed Task 0's Fable `percent`-meaning gate. The approved Fable implementation can now proceed. Release publication remains unauthorized, and native macOS 14 acceptance remains deferred.
 **Next action:** Execute Task 1 (headline/export compatibility protections) in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md`, then Tasks 2–4 with test-first development and reviews. Keep the actual normal full-test result distinct from serial diagnostics; do not publish a release or claim native macOS 14 acceptance.
 
+## Claude Fable implementation baseline — 2026-09-03
+
+Before application edits, plain `make test` exited 0: Rust workspace and vendor
+tests, Swift 336 tests in 12 suites, widget-extension, package, and notarization
+contracts passed. Log:
+`/Users/taejunoh/Developer/LFG/needlbar-fable-baseline.lmjRU9`.
+This is fresh normal full-gate evidence on unchanged application code, not
+serial-only evidence; it supersedes the earlier local baseline failures for
+this run without deleting their history. Task 1 test-first implementation is
+in progress. CI, release publication, and native macOS 14 acceptance are not
+implied by this local result.
+
 ## Claude Fable source semantics verified — 2026-09-03
 
 After the user reported sign-in complete, one fresh `BackgroundNoUI` request
