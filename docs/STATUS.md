@@ -2,8 +2,31 @@
 
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** Menu-bar readability: visual A and written spec approved; four-task implementation plan written and self-reviewed. Native implementation has not begun. Fable implementation and current-host provider/value parity remain verified at the checkpoint below. Native short-display scrolling and native macOS 14 acceptance remain open/deferred as previously recorded.
-**Next action:** Execute the approved-spec plan at `docs/superpowers/plans/2026-09-03-menubar-two-line-readability.md`, starting with a fresh baseline and Task 1 raw display segments. Recommended handoff is the AGENTS-prescribed subagent workflow, one task at a time. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
+**Current phase:** Menu-bar readability Task 1 passed tests and independent spec/quality reviews; Task 2 measured layout/image implementation is in progress. Fable implementation and current-host provider/value parity remain verified at the checkpoint below. Native short-display scrolling and native macOS 14 acceptance remain open/deferred as previously recorded.
+**Next action:** Continue Task 2 and its spec/quality reviews, then Tasks 3–4 of `docs/superpowers/plans/2026-09-03-menubar-two-line-readability.md` sequentially. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
+
+## Menu-bar implementation baseline — 2026-09-03
+
+The user approved execution of all four tasks through the subagent workflow.
+The existing isolated worktree and branch were retained. Before application
+edits, plain `make test` returned exit 0: Swift 345 tests / 12 suites and the
+Rust, vendor, widget, package, and notarization shell contracts passed.
+Log: `/Users/taejunoh/Developer/LFG/needlbar-menubar-baseline-20260903.log`.
+Submodule initialization returned exit 0 without changing the pinned revision.
+Existing macOS 26.5 object / macOS 14 link warnings remain; this current-host
+baseline is not native macOS 14 acceptance. Task 1 implementation is next.
+
+## Menu-bar Task 1 — raw segments
+
+Commit `488ef94` adds typed raw label/value segments and cached text candidates,
+with existing legacy rendering unchanged. Missing-member RED was captured
+before production changes; focused GREEN passed 15 tests. Plain `make test`
+returned exit 0 (Swift 349 tests / 12 suites plus the normal contracts).
+Logs are under `/Users/taejunoh/Developer/LFG/needlbar-menubar-task1-` with
+suffixes `red.log`, `focused.log`, and `full.log`. A duplicate focused invocation
+was canceled while waiting for the SwiftPM lock; the reported GREEN and full
+gates subsequently ran serially. Independent spec and quality reviews passed
+with no actionable findings. Task 2 measured fitting/drawing is next.
 
 ## Menu-bar implementation plan — 2026-09-03
 
