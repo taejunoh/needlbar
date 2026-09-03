@@ -3,7 +3,25 @@
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
 **Current phase:** The user completed provider-owned sign-in; a fresh bounded HTTP 200 response closed Task 0's Fable `percent`-meaning gate. The approved Fable implementation can now proceed. Release publication remains unauthorized, and native macOS 14 acceptance remains deferred.
-**Next action:** Task 1 passed implementation and both reviews. Execute Task 2 (optional Fable source normalization) in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md`, then Tasks 3–4 with test-first development and reviews. Keep the actual normal full-test result distinct from serial diagnostics; do not publish a release or claim native macOS 14 acceptance.
+**Next action:** Tasks 1–2 passed implementation and both reviews. Execute Task 3 (separate Fable remaining/reset presentation) in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md`, then Task 4 integration/native verification. Keep the actual normal full-test result distinct from serial diagnostics; do not publish a release or claim native macOS 14 acceptance.
+
+## Claude Fable Task 2 — optional source normalization — 2026-09-03
+
+Commit `fd5da82` appends at most one exact `claude.fable.weekly` window through
+the existing Claude parser and generic bridge. Its synthetic fixture and
+regressions cover optional/malformed/ambiguous data, opaque inactive metadata,
+unknown resets, unchanged required base validation, and additive serialization.
+No authentication, transport, domain, bridge implementation, or schema changes
+were made. Vendor formatting introduced during verification was removed; the
+submodule is clean.
+
+RED captured the two expected additive-window failures. GREEN passed quota
+21/21 and bridge 7/7, Clippy with `-D warnings`, and plain `make test` (Swift
+338 tests in 12 suites plus Rust/vendor/widget/package/notarize contracts).
+Logs are `/Users/taejunoh/Developer/LFG/needlbar-task2-green.log`,
+`needlbar-task2-clippy.log`, and `needlbar-task2-make.log` in the same directory.
+Scoped spec and independent quality reviews passed; the dashboard child is
+still pending Task 3.
 
 ## Claude Fable Task 1 — projection compatibility — 2026-09-03
 
