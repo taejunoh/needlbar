@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** Menu-bar readability Tasks 1–2 passed tests and independent spec/quality reviews; Task 3 existing-button integration is in progress. Fable implementation and current-host provider/value parity remain verified at the checkpoint below. Native short-display scrolling and native macOS 14 acceptance remain open/deferred as previously recorded.
-**Next action:** Complete Task 3 and its reviews, then Task 4 integration/current-host native verification and README update from `docs/superpowers/plans/2026-09-03-menubar-two-line-readability.md`. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
+**Current phase:** Menu-bar readability Tasks 1–3 passed tests and independent spec/quality reviews; Task 4 full/package/smoke and current-host native verification is next. Fable implementation and current-host provider/value parity remain verified at the checkpoint below. Native short-display scrolling and native macOS 14 acceptance remain open/deferred as previously recorded.
+**Next action:** Execute Task 4 integration/current-host native verification and README update from `docs/superpowers/plans/2026-09-03-menubar-two-line-readability.md`, then whole-feature review. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
 
 ## Menu-bar implementation baseline — 2026-09-03
 
@@ -53,6 +53,21 @@ Fresh final focused checks passed layout 8 tests and image 1 test / 2 scales;
 plain `make test` returned exit 0 with Swift 358 tests / 14 suites and all
 normal contracts. Final log: `needlbar-menubar-task2-revision-full.log` under
 `/Users/taejunoh/Developer/LFG/`. Task 3 native button integration is next.
+
+## Menu-bar Task 3 — existing status button integration
+
+Commit `cfee2d4` installs the measured image through the existing status-bar
+button and retains bounded text/icon fallbacks. No status item, timer, provider
+behavior, or settings surface was added. Missing-presenter RED was captured.
+Focused GREEN passed presenter 9, controller 29, placement 9, and panel 9 tests.
+Fresh plain `make test` returned exit 0 with Swift 368 tests / 15 suites and the
+normal contracts. Logs: `/Users/taejunoh/Developer/LFG/` prefix
+`needlbar-menubar-task3-`. Existing macOS 26.5 object / macOS 14 link-target
+warnings remain unchanged. Independent spec/quality review is in progress;
+native package/relaunch evidence is not yet claimed. Independent spec and
+quality reviews passed with no remaining findings. The spec reviewer initially
+questioned appearance observation and injected dependencies, then withdrew both
+findings after checking the approved plan and local AppKit headers.
 
 ## Menu-bar implementation plan — 2026-09-03
 

@@ -507,7 +507,7 @@ The examples below are guidance; these refinements take precedence:
   application screen-parameter observations global. Preserve no-op cache and
   post-application key behavior to prevent geometry feedback loops.
 
-- [ ] In `Tests/NeedlbarTests/MenuBarControllerTests.swift`, append these members to its existing fake handle; keep title/action/anchor/factory unchanged:
+- [x] In `Tests/NeedlbarTests/MenuBarControllerTests.swift`, append these members to its existing fake handle; keep title/action/anchor/factory unchanged:
 
 ```swift
 var tooltip = ""
@@ -609,9 +609,9 @@ import Testing
 }
 ```
 
-- [ ] Run `make swift-test SWIFT_TEST_FILTER=MenuBarControllerTests` and `make swift-test SWIFT_TEST_FILTER=MenuBarDashboardButtonPresenterTests`. Confirm controller missing-call and missing-presenter RED.
+- [x] Run `make swift-test SWIFT_TEST_FILTER=MenuBarControllerTests` and `make swift-test SWIFT_TEST_FILTER=MenuBarDashboardButtonPresenterTests`. Confirm controller missing-call and missing-presenter RED.
 
-- [ ] Create `Sources/Needlbar/MenuBar/MenuBarDashboardButtonPresenter.swift`:
+- [x] Create `Sources/Needlbar/MenuBar/MenuBarDashboardButtonPresenter.swift`:
 
 ```swift
 import AppKit
@@ -751,7 +751,7 @@ private final class MenuBarObservationBag {
 
 Tests inject cell validation only to drive deterministic failure branches; production must always validate its real NSCell image rect. The initial chrome allowance is not proof of every cell's padding. If current-host validation fails, measure the actual cell rectangle and adjust the single shared allowance within the total budget. Never silently scale down, bypass validation, or retry in a layout loop.
 
-- [ ] Add `func presentDashboard(_ result: MenuBarDashboardRenderResult)` to the existing StatusItemHandle protocol and this default body in its extension:
+- [x] Add `func presentDashboard(_ result: MenuBarDashboardRenderResult)` to the existing StatusItemHandle protocol and this default body in its extension:
 
 ```swift
 func presentDashboard(_ result: MenuBarDashboardRenderResult) {
@@ -787,7 +787,7 @@ func presentDashboard(_ result: MenuBarDashboardRenderResult) {
 
 Retain existing legacy setters/factory/anchor method; the combined path's presenter owns only its visuals. The button remains action/tooltip/AX/anchor owner. Weak event callbacks and token cleanup follow the handle lifetime. There is one cached result/key, no history or new timer. Color/pressed tint stays AppKit-owned.
 
-- [ ] Run GREEN/full gate, update STATUS, and commit Task 3:
+- [x] Run GREEN/full gate, update STATUS, and commit Task 3:
 
 ```bash
 make swift-test SWIFT_TEST_FILTER=MenuBarDashboardButtonPresenterTests
