@@ -1,9 +1,26 @@
 # Needlbar Development Status
 
-**Updated:** 2026-09-02
+**Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** The separate Claude Fable remaining/reset approach is approved; the written design spec is awaiting user review. No application code changed in this step. Release publication remains unauthorized, and native macOS 14 acceptance remains deferred.
-**Next action:** Review `docs/superpowers/specs/2026-09-02-claude-fable-quota-design.md`, close the Fable `percent`-meaning gate, then write the implementation plan. Do not publish a release or claim native macOS 14 acceptance.
+**Current phase:** The written Claude Fable design is approved and its implementation plan is written. Application implementation has not started: the source `percent`-meaning gate is still open. Release publication remains unauthorized, and native macOS 14 acceptance remains deferred.
+**Next action:** Complete Task 0 in `docs/superpowers/plans/2026-09-03-claude-fable-quota.md` with corroborated first-party semantics, then execute Task 1 (protect headline/export projections) and subsequent tasks in order. Do not infer remaining percentage, publish a release, or claim native macOS 14 acceptance.
+
+## Claude Fable implementation-plan checkpoint — 2026-09-03
+
+The user approved the written design. The plan now specifies the source
+semantics gate, exact Swift compatibility projections, optional Rust parsing,
+dashboard detail/freshness, consumer regressions, and integrated/native checks.
+No application or fixture files changed during planning.
+
+The corrected diagnostic passed a synthetic extraction test only. Its single
+live follow-up emitted no output and remained alive beyond 30 seconds despite
+the 15-second HTTP timeout. Exact process 48962 was terminated and confirmed
+gone; the helper was returned to Trash and was not retried. There is no new
+live numeric evidence and no established cause for the delay. Future diagnosis
+needs an outer bound covering credential resolution as well as transport.
+Task 0 remains blocked; the plan must not be mistaken for a verified mapping
+from source `percent` to used/utilization. Existing full-test caveats below
+remain unchanged; no product test result is claimed for this documentation step.
 
 ## Claude Fable quota design checkpoint — 2026-09-02
 

@@ -1,8 +1,8 @@
 # Claude Fable remaining quota and reset
 
-**Status:** Approach approved by the user; this written design is awaiting
-user review. No implementation is authorized until the review and the numeric
-semantics gate described below are complete.
+**Status:** Written design approved by the user on 2026-09-03. The implementation
+plan is `docs/superpowers/plans/2026-09-03-claude-fable-quota.md`.
+Implementation remains blocked on the numeric semantics gate described below.
 
 **Date:** 2026-09-02
 
@@ -48,6 +48,15 @@ used/utilization percentage (for example, the same response's generic limit
 percentage must be shown to mean five-hour or seven-day utilization). Until
 that evidence exists, Fable numeric output fails closed as unavailable; no
 placeholder, inferred current percentage, or token-based substitute is allowed.
+
+On 2026-09-03 the diagnostic's corrected allowlisted value extraction passed a
+synthetic check (session 37, weekly 64, Fable 13). One live follow-up attempt
+produced no output and exceeded 30 seconds despite the HTTP client's 15-second
+timeout. Its exact process was terminated and confirmed gone, and the helper
+was returned to Trash without retry. No live status, body, comparison, or Fable
+numeric value was obtained; the cause of the delay is not established. This
+does not close the semantics gate. Future diagnosis must bound credential
+resolution and transport together, not assume the HTTP timeout covers both.
 
 ## Source and normalization contract
 
@@ -135,7 +144,7 @@ because their Fable identity and semantics are unverified.
 
 ## Acceptance gates before implementation
 
-The review-ready implementation plan must cover sanitized synthetic fixtures
+The implementation plan must cover sanitized synthetic fixtures
 for valid, missing, null, invalid, and ambiguous Fable entries; unchanged
 Claude headline behavior including Fable at 0%; export byte identity and
 unknown-ID rejection; unchanged widget/notification allowlists; Swift
@@ -148,4 +157,4 @@ permitted.
 Run plain `make test` and report its actual known fixture failures, with a
 separate serial full-test diagnostic if needed. Do not claim CI or native
 macOS 14 acceptance from these checks. No implementation starts until this
-spec is reviewed and the source `percent` meaning is corroborated.
+approved spec's source `percent` meaning is corroborated.
