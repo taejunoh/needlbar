@@ -72,6 +72,10 @@ struct DashboardSection<Content: View>: View {
                         .accessibilityLabel("\(title) data \(status)")
                 }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                freshness.flatMap(DashboardReadabilityPolicy.systemStatus).map { "\(title), \($0)" } ?? title
+            )
             content()
         }
         .padding(.horizontal, 18)
@@ -128,6 +132,7 @@ struct DashboardMetricText: View {
             .lineLimit(1)
             .truncationMode(value.truncation)
             .help(value.helpValue)
+            .accessibilityElement(children: .ignore)
             .accessibilityValue(value.accessibilityValue)
     }
 }
@@ -200,6 +205,7 @@ struct DashboardTrendMetrics: View {
             }
             RecentTrendChart(samples: samples, firstColor: firstColor, secondColor: secondColor)
                 .frame(height: 34)
+                .accessibilityElement(children: .ignore)
                 .accessibilityLabel(accessibilityLabel)
         }
         .padding(.top, 3)
