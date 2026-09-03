@@ -3,6 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{de::Deserializer, Deserialize};
+use serde_json::Value;
 
 use super::claude_credentials::{
     production_resolver, ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver,
@@ -119,10 +120,14 @@ impl ClaudeQuotaProvider {
         let response: UsageResponse = serde_json::from_str(payload).map_err(|_| schema_error())?;
         let session = parse_window(response.five_hour, "claude.session", "Session")?;
         let weekly = parse_window(response.seven_day, "claude.weekly", "Weekly")?;
+        let mut windows = vec![session, weekly];
+        if let Some(fable) = parse_fable_window(response.limits.as_ref()) {
+            windows.push(fable);
+        }
 
         Ok(ProviderQuotaSnapshot {
             provider: ProviderId::Claude,
-            windows: vec![session, weekly],
+            windows,
         })
     }
 
@@ -153,6 +158,8 @@ impl QuotaProvider for ClaudeQuotaProvider {
 struct UsageResponse {
     five_hour: UsageWindow,
     seven_day: UsageWindow,
+    #[serde(default)]
+    limits: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -173,6 +180,40 @@ where
 
 fn parse_window(source: UsageWindow, id: &str, title: &str) -> Result<QuotaWindow, QuotaError> {
     QuotaWindow::new(id, title, source.utilization, source.resets_at).map_err(|_| schema_error())
+}
+
+fn is_fable_weekly_candidate(limit: &Value) -> bool {
+    limit.get("kind").and_then(Value::as_str) == Some("weekly_scoped")
+        && limit.get("group").and_then(Value::as_str) == Some("weekly")
+        && limit
+            .pointer("/scope/model/display_name")
+            .and_then(Value::as_str)
+            == Some("Fable")
+        && limit.pointer("/scope/surface").is_some_and(Value::is_null)
+}
+
+fn parse_optional_fable_reset(limit: &Value) -> Option<Option<DateTime<Utc>>> {
+    match limit.get("resets_at") {
+        None | Some(Value::Null) => Some(None),
+        Some(Value::String(value)) => DateTime::parse_from_rfc3339(value)
+            .ok()
+            .map(|value| Some(value.with_timezone(&Utc))),
+        Some(_) => None,
+    }
+}
+
+fn parse_fable_window(limits: Option<&Value>) -> Option<QuotaWindow> {
+    let mut candidates = limits?
+        .as_array()?
+        .iter()
+        .filter(|value| is_fable_weekly_candidate(value));
+    let candidate = candidates.next()?;
+    if candidates.next().is_some() {
+        return None;
+    }
+    let percent = candidate.get("percent")?.as_f64()?;
+    let resets_at = parse_optional_fable_reset(candidate)?;
+    QuotaWindow::new("claude.fable.weekly", "Fable weekly", percent, resets_at).ok()
 }
 
 fn credential_error_to_quota_error(error: ClaudeCredentialError) -> QuotaError {

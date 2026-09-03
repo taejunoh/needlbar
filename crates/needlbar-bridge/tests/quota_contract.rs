@@ -125,6 +125,30 @@ async fn claude_user_initiated_collection_uses_only_claude_with_ui_access() {
 }
 
 #[tokio::test]
+async fn bridge_keeps_fable_as_an_additive_claude_window() {
+    let accesses = Arc::new(Mutex::new(Vec::new()));
+    let collection = collect_claude_user_initiated_with_source(Arc::new(RecordingClaudeSource {
+        accesses: Arc::clone(&accesses),
+        result: Ok(ClaudeQuotaProvider::parse_usage_payload(include_str!(
+            "../../../Fixtures/quota/claude/usage-fable-success.json"
+        ))
+        .unwrap()),
+    }))
+    .await;
+    let value = serde_json::to_value(envelope_from_collection(collection)).unwrap();
+    let windows = &value["data"]["providers"][0]["windows"];
+    assert_eq!(
+        *accesses.lock().unwrap(),
+        vec![ClaudeCredentialAccess::UserInitiatedAllowUI]
+    );
+    assert_eq!(windows.as_array().map(Vec::len), Some(3));
+    assert_eq!(windows[2]["id"], "claude.fable.weekly");
+    assert_eq!(windows[2]["usedPercent"].as_f64(), Some(25.0));
+    assert_eq!(windows[2]["resetsAt"], "2030-02-09T01:00:00Z");
+    assert_eq!(value["errors"], serde_json::json!([]));
+}
+
+#[tokio::test]
 async fn codex_only_collection_invokes_only_its_injected_provider() {
     // This catches a Codex verification path that reconstructs the ordinary
     // fan-out collector and reaches Claude or Cursor.

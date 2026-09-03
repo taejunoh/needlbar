@@ -13,6 +13,12 @@ use tempfile::TempDir;
 
 const SUCCESS_FIXTURE: &str = include_str!("../../../Fixtures/quota/claude/usage-success.json");
 const MALFORMED_FIXTURE: &str = include_str!("../../../Fixtures/quota/claude/usage-malformed.json");
+const FABLE_SUCCESS_FIXTURE: &str =
+    include_str!("../../../Fixtures/quota/claude/usage-fable-success.json");
+
+fn fable_payload() -> serde_json::Value {
+    serde_json::from_str(FABLE_SUCCESS_FIXTURE).unwrap()
+}
 
 struct RecordingResolver {
     accesses: Arc<Mutex<Vec<ClaudeCredentialAccess>>>,
@@ -201,6 +207,117 @@ fn parses_claude_session_and_weekly_windows_from_fixture() {
     );
     assert_eq!(snapshot.windows[1].id(), "claude.weekly");
     assert_eq!(snapshot.windows[1].used_percent(), 80.0);
+}
+
+#[test]
+fn fable_is_an_additive_used_percent_window_even_when_inactive() {
+    let snapshot = ClaudeQuotaProvider::parse_usage_payload(FABLE_SUCCESS_FIXTURE).unwrap();
+
+    assert_eq!(snapshot.windows.len(), 3);
+    assert_eq!(snapshot.windows[0].used_percent(), 42.5);
+    assert_eq!(snapshot.windows[1].used_percent(), 80.0);
+    let fable = &snapshot.windows[2];
+    assert_eq!(fable.id(), "claude.fable.weekly");
+    assert_eq!(fable.title(), "Fable weekly");
+    assert_eq!(fable.used_percent(), 25.0);
+    assert_eq!(fable.resets_at().unwrap().timestamp(), 1_896_829_200);
+}
+
+#[test]
+fn malformed_or_unmatched_fable_preserves_both_base_windows() {
+    use serde_json::{json, Value};
+
+    let mut cases = Vec::new();
+    let mut missing = fable_payload();
+    missing.as_object_mut().unwrap().remove("limits");
+    cases.push(missing);
+    for limits in [
+        Value::Null,
+        json!({}),
+        json!("invalid"),
+        json!([]),
+        json!([null]),
+    ] {
+        let mut payload = fable_payload();
+        payload["limits"] = limits;
+        cases.push(payload);
+    }
+    for (pointer, invalid) in [
+        ("/limits/0/percent", json!(-1)),
+        ("/limits/0/percent", json!(101)),
+        ("/limits/0/percent", json!("25")),
+        ("/limits/0/percent", Value::Null),
+        ("/limits/0/resets_at", json!("not-a-date")),
+        ("/limits/0/resets_at", json!(123)),
+        ("/limits/0/kind", json!("weekly_all")),
+        ("/limits/0/group", json!("session")),
+        ("/limits/0/scope/model/display_name", json!("Omelette")),
+        ("/limits/0/scope/surface", json!("cli")),
+    ] {
+        let mut payload = fable_payload();
+        *payload.pointer_mut(pointer).unwrap() = invalid;
+        cases.push(payload);
+    }
+    for (object, field) in [("/limits/0", "percent"), ("/limits/0/scope", "surface")] {
+        let mut payload = fable_payload();
+        payload
+            .pointer_mut(object)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove(field);
+        cases.push(payload);
+    }
+    let mut duplicate = fable_payload();
+    let entry = duplicate["limits"][0].clone();
+    duplicate["limits"].as_array_mut().unwrap().push(entry);
+    cases.push(duplicate);
+    let mut duplicate_malformed = fable_payload();
+    let mut malformed_entry = duplicate_malformed["limits"][0].clone();
+    malformed_entry["percent"] = json!("25");
+    duplicate_malformed["limits"]
+        .as_array_mut()
+        .unwrap()
+        .push(malformed_entry);
+    cases.push(duplicate_malformed);
+
+    for (index, payload) in cases.into_iter().enumerate() {
+        let snapshot = ClaudeQuotaProvider::parse_usage_payload(&payload.to_string()).unwrap();
+        assert_eq!(snapshot.windows.len(), 2, "case {index}");
+        assert_eq!(snapshot.windows[0].used_percent(), 42.5);
+        assert_eq!(snapshot.windows[1].used_percent(), 80.0);
+    }
+}
+
+#[test]
+fn fable_unknown_reset_and_opaque_metadata_remain_valid() {
+    for remove_reset in [false, true] {
+        let mut payload = fable_payload();
+        payload["limits"][0]["resets_at"] = serde_json::Value::Null;
+        if remove_reset {
+            payload["limits"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("resets_at");
+        }
+        payload["limits"][0]["percent"] = serde_json::json!(0);
+        payload["limits"][0]["scope"]["model"]["id"] = serde_json::json!("synthetic-opaque-id");
+        payload["limits"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("is_active");
+        let snapshot = ClaudeQuotaProvider::parse_usage_payload(&payload.to_string()).unwrap();
+        assert_eq!(snapshot.windows.len(), 3);
+        assert_eq!(snapshot.windows[2].used_percent(), 0.0);
+        assert_eq!(snapshot.windows[2].resets_at(), None);
+    }
+}
+
+#[test]
+fn optional_fable_does_not_relax_required_base_window_validation() {
+    let mut payload = fable_payload();
+    payload["five_hour"]["utilization"] = serde_json::json!(101);
+    assert!(ClaudeQuotaProvider::parse_usage_payload(&payload.to_string()).is_err());
 }
 
 #[test]
