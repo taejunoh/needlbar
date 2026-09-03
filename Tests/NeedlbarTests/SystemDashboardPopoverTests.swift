@@ -290,10 +290,16 @@ import Testing
     #expect(DashboardReadabilityPolicy.systemStatus(.unavailable) == nil)
 
     #expect(DashboardReadabilityPolicy.providerStatus(usage: .fresh, quota: .fresh) == nil)
-    #expect(DashboardReadabilityPolicy.providerStatus(usage: .stale, quota: .fresh) == "Stale")
-    #expect(DashboardReadabilityPolicy.providerStatus(usage: .fresh, quota: .requiresAuthentication) == "Authentication required")
-    #expect(DashboardReadabilityPolicy.providerStatus(usage: .error, quota: .fresh) == "Error")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .stale, quota: .fresh) == "Usage Stale")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .fresh, quota: .requiresAuthentication) == "Quota Authentication required")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .error, quota: .fresh) == "Usage Error")
     #expect(DashboardReadabilityPolicy.providerStatus(usage: .unavailable, quota: .unavailable) == nil)
+}
+
+@Test func dashboardReadabilityPreservesIndependentProviderStatusProvenance() {
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .stale, quota: .stale) == "Usage Stale · Quota Stale")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .error, quota: .requiresAuthentication) == "Usage Error · Quota Authentication required")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .requiresAuthentication, quota: .error) == "Usage Authentication required · Quota Error")
 }
 
 @Test func dashboardReadabilityKeepsFullValueForHelpAndAccessibility() {
@@ -405,7 +411,7 @@ import Testing
     #expect(DashboardReadabilityPolicy.providerStatus(
         usage: stale.ai.first { $0.provider == .claude }!.usageStatus,
         quota: stale.ai.first { $0.provider == .claude }!.quotaStatus
-    ) == "Authentication required")
+    ) == "Quota Authentication required")
 }
 
 private func dashboardFixtureSnapshot(

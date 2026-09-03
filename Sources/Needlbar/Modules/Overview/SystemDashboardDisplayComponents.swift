@@ -10,7 +10,7 @@ enum DashboardReadabilityPolicy {
 
     static func providerStatus(usage: PresentationFreshness, quota: PresentationFreshness) -> String? {
         var result: [String] = []
-        for status in [usage, quota] {
+        for (stream, status) in [("Usage", usage), ("Quota", quota)] {
             let label: String?
             switch status {
             case .fresh, .unavailable: label = nil
@@ -18,7 +18,7 @@ enum DashboardReadabilityPolicy {
             case .requiresAuthentication: label = "Authentication required"
             case .error: label = "Error"
             }
-            if let label, !result.contains(label) { result.append(label) }
+            if let label { result.append("\(stream) \(label)") }
         }
         return result.isEmpty ? nil : result.joined(separator: " · ")
     }
