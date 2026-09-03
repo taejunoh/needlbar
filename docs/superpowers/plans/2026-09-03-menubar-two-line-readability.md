@@ -18,7 +18,7 @@ Work only in `/Users/taejunoh/Developer/LFG/needlbar/.worktrees/integration-main
 
 Root orchestrates and maintains STATUS; Terra owns layout/native reasoning; Luna owns bounded tests/mechanical edits. Assign explicit file ownership. Execute one numbered task at a time with spec/quality review and a plain full gate between tasks. Preserve others' changes and run Make commands serially.
 
-- [ ] Before application edits, capture baseline:
+- [x] Before application edits, capture baseline:
 
 ```bash
 git status --short
@@ -42,7 +42,7 @@ SwiftPM discovers these files in existing targets. No Package.swift, NeedlbarCor
 
 ### Task 1: Add raw segments without changing legacy rendering
 
-- [ ] Add these RED tests to the existing renderer test file; reuse its file-private fixtures:
+- [x] Add these RED tests to the existing renderer test file; reuse its file-private fixtures:
 
 ```swift
 @Test func typedSegmentsPreserveValuesAndProviderOverflow() {
@@ -97,9 +97,9 @@ Append to existing `fableDoesNotChangeAdaptiveMenuTitleOrTooltip`, using its `be
 #expect(after.textCandidates == before.textCandidates)
 ```
 
-- [ ] Run `make swift-test SWIFT_TEST_FILTER=MenuBarDashboardRendererTests`; confirm missing-member RED.
+- [x] Run `make swift-test SWIFT_TEST_FILTER=MenuBarDashboardRendererTests`; confirm missing-member RED.
 
-- [ ] Add before the existing render-result type:
+- [x] Add before the existing render-result type:
 
 ```swift
 public struct MenuBarDashboardValuePart: Equatable, Sendable {
@@ -199,7 +199,7 @@ textCandidates: textCandidates(configuredModuleIDs, snapshot: snapshot, configur
 
 Keep legacy fit/title/layout/moduleIDs/tooltip untouched. Raw segments include every configured visible module even when legacy fit fails. Native fit never gates on the old fallback flag. Candidates let geometry changes refit cached text without another request.
 
-- [ ] Run GREEN/full gate, update STATUS, and commit Task 1 only:
+- [x] Run GREEN/full gate, update STATUS, and commit Task 1 only:
 
 ```bash
 make swift-test SWIFT_TEST_FILTER=MenuBarDashboardRendererTests
@@ -212,7 +212,7 @@ git commit -m "feat: model stable menu bar value segments"
 
 ### Task 2: Fit two-line columns first and draw at native scale
 
-- [ ] Create `Tests/NeedlbarTests/MenuBarTwoLineLayoutTests.swift`:
+- [x] Create `Tests/NeedlbarTests/MenuBarTwoLineLayoutTests.swift`:
 
 ```swift
 import AppKit
@@ -321,9 +321,9 @@ import Testing
 }
 ```
 
-- [ ] Run each new suite through `make swift-test SWIFT_TEST_FILTER=MenuBarTwoLineLayoutTests` and `make swift-test SWIFT_TEST_FILTER=MenuBarStatusImageRendererTests`; confirm missing-type RED.
+- [x] Run each new suite through `make swift-test SWIFT_TEST_FILTER=MenuBarTwoLineLayoutTests` and `make swift-test SWIFT_TEST_FILTER=MenuBarStatusImageRendererTests`; confirm missing-type RED.
 
-- [ ] Create `Sources/Needlbar/MenuBar/MenuBarDashboardTwoLineLayout.swift`:
+- [x] Create `Sources/Needlbar/MenuBar/MenuBarDashboardTwoLineLayout.swift`:
 
 ```swift
 import AppKit
@@ -437,7 +437,7 @@ struct MenuBarDashboardTwoLineLayout: Equatable {
 
 Layout is side-effect-free measured data; never store AppKit font/image objects in the Sendable raw result. Network download x uses its independent primary reservation. Provider overflow is a label badge and omitted modules are a separate +N run; neither creates another status item. Long valid values increase required width then use ordinary prefix/fallback, not truncation or altered formatting.
 
-- [ ] Create `Sources/Needlbar/MenuBar/MenuBarDashboardImageRenderer.swift`:
+- [x] Create `Sources/Needlbar/MenuBar/MenuBarDashboardImageRenderer.swift`:
 
 ```swift
 import AppKit
@@ -474,7 +474,7 @@ import CoreText
 
 Do not use whole-font extreme bounding boxes, guessed NSString baselines, or lockFocus's implicit scale. The shared starting font pair remains subject to native acceptance. If 22-point glyph tests fail, tune that pair based on measured glyph bands rather than weakening no-clipping or shrinking indefinitely.
 
-- [ ] Run GREEN/full gate, update STATUS, and commit:
+- [x] Run GREEN/full gate, update STATUS, and commit:
 
 ```bash
 make swift-test SWIFT_TEST_FILTER=MenuBarTwoLineLayoutTests
@@ -488,6 +488,24 @@ git commit -m "feat: fit and draw measured two-line menu bar"
 
 
 ### Task 3: Integrate the existing button and preserve lifecycle/fallback
+
+**Execution refinements (2026-09-03):** A read-only native-boundary review found
+two implementation details to correct while preserving the approved design.
+The examples below are guidance; these refinements take precedence:
+
+- Do not add test-only `renderCount` or `invalidate` APIs. Observe real installed
+  image identity and length assignments through repeated `present` calls. Keep
+  `refresh` as the production observer callback. A small geometry dependency
+  may support deterministic scale/appearance tests if needed.
+- Text fallback must include native cell padding in the total budget, not use
+  ink-only measurement followed by unconstrained `variableLength`. Reserve the
+  shared chrome, assign a finite measured length, and validate the actual
+  `NSCell.titleRect(forBounds:)`; use the existing icon fallback if it cannot
+  fit. Test the near-budget case. Task 2 already includes chrome in its fit:
+  pass the full budget to it, without subtracting chrome twice.
+- Filter window-specific observations to the button's current window; keep
+  application screen-parameter observations global. Preserve no-op cache and
+  post-application key behavior to prevent geometry feedback loops.
 
 - [ ] In `Tests/NeedlbarTests/MenuBarControllerTests.swift`, append these members to its existing fake handle; keep title/action/anchor/factory unchanged:
 

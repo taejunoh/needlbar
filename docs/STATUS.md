@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-03
 **Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** Menu-bar readability Task 1 passed tests and independent spec/quality reviews; Task 2 measured layout/image implementation is in progress. Fable implementation and current-host provider/value parity remain verified at the checkpoint below. Native short-display scrolling and native macOS 14 acceptance remain open/deferred as previously recorded.
-**Next action:** Continue Task 2 and its spec/quality reviews, then Tasks 3–4 of `docs/superpowers/plans/2026-09-03-menubar-two-line-readability.md` sequentially. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
+**Current phase:** Menu-bar readability Tasks 1–2 passed tests and independent spec/quality reviews; Task 3 existing-button integration is in progress. Fable implementation and current-host provider/value parity remain verified at the checkpoint below. Native short-display scrolling and native macOS 14 acceptance remain open/deferred as previously recorded.
+**Next action:** Complete Task 3 and its reviews, then Task 4 integration/current-host native verification and README update from `docs/superpowers/plans/2026-09-03-menubar-two-line-readability.md`. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
 
 ## Menu-bar implementation baseline — 2026-09-03
 
@@ -27,6 +27,32 @@ suffixes `red.log`, `focused.log`, and `full.log`. A duplicate focused invocatio
 was canceled while waiting for the SwiftPM lock; the reported GREEN and full
 gates subsequently ran serially. Independent spec and quality reviews passed
 with no actionable findings. Task 2 measured fitting/drawing is next.
+
+## Menu-bar Task 2 — measured layout and image
+
+Commit `66e7ccd` adds measured CoreText layout and transparent template bitmap
+drawing. The starting 7.5-point regular / 11-point semibold monospaced-digit
+fonts fit a 22-point height on this host without tuning. Native installation
+is still pending Task 3. Raw segment/legacy/provider behavior is unchanged.
+
+Missing-API RED was captured by compiling both new test files in one target.
+Focused GREEN passed layout 7 tests, image 1 test with 2 scale arguments, and
+renderer 15 tests. Plain `make test` returned exit 0 (Swift 357 tests / 14
+suites and the normal contracts). Logs: `/Users/taejunoh/Developer/LFG/` prefix
+`needlbar-menubar-task2-`, suffixes `red-layout.log`, `layout.log`, `image.log`,
+`renderer.log`, `full.log`. Two faulty fixture expectations were corrected:
+the oversized value must actually be 100 digits, and compact-label testing
+must establish a genuine narrower compact candidate. No clipping assertion
+was relaxed. Initial spec review found that the common fixed glyph repertoire
+was missing from both vertical bands. A new behavioral RED reproduced changing
+baseline Y with different glyphs. The correction now passes layout 8 tests and
+the 1x/2x image checks, including 22-point height; repeat full verification and
+independent re-review completed with no remaining findings. Commit `da513fd`
+stabilizes both role bands and returns Task 2 helpers to internal visibility.
+Fresh final focused checks passed layout 8 tests and image 1 test / 2 scales;
+plain `make test` returned exit 0 with Swift 358 tests / 14 suites and all
+normal contracts. Final log: `needlbar-menubar-task2-revision-full.log` under
+`/Users/taejunoh/Developer/LFG/`. Task 3 native button integration is next.
 
 ## Menu-bar implementation plan — 2026-09-03
 
