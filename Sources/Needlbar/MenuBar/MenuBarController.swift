@@ -10,6 +10,7 @@ public protocol StatusItemHandle: AnyObject {
     var usesIconFallback: Bool { get set }
     var action: (@MainActor () -> Void)? { get set }
     var availableWidth: Double { get }
+    func presentDashboard(_ result: MenuBarDashboardRenderResult)
     func presentationAnchor() -> StatusItemPresentationAnchor?
 }
 
@@ -28,6 +29,12 @@ public extension StatusItemHandle {
         set {}
     }
     var availableWidth: Double { 400 }
+    func presentDashboard(_ result: MenuBarDashboardRenderResult) {
+        title = result.title
+        tooltip = result.tooltip
+        accessibilityLabel = result.usesIconFallback ? "Needlbar" : result.tooltip
+        usesIconFallback = result.usesIconFallback
+    }
 }
 
 @MainActor
@@ -632,10 +639,7 @@ public final class MenuBarController: NSObject {
             configuration: monitorConfiguration,
             availableWidth: item.availableWidth
         )
-        item.title = rendered.title
-        item.tooltip = rendered.tooltip
-        item.accessibilityLabel = rendered.usesIconFallback ? "Needlbar" : rendered.tooltip
-        item.usesIconFallback = rendered.usesIconFallback
+        item.presentDashboard(rendered)
         item.action = { [weak self, weak item] in
             guard let self, let item else { return }
             self.activate(.overview, from: item)
@@ -799,6 +803,7 @@ public final class AppKitStatusItemFactory: StatusItemFactory {
 @MainActor
 private final class AppKitStatusItemHandle: NSObject, StatusItemHandle {
     let statusItem: NSStatusItem
+    private var dashboardPresenter: MenuBarDashboardButtonPresenter?
     var action: (@MainActor () -> Void)? {
         didSet {
             statusItem.button?.target = self
@@ -823,6 +828,27 @@ private final class AppKitStatusItemHandle: NSObject, StatusItemHandle {
 
     var usesIconFallback: Bool {
         didSet { updateIconFallbackAppearance() }
+    }
+
+    func presentDashboard(_ result: MenuBarDashboardRenderResult) {
+        guard let button = statusItem.button else {
+            title = result.title
+            tooltip = result.tooltip
+            accessibilityLabel = result.usesIconFallback ? "Needlbar" : result.tooltip
+            usesIconFallback = result.usesIconFallback
+            return
+        }
+        if dashboardPresenter == nil {
+            dashboardPresenter = MenuBarDashboardButtonPresenter(
+                button: button,
+                width: { [weak self] in self?.availableWidth ?? 240 },
+                setLength: { [weak self] length in
+                    guard let self, self.statusItem.length != length else { return }
+                    self.statusItem.length = length
+                }
+            )
+        }
+        dashboardPresenter?.present(result)
     }
 
     var availableWidth: Double {

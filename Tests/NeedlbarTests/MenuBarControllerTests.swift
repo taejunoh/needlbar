@@ -23,6 +23,33 @@ import Testing
 }
 
 @MainActor
+@Test func controllerPassesStructuredDashboardWithoutReplacingHandle() async throws {
+    let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+    let factory = FakeStatusItemFactory()
+    let controller = makeMenuBarController(
+        configuration: configuration,
+        snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
+        statusItemFactory: factory
+    )
+
+    await controller.refresh()
+    let item = try #require(factory.created.last)
+    let result = try #require(item.dashboardResults.last)
+
+    #expect(!result.segments.isEmpty)
+    #expect(item.tooltip == result.tooltip)
+    #expect(item.accessibilityLabel == result.tooltip)
+    #expect(item.action != nil)
+    #expect(item.presentationAnchor() == FakeStatusItemHandle.literalAnchor)
+
+    await controller.refresh()
+
+    #expect(factory.created.count == 1)
+    #expect(factory.created[0] === item)
+}
+
+@MainActor
 @Test func enablingClaudeAddsItWithoutRecreatingOverview() async throws {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     let factory = FakeStatusItemFactory()
@@ -820,6 +847,10 @@ private final class FakeStatusItemHandle: StatusItemHandle {
     )
     var anchorForPresentation: StatusItemPresentationAnchor?
     var title = ""
+    var tooltip = ""
+    var accessibilityLabel = ""
+    var usesIconFallback = false
+    private(set) var dashboardResults: [MenuBarDashboardRenderResult] = []
     var action: (@MainActor () -> Void)? {
         didSet { actionAssignmentCount += 1 }
     }
@@ -835,6 +866,14 @@ private final class FakeStatusItemHandle: StatusItemHandle {
 
     func presentationAnchor() -> StatusItemPresentationAnchor? {
         anchorForPresentation
+    }
+
+    func presentDashboard(_ result: MenuBarDashboardRenderResult) {
+        title = result.title
+        tooltip = result.tooltip
+        accessibilityLabel = result.usesIconFallback ? "Needlbar" : result.tooltip
+        usesIconFallback = result.usesIconFallback
+        dashboardResults.append(result)
     }
 }
 
