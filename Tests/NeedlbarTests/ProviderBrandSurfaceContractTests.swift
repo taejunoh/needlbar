@@ -46,12 +46,17 @@ struct ProviderBrandSurfaceContractTests {
             appearance: .darkAqua
         )
 
+        let lightSize = light.view.fittingSize
+        let darkSize = dark.view.fittingSize
         #expect(light.view.appearance?.name == .aqua)
         #expect(dark.view.appearance?.name == .darkAqua)
-        #expect(light.view.fittingSize.width == 300)
-        #expect(dark.view.fittingSize.width == 300)
-        #expect(light.view.fittingSize.height > 0)
-        #expect(dark.view.fittingSize.height > 0)
+        #expect(light.view.effectiveAppearance.bestMatch(from: Self.appearanceNames) == .aqua)
+        #expect(dark.view.effectiveAppearance.bestMatch(from: Self.appearanceNames) == .darkAqua)
+        #expect(lightSize == darkSize)
+        #expect(lightSize.width == 300)
+        #expect(darkSize.width == 300)
+        #expect(lightSize.width > 0 && lightSize.height > 0)
+        #expect(darkSize.width > 0 && darkSize.height > 0)
     }
 
     @MainActor @Test("provider detail hosts and lays out in aqua and dark aqua")
@@ -60,12 +65,17 @@ struct ProviderBrandSurfaceContractTests {
         let light = Self.host(ProviderPopoverView(snapshot: snapshot), appearance: .aqua)
         let dark = Self.host(ProviderPopoverView(snapshot: snapshot), appearance: .darkAqua)
 
+        let lightSize = light.view.fittingSize
+        let darkSize = dark.view.fittingSize
         #expect(light.view.appearance?.name == .aqua)
         #expect(dark.view.appearance?.name == .darkAqua)
-        #expect(light.view.fittingSize.width == 300)
-        #expect(dark.view.fittingSize.width == 300)
-        #expect(light.view.fittingSize.height > 0)
-        #expect(dark.view.fittingSize.height > 0)
+        #expect(light.view.effectiveAppearance.bestMatch(from: Self.appearanceNames) == .aqua)
+        #expect(dark.view.effectiveAppearance.bestMatch(from: Self.appearanceNames) == .darkAqua)
+        #expect(lightSize == darkSize)
+        #expect(lightSize.width == 300)
+        #expect(darkSize.width == 300)
+        #expect(lightSize.width > 0 && lightSize.height > 0)
+        #expect(darkSize.width > 0 && darkSize.height > 0)
     }
 
     @MainActor @Test("system monitor settings hosts and lays out in aqua and dark aqua")
@@ -78,12 +88,15 @@ struct ProviderBrandSurfaceContractTests {
         let light = Self.host(Form { SystemMonitorSettingsView(model: model) }, appearance: .aqua)
         let dark = Self.host(Form { SystemMonitorSettingsView(model: model) }, appearance: .darkAqua)
 
+        let lightSize = light.view.fittingSize
+        let darkSize = dark.view.fittingSize
         #expect(light.view.appearance?.name == .aqua)
         #expect(dark.view.appearance?.name == .darkAqua)
-        #expect(light.view.fittingSize.width > 0)
-        #expect(dark.view.fittingSize.width > 0)
-        #expect(light.view.fittingSize.height > 0)
-        #expect(dark.view.fittingSize.height > 0)
+        #expect(light.view.effectiveAppearance.bestMatch(from: Self.appearanceNames) == .aqua)
+        #expect(dark.view.effectiveAppearance.bestMatch(from: Self.appearanceNames) == .darkAqua)
+        #expect(lightSize == darkSize)
+        #expect(lightSize.width > 0 && lightSize.height > 0)
+        #expect(darkSize.width > 0 && darkSize.height > 0)
     }
 
     @MainActor @Test("settings connections host and lay out in aqua and dark aqua")
@@ -106,12 +119,17 @@ struct ProviderBrandSurfaceContractTests {
         let light = Self.host(view, appearance: .aqua)
         let dark = Self.host(view, appearance: .darkAqua)
 
+        let lightSize = light.view.fittingSize
+        let darkSize = dark.view.fittingSize
         #expect(light.view.appearance?.name == .aqua)
         #expect(dark.view.appearance?.name == .darkAqua)
-        #expect(light.view.fittingSize.width == 520)
-        #expect(dark.view.fittingSize.width == 520)
-        #expect(light.view.fittingSize.height > 0)
-        #expect(dark.view.fittingSize.height > 0)
+        #expect(light.view.effectiveAppearance.bestMatch(from: Self.appearanceNames) == .aqua)
+        #expect(dark.view.effectiveAppearance.bestMatch(from: Self.appearanceNames) == .darkAqua)
+        #expect(lightSize == darkSize)
+        #expect(lightSize.width == 520)
+        #expect(darkSize.width == 520)
+        #expect(lightSize.width > 0 && lightSize.height > 0)
+        #expect(darkSize.width > 0 && darkSize.height > 0)
     }
 
     private static let surfacePaths = [
@@ -121,6 +139,8 @@ struct ProviderBrandSurfaceContractTests {
         "Sources/Needlbar/Settings/SystemMonitorSettingsView.swift",
         "Sources/Needlbar/Settings/SettingsView.swift",
     ]
+
+    private static let appearanceNames: [NSAppearance.Name] = [.aqua, .darkAqua]
 
     private static var repositoryRoot: URL {
         URL(fileURLWithPath: #filePath)
