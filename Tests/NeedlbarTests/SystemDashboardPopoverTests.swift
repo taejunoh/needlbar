@@ -151,6 +151,25 @@ import Testing
     #expect(presentation.ai.first(where: { $0.provider == .codex })?.action == nil)
 }
 
+@Test func dashboardBrowserLoginControlUsesShortVisibleTextAndFullProviderIdentity() {
+    let actions: [ProviderAuthenticationAction] = [
+        .browserLogin(title: "Sign in with Claude"),
+        .browserLogin(title: "Sign in with ChatGPT"),
+        .openCursorSpending(title: "Open Cursor Spending"),
+    ]
+
+    #expect(actions.map(SystemDashboardPopoverView.visibleActionTitle) == [
+        "Sign in",
+        "Sign in",
+        "Open Cursor Spending",
+    ])
+    #expect(actions.map(SystemDashboardPopoverView.accessibilityActionTitle) == [
+        "Sign in with Claude",
+        "Sign in with ChatGPT",
+        "Open Cursor Spending",
+    ])
+}
+
 @Test func dashboardFableDetailIsSeparateAndUsesQuotaFreshness() throws {
     let reset = Date(timeIntervalSince1970: 20_000)
     let base = try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil)

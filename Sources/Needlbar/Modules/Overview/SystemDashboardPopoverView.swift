@@ -233,9 +233,13 @@ public struct SystemDashboardPopoverView: View {
                 Spacer(minLength: 8)
                 DashboardMetricText(value: .init(provider.value))
                 if let action = provider.action {
-                    Button(actionTitle(action)) { onProviderAction(provider.provider) }
+                    let visibleTitle = Self.visibleActionTitle(for: action)
+                    let identityTitle = Self.accessibilityActionTitle(for: action)
+                    Button(visibleTitle) { onProviderAction(provider.provider) }
                         .buttonStyle(.borderless)
                         .font(.caption)
+                        .help(identityTitle)
+                        .accessibilityLabel(identityTitle)
                 }
             }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -312,7 +316,16 @@ public struct SystemDashboardPopoverView: View {
         .padding(.vertical, 8)
     }
 
-    private func actionTitle(_ action: ProviderAuthenticationAction) -> String {
+    nonisolated internal static func visibleActionTitle(for action: ProviderAuthenticationAction) -> String {
+        switch action {
+        case .browserLogin:
+            return "Sign in"
+        case let .openCursorSpending(title):
+            return title
+        }
+    }
+
+    nonisolated internal static func accessibilityActionTitle(for action: ProviderAuthenticationAction) -> String {
         switch action {
         case let .browserLogin(title), let .openCursorSpending(title): title
         }
