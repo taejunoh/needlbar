@@ -102,7 +102,7 @@ Run:
 
 ~~~bash
 source /Users/taejunoh/.cargo/env
-make swift-test SWIFT_TEST_FILTER='dashboardSizingUsesApprovedWidthAndMeasuredHeight|dashboardMeasurementAndVisibleHostsUse312PointWidth|dashboardVisibleViewUsesMeasuredOrScreenLimitedHeight|dashboardReadabilityKeepsSizeStableAcrossAppearances|overviewUsesMeasured312PointContentBeforeFirstPresentation|visibleModuleChangeResizesWithoutRepresentingAndKeepsAnchor'
+make swift-test SWIFT_TEST_FILTER='dashboardSizingUsesApprovedWidthAndMeasuredHeight\|dashboardMeasurementAndVisibleHostsUse312PointWidth\|dashboardVisibleViewUsesMeasuredOrScreenLimitedHeight\|dashboardReadabilityKeepsSizeStableAcrossAppearances\|overviewUsesMeasured312PointContentBeforeFirstPresentation\|visibleModuleChangeResizesWithoutRepresentingAndKeepsAnchor'
 ~~~
 
 Expected: FAIL because the sizing constant and both fitting roots still report 340. Existing height-policy assertions pass; do not alter them.
@@ -123,7 +123,7 @@ Run:
 
 ~~~bash
 source /Users/taejunoh/.cargo/env
-make swift-test SWIFT_TEST_FILTER='dashboardSizing|dashboardMeasurementAndVisibleHostsUse312PointWidth|dashboardNaturalHeightTracksEnabledModulesAndProviders|dashboardVisibleViewUsesMeasuredOrScreenLimitedHeight|dashboardReadabilityFittingIsStableAcrossLiveNumericChanges|dashboardReadabilityKeepsSizeStableAcrossAppearances|overviewUsesMeasured312PointContentBeforeFirstPresentation|visibleModuleChangeResizesWithoutRepresentingAndKeepsAnchor|visibleAIProviderChangeResizesWithoutRepresentingAndKeepsAnchor|failedResizeKeepsTheInstalledDashboardLayoutUnchanged'
+make swift-test SWIFT_TEST_FILTER='dashboardSizing\|dashboardMeasurementAndVisibleHostsUse312PointWidth\|dashboardNaturalHeightTracksEnabledModulesAndProviders\|dashboardVisibleViewUsesMeasuredOrScreenLimitedHeight\|dashboardReadabilityFittingIsStableAcrossLiveNumericChanges\|dashboardReadabilityKeepsSizeStableAcrossAppearances\|overviewUsesMeasured312PointContentBeforeFirstPresentation\|visibleModuleChangeResizesWithoutRepresentingAndKeepsAnchor\|visibleAIProviderChangeResizesWithoutRepresentingAndKeepsAnchor\|failedResizeKeepsTheInstalledDashboardLayoutUnchanged'
 git diff --check
 ~~~
 
@@ -208,7 +208,7 @@ Change the final expected status in dashboardReadabilityPreservesUnavailableAndS
 
 ~~~bash
 source /Users/taejunoh/.cargo/env
-make swift-test SWIFT_TEST_FILTER='dashboardPresentationDefaultsToRemainingEvenWhenTokenUsageExists|dashboardPresentationKeepsNonRemainingCaptionsAndNoQuotaPlaceholder|dashboardReadabilityUsesCompactSingletonProviderStatuses|dashboardReadabilityQualifiesTwoAbnormalProviderStreamsWithCompactPhrases|dashboardReadabilityPreservesUnavailableAndStalePresentation'
+make swift-test SWIFT_TEST_FILTER='dashboardPresentationDefaultsToRemainingEvenWhenTokenUsageExists\|dashboardPresentationKeepsNonRemainingCaptionsAndNoQuotaPlaceholder\|dashboardReadabilityUsesCompactSingletonProviderStatuses\|dashboardReadabilityQualifiesTwoAbnormalProviderStreamsWithCompactPhrases\|dashboardReadabilityPreservesUnavailableAndStalePresentation'
 ~~~
 
 Expected: FAIL on old Most constrained quota remaining, Quota Authentication required, and title-cased qualified strings. Non-Remaining and no-quota regressions already pass.
@@ -264,7 +264,7 @@ Do not modify PresentationFreshness, DataStatus, fableStatus(_:), data models, r
 
 ~~~bash
 source /Users/taejunoh/.cargo/env
-make swift-test SWIFT_TEST_FILTER='dashboardPresentation|dashboardReadability|dashboardFable|ProviderSnapshotStore|BridgeDecoding'
+make swift-test SWIFT_TEST_FILTER='dashboardPresentation\|dashboardReadability\|dashboardFable\|ProviderSnapshotStore\|BridgeDecoding'
 git diff --check
 ~~~
 
@@ -315,7 +315,7 @@ Do not weaken dashboardPresentationOffersOnlyExistingProviderAuthenticationActio
 
 ~~~bash
 source /Users/taejunoh/.cargo/env
-make swift-test SWIFT_TEST_FILTER='dashboardBrowserLoginControlUsesShortVisibleTextAndFullProviderIdentity|dashboardPresentationOffersOnlyExistingProviderAuthenticationActions|authenticationActionsRouteClaudeAndCodexToTheLoginCallbackExactlyOnce|cursorSpendingActionOpensFixedDashboardWithoutLoginOrSettings|presentedProviderAuthenticationActionsDismissBeforeTheirCallbacks'
+make swift-test SWIFT_TEST_FILTER='dashboardBrowserLoginControlUsesShortVisibleTextAndFullProviderIdentity\|dashboardPresentationOffersOnlyExistingProviderAuthenticationActions\|authenticationActionsRouteClaudeAndCodexToTheLoginCallbackExactlyOnce\|cursorSpendingActionOpensFixedDashboardWithoutLoginOrSettings\|presentedProviderAuthenticationActionsDismissBeforeTheirCallbacks'
 ~~~
 
 Expected: compilation FAIL because the two view-local copy functions do not exist. Do not change ProviderAuthenticationAction, MenuBarController, or Settings.
@@ -362,7 +362,7 @@ Delete the now-unused private actionTitle(_:) helper. Keep the containing .acces
 
 ~~~bash
 source /Users/taejunoh/.cargo/env
-make swift-test SWIFT_TEST_FILTER='dashboardBrowserLoginControlUsesShortVisibleTextAndFullProviderIdentity|dashboardPresentationOffersOnlyExistingProviderAuthenticationActions|dashboardReadability|dashboardFable|authenticationActionsRouteClaudeAndCodexToTheLoginCallbackExactlyOnce|cursorSpendingActionOpensFixedDashboardWithoutLoginOrSettings|presentedProviderAuthenticationActionsDismissBeforeTheirCallbacks|PopoverPresentation|MenuPanel'
+make swift-test SWIFT_TEST_FILTER='dashboardBrowserLoginControlUsesShortVisibleTextAndFullProviderIdentity\|dashboardPresentationOffersOnlyExistingProviderAuthenticationActions\|dashboardReadability\|dashboardFable\|authenticationActionsRouteClaudeAndCodexToTheLoginCallbackExactlyOnce\|cursorSpendingActionOpensFixedDashboardWithoutLoginOrSettings\|presentedProviderAuthenticationActionsDismissBeforeTheirCallbacks\|PopoverPresentation\|MenuPanel'
 git diff --check
 ~~~
 
@@ -390,7 +390,7 @@ Expected: one view-presentation/accessibility commit, not an authentication-flow
 
 ~~~bash
 source /Users/taejunoh/.cargo/env
-make swift-test SWIFT_TEST_FILTER='dashboard|SystemDashboard|MenuBarController|MenuPanel|PopoverPresentation|AcceptanceFixture'
+make swift-test SWIFT_TEST_FILTER='dashboard\|SystemDashboard\|MenuBarController\|MenuPanel\|PopoverPresentation\|AcceptanceFixture'
 make acceptance-test
 ~~~
 
