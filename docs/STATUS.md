@@ -3,7 +3,7 @@
 **Updated:** 2026-09-04
 **Branch:** `codex/provider-brand-icons` at `c8c9c69` before this documentation checkpoint (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
 **Current phase:** Provider brand icons Tasks 1–4 have their fresh automated Task 5 verification record below. The requested native visual acceptance is deliberately `DONE_WITH_CONCERNS`: no safe fixture exists in the exact public development bundle, and a separate production UI launch would schedule refresh work. Do not infer native branding, sizing, anchoring, scrolling, dismissal, Settings, Overview, or provider-detail behavior from the automated results.
-**Next action:** Parent-agent review/integration of the `docs: record provider brand icon verification` checkpoint is the exact continuation point. Native visual acceptance needs explicit maintainer direction for an isolated fixture-capable development bundle or other credential/network-safe setup; macOS 14 acceptance remains a separate deferred gate. Push, merge, publish, sign, notarize, or release only on the user's request.
+**Next action:** Parent-agent review/integration of the complete Task 5 documentation checkpoint—`7e25138` (`docs: record provider brand icon verification`) through `dee63c8` (`docs: clarify provider icon verification evidence`)—is the exact continuation point. Native visual acceptance needs explicit maintainer direction for an isolated fixture-capable development bundle or other credential/network-safe setup; macOS 14 acceptance remains a separate deferred gate. Push, merge, publish, sign, notarize, or release only on the user's request.
 
 ## Provider brand icons Task 5 — full verification and bounded native evidence — 2026-09-04
 
