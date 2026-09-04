@@ -2515,6 +2515,48 @@ app-only inspection of the exact installed runtime. Only if a sanitized
 updated. Keep the recovery backup until explicit cleanup authorization. No
 push, merge, or release is claimed.
 
+## Provider icon alignment verification — 2026-09-04
+
+The approved provider icon/title alignment change is implemented in commits
+`630cc34` and `abccf66`. The dashboard provider title row now vertically
+centers the official provider icon and title while preserving the existing
+caption and Fable baseline semantics.
+
+The focused verification command
+`source /Users/taejunoh/.cargo/env && make swift-test SWIFT_TEST_FILTER='providerTitleRowAlignmentPolicy\|dashboardReadabilityKeepsSizeStableAcrossAppearances\|dashboardNaturalHeightTracksEnabledModulesAndProviders\|dashboardVisibleViewUsesMeasuredOrScreenLimitedHeight\|dashboardMeasurementAndVisibleHostsUse312PointWidth\|dashboardReadabilityPreservesSeparateFableSemantics'`
+passed 6 tests. The full `make test` gate exited 0 with Swift 408 tests in 17
+suites and all full contracts passing. `make package`, `make smoke`, strict
+code-signing verification, and `git diff --check` also passed.
+
+The packaged/runtime executable SHA-256 is
+`9b3b59b93c86188bb7563a6b41ce8c66c9a4cb673edbd56d3f24df92f0f58251`, with
+CDHash `b338b7d337378115d1d3cb4cdee61eace80387ec`. The runtime was installed
+with the recoverable backup
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/Needlbar.app.pre-alignment-20260904`;
+the current normal-launch PID is `47861`.
+
+The sanitized native Aqua app-window-only capture is
+`/Users/taejunoh/Developer/LFG/needlbar-native-verification/provider-icon-alignment-abccf66/aqua.png`,
+624×876 px (312×438 pt), SHA-256
+`ca9478c594701242656c6b66d15825f0a28b897725af45b873460f0d1d215953`.
+Direct visual observation confirms that the official Claude icon and title are
+vertically centered. Title/value/action content is unchanged, and caption and
+Fable baseline/wrapping behavior is unchanged. The 312-point width and
+content-driven 438-point height were observed. The current user configuration
+displayed only Claude, so native Codex/Cursor rows were not observed.
+
+A safe per-process Dark Aqua override was unavailable, so a packaged Dark
+native capture was not obtained; the light/dark hosted fitting-size regression
+passed. Compact/full alternate configuration, scrolling, outside-click
+dismissal, and anchor behavior are not newly claimed here. No provider login,
+Cursor Spending, credential action, asset fallback, configuration change,
+public/release app, or full-desktop capture was used. The app was returned to
+normal launch after an unsuccessful nonpersistent `-AppleInterfaceStyle Dark`
+attempt. CI is unverified and the work is unpushed.
+
+The next continuation point is parent-agent review/integration. macOS 14
+acceptance remains deferred.
+
 ## v0.1 Constraints to Preserve
 
 - macOS 14+.
