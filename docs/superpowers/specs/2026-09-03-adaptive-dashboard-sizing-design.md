@@ -1,6 +1,6 @@
 # Adaptive system dashboard sizing design
 
-**Date:** 2026-09-03  
+**Date:** 2026-09-03
 **Status:** Approved for implementation planning
 
 ## Goal
