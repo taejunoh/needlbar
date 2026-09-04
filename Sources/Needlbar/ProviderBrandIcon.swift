@@ -84,9 +84,31 @@ struct ProviderBrandIcon: View {
             self.load = load
         }
 
+        static func resourceBundle(
+            appResourceURL: URL?,
+            swiftPMBundle: @autoclosure () -> Bundle
+        ) -> Bundle {
+            if let appResourceURL,
+               let packagedBundle = Bundle(
+                url: appResourceURL.appendingPathComponent(
+                    "Needlbar_NeedlbarApp.bundle",
+                    isDirectory: true
+                )
+               ) {
+                return packagedBundle
+            }
+
+            return swiftPMBundle()
+        }
+
         @MainActor
         static let bundle = AssetLoader { entry in
-            guard let url = Bundle.module.url(
+            let resourceBundle = ProviderBrandIcon.AssetLoader.resourceBundle(
+                appResourceURL: Bundle.main.resourceURL,
+                swiftPMBundle: Bundle.module
+            )
+
+            guard let url = resourceBundle.url(
                 forResource: entry.resourceID,
                 withExtension: "png",
                 subdirectory: "ProviderBrands"

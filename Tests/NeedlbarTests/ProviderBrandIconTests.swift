@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import Testing
 @testable import NeedlbarApp
 @testable import NeedlbarCore
@@ -6,6 +7,73 @@ import Testing
 @Suite("ProviderBrandIconTests", .serialized)
 @MainActor
 struct ProviderBrandIconTests {
+    @Test("packaged app resources select the signed resource bundle without evaluating SwiftPM fallback")
+    func packagedProviderBrandResourcesSelectSignedBundle() throws {
+        let fileManager = FileManager.default
+        let fixtureRoot = fileManager.temporaryDirectory
+            .appendingPathComponent("NeedlbarProviderBrandFixture-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: fixtureRoot) }
+
+        let appResourceURL = fixtureRoot
+            .appendingPathComponent("Fixture.app", isDirectory: true)
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Resources", isDirectory: true)
+        let providerBrandsURL = appResourceURL
+            .appendingPathComponent("Needlbar_NeedlbarApp.bundle", isDirectory: true)
+            .appendingPathComponent("ProviderBrands", isDirectory: true)
+        try fileManager.createDirectory(at: providerBrandsURL, withIntermediateDirectories: true)
+
+        let committedAssetURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/Needlbar/Resources/ProviderBrands/provider-brand-claude.png")
+        let fixtureAssetURL = providerBrandsURL.appendingPathComponent("provider-brand-claude.png")
+        try fileManager.copyItem(at: committedAssetURL, to: fixtureAssetURL)
+
+        let fallbackBundle = Bundle.main
+        var fallbackEvaluations = 0
+        func fallbackBundleWithEvaluation() -> Bundle {
+            fallbackEvaluations += 1
+            return fallbackBundle
+        }
+        let selectedBundle = ProviderBrandIcon.AssetLoader.resourceBundle(
+            appResourceURL: appResourceURL,
+            swiftPMBundle: fallbackBundleWithEvaluation()
+        )
+
+        #expect(selectedBundle.bundleURL.standardizedFileURL == providerBrandsURL.deletingLastPathComponent().standardizedFileURL)
+        #expect(fallbackEvaluations == 0)
+
+        let resourceURL = selectedBundle.url(
+            forResource: "provider-brand-claude",
+            withExtension: "png",
+            subdirectory: "ProviderBrands"
+        )
+        #expect(resourceURL?.standardizedFileURL == fixtureAssetURL.standardizedFileURL)
+        #expect(resourceURL.flatMap(NSImage.init(contentsOf:)) != nil)
+    }
+
+    @Test("missing packaged app resources lazily evaluate the SwiftPM fallback exactly once")
+    func missingPackagedProviderBrandResourcesEvaluateFallbackOnce() {
+        let missingAppResourceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("NeedlbarProviderBrandMissing-\(UUID().uuidString)", isDirectory: true)
+        let fallbackBundle = Bundle.main
+        var fallbackEvaluations = 0
+        func fallbackBundleWithEvaluation() -> Bundle {
+            fallbackEvaluations += 1
+            return fallbackBundle
+        }
+
+        let selectedBundle = ProviderBrandIcon.AssetLoader.resourceBundle(
+            appResourceURL: missingAppResourceURL,
+            swiftPMBundle: fallbackBundleWithEvaluation()
+        )
+
+        #expect(selectedBundle === fallbackBundle)
+        #expect(fallbackEvaluations == 1)
+    }
+
     @Test("catalogue maps every provider to its approved brand entry")
     func providerBrandCatalogueMapsEveryProviderToItsApprovedBrandEntry() {
         let claude = ProviderBrandIcon.catalogueEntry(for: .claude)
