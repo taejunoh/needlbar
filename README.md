@@ -43,9 +43,9 @@ Settings controls visible modules and title metrics. Claude and Codex expose pro
 
 ### System monitor (v0.3 development build)
 
-The main dashboard combines CPU, RAM, disk, network, battery, and AI usage in one compact popover. It uses aligned high-contrast values, hides normal freshness noise, and keeps stale or failed states visible without changing the underlying metrics or provider actions.
+The main dashboard combines enabled CPU, RAM, disk, network, battery, and AI usage in a compact, content-sized popover. It grows to fit enabled rows when screen space permits, scrolls only when needed, uses aligned high-contrast values, hides normal freshness noise, and keeps stale or failed states visible without changing the underlying metrics or provider actions.
 
-<img src="docs/images/system-dashboard.png" alt="Needlbar development dashboard with system metrics and remaining AI quota" width="360" />
+<img src="docs/images/system-dashboard.png" alt="Needlbar development dashboard with system metrics and remaining AI quota" width="340" />
 
 *Development build, not the public v0.2.2 artifact: values are native macOS examples, and provider visibility is configurable.*
 

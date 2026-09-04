@@ -1,9 +1,29 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-03
-**Branch:** `codex/claude-fable-quota` from pushed `main` at `44a9ce3` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** System-dashboard readability Tasks 1–3 are committed and reviewed; review fix `43d7863` preserves Usage/Quota provenance for qualified non-normal provider states. Task 4 automated gates and bounded current-host native evidence are complete, with the documentation checkpoint recorded below. Bright-shell, aligned-value, live-update, fixed-header/footer, normal-`Fresh` suppression, Claude/Fable, and outside-click observations are recorded; native dark mode, short-height, tooltip/accessibility, provider/action, and forced failure-state observations remain explicitly unobserved. Native macOS 14 acceptance remains deferred.
-**Next action:** Preserve the verified implementation and documented native limitations. A future maintainer may repeat the unobserved native checks on a suitable host; do not infer them from automated tests. Preserve this worktree/branch and Fable changes; push, merge, or publish only on the user's request. No Fable implementation or authentication change is pending.
+**Branch:** `codex/adaptive-dashboard-sizing` at `46d9f0c` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
+**Current phase:** Adaptive system-dashboard sizing Tasks 1–5 and the bounded Task 6 native evidence are complete; the documentation checkpoint is recorded below. The all-enabled content-sized dashboard, compact restored state, aligned values, numeric no-churn, stable bottom edge/anchor, dark capture, and outside-click dismissal are recorded. Settings UI toggle interaction, short-screen scrolling, provider external actions, and native macOS 14 acceptance remain explicitly unobserved or deferred.
+**Next action:** Preserve the verified implementation and documented native limitations. Parent-agent review/integration is the next continuation point; do not infer unobserved native behavior from automated tests. Push, merge, publish, sign, notarize, or release only on the user's request.
+
+## Adaptive system-dashboard sizing Task 6 — documentation checkpoint — 2026-09-03
+
+Adaptive sizing implementation and verification commits are `9a00c5b`, `7571846`, `3326d6b`, `6cbb50b`, `7d2d005`, `defe6dc`, and `46d9f0c`. The final fix `46d9f0c` aligns the Settings copy with dashboard visibility. Scoped implementation/review work retained the approved visibility, measurement, frame-only resize, and presentation boundaries.
+
+Final gates ran serially from `/Users/taejunoh/Developer/LFG/needlbar/.worktrees/adaptive-dashboard-sizing`, with Cargo sourced before every Make command:
+
+- Focused `swift-test` (`dashboard|SystemDashboard|MenuPanel|MenuBarController|Fable|Popover|AcceptanceFixture`): exit 0, 97 tests in 5 suites. Log: `/Users/taejunoh/Developer/LFG/needlbar-adaptive-dashboard-sizing-qa/01-swift-test-final.log`.
+- `acceptance-test`: exit 0, 9 tests in 1 suite. Log: `/Users/taejunoh/Developer/LFG/needlbar-adaptive-dashboard-sizing-qa/02-acceptance-test-final.log`.
+- `make test`: exit 0, Swift 389 tests in 15 suites; the vendor tokscale run reported 1,376 passed, 0 failed, and 1 ignored; the Rust workspace, contract suites, widget, package, and notarization shell contracts passed. Log: `/Users/taejunoh/Developer/LFG/needlbar-adaptive-dashboard-sizing-qa/03-make-test-final.log`.
+- `make package`: exit 0; the packaged widget signature was valid on disk and satisfied its designated requirement. Log: `/Users/taejunoh/Developer/LFG/needlbar-adaptive-dashboard-sizing-qa/04-make-package-final.log`.
+- `make smoke`: exit 0; both app and widget `Info.plist` checks passed. Log: `/Users/taejunoh/Developer/LFG/needlbar-adaptive-dashboard-sizing-qa/05-make-smoke-final.log`.
+- `git diff --check`: exit 0. Log: `/Users/taejunoh/Developer/LFG/needlbar-adaptive-dashboard-sizing-qa/06-git-diff-check-final.log`.
+- `git status --short`: exit 0 and empty. Log: `/Users/taejunoh/Developer/LFG/needlbar-adaptive-dashboard-sizing-qa/07-git-status-short-final.log`.
+
+The exact packaged development executable inspected was PID `58200` at `/Users/taejunoh/Developer/LFG/needlbar/.worktrees/adaptive-dashboard-sizing/dist/Needlbar.app/Contents/MacOS/Needlbar`. The sanitized native captures are `/Users/taejunoh/Developer/LFG/needlbar-adaptive-dashboard-sizing-qa/native/all-enabled-dark.png` (680×1736 px = 340×868 pt; SHA-256 `2c299350c34157801c1784fe9aa56cd83e04083985aee32ceee8238d88c431b3`), `/Users/taejunoh/Developer/LFG/needlbar-adaptive-dashboard-sizing-qa/native/restored-compact-dark.png` (680×874 px = 340×437 pt), and `/Users/taejunoh/Developer/LFG/needlbar-adaptive-dashboard-sizing-qa/native/settings-copy-and-controls.png` (1040×1504 px). The all-enabled capture shows every CPU, RAM, disk, network, battery, and AI row plus the complete Claude/Codex/Cursor and Fable content at the 340-point width. The compact restored state has no empty trailing space. The captured Settings-originated state transition reduced the dashboard to the compact geometry; direct Settings UI toggle interaction remains unobserved because the accessory-app focus prevented a reliable control interaction check.
+
+Native evidence confirms the stable bottom edge and panel anchor, ordinary numeric updates without width movement, and outside-click dismissal. The dark all-enabled capture is sanitized and contains no credentials, account identifiers, IP addresses, raw provider payloads, or full-desktop content. The complete pre-acceptance configuration snapshot—including system visibility/order, provider visibility/metric/order, and both IP toggles—was restored. The public release app, old development apps, widgets, credentials, persisted defaults, push, merge, and release state were left untouched.
+
+Limitations are explicit: Settings UI toggle interaction due the accessory-app focus limitation, short-screen scrolling, provider external actions (including browser login and Cursor Spending), forced native stale/error/authentication states, tooltip/accessibility interaction, and native macOS 14 acceptance were not observed. Automated short-screen and accessibility coverage must not be presented as native evidence. The exact continuation point is parent-agent review/integration of this documentation commit; macOS 14 acceptance remains a separate deferred maintainer gate.
 
 ## Menu-bar implementation baseline — 2026-09-03
 

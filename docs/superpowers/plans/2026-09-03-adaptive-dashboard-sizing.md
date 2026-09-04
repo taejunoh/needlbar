@@ -930,7 +930,7 @@ git commit -m "feat: adapt dashboard panel to visible content"
 - Modify after native acceptance: docs/STATUS.md
 - Modify as execution proceeds: docs/superpowers/plans/2026-09-03-adaptive-dashboard-sizing.md
 
-- [ ] **Step 1: Request two independent scoped reviews**
+- [x] **Step 1: Request two independent scoped reviews**
 
 Request a spec-compliance review against docs/superpowers/specs/2026-09-03-adaptive-dashboard-sizing-design.md and a separate code-quality review of all implementation commits. Reviewers must verify:
 
@@ -944,7 +944,7 @@ Request a spec-compliance review against docs/superpowers/specs/2026-09-03-adapt
 
 Apply only verified in-scope findings with a regression test, rerun the affected focused suite, and request re-review before continuing.
 
-- [ ] **Step 2: Run final automated gates serially and retain logs outside the repo**
+- [x] **Step 2: Run final automated gates serially and retain logs outside the repo**
 
 ```bash
 source /Users/taejunoh/.cargo/env
@@ -962,7 +962,7 @@ git diff --check
 
 Record each full output under /Users/taejunoh/Developer/LFG/needlbar-adaptive-dashboard-sizing-qa/. Expected: every command exits 0. Existing macOS 26.5-object/macOS 14-link warnings may remain if they match the fresh baseline; do not report them as macOS 14 acceptance.
 
-- [ ] **Step 3: Identify only the packaged development app**
+- [x] **Step 3: Identify only the packaged development app**
 
 Resolve exact process identities and paths before UI interaction:
 
@@ -972,7 +972,7 @@ ps -axo pid,etime,args | rg '/Users/taejunoh/Developer/LFG/needlbar/.worktrees/a
 
 Launch only the exact app produced by this worktree's make package. Keep the public release process and every unrelated app untouched. If the development and public processes cannot be distinguished by exact path and PID, stop native interaction and record the blocker.
 
-- [ ] **Step 4: Perform bounded current-host native acceptance**
+- [~] **Step 4: Perform bounded current-host native acceptance (PARTIAL — bounded sanitized captures and core geometry/update observations completed; listed native limitations remain unobserved)**
 
 Using the exact development process:
 
@@ -987,7 +987,7 @@ Using the exact development process:
 
 Capture only the exact app window or a narrow sanitized region. Do not retain account identifiers, IP addresses, credentials, raw provider payloads, or a full desktop screenshot. Mark every unavailable native capability unobserved in STATUS rather than inferring it from tests. macOS 14 remains deferred.
 
-- [ ] **Step 5: Update README and the real screenshot only after native acceptance**
+- [x] **Step 5: Update README and the real screenshot only after native acceptance**
 
 Replace the existing system-monitor paragraph with:
 
@@ -997,7 +997,7 @@ The main dashboard combines enabled CPU, RAM, disk, network, battery, and AI usa
 
 Replace docs/images/system-dashboard.png only with the sanitized exact-app capture from Step 4 and change its README display width from 360 to 340. If the capture cannot be sanitized, retain the existing image and its existing width instead of using synthetic evidence. Keep the Settings screenshots.
 
-- [ ] **Step 6: Update STATUS and plan checkboxes**
+- [x] **Step 6: Update STATUS and plan checkboxes**
 
 Append a dated docs/STATUS.md section with:
 
@@ -1012,7 +1012,7 @@ Append a dated docs/STATUS.md section with:
 
 Mark only evidence-backed plan checkboxes complete. Use partial markers with a sentence for native items that remain unobserved.
 
-- [ ] **Step 7: Verify the documentation checkpoint**
+- [x] **Step 7: Verify the documentation checkpoint**
 
 ```bash
 source /Users/taejunoh/.cargo/env
@@ -1027,7 +1027,7 @@ git status --short
 
 Expected: all commands exit 0 and only the intended README, optional real screenshot, STATUS, and plan-checkbox changes remain. Review the diff for credentials, identifiers, IP addresses, synthetic evidence, unrelated UI changes, or altered persistence defaults.
 
-- [ ] **Step 8: Commit the verified documentation checkpoint**
+- [x] **Step 8: Commit the verified documentation checkpoint**
 
 ```bash
 git add README.md docs/STATUS.md docs/superpowers/plans/2026-09-03-adaptive-dashboard-sizing.md
@@ -1039,17 +1039,17 @@ If the screenshot was intentionally retained, omit its git add command. Do not p
 
 ## Execution acceptance checklist
 
-- [ ] Dashboard rows are the configured-order intersection with existing visibleModules; factory defaults remain CPU/RAM/AI.
-- [ ] AI provider visibility/order and Fable presentation remain unchanged and contribute to natural height only when rendered.
-- [ ] The panel is exactly 340 points wide.
-- [ ] A tall screen uses the measured natural content height with no unnecessary body scroll; a short screen clamps to its allowance and keeps header/footer fixed.
-- [ ] Invalid natural height uses the bounded 680-point fallback, minimum height is 180 points when the screen permits, and a smaller screen allowance wins.
-- [ ] Initial height is measured before presentation without a visible expansion jump.
-- [ ] System-module and AI-provider visibility changes resize the same panel at the same anchor; numeric-only equal-height updates do not mutate the frame.
-- [ ] The visible hosting controller, scroll/disclosure state, dismissal monitor, generation, Settings/Analytics/provider actions, status provenance, IP privacy, and outside-click dismissal are preserved.
-- [ ] Focused, acceptance, full, package, smoke, and diff-check gates pass.
-- [ ] Native evidence and unobserved/macOS 14 limitations are recorded without synthetic evidence or private data.
-- [ ] README/screenshot/STATUS are changed only after bounded native acceptance; no push, merge, or release is performed.
+- [x] Dashboard rows are the configured-order intersection with existing visibleModules; factory defaults remain CPU/RAM/AI.
+- [x] AI provider visibility/order and Fable presentation remain unchanged and contribute to natural height only when rendered.
+- [x] The panel is exactly 340 points wide.
+- [~] A tall screen uses the measured natural content height with no unnecessary body scroll; a short screen clamps to its allowance and keeps header/footer fixed (tall all-enabled and restored compact captures are available; native short-screen scrolling is unobserved).
+- [x] Invalid natural height uses the bounded 680-point fallback, minimum height is 180 points when the screen permits, and a smaller screen allowance wins.
+- [x] Initial height is measured before presentation without a visible expansion jump.
+- [x] System-module and AI-provider visibility changes resize the same panel at the same anchor; numeric-only equal-height updates do not mutate the frame.
+- [~] The visible hosting controller, scroll/disclosure state, dismissal monitor, generation, Settings/Analytics/provider actions, status provenance, IP privacy, and outside-click dismissal are preserved (anchor, numeric stability, privacy, and outside-click were observed; Settings UI toggle interaction, provider external actions, and native short-screen scrolling remain unobserved).
+- [x] Focused, acceptance, full, package, smoke, and diff-check gates pass.
+- [~] Native evidence and unobserved/macOS 14 limitations are recorded without synthetic evidence or private data (bounded sanitized captures are recorded; macOS 14 and listed native limitations remain deferred).
+- [~] README/screenshot/STATUS are changed only after bounded native acceptance; no push, merge, or release is performed (documentation checkpoint follows bounded evidence; full native and macOS 14 acceptance remain deferred).
 
 ## Plan self-review
 
