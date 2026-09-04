@@ -129,7 +129,7 @@ struct MenuPanelPlacementTests {
     }
 
     @Test func dashboardSizingUsesApprovedWidthAndMeasuredHeight() {
-        #expect(SystemDashboardPanelSizing.width == 340)
+        #expect(SystemDashboardPanelSizing.width == 312)
         #expect(SystemDashboardPanelSizing.height(
             naturalContentHeight: 742,
             visibleScreenHeight: 1_000

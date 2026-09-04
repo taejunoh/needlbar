@@ -375,9 +375,19 @@ import Testing
         rootView: SystemDashboardPopoverView(model: model, height: shortHeight)
     )
 
-    #expect(tall.view.fittingSize == NSSize(width: 340, height: tallHeight))
+    #expect(tall.view.fittingSize == NSSize(width: 312, height: tallHeight))
     #expect(tallHeight == naturalHeight)
-    #expect(short.view.fittingSize == NSSize(width: 340, height: 400))
+    #expect(short.view.fittingSize == NSSize(width: 312, height: 400))
+}
+
+@Test @MainActor func dashboardMeasurementAndVisibleHostsUse312PointWidth() {
+    let model = SystemDashboardModel(snapshot: dashboardFixtureSnapshot(), configuration: SystemMonitorConfiguration())
+    let measuring = NSHostingController(rootView: SystemDashboardPopoverView(measuring: model))
+    let visible = NSHostingController(rootView: SystemDashboardPopoverView(model: model, height: 320))
+    measuring.view.layoutSubtreeIfNeeded()
+    visible.view.layoutSubtreeIfNeeded()
+    #expect(measuring.view.fittingSize.width == 312)
+    #expect(visible.view.fittingSize == NSSize(width: 312, height: 320))
 }
 
 @Test @MainActor func dashboardReadabilityPreservesConfiguredOrderAndIPPrivacy() {
@@ -435,8 +445,8 @@ import Testing
     dark.view.appearance = NSAppearance(named: .darkAqua)
 
     #expect(light.view.fittingSize == dark.view.fittingSize)
-    #expect(light.view.fittingSize.width == 340)
-    #expect(dark.view.fittingSize.width == 340)
+    #expect(light.view.fittingSize.width == 312)
+    #expect(dark.view.fittingSize.width == 312)
 }
 
 @Test func dashboardReadabilityPreservesUnavailableAndStalePresentation() {

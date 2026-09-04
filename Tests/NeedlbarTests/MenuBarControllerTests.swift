@@ -250,7 +250,7 @@ import Testing
 }
 
 @MainActor
-@Test func overviewUsesMeasured340PointContentBeforeFirstPresentation() async throws {
+@Test func overviewUsesMeasured312PointContentBeforeFirstPresentation() async throws {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     let combinedStore = CombinedSnapshotStore(now: Date(timeIntervalSince1970: 10_000))
     let presenter = FakeMenuPanelPresenter()
@@ -274,7 +274,7 @@ import Testing
     controller.openOverview()
 
     #expect(presenter.presentCount == 1)
-    #expect(presenter.presentedContentSizes.first == NSSize(width: 340, height: expectedHeight))
+    #expect(presenter.presentedContentSizes.first == NSSize(width: 312, height: expectedHeight))
 }
 
 @MainActor
@@ -301,7 +301,7 @@ import Testing
 
     #expect(await eventually { presenter.resizedSizes.count == 1 })
     #expect(presenter.presentCount == 1)
-    #expect(presenter.resizedSizes.first?.width == 340)
+    #expect(presenter.resizedSizes.first?.width == 312)
     #expect(presenter.resizedAnchors == presenter.presentedAnchors)
     let installedController = try #require(presenter.presentedContentViewControllers.first)
     let resizedHeight = try #require(presenter.resizedSizes.first?.height)

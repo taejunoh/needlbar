@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 public enum SystemDashboardPanelSizing {
-    static let width: CGFloat = 340
+    static let width: CGFloat = 312
     static let minimumHeight: CGFloat = 180
     public static let fallbackHeight: CGFloat = 680
     static let verticalScreenAllowanceInset: CGFloat = 24
