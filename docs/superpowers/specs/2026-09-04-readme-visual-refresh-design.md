@@ -43,10 +43,12 @@ The image set consists of three screenshots:
 
 The dashboard screenshot must be captured at the real 312-point popover width.
 The Settings screenshots may use their native window width; do not crop or
-stretch them to make them appear to be dashboard captures. Every image must
-retain the official Claude, OpenAI Blossom/Codex, and Cursor assets and the
-approved centered icon/title alignment. Values may be native sample values,
-but they must not expose private user data.
+stretch them to make them appear to be dashboard captures. The dashboard and
+Settings lower screenshot must retain the official Claude, OpenAI
+Blossom/Codex, and Cursor assets and the approved centered icon/title
+alignment; the Settings upper screenshot is only required to show its module
+and IP controls. Values may be native sample values, but they must not expose
+private user data.
 
 ## 3. README content changes
 
@@ -84,10 +86,10 @@ The README must not present these images as part of the public v0.2.2 ZIP.
 Describe, without inventing capabilities, that the development dashboard can
 combine CPU, RAM, disk, network, battery, and AI usage; that visibility and
 provider display settings are configurable; and that IP values are omitted
-from these screenshots. Keep the existing statement that official provider
-icons and centered provider-title alignment are present if the implementation
-uses it in the feature copy. Do not add a new provider, new authentication
-flow, telemetry, hosted service, or remote analytics claim.
+from these screenshots. Add one concise sentence stating that the dashboard
+uses the official Claude, OpenAI Blossom/Codex, and Cursor icons with centered
+provider-title alignment. Do not add a new provider, new authentication flow,
+telemetry, hosted service, or remote analytics claim.
 
 Use descriptive alt text for all three images. Set the dashboard Markdown
 display width to the actual 312-point width (the native image's pixel density
@@ -174,8 +176,9 @@ Before committing the implementation, verify:
 - The dashboard image contains no local/public IP values.
 - Settings upper and lower images are native light-mode captures of the same
   current Settings UI and show their intended control groups.
-- All three images show official Claude/OpenAI Blossom/Cursor icons with the
-  centered provider-title alignment; there are no synthetic substitute icons.
+- The dashboard and Settings lower images show official Claude/OpenAI
+  Blossom/Cursor icons with the centered provider-title alignment; the Settings
+  upper image is not required to contain provider rows or provider icons.
 - Image dimensions, cropping, alpha, alt text, and Markdown display widths
   are consistent and readable.
 
