@@ -11,6 +11,9 @@ public protocol MenuPanelPresenting: AnyObject {
         anchoredAt anchor: StatusItemPresentationAnchor
     ) -> Bool
 
+    @discardableResult
+    func resize(to contentSize: NSSize, anchoredAt anchor: StatusItemPresentationAnchor) -> Bool
+
     func dismiss()
 }
 
@@ -99,6 +102,15 @@ public final class AppKitMenuPanelPresenter: MenuPanelPresenting {
                 self.dismiss()
             }
         )
+        return true
+    }
+
+    @discardableResult
+    public func resize(to contentSize: NSSize, anchoredAt anchor: StatusItemPresentationAnchor) -> Bool {
+        guard shown,
+              let frame = MenuPanelPlacement.frame(contentSize: contentSize, anchor: anchor)
+        else { return false }
+        window.setFrame(frame, display: true)
         return true
     }
 

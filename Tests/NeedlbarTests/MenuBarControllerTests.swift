@@ -889,6 +889,8 @@ private final class FakeMenuPanelPresenter: MenuPanelPresenting {
     private(set) var presentCount = 0
     private(set) var dismissCount = 0
     private(set) var presentedAnchors: [StatusItemPresentationAnchor] = []
+    private(set) var resizedSizes: [NSSize] = []
+    private(set) var resizedAnchors: [StatusItemPresentationAnchor] = []
     private(set) var isShown = false
     var onDismiss: (@MainActor () -> Void)?
 
@@ -915,6 +917,13 @@ private final class FakeMenuPanelPresenter: MenuPanelPresenting {
         isShown = false
         eventLog?.events.append("dismiss")
         onDismiss?()
+    }
+
+    func resize(to contentSize: NSSize, anchoredAt anchor: StatusItemPresentationAnchor) -> Bool {
+        guard isShown else { return false }
+        resizedSizes.append(contentSize)
+        resizedAnchors.append(anchor)
+        return true
     }
 
     func markShownForTesting() {

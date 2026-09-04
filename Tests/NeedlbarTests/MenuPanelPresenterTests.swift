@@ -49,6 +49,63 @@ struct MenuPanelPresenterTests {
         #expect(presenter.isShown)
     }
 
+    @Test func resizeChangesOnlyTheShownPanelFrame() throws {
+        let window = FakeMenuPanelWindow()
+        let monitor = FakeMenuPanelDismissalMonitor()
+        let presenter = AppKitMenuPanelPresenter(window: window, dismissalMonitor: monitor)
+        let anchor = testAnchor()
+        var dismissCallbackCount = 0
+        presenter.onDismiss = { dismissCallbackCount += 1 }
+
+        #expect(presenter.present(
+            FixedSizeViewController(size: NSSize(width: 340, height: 500)),
+            anchoredAt: anchor
+        ))
+        let installedController = try #require(window.contentViewController)
+        let currentDismiss = try #require(monitor.dismissHandlers.first)
+        let expectedFrame = try #require(MenuPanelPlacement.frame(
+            contentSize: NSSize(width: 340, height: 740),
+            anchor: anchor
+        ))
+
+        #expect(presenter.resize(
+            to: NSSize(width: 340, height: 740),
+            anchoredAt: anchor
+        ))
+        #expect(window.frame == expectedFrame)
+        #expect(window.contentViewController === installedController)
+        #expect(window.orderFrontRegardlessCallCount == 1)
+        #expect(monitor.startCallCount == 1)
+        #expect(monitor.token.cancelCallCount == 0)
+        #expect(presenter.isShown)
+
+        currentDismiss()
+
+        #expect(!presenter.isShown)
+        #expect(dismissCallbackCount == 1)
+        #expect(window.orderOutCallCount == 1)
+        #expect(monitor.token.cancelCallCount == 1)
+    }
+
+    @Test func resizeRejectsHiddenOrUnplaceablePanelsWithoutMutation() {
+        let window = FakeMenuPanelWindow()
+        let monitor = FakeMenuPanelDismissalMonitor()
+        let presenter = AppKitMenuPanelPresenter(window: window, dismissalMonitor: monitor)
+        let anchor = testAnchor()
+
+        #expect(!presenter.resize(to: NSSize(width: 340, height: 500), anchoredAt: anchor))
+        #expect(window.setFrameCalls.isEmpty)
+
+        #expect(presenter.present(
+            FixedSizeViewController(size: NSSize(width: 340, height: 500)),
+            anchoredAt: anchor
+        ))
+        let originalFrame = window.frame
+        #expect(!presenter.resize(to: NSSize(width: 2_000, height: 2_000), anchoredAt: anchor))
+        #expect(window.frame == originalFrame)
+        #expect(window.setFrameCalls.count == 1)
+    }
+
     @Test func repeatedPresentationCancelsPreviousTokenBeforeStartingNextSession() throws {
         let window = FakeMenuPanelWindow()
         let monitor = FakeMenuPanelDismissalMonitor()
