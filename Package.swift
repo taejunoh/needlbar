@@ -26,7 +26,12 @@ let package = Package(
             dependencies: ["CNeedlbar", "NeedlbarWidgetSupport"],
             linkerSettings: [.linkedFramework("IOKit", .when(platforms: [.macOS]))]
         ),
-        .target(name: "NeedlbarApp", dependencies: ["NeedlbarCore", "CNeedlbar"], path: "Sources/Needlbar"),
+        .target(
+            name: "NeedlbarApp",
+            dependencies: ["NeedlbarCore", "CNeedlbar"],
+            path: "Sources/Needlbar",
+            resources: [.copy("Resources/ProviderBrands")]
+        ),
         .target(name: "NeedlbarWidgetSupport"),
         .executableTarget(name: "Needlbar", dependencies: ["NeedlbarApp"], path: "Sources/NeedlbarMain"),
         .testTarget(name: "NeedlbarCoreTests", dependencies: ["NeedlbarCore", "NeedlbarWidgetSupport"]),

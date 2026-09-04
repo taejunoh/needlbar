@@ -1,4 +1,4 @@
-.PHONY: rust swift swift-test acceptance-test acceptance-build-test native-acceptance-harness-test widget-extension-test package-test notarize-test test run package smoke
+.PHONY: rust swift swift-test acceptance-test acceptance-build-test native-acceptance-harness-test provider-brand-assets-test widget-extension-test package-test notarize-test test run package smoke
 
 rust:
 	./scripts/build-rust.sh
@@ -66,6 +66,9 @@ acceptance-build-test:
 native-acceptance-harness-test:
 	./scripts/tests/native-acceptance-harness-tests.sh
 
+provider-brand-assets-test:
+	./scripts/tests/provider-brand-assets-tests.sh
+
 widget-extension-test:
 	./scripts/tests/widget-extension-tests.sh
 
@@ -79,6 +82,7 @@ test:
 	cargo test --workspace --features bridge-test-runtime
 	sh ./scripts/tests/vendor-tokscale-test.sh
 	$(MAKE) swift-test
+	$(MAKE) provider-brand-assets-test
 	$(MAKE) widget-extension-test
 	$(MAKE) package-test
 	$(MAKE) notarize-test
