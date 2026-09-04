@@ -250,7 +250,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
     private static func providerCaption(_ metric: AIProviderDisplayMetric) -> String {
         switch metric {
         case .usage: "Tokens today"
-        case .remaining: "Most constrained quota remaining"
+        case .remaining: "Quota remaining"
         case .cost: "Estimated cost today"
         case .connectionStatus: "Connection"
         }

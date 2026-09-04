@@ -93,7 +93,29 @@ import Testing
     )
 
     #expect(presentation.ai.first(where: { $0.provider == .claude })?.value == "32%")
-    #expect(presentation.ai.first(where: { $0.provider == .claude })?.caption == "Most constrained quota remaining")
+    #expect(presentation.ai.first(where: { $0.provider == .claude })?.caption == "Quota remaining")
+}
+
+@Test func dashboardPresentationKeepsNonRemainingCaptionsAndNoQuotaPlaceholder() {
+    for (metric, caption) in [
+        (AIProviderDisplayMetric.usage, "Tokens today"),
+        (.cost, "Estimated cost today"),
+        (.connectionStatus, "Connection"),
+    ] {
+        var configuration = SystemMonitorConfiguration()
+        configuration.ai[.claude] = AIProviderDisplayPreference(metric: metric)
+        let presentation = SystemDashboardPresentation(
+            snapshot: dashboardFixtureSnapshot(), configuration: configuration
+        )
+
+        #expect(presentation.ai.first(where: { $0.provider == .claude })?.caption == caption)
+    }
+
+    let noQuota = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(claudeHasQuota: false),
+        configuration: SystemMonitorConfiguration()
+    )
+    #expect(noQuota.ai.first(where: { $0.provider == .claude })?.value == "—")
 }
 
 @Test func dashboardPresentationDoesNotFallBackToTokensWhenDefaultRemainingHasNoQuota() {
@@ -307,22 +329,23 @@ import Testing
     #expect(compactHeight < fullHeight)
 }
 
-@Test func dashboardReadabilitySuppressesNormalFreshnessAndPreservesActionStates() {
+@Test func dashboardReadabilityUsesCompactSingletonProviderStatuses() {
     #expect(DashboardReadabilityPolicy.systemStatus(.fresh) == nil)
     #expect(DashboardReadabilityPolicy.systemStatus(.stale) == "Stale")
     #expect(DashboardReadabilityPolicy.systemStatus(.unavailable) == nil)
 
     #expect(DashboardReadabilityPolicy.providerStatus(usage: .fresh, quota: .fresh) == nil)
-    #expect(DashboardReadabilityPolicy.providerStatus(usage: .stale, quota: .fresh) == "Usage Stale")
-    #expect(DashboardReadabilityPolicy.providerStatus(usage: .fresh, quota: .requiresAuthentication) == "Quota Authentication required")
-    #expect(DashboardReadabilityPolicy.providerStatus(usage: .error, quota: .fresh) == "Usage Error")
     #expect(DashboardReadabilityPolicy.providerStatus(usage: .unavailable, quota: .unavailable) == nil)
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .stale, quota: .fresh) == "Stale")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .fresh, quota: .error) == "Error")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .fresh, quota: .requiresAuthentication) == "Sign-in required")
 }
 
-@Test func dashboardReadabilityPreservesIndependentProviderStatusProvenance() {
-    #expect(DashboardReadabilityPolicy.providerStatus(usage: .stale, quota: .stale) == "Usage Stale · Quota Stale")
-    #expect(DashboardReadabilityPolicy.providerStatus(usage: .error, quota: .requiresAuthentication) == "Usage Error · Quota Authentication required")
-    #expect(DashboardReadabilityPolicy.providerStatus(usage: .requiresAuthentication, quota: .error) == "Usage Authentication required · Quota Error")
+@Test func dashboardReadabilityQualifiesTwoAbnormalProviderStreamsWithCompactPhrases() {
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .stale, quota: .error) == "Usage stale · Quota error")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .error, quota: .requiresAuthentication) == "Usage error · Quota sign-in required")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .stale, quota: .stale) == "Usage stale · Quota stale")
+    #expect(DashboardReadabilityPolicy.providerStatus(usage: .unavailable, quota: .fresh) == nil)
 }
 
 @Test func dashboardReadabilityKeepsFullValueForHelpAndAccessibility() {
@@ -469,7 +492,7 @@ import Testing
     #expect(DashboardReadabilityPolicy.providerStatus(
         usage: stale.ai.first { $0.provider == .claude }!.usageStatus,
         quota: stale.ai.first { $0.provider == .claude }!.quotaStatus
-    ) == "Quota Authentication required")
+    ) == "Sign-in required")
 }
 
 private func dashboardFixtureSnapshot(

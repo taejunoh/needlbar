@@ -9,18 +9,37 @@ enum DashboardReadabilityPolicy {
     }
 
     static func providerStatus(usage: PresentationFreshness, quota: PresentationFreshness) -> String? {
-        var result: [String] = []
-        for (stream, status) in [("Usage", usage), ("Quota", quota)] {
-            let label: String?
+        let abnormal = [("Usage", usage), ("Quota", quota)].filter { _, status in
             switch status {
-            case .fresh, .unavailable: label = nil
-            case .stale: label = "Stale"
-            case .requiresAuthentication: label = "Authentication required"
-            case .error: label = "Error"
+            case .fresh, .unavailable: false
+            case .stale, .requiresAuthentication, .error: true
             }
-            if let label { result.append("\(stream) \(label)") }
         }
-        return result.isEmpty ? nil : result.joined(separator: " · ")
+
+        switch abnormal.count {
+        case 0:
+            return nil
+        case 1:
+            switch abnormal[0].1 {
+            case .stale: return "Stale"
+            case .requiresAuthentication: return "Sign-in required"
+            case .error: return "Error"
+            case .fresh, .unavailable: preconditionFailure("filtered above")
+            }
+        case 2:
+            return abnormal.map { stream, status in
+                let label: String
+                switch status {
+                case .stale: label = "stale"
+                case .requiresAuthentication: label = "sign-in required"
+                case .error: label = "error"
+                case .fresh, .unavailable: preconditionFailure("filtered above")
+                }
+                return "\(stream) \(label)"
+            }.joined(separator: " · ")
+        default:
+            preconditionFailure("filtered above")
+        }
     }
 }
 
