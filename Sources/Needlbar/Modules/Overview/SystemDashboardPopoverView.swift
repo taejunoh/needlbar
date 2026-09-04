@@ -4,23 +4,69 @@ import SwiftUI
 
 public struct SystemDashboardPopoverView: View {
     @ObservedObject private var model: SystemDashboardModel
-    private let maximumHeight: CGFloat
+    @ObservedObject private var layout: SystemDashboardPopoverLayout
+    private let isMeasuring: Bool
     private let onShowSettings: () -> Void
     private let onShowAnalytics: () -> Void
     private let onProviderAction: (ProviderID) -> Void
 
     public init(
         model: SystemDashboardModel,
-        maximumHeight: CGFloat = 680,
+        height: CGFloat = SystemDashboardPanelSizing.fallbackHeight,
         onShowSettings: @escaping () -> Void = {},
         onShowAnalytics: @escaping () -> Void = {},
         onProviderAction: @escaping (ProviderID) -> Void = { _ in }
     ) {
         _model = ObservedObject(wrappedValue: model)
-        self.maximumHeight = maximumHeight
+        _layout = ObservedObject(wrappedValue: SystemDashboardPopoverLayout(height: height))
+        isMeasuring = false
         self.onShowSettings = onShowSettings
         self.onShowAnalytics = onShowAnalytics
         self.onProviderAction = onProviderAction
+    }
+
+    init(
+        model: SystemDashboardModel,
+        layout: SystemDashboardPopoverLayout,
+        onShowSettings: @escaping () -> Void = {},
+        onShowAnalytics: @escaping () -> Void = {},
+        onProviderAction: @escaping (ProviderID) -> Void = { _ in }
+    ) {
+        _model = ObservedObject(wrappedValue: model)
+        _layout = ObservedObject(wrappedValue: layout)
+        isMeasuring = false
+        self.onShowSettings = onShowSettings
+        self.onShowAnalytics = onShowAnalytics
+        self.onProviderAction = onProviderAction
+    }
+
+    init(measuring model: SystemDashboardModel) {
+        _model = ObservedObject(wrappedValue: model)
+        _layout = ObservedObject(wrappedValue: SystemDashboardPopoverLayout(height: SystemDashboardPanelSizing.fallbackHeight))
+        isMeasuring = true
+        onShowSettings = {}
+        onShowAnalytics = {}
+        onProviderAction = { _ in }
+    }
+
+    // Preserve source compatibility until the presenter adopts shared measured layout.
+    public init(
+        model: SystemDashboardModel,
+        maximumHeight: CGFloat,
+        onShowSettings: @escaping () -> Void = {},
+        onShowAnalytics: @escaping () -> Void = {},
+        onProviderAction: @escaping (ProviderID) -> Void = { _ in }
+    ) {
+        self.init(
+            model: model,
+            height: min(
+                SystemDashboardPanelSizing.fallbackHeight,
+                max(SystemDashboardPanelSizing.minimumHeight, maximumHeight)
+            ),
+            onShowSettings: onShowSettings,
+            onShowAnalytics: onShowAnalytics,
+            onProviderAction: onProviderAction
+        )
     }
 
     // Retain the previously public construction path for existing presenters.
@@ -33,33 +79,49 @@ public struct SystemDashboardPopoverView: View {
     ) {
         self.init(
             model: SystemDashboardModel(snapshot: snapshot, configuration: configuration.systemMonitor),
+            height: SystemDashboardPanelSizing.fallbackHeight,
             onShowSettings: onShowSettings,
             onShowAnalytics: onShowAnalytics,
             onProviderAction: onProviderAction
         )
     }
 
+    @ViewBuilder
     public var body: some View {
+        if isMeasuring {
+            dashboardChrome { dashboardSections }
+                .frame(width: SystemDashboardPanelSizing.width)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            dashboardChrome {
+                ScrollView { dashboardSections }
+            }
+            .frame(width: SystemDashboardPanelSizing.width, height: layout.height)
+        }
+    }
+
+    private func dashboardChrome<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
         DashboardSurface {
             VStack(spacing: 0) {
                 header
                 Divider()
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(model.presentation.moduleIDs, id: \.self) { module in
-                            dashboardSection(module)
-                            if module != model.presentation.moduleIDs.last {
-                                Divider().padding(.leading, 18)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
+                content()
                 Divider()
                 footer
             }
         }
-        .frame(width: 360, height: min(680, max(180, maximumHeight)))
+    }
+
+    private var dashboardSections: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(model.presentation.moduleIDs, id: \.self) { module in
+                dashboardSection(module)
+                if module != model.presentation.moduleIDs.last {
+                    Divider().padding(.leading, 18)
+                }
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     @ViewBuilder

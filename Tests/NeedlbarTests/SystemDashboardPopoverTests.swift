@@ -273,27 +273,33 @@ import Testing
     #expect(model.history.disk.last?.writeBytesPerSecond == nil)
 }
 
-@Test @MainActor func dashboardPopoverFittingSizeCapsTallCoreFixturesAndRespectsSmallerHeight() {
-    let longReset = Date(timeIntervalSince1970: 20_000)
+@Test @MainActor func dashboardNaturalHeightTracksEnabledModulesAndProviders() throws {
     let snapshot = dashboardFixtureSnapshot(
         claudeQuotaWindows: [
-            try! QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil),
-            try! QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", usedPercent: 25, resetsAt: longReset)
+            try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil),
+            try QuotaWindow(
+                id: QuotaWindow.claudeFableWeeklyID,
+                title: "Fable weekly",
+                usedPercent: 25,
+                resetsAt: Date(timeIntervalSince1970: 20_000)
+            ),
         ],
         perCoreUsage: Array(repeating: MetricPercentage(50)!, count: 15)
     )
-    let model = SystemDashboardModel(snapshot: snapshot, configuration: SystemMonitorConfiguration())
-    let tallController = NSHostingController(
-        rootView: SystemDashboardPopoverView(model: model, maximumHeight: 1_400)
-    )
-    let shortController = NSHostingController(
-        rootView: SystemDashboardPopoverView(model: model, maximumHeight: 400)
-    )
+    var fullConfiguration = SystemMonitorConfiguration()
+    fullConfiguration.visibleModules = Set(MonitorModuleID.allCases)
+    let fullModel = SystemDashboardModel(snapshot: snapshot, configuration: fullConfiguration)
+    let fullHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: fullModel))
 
-    #expect(tallController.view.fittingSize.width == 360)
-    #expect(tallController.view.fittingSize.height <= 680)
-    #expect(shortController.view.fittingSize.width == 360)
-    #expect(shortController.view.fittingSize.height == 400)
+    var compactConfiguration = fullConfiguration
+    compactConfiguration.visibleModules = Set([.cpu, .memory, .ai])
+    compactConfiguration.ai[.codex] = AIProviderDisplayPreference(isVisible: false, metric: .remaining)
+    compactConfiguration.ai[.cursor] = AIProviderDisplayPreference(isVisible: false, metric: .remaining)
+    let compactModel = SystemDashboardModel(snapshot: snapshot, configuration: compactConfiguration)
+    let compactHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: compactModel))
+
+    #expect(fullHeight > 400)
+    #expect(compactHeight < fullHeight)
 }
 
 @Test func dashboardReadabilitySuppressesNormalFreshnessAndPreservesActionStates() {
@@ -331,22 +337,58 @@ import Testing
     #expect(descriptor.fullValue == "Authentication required")
 }
 
-@Test @MainActor func dashboardReadabilityFitsBothApprovedHeightsAndKeepsFooter() {
-    let snapshot = dashboardFixtureSnapshot(
-        claudeQuotaWindows: [
-            try! QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil),
-            try! QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", usedPercent: 25, resetsAt: Date(timeIntervalSince1970: 20_000))
-        ],
-        perCoreUsage: Array(repeating: MetricPercentage(50)!, count: 15)
+@Test @MainActor func dashboardVisibleViewUsesMeasuredOrScreenLimitedHeight() throws {
+    var configuration = SystemMonitorConfiguration()
+    configuration.visibleModules = Set(MonitorModuleID.allCases)
+    let model = SystemDashboardModel(
+        snapshot: dashboardFixtureSnapshot(
+            claudeQuotaWindows: [
+                try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil),
+                try QuotaWindow(
+                    id: QuotaWindow.claudeFableWeeklyID,
+                    title: "Fable weekly",
+                    usedPercent: 25,
+                    resetsAt: Date(timeIntervalSince1970: 20_000)
+                ),
+            ]
+        ),
+        configuration: configuration
     )
-    let model = SystemDashboardModel(snapshot: snapshot, configuration: SystemMonitorConfiguration())
-    let regular = NSHostingController(rootView: SystemDashboardPopoverView(model: model, maximumHeight: 680))
-    let short = NSHostingController(rootView: SystemDashboardPopoverView(model: model, maximumHeight: 400))
+    let naturalHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: model))
+    let tallHeight = SystemDashboardPanelSizing.height(
+        naturalContentHeight: naturalHeight,
+        visibleScreenHeight: naturalHeight + SystemDashboardPanelSizing.verticalScreenAllowanceInset
+    )
+    let shortHeight = SystemDashboardPanelSizing.height(
+        naturalContentHeight: naturalHeight,
+        visibleScreenHeight: 424
+    )
+    let tall = NSHostingController(
+        rootView: SystemDashboardPopoverView(model: model, height: tallHeight)
+    )
+    let short = NSHostingController(
+        rootView: SystemDashboardPopoverView(model: model, height: shortHeight)
+    )
 
-    #expect(regular.view.fittingSize.width == 360)
-    #expect(regular.view.fittingSize.height == 680)
-    #expect(short.view.fittingSize.width == 360)
-    #expect(short.view.fittingSize.height == 400)
+    #expect(tall.view.fittingSize == NSSize(width: 340, height: tallHeight))
+    #expect(tallHeight == naturalHeight)
+    #expect(short.view.fittingSize == NSSize(width: 340, height: 400))
+}
+
+@Test @MainActor func dashboardCompatibilityMaximumHeightPreservesLegacyClamp() {
+    let model = SystemDashboardModel(
+        snapshot: dashboardFixtureSnapshot(),
+        configuration: SystemMonitorConfiguration()
+    )
+    let tall = NSHostingController(
+        rootView: SystemDashboardPopoverView(model: model, maximumHeight: 900)
+    )
+    let short = NSHostingController(
+        rootView: SystemDashboardPopoverView(model: model, maximumHeight: 120)
+    )
+
+    #expect(tall.view.fittingSize == NSSize(width: 340, height: 680))
+    #expect(short.view.fittingSize == NSSize(width: 340, height: 180))
 }
 
 @Test @MainActor func dashboardReadabilityPreservesConfiguredOrderAndIPPrivacy() {
@@ -380,28 +422,32 @@ import Testing
     #expect(presentation.ai.filter { $0.provider != .claude }.allSatisfy { $0.fable == nil })
 }
 
-@Test @MainActor func dashboardReadabilityFittingIsStableAcrossLiveNumericChanges() {
+@Test @MainActor func dashboardReadabilityFittingIsStableAcrossLiveNumericChanges() throws {
     let configuration = SystemMonitorConfiguration()
     let first = dashboardFixtureSnapshot(capturedAt: Date(timeIntervalSince1970: 10_000))
     let second = dashboardFixtureSnapshot(capturedAt: Date(timeIntervalSince1970: 10_001), todayTokens: 1_683_150_000)
     let firstModel = SystemDashboardModel(snapshot: first, configuration: configuration)
     let secondModel = SystemDashboardModel(snapshot: second, configuration: configuration)
-    let firstView = NSHostingController(rootView: SystemDashboardPopoverView(model: firstModel, maximumHeight: 680))
-    let secondView = NSHostingController(rootView: SystemDashboardPopoverView(model: secondModel, maximumHeight: 680))
+    let firstHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: firstModel))
+    let secondHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: secondModel))
+    let firstView = NSHostingController(rootView: SystemDashboardPopoverView(model: firstModel, height: firstHeight))
+    let secondView = NSHostingController(rootView: SystemDashboardPopoverView(model: secondModel, height: firstHeight))
 
+    #expect(firstHeight == secondHeight)
     #expect(firstView.view.fittingSize == secondView.view.fittingSize)
 }
 
-@Test @MainActor func dashboardReadabilityKeepsSizeStableAcrossAppearances() {
+@Test @MainActor func dashboardReadabilityKeepsSizeStableAcrossAppearances() throws {
     let model = SystemDashboardModel(snapshot: dashboardFixtureSnapshot(), configuration: SystemMonitorConfiguration())
-    let light = NSHostingController(rootView: SystemDashboardPopoverView(model: model, maximumHeight: 680))
-    let dark = NSHostingController(rootView: SystemDashboardPopoverView(model: model, maximumHeight: 680))
+    let height = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: model))
+    let light = NSHostingController(rootView: SystemDashboardPopoverView(model: model, height: height))
+    let dark = NSHostingController(rootView: SystemDashboardPopoverView(model: model, height: height))
     light.view.appearance = NSAppearance(named: .aqua)
     dark.view.appearance = NSAppearance(named: .darkAqua)
 
     #expect(light.view.fittingSize == dark.view.fittingSize)
-    #expect(light.view.fittingSize.width == 360)
-    #expect(dark.view.fittingSize.width == 360)
+    #expect(light.view.fittingSize.width == 340)
+    #expect(dark.view.fittingSize.width == 340)
 }
 
 @Test func dashboardReadabilityPreservesUnavailableAndStalePresentation() {

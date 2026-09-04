@@ -1,9 +1,10 @@
 import AppKit
+import SwiftUI
 
-enum SystemDashboardPanelSizing {
+public enum SystemDashboardPanelSizing {
     static let width: CGFloat = 340
     static let minimumHeight: CGFloat = 180
-    static let fallbackHeight: CGFloat = 680
+    public static let fallbackHeight: CGFloat = 680
     static let verticalScreenAllowanceInset: CGFloat = 24
     static let resizeEpsilon: CGFloat = 0.5
 
@@ -33,5 +34,27 @@ enum SystemDashboardPanelSizing {
         current.isFinite
             && proposed.isFinite
             && abs(current - proposed) >= resizeEpsilon
+    }
+}
+
+@MainActor
+final class SystemDashboardPopoverLayout: ObservableObject {
+    @Published var height: CGFloat
+
+    init(height: CGFloat) {
+        self.height = height
+    }
+}
+
+@MainActor
+enum SystemDashboardPopoverMeasurement {
+    static func naturalHeight(for model: SystemDashboardModel) -> CGFloat? {
+        let controller = NSHostingController(
+            rootView: SystemDashboardPopoverView(measuring: model)
+        )
+        controller.view.layoutSubtreeIfNeeded()
+        let measured = controller.view.fittingSize.height
+        guard measured.isFinite, measured > 0 else { return nil }
+        return measured
     }
 }
