@@ -167,7 +167,10 @@ public struct SystemMonitorSettingsView: View {
         Section("AI provider display") {
             ForEach(model.orderedProviders, id: \.self) { provider in
                 HStack {
-                    Label(provider.displayName, systemImage: provider.systemImage)
+                    HStack(spacing: 6) {
+                        ProviderBrandIcon(provider: provider, accessibility: .decorative)
+                        Text(provider.displayName)
+                    }
                     Spacer()
                     Toggle("", isOn: Binding(
                         get: { model.value.ai[provider]?.isVisible ?? true },

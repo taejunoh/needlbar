@@ -72,8 +72,9 @@ public struct ProviderPopoverView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label(presentation.provider.displayName, systemImage: presentation.provider.systemImage)
+            HStack(spacing: 6) {
+                ProviderBrandIcon(provider: presentation.provider, accessibility: .decorative)
+                Text(presentation.provider.displayName)
                     .font(.headline)
                 Spacer()
             }

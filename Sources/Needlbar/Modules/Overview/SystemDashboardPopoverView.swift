@@ -223,10 +223,7 @@ public struct SystemDashboardPopoverView: View {
     private func providerRow(_ provider: SystemDashboardPresentation.AIProvider) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: provider.provider.systemImage)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16)
-                    .accessibilityHidden(true)
+                ProviderBrandIcon(provider: provider.provider, accessibility: .decorative)
                 Text(provider.provider.displayName)
                     .fontWeight(.medium)
                     .layoutPriority(1)

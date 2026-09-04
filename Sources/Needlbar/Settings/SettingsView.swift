@@ -53,6 +53,7 @@ public struct SettingsView: View {
                 providerLoginRow(provider: .claude, title: "Claude", actionTitle: "Sign in with Claude")
                 providerLoginRow(provider: .codex, title: "Codex", actionTitle: "Sign in with ChatGPT")
                 HStack {
+                    ProviderBrandIcon(provider: .cursor, accessibility: .decorative)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Cursor")
                         Text("Usage is read from an existing local cache. Quota is available in Cursor Spending.")
@@ -113,6 +114,7 @@ public struct SettingsView: View {
     @ViewBuilder
     private func providerLoginRow(provider: ProviderID, title: String, actionTitle: String) -> some View {
         HStack {
+            ProviderBrandIcon(provider: provider, accessibility: .decorative)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 Text(loginStatusCopy(for: provider))

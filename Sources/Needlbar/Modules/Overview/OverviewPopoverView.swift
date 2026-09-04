@@ -143,7 +143,10 @@ public struct OverviewPopoverView: View {
             ForEach(presentation.providerRows, id: \.provider) { row in
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
-                        Label(row.provider.displayName, systemImage: row.provider.systemImage)
+                        HStack(spacing: 6) {
+                            ProviderBrandIcon(provider: row.provider, accessibility: .decorative)
+                            Text(row.provider.displayName)
+                        }
                         Spacer()
                         if let quota = row.headlineQuotaRemaining {
                             Text(quota)
@@ -186,14 +189,6 @@ extension ProviderID {
         case .claude: "Claude"
         case .codex: "Codex"
         case .cursor: "Cursor"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .claude: "sparkles"
-        case .codex: "chevron.left.forwardslash.chevron.right"
-        case .cursor: "cursorarrow"
         }
     }
 }
