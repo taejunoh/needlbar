@@ -121,7 +121,7 @@ public struct SystemMonitorSettingsView: View {
 
     public var body: some View {
         Section("Menu bar modules") {
-            Text("Choose which modules use space in the menu bar. The dashboard popover always includes all six modules.")
+            Text("Choose which modules use space in the menu bar and appear in the dashboard popover.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
