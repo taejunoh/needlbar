@@ -511,4 +511,3 @@ Expected: a fourth evidence-only commit; do not amend code commits.
 - [ ] Approved caption, singleton/dual status strings, short browser labels, and full provider accessibility/help identity are exact.
 - [ ] Fable, Cursor, Settings, menu-bar, widgets, refresh/auth, and persistence boundaries remain unchanged.
 - [ ] Focused, acceptance, full, package, smoke, diff, native, and reinstall evidence is honest; README/image changes meet the evidence threshold.
-
