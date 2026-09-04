@@ -6,9 +6,9 @@
 ## Goal
 
 Make the main Needlbar system-dashboard popover narrower and size its height to
-the content that is actually enabled. On a sufficiently tall display, the
-default configuration must show CPU, RAM, Disk, Network, Battery, and the full
-AI Usage section—including Claude, Codex, Cursor, and Claude's subordinate
+the content that is actually enabled. On a sufficiently tall display, an
+all-modules configuration must show CPU, RAM, Disk, Network, Battery, and the
+full AI Usage section—including Claude, Codex, Cursor, and Claude's subordinate
 Fable row—without requiring a scroll. On a shorter display, the same content
 must remain available through the existing scrolling body.
 
@@ -24,10 +24,18 @@ content-driven rather than using a fixed 680-point cap as the normal displayed
 height. The minimum remains 180 points. The maximum is the current screen's
 available height minus the existing safe margin.
 
+The existing `SystemMonitorConfiguration.visibleModules` setting becomes
+authoritative for dashboard section visibility as well as the menu-bar system
+summary. Factory defaults remain CPU, RAM, and AI; this change does not silently
+enable Disk, Network, or Battery for a new installation. A user who enables all
+six modules sees all six in the dashboard, and disabling any module removes its
+dashboard section and its contribution to measured height. Existing module
+order and the existing per-provider AI visibility settings remain authoritative.
+
 ## User-visible behavior
 
 - The popover opens at 340 points wide.
-- When all default modules and AI providers fit on the current display, every
+- When all enabled modules and AI providers fit on the current display, every
   enabled section and provider row is visible without scrolling.
 - Hiding a system module or AI provider in Settings shortens the popover to the
   new natural content height. Showing one lengthens it again when space allows.
@@ -73,8 +81,12 @@ screen height wins so the panel never extends outside the visible frame.
 
 ## Component responsibilities
 
+`SystemDashboardPresentation` filters the existing configured module order by
+`visibleModules`. It does not change factory defaults or create another
+visibility preference.
+
 `SystemDashboardPopoverView` keeps the fixed header, scrollable body, fixed
-footer, existing module order, provider/Fable presentation, callbacks, and
+footer, filtered module order, provider/Fable presentation, callbacks, and
 privacy conditions. Its reusable content is factored only as far as needed for
 the measurement host and visible host to consume the same hierarchy.
 
@@ -110,9 +122,10 @@ Automated tests must cover:
 1. the fixed 340-point width;
 2. finite height clamping, the 180-point minimum, screen-limited maximum, and
    invalid-measurement fallback;
-3. a full default fixture whose natural height includes all six modules,
+3. an explicit all-enabled fixture whose natural height includes all six modules,
    Claude, Codex, Cursor, and Fable;
-4. shorter measured height when modules or providers are hidden;
+4. the unchanged CPU/RAM/AI factory default, configured-order filtering, and a
+   shorter measured height when modules or providers are hidden;
 5. no scroll requirement when natural content fits and body scrolling with
    fixed header/footer when it exceeds the screen allowance;
 6. no panel frame mutation when a live update leaves measured height unchanged;
@@ -121,12 +134,12 @@ Automated tests must cover:
    privacy, accessibility/help values, and outside-click dismissal.
 
 Current-host native acceptance must inspect the exact development bundle and
-record sanitized evidence for the 340-point width, full AI Usage visibility on
-a tall screen, height reduction after hiding configured content, short-screen
-scroll behavior, dark-mode contrast, stable anchoring, and outside-click
-dismissal. Capabilities that cannot be observed must be recorded as unobserved
-rather than inferred from automated tests. Native macOS 14 acceptance remains
-separately deferred.
+record sanitized evidence for the 340-point width, full AI Usage visibility in
+an all-enabled configuration on a tall screen, height reduction after hiding
+configured content, short-screen scroll behavior, dark-mode contrast, stable
+anchoring, and outside-click dismissal. Capabilities that cannot be observed
+must be recorded as unobserved rather than inferred from automated tests.
+Native macOS 14 acceptance remains separately deferred.
 
 README wording may be updated after native acceptance. A screenshot may be
 replaced only with a sanitized capture from the real development app; no
@@ -136,7 +149,8 @@ browser mockup or synthetic native screenshot may be presented as evidence.
 
 - Do not redesign module contents, typography, colors, charts, or gauges.
 - Do not add collapse controls or a new compact/expanded preference.
-- Do not change module/provider ordering or visibility defaults.
+- Do not change module/provider ordering or visibility defaults; only make the
+  existing system-module visibility setting authoritative for dashboard rows.
 - Do not solve menu-bar notch overflow or status-item placement.
 - Do not add data requests, timers, stored layout values, or dependencies.
 - Do not change provider actions, quota selection, Fable calculations, or IP
