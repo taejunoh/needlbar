@@ -116,21 +116,29 @@ Expected: the public app is not running and the inline sandbox policy denies all
 **Files:**
 - Create outside repository: `$CAPTURE_ROOT/*.native.png`, temporary logs, and window identifiers
 - Replace after approval: `docs/images/system-dashboard.png`, `docs/images/settings-modules.png`, `docs/images/settings-providers.png`
-- [ ] **Step 1: Start the exact packaged app under the isolated environment and prove its identity.**
-Run:
+- [ ] **Step 1: Keep the exact sandboxed development app alive in a persistent foreground PTY, then prove its child PID from a separate control shell.**
+Run this exact command in a dedicated foreground `exec_command` PTY, record its returned session ID as `CAPTURE_PTY_SESSION`, and leave that session open through all capture steps. Do **not** append `&`, redirect through a short-lived shell, or close its PTY: a non-PTY background child is reaped when that shell exits.
 ```bash
 HOME="$CAPTURE_ROOT/home" \
 CLAUDE_CONFIG_DIR="$CAPTURE_ROOT/home/.claude" \
 CODEX_HOME="$CAPTURE_ROOT/home/.codex" \
-sandbox-exec -p "$CAPTURE_PROFILE" "$CAPTURE_EXECUTABLE" > "$CAPTURE_ROOT/app.log" 2>&1 &
-CAPTURE_PID=$!
-sleep 1
-ps -p "$CAPTURE_PID" -o pid= -o command= | grep -F "$CAPTURE_EXECUTABLE"
+sandbox-exec -p "$CAPTURE_PROFILE" "$CAPTURE_EXECUTABLE"
 ```
-Expected: exactly one current `CAPTURE_PID` executes the packaged development binary. If it exits or its command is different, restore Task 1's snapshots and stop. Do not launch an unsandboxed replacement.
+From a separate control shell while `CAPTURE_PTY_SESSION` remains open, run:
+```bash
+CAPTURE_PIDS="$(pgrep -f "$CAPTURE_EXECUTABLE" || true)"
+test "$(printf '%s\n' "$CAPTURE_PIDS" | sed '/^$/d' | wc -l | tr -d ' ')" -eq 1
+CAPTURE_PID="$CAPTURE_PIDS"
+CAPTURE_COMMAND="$(ps -p "$CAPTURE_PID" -o command= | sed 's/^[[:space:]]*//')"
+test "$CAPTURE_COMMAND" = "$CAPTURE_EXECUTABLE"
+printf '%s\n' "$CAPTURE_PID" > "$CAPTURE_ROOT/capture.pid"
+```
+Expected: the foreground PTY records the exact sandbox command, while the control shell proves and records exactly one child with the exact Needlbar executable. Keep the PTY alive and use separate control commands for deep link, UI, and capture. If the PTY exits, PID count differs, or the command differs, restore Task 1's snapshots and stop; never substitute an unsandboxed/background launch.
 - [ ] **Step 2: Define the shell-local CoreGraphics enumerator; do not save it as a script.**
 Run:
 ```bash
+CAPTURE_PID="$(cat "$CAPTURE_ROOT/capture.pid")"
+test "$(ps -p "$CAPTURE_PID" -o command= | sed 's/^[[:space:]]*//')" = "$CAPTURE_EXECUTABLE"
 window_table() {
   /usr/bin/swift -framework CoreGraphics -e 'import CoreGraphics
 import Foundation
@@ -152,6 +160,8 @@ Expected: `window_table "$CAPTURE_PID"` emits only on-screen CoreGraphics window
 - [ ] **Step 3: Open the dashboard, verify its owner/title/bounds/PID, then capture by its exact CoreGraphics ID.**
 Run:
 ```bash
+CAPTURE_PID="$(cat "$CAPTURE_ROOT/capture.pid")"
+test "$(ps -p "$CAPTURE_PID" -o command= | sed 's/^[[:space:]]*//')" = "$CAPTURE_EXECUTABLE"
 open -gj -a "$CAPTURE_APP" needlbar://overview
 for _ in $(seq 1 50); do
   window_table "$CAPTURE_PID" > "$CAPTURE_ROOT/dashboard.windows"
@@ -170,6 +180,8 @@ Expected: the saved verification line proves the `CAPTURE_PID`, `Needlbar` owner
 - [ ] **Step 4: Use bounded Settings UI actions and capture each verified Settings window ID.**
 Click the dashboard footer **Settings** button once and wait at most five seconds. Do not click Analytics, provider sign-in, spending, refresh, export, notifications, pickers, or any provider action. Then run:
 ```bash
+CAPTURE_PID="$(cat "$CAPTURE_ROOT/capture.pid")"
+test "$(ps -p "$CAPTURE_PID" -o command= | sed 's/^[[:space:]]*//')" = "$CAPTURE_EXECUTABLE"
 for _ in $(seq 1 50); do
   window_table "$CAPTURE_PID" > "$CAPTURE_ROOT/settings-upper.windows"
   SETTINGS_LINES="$(awk -F '\t' '$2 == "Needlbar" && $3 == "Needlbar Settings" && $6 >= 500 && $7 >= 500 { print }' "$CAPTURE_ROOT/settings-upper.windows")"
@@ -185,6 +197,8 @@ sips -g pixelWidth -g pixelHeight -g hasAlpha "$CAPTURE_ROOT/settings-modules.na
 ```
 The verification line proves the exact PID, `Needlbar` owner, `Needlbar Settings` title, and native bounds before capture. Keep the upper image only if it is light, app-only, shows module visibility/order and both IP controls off, and has no path, account, credential, or IP. To move lower, put the pointer over the Settings scroll body and use at most six down-scroll notches; do not click a control or change a value. Re-enumerate immediately before the lower capture:
 ```bash
+CAPTURE_PID="$(cat "$CAPTURE_ROOT/capture.pid")"
+test "$(ps -p "$CAPTURE_PID" -o command= | sed 's/^[[:space:]]*//')" = "$CAPTURE_EXECUTABLE"
 window_table "$CAPTURE_PID" > "$CAPTURE_ROOT/settings-lower.windows"
 SETTINGS_LINES="$(awk -F '\t' '$2 == "Needlbar" && $3 == "Needlbar Settings" && $6 >= 500 && $7 >= 500 { print }' "$CAPTURE_ROOT/settings-lower.windows")"
 test "$(printf '%s\n' "$SETTINGS_LINES" | sed '/^$/d' | wc -l | tr -d ' ')" -eq 1
@@ -208,10 +222,15 @@ At 100% size, inspect all three candidates. Reject any capture containing an IPv
 - [ ] **Step 6: Stop only the proven capture process, restore settings, and restart the exact runtime app normally.**
 Run:
 ```bash
+CAPTURE_PID="$(cat "$CAPTURE_ROOT/capture.pid")"
+test "$(ps -p "$CAPTURE_PID" -o command= | sed 's/^[[:space:]]*//')" = "$CAPTURE_EXECUTABLE"
 ps -p "$CAPTURE_PID" -o command= | grep -F "$CAPTURE_EXECUTABLE"
 kill -TERM "$CAPTURE_PID"
 for _ in $(seq 1 50); do kill -0 "$CAPTURE_PID" 2>/dev/null || break; sleep 0.1; done
 ! kill -0 "$CAPTURE_PID" 2>/dev/null
+```
+With no input, poll `CAPTURE_PTY_SESSION` every second for at most five seconds (the session control uses `chars: ""`). It must complete after the exact child exits; only then close/reap that completed PTY, without sending it input. If it remains live, stop and report the lifecycle mismatch without copying candidates or editing README. From the control shell, continue only after that completed-session result:
+```bash
 defaults import com.taejunoh.needlbar "$CAPTURE_ROOT/needlbar-before.plist"
 defaults export com.taejunoh.needlbar "$CAPTURE_ROOT/needlbar-after.plist"
 plutil -convert json -o - "$CAPTURE_ROOT/needlbar-after.plist" | /usr/bin/jq -S . > "$CAPTURE_ROOT/needlbar-after.json"
@@ -228,7 +247,7 @@ done
 RUNTIME_COMMAND="$(ps -p "$RUNTIME_PIDS" -o command= | sed 's/^[[:space:]]*//')"
 test "$RUNTIME_COMMAND" = "$RUNTIME_EXECUTABLE"
 ```
-Expected: only the exact capture PID stops; the complete domain's canonical JSON is byte-identical before/after; global appearance was never changed; and the same `needlbar-runtime/latest/Needlbar.app` executable is normally running again. On mismatch, preserve `$CAPTURE_ROOT` for diagnosis and stop with the repository untouched: do not copy candidates, edit README, commit, or restart an unverified state.
+Expected: only the exact capture PID stops and its persistent PTY completes; the complete domain's canonical JSON is byte-identical before/after; global appearance was never changed; and the same `needlbar-runtime/latest/Needlbar.app` executable is normally running again. On mismatch, preserve `$CAPTURE_ROOT` for diagnosis and stop with the repository untouched: do not copy candidates, edit README, commit, or restart an unverified state.
 ### Task 3: Update the README and commit only the approved visual refresh
 
 **Files:**
@@ -313,6 +332,7 @@ Expected: one focused commit contains exactly the README plus its three native i
 ## Final acceptance checklist
 
 - [ ] Exact packaged development app ran under isolated `HOME`, `CLAUDE_CONFIG_DIR`, and `CODEX_HOME`, with network and `securityd` denied.
+- [ ] Its foreground sandbox PTY remained open through capture, the exact child PID was recorded, and the completed PTY was polled/closed only after that child terminated.
 - [ ] All three captures use a CoreGraphics ID verified for the capture PID, owner, title, and bounds; none is a desktop, release app, fixture, or synthetic image.
 - [ ] The dashboard is native light mode at 312 points, includes all six sections and three provider rows, and has no local/public IP value.
 - [ ] The upper/lower Settings images are native light captures of the same current Settings UI and show their required controls.
