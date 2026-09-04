@@ -4,7 +4,8 @@ Needlbar is a native macOS menu-bar application with a Swift presentation shell 
 
 The v0.3 system monitor keeps system collection and presentation in Swift. One
 adaptive status item combines CPU, RAM, disk, network, battery, and AI usage;
-the complete dashboard popover always contains all six sections. System values
+dashboard rows are the configured-order intersection with `visibleModules`,
+and content-driven sizing clamps to the available screen space. System values
 are collected on a one-second service tick and are merged with provider values
 through an in-memory `CombinedSnapshotStore`.
 
@@ -84,8 +85,9 @@ snapshots. The model keeps no more than 60 memory-only trend samples and does
 not duplicate them when only provider data changes. Stale/unavailable transfer
 samples are gaps. `SystemDashboardPopoverView` observes that model so an open
 panel updates without being re-presented or losing disclosure state. The
-screen-bounded dashboard retains all six sections in configured order, existing
-anchoring, outside-click dismissal, provider login, and Cursor Spending seams.
+screen-bounded dashboard uses configured-order rows filtered by `visibleModules`,
+with content-driven sizing and screen clamping; existing anchoring, outside-click
+dismissal, provider login, and Cursor Spending seams remain intact.
 
 Native memory accounting excludes file-backed and purgeable cache from consumed
 physical pages; Available is the complement. Swap uses `vm.swapusage`, internal

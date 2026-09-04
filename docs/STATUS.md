@@ -1,13 +1,13 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-03
-**Branch:** `codex/adaptive-dashboard-sizing` at `46d9f0c` (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
+**Branch:** `codex/adaptive-dashboard-sizing` (documentation quality-fix follows `7e50ca5`; v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
 **Current phase:** Adaptive system-dashboard sizing Tasks 1–5 and the bounded Task 6 native evidence are complete; the documentation checkpoint is recorded below. The all-enabled content-sized dashboard, compact restored state, aligned values, numeric no-churn, stable bottom edge/anchor, dark capture, and outside-click dismissal are recorded. Settings UI toggle interaction, short-screen scrolling, provider external actions, and native macOS 14 acceptance remain explicitly unobserved or deferred.
 **Next action:** Preserve the verified implementation and documented native limitations. Parent-agent review/integration is the next continuation point; do not infer unobserved native behavior from automated tests. Push, merge, publish, sign, notarize, or release only on the user's request.
 
 ## Adaptive system-dashboard sizing Task 6 — documentation checkpoint — 2026-09-03
 
-Adaptive sizing implementation and verification commits are `9a00c5b`, `7571846`, `3326d6b`, `6cbb50b`, `7d2d005`, `defe6dc`, and `46d9f0c`. The final fix `46d9f0c` aligns the Settings copy with dashboard visibility. Scoped implementation/review work retained the approved visibility, measurement, frame-only resize, and presentation boundaries.
+Adaptive sizing implementation and verification commits are `9a00c5b`, `7571846`, `3326d6b`, `6cbb50b`, `7d2d005`, `defe6dc`, and `46d9f0c`, followed by documentation commits `eb29706` and `7e50ca5`. The final implementation fix `46d9f0c` aligns the Settings copy with dashboard visibility. Scoped implementation/review work retained the approved visibility, measurement, frame-only resize, and presentation boundaries.
 
 Final gates ran serially from `/Users/taejunoh/Developer/LFG/needlbar/.worktrees/adaptive-dashboard-sizing`, with Cargo sourced before every Make command:
 
@@ -657,14 +657,13 @@ tests passed.
 ### Task 5 — Complete six-section system dashboard popover
 
 Task 5 is complete in the current worktree. The combined dashboard popover now
-renders CPU, RAM, disk, network, battery, and AI sections from one immutable
-snapshot. It always includes all six sections even when menu-bar visibility is
-restricted, keeps network transfer rates visible by default, redacts public IP
-unless explicitly enabled, formats provider values from their per-provider
-preferences, and routes provider connection actions through the existing login
-and Cursor Spending seams. Existing anchor, outside-click, and generation-safe
-dismissal behavior is preserved. Focused dashboard, controller, and placement
-tests passed.
+renders configured-order rows filtered by visible module selections from one
+immutable snapshot. Network transfer rates remain visible by default, public IP
+is redacted unless explicitly enabled, provider values are formatted from their
+per-provider preferences, and provider connection actions route through the
+existing login and Cursor Spending seams. Existing anchor, outside-click, and
+generation-safe dismissal behavior is preserved. Focused dashboard, controller,
+and placement tests passed.
 
 The next continuation point is Task 6, module and AI display controls in
 Settings. Native macOS 14 acceptance remains deferred and unperformed.

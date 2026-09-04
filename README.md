@@ -61,11 +61,13 @@ Claude when its selected metric is Remaining. It does not change the menu-bar
 headline, snapshot export, widget, or quota notifications. Missing Fable data is
 shown as unavailable rather than estimated from tokens or the overall weekly quota.
 
-The live dashboard shows all six sections, usage gauges, per-core CPU bars,
-and recent disk/network trends. Its fixed header and footer surround scrollable
-content sized for the current screen. Trends retain at most 60 samples in
-memory; no system-history database is created. Missing or stale readings are
-identified explicitly. These changes are not in the public v0.2.2 ZIP above.
+The live dashboard can show all six sections when enabled, alongside usage
+gauges, per-core CPU bars, and recent disk/network trends. Configured
+visibility controls which rows appear; the defaults keep CPU, RAM, and AI
+enabled. Its fixed header and footer surround scrollable content sized for the
+current screen. Trends retain at most 60 samples in memory; no system-history
+database is created. Missing or stale readings are identified explicitly.
+These changes are not in the public v0.2.2 ZIP above.
 
 RAM excludes file-backed and purgeable cache from consumed physical memory;
 Available is the complement and includes reclaimable memory. Memory uses
