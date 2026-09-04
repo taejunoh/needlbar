@@ -478,41 +478,10 @@ import Testing
     #expect(firstView.view.fittingSize == secondView.view.fittingSize)
 }
 
-@Test @MainActor func providerTitleRowGeometryCentersEveryBrandWithoutChangingItsFrameOrGap() {
-    let geometries = ProviderID.allCases.map { _ in
-        ProviderTitleRowLayout.geometry(titleHeight: 20)
-    }
-    let first = geometries[0]
-
-    #expect(geometries.count == 3)
-    #expect(geometries.allSatisfy { $0 == first })
-    #expect(first.verticalRule == .center)
-    #expect(first.iconFrame == CGSize(width: 18, height: 18))
-    #expect(first.horizontalSpacing == 8)
-    #expect(first.verticalCenterError <= 1)
-}
-
-@Test @MainActor func providerTitleRowGeometryAndDashboardSizeStayStableAcrossAppearances() throws {
-    let model = SystemDashboardModel(
-        snapshot: dashboardFixtureSnapshot(),
-        configuration: SystemMonitorConfiguration()
-    )
-    let height = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: model))
-    let light = NSHostingController(rootView: SystemDashboardPopoverView(model: model, height: height))
-    let dark = NSHostingController(rootView: SystemDashboardPopoverView(model: model, height: height))
-    light.view.appearance = NSAppearance(named: .aqua)
-    dark.view.appearance = NSAppearance(named: .darkAqua)
-    light.view.layoutSubtreeIfNeeded()
-    dark.view.layoutSubtreeIfNeeded()
-
-    for _ in ProviderID.allCases {
-        let geometry = ProviderTitleRowLayout.geometry(titleHeight: 20)
-        #expect(geometry.verticalRule == .center)
-        #expect(geometry.verticalCenterError <= 1)
-    }
-    #expect(light.view.fittingSize == dark.view.fittingSize)
-    #expect(light.view.fittingSize.width == 312)
-    #expect(dark.view.fittingSize.width == 312)
+@Test @MainActor func providerTitleRowAlignmentPolicyCentersEveryBrandWithoutChangingFrameOrGap() {
+    #expect(ProviderTitleRowAlignmentPolicy.verticalRule == .center)
+    #expect(ProviderTitleRowAlignmentPolicy.iconFrame == CGSize(width: 18, height: 18))
+    #expect(ProviderTitleRowAlignmentPolicy.horizontalSpacing == 8)
 }
 
 @Test @MainActor func dashboardReadabilityKeepsSizeStableAcrossAppearances() throws {

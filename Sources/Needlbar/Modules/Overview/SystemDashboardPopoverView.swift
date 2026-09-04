@@ -6,15 +6,8 @@ enum ProviderTitleRowVerticalRule: Equatable {
     case center
 }
 
-struct ProviderTitleRowGeometry: Equatable {
-    let verticalRule: ProviderTitleRowVerticalRule
-    let iconFrame: CGSize
-    let horizontalSpacing: CGFloat
-    let verticalCenterError: CGFloat
-}
-
 @MainActor
-enum ProviderTitleRowLayout {
+enum ProviderTitleRowAlignmentPolicy {
     static let verticalRule: ProviderTitleRowVerticalRule = .center
     static let iconFrame = ProviderBrandIcon.iconFrame
     static let horizontalSpacing: CGFloat = 8
@@ -24,18 +17,6 @@ enum ProviderTitleRowLayout {
         case .center:
             return .center
         }
-    }
-
-    static func geometry(titleHeight: CGFloat) -> ProviderTitleRowGeometry {
-        let rowHeight = max(iconFrame.height, titleHeight)
-        let iconCenterY = (rowHeight - iconFrame.height) / 2 + iconFrame.height / 2
-        let titleCenterY = (rowHeight - titleHeight) / 2 + titleHeight / 2
-        return ProviderTitleRowGeometry(
-            verticalRule: verticalRule,
-            iconFrame: iconFrame,
-            horizontalSpacing: horizontalSpacing,
-            verticalCenterError: abs(iconCenterY - titleCenterY)
-        )
     }
 }
 
@@ -260,8 +241,8 @@ public struct SystemDashboardPopoverView: View {
     private func providerRow(_ provider: SystemDashboardPresentation.AIProvider) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(
-                alignment: ProviderTitleRowLayout.swiftUIAlignment,
-                spacing: ProviderTitleRowLayout.horizontalSpacing
+                alignment: ProviderTitleRowAlignmentPolicy.swiftUIAlignment,
+                spacing: ProviderTitleRowAlignmentPolicy.horizontalSpacing
             ) {
                 ProviderBrandIcon(provider: provider.provider, accessibility: .decorative)
                 Text(provider.provider.displayName)
