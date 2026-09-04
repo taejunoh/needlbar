@@ -74,17 +74,19 @@ or provider visibility.
 
 The compact status policy applies only to the dashboard presentation layer.
 Fresh and unavailable streams continue to suppress a status suffix. For a
-provider stream that is not normal, use these compact status phrases:
+provider stream that is not normal, use these compact status phrases. The
+lower-case token is used when statuses are qualified with `Usage` or `Quota`;
+the standalone display string is explicitly title-cased as shown:
 
-| Stream state | Compact phrase |
-| --- | --- |
-| stale | `stale` |
-| concrete error | `error` |
-| authentication required | `sign-in required` |
+| Stream state | Qualified token | Standalone display |
+| --- | --- | --- |
+| stale | `stale` | `Stale` |
+| concrete error | `error` | `Error` |
+| authentication required | `sign-in required` | `Sign-in required` |
 
-If exactly one stream is abnormal, show only its compact phrase. Therefore a
-fresh Usage stream with an authentication-required Quota stream renders
-exactly `Sign-in required` (one status, with no `Quota` prefix and no
+If exactly one stream is abnormal, show only its standalone display string.
+Therefore a fresh Usage stream with an authentication-required Quota stream
+renders exactly `Sign-in required` (one status, with no `Quota` prefix and no
 `Authentication required` wording).
 
 If both Usage and Quota are abnormal, preserve provenance by qualifying both
@@ -106,7 +108,8 @@ model provides one; unavailable values remain `—`. The status is included in
 the existing accessibility description even when the visual text is compact.
 This provider-status policy does not rewrite Fable's subordinate reset or
 freshness text; Fable's existing presentation and authentication/error
-semantics remain unchanged.
+semantics remain unchanged. Fable remains a subordinate row under Claude,
+stays out of the headline, and is not a top-level provider.
 
 ### Login control identity
 
@@ -147,11 +150,12 @@ continues to measure before first presentation and to request an in-place
 resize only after a material height change. `MenuPanelPresenter` continues to
 own placement and dismissal.
 
-`SystemDashboardPresentation` owns the `Quota remaining` caption and compact
-provider-status composition. `SystemDashboardPopoverView` owns only the
-visible `Sign in` button label plus existing layout and accessibility
-composition. No presentation logic moves into collectors, the Rust bridge,
-quota adapters, or persistence.
+`SystemDashboardPresentation` owns the `Quota remaining` caption.
+`DashboardReadabilityPolicy` in the dashboard display components owns compact
+provider-status composition, and `SystemDashboardPopoverView` consumes that
+policy. The view owns only the visible `Sign in` button label plus existing
+layout and accessibility composition. No presentation logic moves into
+collectors, the Rust bridge, quota adapters, or persistence.
 
 The following presentation behavior is explicitly unchanged:
 
@@ -162,8 +166,8 @@ The following presentation behavior is explicitly unchanged:
 - provider metric selection, quota-window selection, freshness handling,
   stale/error/unavailable value behavior, and independent Usage/Quota refresh;
 - Claude's subordinate Fable weekly row, reset caption, freshness, and
-  remaining semantics; Fable remains out of the headline and a top-level
-  provider;
+  remaining semantics; Fable remains under Claude, out of the headline, and
+  is not a top-level provider;
 - local/public IP preference gates, truncation, tooltip/help text, and full
   accessibility values;
 - Settings, Analytics…, provider actions, outside-click dismissal, and panel
