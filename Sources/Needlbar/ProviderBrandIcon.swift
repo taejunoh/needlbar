@@ -78,16 +78,16 @@ struct ProviderBrandIcon: View {
     }
 
     struct AssetLoader {
-        let load: (String) -> Result<NSImage, AssetFailure>
+        let load: (CatalogueEntry) -> Result<NSImage, AssetFailure>
 
-        init(load: @escaping (String) -> Result<NSImage, AssetFailure>) {
+        init(load: @escaping (CatalogueEntry) -> Result<NSImage, AssetFailure>) {
             self.load = load
         }
 
         @MainActor
-        static let bundle = AssetLoader { resourceID in
+        static let bundle = AssetLoader { entry in
             guard let url = Bundle.module.url(
-                forResource: resourceID,
+                forResource: entry.resourceID,
                 withExtension: "png",
                 subdirectory: "ProviderBrands"
             ) else {
@@ -134,12 +134,16 @@ struct ProviderBrandIcon: View {
     private static var recordedFailures = Set<String>()
 
     private let planValue: Plan
+    private let providerValue: ProviderID
+    private let catalogueEntryValue: CatalogueEntry
 
     init(
         provider: ProviderID,
         loader: AssetLoader = .bundle,
         accessibility: Accessibility = .decorative
     ) {
+        providerValue = provider
+        catalogueEntryValue = Self.catalogueEntry(for: provider)
         planValue = Self.plan(for: provider, loader: loader, accessibility: accessibility)
     }
 
@@ -160,7 +164,7 @@ struct ProviderBrandIcon: View {
         accessibility: Accessibility = .decorative
     ) -> Plan {
         let entry = catalogueEntry(for: provider)
-        let loaded: Result<NSImage, AssetFailure> = loader.load(entry.resourceID)
+        let loaded: Result<NSImage, AssetFailure> = loader.load(entry)
 
         switch loaded {
         case let .success(image) where isCompatible(image):
@@ -175,10 +179,8 @@ struct ProviderBrandIcon: View {
                 failure: nil
             )
         case .success:
-            recordFailure(.incompatible, provider: provider, entry: entry)
             return fallbackPlan(entry: entry, accessibility: accessibility, failure: .incompatible)
         case let .failure(failure):
-            recordFailure(failure, provider: provider, entry: entry)
             return fallbackPlan(entry: entry, accessibility: accessibility, failure: failure)
         }
     }
@@ -188,6 +190,10 @@ struct ProviderBrandIcon: View {
         iconView
             .frame(width: planValue.frame.width, height: planValue.frame.height)
             .applyAccessibility(planValue.accessibility, label: planValue.accessibilityLabel)
+            .onAppear {
+                guard let failure = planValue.failure else { return }
+                Self.recordFailure(failure, provider: providerValue, entry: catalogueEntryValue)
+            }
     }
 
     @ViewBuilder

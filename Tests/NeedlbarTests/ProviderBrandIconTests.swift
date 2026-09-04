@@ -46,9 +46,9 @@ struct ProviderBrandIconTests {
         ]
 
         for provider in ProviderID.allCases {
-            let plan = ProviderBrandIcon.plan(for: provider, loader: .init { resourceID in
-                let expected = ProviderBrandIcon.catalogueEntry(for: provider).resourceID
-                #expect(resourceID == expected)
+            let plan = ProviderBrandIcon.plan(for: provider, loader: .init { entry in
+                let expected = ProviderBrandIcon.catalogueEntry(for: provider)
+                #expect(entry == expected)
                 return .success(NSImage(size: sizes[provider]!))
             })
 
@@ -56,6 +56,8 @@ struct ProviderBrandIconTests {
             #expect(plan.contentMode == .fit)
             let expectedRatio = sizes[provider]!.width / sizes[provider]!.height
             #expect(plan.sourceAspectRatio == expectedRatio)
+            #expect(plan.image != nil)
+            #expect(plan.fallbackSymbol == nil)
             #expect(plan.failure == nil)
         }
     }
@@ -120,10 +122,17 @@ struct ProviderBrandIconTests {
 
     @Test("brand treatment is invariant across aqua and dark aqua")
     func providerBrandTreatmentIsInvariantAcrossAquaAndDarkAqua() {
-        for _ in [NSAppearance.Name.aqua, .darkAqua] {
-            #expect(ProviderBrandIcon.catalogueEntry(for: .claude).rendering == .officialOrange)
-            #expect(ProviderBrandIcon.catalogueEntry(for: .codex).rendering == .systemMonochrome)
-            #expect(ProviderBrandIcon.catalogueEntry(for: .cursor).rendering == .systemMonochrome)
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = NSAppearance(named: name)!
+            appearance.performAsCurrentDrawingAppearance {
+                let claude = ProviderBrandIcon.plan(for: .claude)
+                let codex = ProviderBrandIcon.plan(for: .codex)
+                let cursor = ProviderBrandIcon.plan(for: .cursor)
+
+                #expect(claude.rendering == .officialOrange)
+                #expect(codex.rendering == .systemMonochrome)
+                #expect(cursor.rendering == .systemMonochrome)
+            }
         }
     }
 }
