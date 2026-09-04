@@ -2,6 +2,43 @@ import AppKit
 import NeedlbarCore
 import SwiftUI
 
+enum ProviderTitleRowVerticalRule: Equatable {
+    case center
+}
+
+struct ProviderTitleRowGeometry: Equatable {
+    let verticalRule: ProviderTitleRowVerticalRule
+    let iconFrame: CGSize
+    let horizontalSpacing: CGFloat
+    let verticalCenterError: CGFloat
+}
+
+@MainActor
+enum ProviderTitleRowLayout {
+    static let verticalRule: ProviderTitleRowVerticalRule = .center
+    static let iconFrame = ProviderBrandIcon.iconFrame
+    static let horizontalSpacing: CGFloat = 8
+
+    static var swiftUIAlignment: VerticalAlignment {
+        switch verticalRule {
+        case .center:
+            return .center
+        }
+    }
+
+    static func geometry(titleHeight: CGFloat) -> ProviderTitleRowGeometry {
+        let rowHeight = max(iconFrame.height, titleHeight)
+        let iconCenterY = (rowHeight - iconFrame.height) / 2 + iconFrame.height / 2
+        let titleCenterY = (rowHeight - titleHeight) / 2 + titleHeight / 2
+        return ProviderTitleRowGeometry(
+            verticalRule: verticalRule,
+            iconFrame: iconFrame,
+            horizontalSpacing: horizontalSpacing,
+            verticalCenterError: abs(iconCenterY - titleCenterY)
+        )
+    }
+}
+
 public struct SystemDashboardPopoverView: View {
     @ObservedObject private var model: SystemDashboardModel
     @ObservedObject private var layout: SystemDashboardPopoverLayout
@@ -222,7 +259,10 @@ public struct SystemDashboardPopoverView: View {
     @ViewBuilder
     private func providerRow(_ provider: SystemDashboardPresentation.AIProvider) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(
+                alignment: ProviderTitleRowLayout.swiftUIAlignment,
+                spacing: ProviderTitleRowLayout.horizontalSpacing
+            ) {
                 ProviderBrandIcon(provider: provider.provider, accessibility: .decorative)
                 Text(provider.provider.displayName)
                     .fontWeight(.medium)
