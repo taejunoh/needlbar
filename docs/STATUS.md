@@ -2441,15 +2441,22 @@ the full provider help text and accessibility behavior retained. Fable/data,
 authentication, refresh, and menu-bar behavior are unchanged. These are source
 and automated-contract facts, not claims of native visual observation.
 
-The corrected literal-escaped focused filter command exited 0 with 95 tests in
-3 suites. The raw unescaped form first failed because Make/the shell interpreted
-the pipes; this was a deliberate command-invocation correction, not a product
-failure. The acceptance suite exited 0 with 9 tests. The authoritative serial
-`make test` rerun exited 0: project Rust reported 132 passing tests; vendored
+The corrected focused filter command was
+`source /Users/taejunoh/.cargo/env && make swift-test SWIFT_TEST_FILTER='dashboard\|SystemDashboard\|MenuBarController\|MenuPanel\|PopoverPresentation\|AcceptanceFixture'`
+— exit 0, Swift Testing 95 tests in 3 suites (XCTest 0 selected/0 failures).
+The raw unescaped plan spelling first failed because recipe-shell pipes were
+interpreted; this was a command-invocation issue, not a product failure. The
+acceptance command was
+`source /Users/taejunoh/.cargo/env && make acceptance-test` — exit 0,
+AcceptanceFixtureTests 9 tests (XCTest 0 selected/0 failures). The authoritative
+serial `make test` rerun exited 0: project Rust reported 132 passing tests; vendored
 tokScale reported 1,398 passed, 0 failed, and 1 ignored; Swift reported 392
 tests in 15 suites; and the widget, package, and notarization contracts passed.
 `make package`, `make smoke`, `git diff --check`, and `git status --short` all
 exited 0, with the final status clean.
+
+CI state: this local unpushed branch/documentation commit has not triggered or
+verified CI. No CI link or result is claimed.
 
 Known warnings remain: the existing `matching` variable warning; Rust objects
 built on macOS 26.5 linked for the macOS 14.0 deployment target; and three
