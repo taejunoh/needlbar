@@ -52,7 +52,7 @@ public struct SettingsView: View {
             Section("Connections") {
                 providerLoginRow(provider: .claude, title: "Claude", actionTitle: "Sign in with Claude")
                 providerLoginRow(provider: .codex, title: "Codex", actionTitle: "Sign in with ChatGPT")
-                HStack {
+                HStack(alignment: .top, spacing: 8) {
                     ProviderBrandIcon(provider: .cursor, accessibility: .decorative)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Cursor")
@@ -113,7 +113,7 @@ public struct SettingsView: View {
 
     @ViewBuilder
     private func providerLoginRow(provider: ProviderID, title: String, actionTitle: String) -> some View {
-        HStack {
+        HStack(alignment: .top, spacing: 8) {
             ProviderBrandIcon(provider: provider, accessibility: .decorative)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
