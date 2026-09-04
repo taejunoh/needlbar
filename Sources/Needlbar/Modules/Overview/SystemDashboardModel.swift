@@ -218,10 +218,11 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         }
 
         let configuredOrder = configuration.order
-        moduleIDs = configuredOrder.count == MonitorModuleID.allCases.count
+        let validOrder = configuredOrder.count == MonitorModuleID.allCases.count
             && Set(configuredOrder) == Set(MonitorModuleID.allCases)
             ? configuredOrder
             : MonitorModuleID.defaultOrder
+        moduleIDs = validOrder.filter(configuration.visibleModules.contains)
     }
 
     private static func providerValue(_ metric: AIProviderDisplayMetric, snapshot: ProviderSnapshot?) -> String {

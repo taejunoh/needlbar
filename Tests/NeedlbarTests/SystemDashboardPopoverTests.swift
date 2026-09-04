@@ -5,18 +5,42 @@ import Testing
 @testable import NeedlbarApp
 @testable import NeedlbarCore
 
-@Test func dashboardPresentationAlwaysContainsAllSixSystemModules() {
-    var configuration = SystemMonitorConfiguration()
-    configuration.visibleModules = [.cpu]
+@Test func dashboardPresentationUsesFactoryDefaultVisibleModules() {
+    let configuration = SystemMonitorConfiguration()
     let presentation = SystemDashboardPresentation(
         snapshot: dashboardFixtureSnapshot(),
         configuration: configuration
     )
 
-    #expect(Set(presentation.moduleIDs) == Set(MonitorModuleID.allCases))
-    #expect(presentation.moduleIDs == MonitorModuleID.defaultOrder)
+    #expect(configuration.visibleModules == Set([.cpu, .memory, .ai]))
+    #expect(presentation.moduleIDs == [.cpu, .memory, .ai])
     #expect(presentation.cpu.usage == "24%")
     #expect(presentation.memory.used == "7.5 GiB")
+}
+
+@Test func dashboardPresentationFiltersConfiguredOrderByVisibleModules() {
+    var configuration = SystemMonitorConfiguration()
+    configuration.order = [.ai, .network, .cpu, .battery, .memory, .disk]
+    configuration.visibleModules = Set([.disk, .ai, .cpu])
+
+    let presentation = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(),
+        configuration: configuration
+    )
+
+    #expect(presentation.moduleIDs == [.ai, .cpu, .disk])
+}
+
+@Test func dashboardPresentationAllowsEveryModuleToBeTurnedOff() {
+    var configuration = SystemMonitorConfiguration()
+    configuration.visibleModules = []
+
+    let presentation = SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(),
+        configuration: configuration
+    )
+
+    #expect(presentation.moduleIDs.isEmpty)
 }
 
 @Test func dashboardPresentationIncludesNetworkSpeedAndOptionalIPValues() {
@@ -48,18 +72,6 @@ import Testing
     configuration.localIPEnabled = true
     presentation = SystemDashboardPresentation(snapshot: dashboardFixtureSnapshot(), configuration: configuration)
     #expect(presentation.network.primaryLocalAddress == "192.0.2.10")
-}
-
-@Test func dashboardPresentationPreservesConfiguredModuleOrder() {
-    var configuration = SystemMonitorConfiguration()
-    configuration.order = [.ai, .network, .cpu, .battery, .memory, .disk]
-
-    let presentation = SystemDashboardPresentation(
-        snapshot: dashboardFixtureSnapshot(),
-        configuration: configuration
-    )
-
-    #expect(presentation.moduleIDs == configuration.order)
 }
 
 @Test func dashboardPresentationUsesConfiguredAIDisplayMetric() {
@@ -340,6 +352,7 @@ import Testing
 @Test @MainActor func dashboardReadabilityPreservesConfiguredOrderAndIPPrivacy() {
     var configuration = SystemMonitorConfiguration()
     configuration.order = [.ai, .network, .cpu, .battery, .memory, .disk]
+    configuration.visibleModules = Set(MonitorModuleID.allCases)
     configuration.localIPEnabled = false
     configuration.publicIPEnabled = false
 
