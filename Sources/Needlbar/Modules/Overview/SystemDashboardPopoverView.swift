@@ -49,26 +49,6 @@ public struct SystemDashboardPopoverView: View {
         onProviderAction = { _ in }
     }
 
-    // Preserve source compatibility until the presenter adopts shared measured layout.
-    public init(
-        model: SystemDashboardModel,
-        maximumHeight: CGFloat,
-        onShowSettings: @escaping () -> Void = {},
-        onShowAnalytics: @escaping () -> Void = {},
-        onProviderAction: @escaping (ProviderID) -> Void = { _ in }
-    ) {
-        self.init(
-            model: model,
-            height: min(
-                SystemDashboardPanelSizing.fallbackHeight,
-                max(SystemDashboardPanelSizing.minimumHeight, maximumHeight)
-            ),
-            onShowSettings: onShowSettings,
-            onShowAnalytics: onShowAnalytics,
-            onProviderAction: onProviderAction
-        )
-    }
-
     // Retain the previously public construction path for existing presenters.
     public init(
         snapshot: CombinedUsageSnapshot,

@@ -246,6 +246,138 @@ import Testing
     #expect(await eventually { item.title.contains("CPU 24%") })
     #expect(presenter.presentCount == 1)
     #expect(presenter.isShown)
+    #expect(presenter.resizedSizes.isEmpty)
+}
+
+@MainActor
+@Test func overviewUsesMeasured340PointContentBeforeFirstPresentation() async throws {
+    let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+    let combinedStore = CombinedSnapshotStore(now: Date(timeIntervalSince1970: 10_000))
+    let presenter = FakeMenuPanelPresenter()
+    let controller = makeMenuBarController(
+        configuration: configuration,
+        snapshotStore: ProviderSnapshotStore(),
+        combinedSnapshotStore: combinedStore,
+        loginCoordinator: testLoginCoordinator(),
+        statusItemFactory: FakeStatusItemFactory(),
+        panelPresenter: presenter
+    )
+    await controller.refresh()
+    let snapshot = await combinedStore.snapshot()
+    let expectedModel = SystemDashboardModel(snapshot: snapshot, configuration: configuration.systemMonitor)
+    let naturalHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: expectedModel))
+    let expectedHeight = SystemDashboardPanelSizing.height(
+        naturalContentHeight: naturalHeight,
+        visibleScreenHeight: FakeStatusItemHandle.literalAnchor.visibleFrameInScreen.height
+    )
+
+    controller.openOverview()
+
+    #expect(presenter.presentCount == 1)
+    #expect(presenter.presentedContentSizes.first == NSSize(width: 340, height: expectedHeight))
+}
+
+@MainActor
+@Test func visibleModuleChangeResizesWithoutRepresentingAndKeepsAnchor() async throws {
+    let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+    let factory = FakeStatusItemFactory()
+    let presenter = FakeMenuPanelPresenter()
+    let controller = makeMenuBarController(
+        configuration: configuration,
+        snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
+        statusItemFactory: factory,
+        panelPresenter: presenter
+    )
+    await controller.startObserving()
+    defer { controller.stopObserving() }
+    let item = try #require(factory.created.first)
+    item.performAction()
+    #expect(await eventually { presenter.presentCount == 1 && presenter.isShown })
+
+    var monitor = configuration.systemMonitor
+    monitor.visibleModules.insert(.disk)
+    configuration.setSystemMonitor(monitor)
+
+    #expect(await eventually { presenter.resizedSizes.count == 1 })
+    #expect(presenter.presentCount == 1)
+    #expect(presenter.resizedSizes.first?.width == 340)
+    #expect(presenter.resizedAnchors == presenter.presentedAnchors)
+    let installedController = try #require(presenter.presentedContentViewControllers.first)
+    let resizedHeight = try #require(presenter.resizedSizes.first?.height)
+    #expect(await eventually {
+        installedController.view.layoutSubtreeIfNeeded()
+        return installedController.view.fittingSize.height == resizedHeight
+    })
+    #expect(presenter.presentedContentViewControllers.count == 1)
+}
+
+@MainActor
+@Test func visibleAIProviderChangeResizesWithoutRepresentingAndKeepsAnchor() async throws {
+    let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+    let factory = FakeStatusItemFactory()
+    let presenter = FakeMenuPanelPresenter()
+    let controller = makeMenuBarController(
+        configuration: configuration,
+        snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
+        statusItemFactory: factory,
+        panelPresenter: presenter
+    )
+    await controller.startObserving()
+    defer { controller.stopObserving() }
+    let item = try #require(factory.created.first)
+    item.performAction()
+    #expect(await eventually { presenter.presentCount == 1 && presenter.isShown })
+
+    var monitor = configuration.systemMonitor
+    monitor.ai[.cursor]?.isVisible = false
+    configuration.setSystemMonitor(monitor)
+
+    #expect(await eventually { presenter.resizedSizes.count == 1 })
+    #expect(presenter.presentCount == 1)
+    #expect(presenter.resizedAnchors == presenter.presentedAnchors)
+    let installedController = try #require(presenter.presentedContentViewControllers.first)
+    let resizedHeight = try #require(presenter.resizedSizes.first?.height)
+    #expect(await eventually {
+        installedController.view.layoutSubtreeIfNeeded()
+        return installedController.view.fittingSize.height == resizedHeight
+    })
+    #expect(presenter.presentedContentViewControllers.count == 1)
+}
+
+@MainActor
+@Test func failedResizeKeepsTheInstalledDashboardLayoutUnchanged() async throws {
+    let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+    let factory = FakeStatusItemFactory()
+    let presenter = FakeMenuPanelPresenter()
+    let controller = makeMenuBarController(
+        configuration: configuration,
+        snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
+        statusItemFactory: factory,
+        panelPresenter: presenter
+    )
+    await controller.startObserving()
+    defer { controller.stopObserving() }
+    let item = try #require(factory.created.first)
+    item.performAction()
+    #expect(await eventually { presenter.presentCount == 1 && presenter.isShown })
+    let installedController = try #require(presenter.presentedContentViewControllers.first)
+    installedController.view.layoutSubtreeIfNeeded()
+    let initialHeight = installedController.view.fittingSize.height
+
+    presenter.resizeResult = false
+    var monitor = configuration.systemMonitor
+    monitor.visibleModules.insert(.disk)
+    configuration.setSystemMonitor(monitor)
+
+    #expect(await eventually { !presenter.resizedSizes.isEmpty })
+    #expect(presenter.presentCount == 1)
+    #expect(presenter.presentedContentViewControllers.count == 1)
+    #expect(presenter.presentedContentViewControllers.first === installedController)
+    installedController.view.layoutSubtreeIfNeeded()
+    #expect(installedController.view.fittingSize.height == initialHeight)
 }
 
 @MainActor
@@ -889,9 +1021,12 @@ private final class FakeMenuPanelPresenter: MenuPanelPresenting {
     private(set) var presentCount = 0
     private(set) var dismissCount = 0
     private(set) var presentedAnchors: [StatusItemPresentationAnchor] = []
+    private(set) var presentedContentSizes: [NSSize] = []
+    private(set) var presentedContentViewControllers: [NSViewController] = []
     private(set) var resizedSizes: [NSSize] = []
     private(set) var resizedAnchors: [StatusItemPresentationAnchor] = []
     private(set) var isShown = false
+    var resizeResult = true
     var onDismiss: (@MainActor () -> Void)?
 
     init(presentResult: Bool = true, eventLog: FakeEventLog? = nil) {
@@ -905,6 +1040,9 @@ private final class FakeMenuPanelPresenter: MenuPanelPresenting {
     ) -> Bool {
         presentCount += 1
         presentedAnchors.append(anchor)
+        contentViewController.view.layoutSubtreeIfNeeded()
+        presentedContentSizes.append(contentViewController.view.fittingSize)
+        presentedContentViewControllers.append(contentViewController)
         eventLog?.events.append("present")
         guard presentResult else { return false }
         isShown = true
@@ -923,7 +1061,7 @@ private final class FakeMenuPanelPresenter: MenuPanelPresenting {
         guard isShown else { return false }
         resizedSizes.append(contentSize)
         resizedAnchors.append(anchor)
-        return true
+        return resizeResult
     }
 
     func markShownForTesting() {

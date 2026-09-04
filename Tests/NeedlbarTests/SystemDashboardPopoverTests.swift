@@ -375,22 +375,6 @@ import Testing
     #expect(short.view.fittingSize == NSSize(width: 340, height: 400))
 }
 
-@Test @MainActor func dashboardCompatibilityMaximumHeightPreservesLegacyClamp() {
-    let model = SystemDashboardModel(
-        snapshot: dashboardFixtureSnapshot(),
-        configuration: SystemMonitorConfiguration()
-    )
-    let tall = NSHostingController(
-        rootView: SystemDashboardPopoverView(model: model, maximumHeight: 900)
-    )
-    let short = NSHostingController(
-        rootView: SystemDashboardPopoverView(model: model, maximumHeight: 120)
-    )
-
-    #expect(tall.view.fittingSize == NSSize(width: 340, height: 680))
-    #expect(short.view.fittingSize == NSSize(width: 340, height: 180))
-}
-
 @Test @MainActor func dashboardReadabilityPreservesConfiguredOrderAndIPPrivacy() {
     var configuration = SystemMonitorConfiguration()
     configuration.order = [.ai, .network, .cpu, .battery, .memory, .disk]

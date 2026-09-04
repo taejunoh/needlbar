@@ -453,6 +453,8 @@ public final class MenuBarController: NSObject {
     private var observationGeneration: UInt64 = 0
     private var activeMenuModule: MenuModuleID?
     private var dashboardModel: SystemDashboardModel?
+    private var displayedDashboardLayout: SystemDashboardPopoverLayout?
+    private var displayedDashboardAnchor: StatusItemPresentationAnchor?
 
     public init(
         configuration: ModuleConfiguration,
@@ -626,6 +628,7 @@ public final class MenuBarController: NSObject {
         } else {
             dashboardModel = SystemDashboardModel(snapshot: snapshot, configuration: monitorConfiguration)
         }
+        resizeDisplayedDashboardIfNeeded()
         let item: any StatusItemHandle
         if let statusItem {
             item = statusItem
@@ -687,10 +690,15 @@ public final class MenuBarController: NSObject {
             model = SystemDashboardModel(snapshot: snapshot, configuration: monitorConfiguration)
             dashboardModel = model
         }
-        let maximumHeight = max(0, anchor.visibleFrameInScreen.height - 24)
+        let naturalHeight = SystemDashboardPopoverMeasurement.naturalHeight(for: model)
+        let panelHeight = SystemDashboardPanelSizing.height(
+            naturalContentHeight: naturalHeight,
+            visibleScreenHeight: anchor.visibleFrameInScreen.height
+        )
+        let layout = SystemDashboardPopoverLayout(height: panelHeight)
         let view = AnyView(SystemDashboardPopoverView(
             model: model,
-            maximumHeight: maximumHeight,
+            layout: layout,
             onShowSettings: { [weak self] in self?.performSettingsAction() },
             onShowAnalytics: { [weak self] in self?.performAnalyticsAction() },
             onProviderAction: { [weak self] provider in
@@ -704,6 +712,8 @@ public final class MenuBarController: NSObject {
             return
         }
         activeMenuModule = module
+        displayedDashboardLayout = layout
+        displayedDashboardAnchor = anchor
         panelPresentationGeneration &+= 1
         let presentationGeneration = panelPresentationGeneration
         globalMouseDownMonitoringToken = globalMouseDownMonitor.start { [weak self] in
@@ -725,6 +735,8 @@ public final class MenuBarController: NSObject {
         snapshotRequestGeneration &+= 1
         cancelGlobalMouseDownMonitoring()
         activeMenuModule = nil
+        displayedDashboardLayout = nil
+        displayedDashboardAnchor = nil
         if let temporary = deepLinkStatusItem {
             statusItemFactory.removeStatusItem(temporary)
             deepLinkStatusItem = nil
@@ -736,6 +748,29 @@ public final class MenuBarController: NSObject {
             panelPresenter.dismiss()
         } else {
             panelDidDismiss()
+        }
+    }
+
+    private func resizeDisplayedDashboardIfNeeded() {
+        guard panelPresenter.isShown,
+              activeMenuModule == .overview,
+              let model = dashboardModel,
+              let layout = displayedDashboardLayout,
+              let anchor = displayedDashboardAnchor
+        else { return }
+
+        let naturalHeight = SystemDashboardPopoverMeasurement.naturalHeight(for: model)
+        let proposedHeight = SystemDashboardPanelSizing.height(
+            naturalContentHeight: naturalHeight,
+            visibleScreenHeight: anchor.visibleFrameInScreen.height
+        )
+        guard SystemDashboardPanelSizing.shouldResize(current: layout.height, proposed: proposedHeight) else { return }
+
+        if panelPresenter.resize(
+            to: NSSize(width: SystemDashboardPanelSizing.width, height: proposedHeight),
+            anchoredAt: anchor
+        ) {
+            layout.height = proposedHeight
         }
     }
 
