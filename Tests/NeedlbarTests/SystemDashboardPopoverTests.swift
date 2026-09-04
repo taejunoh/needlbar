@@ -289,6 +289,11 @@ import Testing
     var fullConfiguration = SystemMonitorConfiguration()
     fullConfiguration.visibleModules = Set(MonitorModuleID.allCases)
     let fullModel = SystemDashboardModel(snapshot: snapshot, configuration: fullConfiguration)
+    #expect(fullModel.presentation.moduleIDs == [.cpu, .memory, .disk, .network, .battery, .ai])
+    #expect(fullModel.presentation.ai.map(\.provider) == [.claude, .codex, .cursor])
+    let claude = try #require(fullModel.presentation.ai.first { $0.provider == .claude })
+    let fable = try #require(claude.fable)
+    #expect(fable.remaining == "75%")
     let fullHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: fullModel))
 
     var compactConfiguration = fullConfiguration
