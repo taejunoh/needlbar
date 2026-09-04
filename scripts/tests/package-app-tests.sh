@@ -27,8 +27,17 @@ mkdir -p \
   "$fixture_root/.build/arm64-apple-macosx/release" \
   "$fake_bin"
 cp "$PACKAGE_SCRIPT" "$fixture_root/scripts/package-app.sh"
+cp "$ROOT/scripts/verify-provider-brand-assets.sh" "$fixture_root/scripts/verify-provider-brand-assets.sh"
+chmod 755 "$fixture_root/scripts/verify-provider-brand-assets.sh"
 cp "$ROOT/Resources/Info.plist" "$fixture_root/Resources/Info.plist"
 cp "$ROOT/Resources/ThirdPartyNotices.txt" "$fixture_root/Resources/ThirdPartyNotices.txt"
+mkdir -p "$fixture_root/Sources/Needlbar/Resources/ProviderBrands"
+cp "$ROOT/Sources/Needlbar/Resources/ProviderBrands/"provider-brand-*.png \
+  "$fixture_root/Sources/Needlbar/Resources/ProviderBrands/"
+cp "$ROOT/Sources/Needlbar/Resources/ProviderBrands/ProviderBrandAssets.plist" \
+  "$fixture_root/Sources/Needlbar/Resources/ProviderBrands/"
+cp "$ROOT/Sources/Needlbar/Resources/ProviderBrands/TRADEMARKS.md" \
+  "$fixture_root/Sources/Needlbar/Resources/ProviderBrands/"
 mkdir -p "$fixture_root/Sources/NeedlbarWidgetSupport" "$fixture_root/WidgetExtension" "$fixture_root/.build/widget-extension"
 cp "$ROOT/Sources/NeedlbarWidgetSupport/WidgetProjection.swift" "$fixture_root/Sources/NeedlbarWidgetSupport/WidgetProjection.swift"
 cp "$ROOT/Sources/NeedlbarWidgetSupport/WidgetPresentation.swift" "$fixture_root/Sources/NeedlbarWidgetSupport/WidgetPresentation.swift"
@@ -72,6 +81,8 @@ if [[ "${1:-}" == "build" ]]; then
   fi
   mkdir -p "$(dirname "$NEEDLBAR_PACKAGE_EXECUTABLE")"
   printf '%s\n' 'fresh executable' > "$NEEDLBAR_PACKAGE_EXECUTABLE"
+  mkdir -p "$NEEDLBAR_PACKAGE_RESOURCE_BUNDLE/ProviderBrands"
+  cp "$NEEDLBAR_PACKAGE_BRANDS_SOURCE"/* "$NEEDLBAR_PACKAGE_RESOURCE_BUNDLE/ProviderBrands/"
 fi
 EOF
 
@@ -105,9 +116,13 @@ EOF
 chmod 755 "$fake_bin/rustup" "$fake_bin/make" "$fake_bin/swift" "$fake_bin/xcrun" "$fake_bin/codesign"
 
 executable_source="$fixture_root/.build/arm64-apple-macosx/release/Needlbar"
+resource_bundle="$fixture_root/.build/arm64-apple-macosx/release/Needlbar_NeedlbarApp.bundle"
+source_brands="$fixture_root/Sources/Needlbar/Resources/ProviderBrands"
 printf '%s\n' 'stale executable' > "$executable_source"
 
 if ! PATH="$fake_bin:$PATH" NEEDLBAR_PACKAGE_EXECUTABLE="$executable_source" \
+  NEEDLBAR_PACKAGE_RESOURCE_BUNDLE="$resource_bundle" \
+  NEEDLBAR_PACKAGE_BRANDS_SOURCE="$source_brands" \
   FAKE_CODESIGN_LOG="$temp_root/codesign.log" \
   "$fixture_root/scripts/package-app.sh"; then
   fail 'release packaging should relink when a stale executable already exists'
@@ -119,6 +134,10 @@ fi
   fail 'package did not install the freshly relinked executable'
 [[ -f "$fixture_root/dist/Needlbar-macos-arm64.zip" ]] || \
   fail 'package zip was not produced'
+installed_brands="$fixture_root/dist/Needlbar.app/Contents/Resources/Needlbar_NeedlbarApp.bundle/ProviderBrands"
+[[ -d "$installed_brands" ]] || fail 'package did not install NeedlbarApp provider resources'
+"$fixture_root/scripts/verify-provider-brand-assets.sh" "$installed_brands" >/dev/null || \
+  fail 'packaged provider resources failed integrity verification'
 ! strings "$fixture_root/dist/Needlbar.app/Contents/MacOS/Needlbar" | grep -F -- '--acceptance-fixture' >/dev/null || \
   fail 'public host contains acceptance fixture parser'
 
@@ -136,5 +155,28 @@ host_sign_line="$(grep -n 'Needlbar.app' "$temp_root/codesign.log" | head -n 1 |
 ! grep -E 'com.apple.security.app-sandbox|network|keychain' "$fixture_root/dist/.NeedlbarHostWidget.entitlements" >/dev/null || fail 'forbidden host entitlement surfaced'
 ! grep -E 'network|keychain' "$fixture_root/.build/widget-extension/NeedlbarWidgetExtension.entitlements" >/dev/null || fail 'forbidden extension entitlement surfaced'
 grep -F 'com.apple.security.app-sandbox' "$fixture_root/.build/widget-extension/NeedlbarWidgetExtension.entitlements" >/dev/null || fail 'extension sandbox missing'
+
+expect_package_failure() {
+  expected_pattern="$1"
+  output_file="$temp_root/package-failure.log"
+  if PATH="$fake_bin:$PATH" NEEDLBAR_PACKAGE_EXECUTABLE="$executable_source" \
+    NEEDLBAR_PACKAGE_RESOURCE_BUNDLE="$resource_bundle" \
+    NEEDLBAR_PACKAGE_BRANDS_SOURCE="$source_brands" \
+    FAKE_CODESIGN_LOG="$temp_root/codesign.log" \
+    "$fixture_root/scripts/package-app.sh" >"$output_file" 2>&1; then
+    fail "expected package failure containing: $expected_pattern"
+  fi
+  grep -Eiq "$expected_pattern" "$output_file" || {
+    cat "$output_file" >&2
+    fail "package failure did not contain: $expected_pattern"
+  }
+}
+
+rm "$source_brands/provider-brand-cursor-2d.png"
+expect_package_failure 'missing (declared resource|asset file): provider-brand-cursor-2d(\.png)?'
+cp "$ROOT/Sources/Needlbar/Resources/ProviderBrands/provider-brand-cursor-2d.png" "$source_brands/"
+
+printf '\000' >> "$source_brands/provider-brand-openai-blossom.png"
+expect_package_failure '(sha-?256|sha256) mismatch: provider-brand-openai-blossom(\.png)?'
 
 echo 'package-app relink regression passed'

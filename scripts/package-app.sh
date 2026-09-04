@@ -15,6 +15,10 @@ EXECUTABLE_SOURCE="$ROOT/.build/arm64-apple-macosx/release/Needlbar"
 BRIDGE_ARCHIVE="$ROOT/target/release/libneedlbar_bridge.a"
 INFO_PLIST="$ROOT/Resources/Info.plist"
 NOTICES="$ROOT/Resources/ThirdPartyNotices.txt"
+BRAND_VERIFIER="$ROOT/scripts/verify-provider-brand-assets.sh"
+SOURCE_BRANDS="$ROOT/Sources/Needlbar/Resources/ProviderBrands"
+SWIFTPM_RESOURCE_BUNDLE="$ROOT/.build/arm64-apple-macosx/release/Needlbar_NeedlbarApp.bundle"
+PACKAGED_BRANDS="$CONTENTS_PATH/Resources/Needlbar_NeedlbarApp.bundle/ProviderBrands"
 TEAM_ID="${NEEDLBAR_TEAM_ID:-TESTTEAMID}"
 GROUP_ID="${NEEDLBAR_APP_GROUP_IDENTIFIER:-$TEAM_ID.com.taejunoh.needlbar}"
 IDENTITY="${NEEDLBAR_CODESIGN_IDENTITY:--}"
@@ -31,8 +35,10 @@ fail() {
 
 [[ -f "$INFO_PLIST" ]] || fail "missing Info.plist: $INFO_PLIST"
 [[ -f "$NOTICES" ]] || fail "missing third-party notices: $NOTICES"
+[[ -x "$BRAND_VERIFIER" ]] || fail "missing provider brand verifier: $BRAND_VERIFIER"
 [[ -f "$HOST_ENTITLEMENTS_TEMPLATE" ]] || fail "missing host widget entitlements: $HOST_ENTITLEMENTS_TEMPLATE"
 [[ -x "$ROOT/scripts/build-widget-extension.sh" ]] || fail "missing widget extension builder"
+"$BRAND_VERIFIER" "$SOURCE_BRANDS"
 
 # Build an arm64, featureless production bridge even when the host runner is
 # Intel. Pin the Rust object deployment floor to the approved macOS 14 baseline.
@@ -55,6 +61,9 @@ swift build --package-path "$ROOT" -c release --arch arm64
 rm -rf -- "$APP_PATH"
 rm -f -- "$ZIP_PATH"
 mkdir -p "$CONTENTS_PATH/MacOS" "$CONTENTS_PATH/Resources" "$CONTENTS_PATH/PlugIns"
+[[ -d "$SWIFTPM_RESOURCE_BUNDLE" ]] || fail "release provider resource bundle was not produced: $SWIFTPM_RESOURCE_BUNDLE"
+cp -R "$SWIFTPM_RESOURCE_BUNDLE" "$CONTENTS_PATH/Resources/"
+"$BRAND_VERIFIER" "$PACKAGED_BRANDS"
 
 install -m 755 "$EXECUTABLE_SOURCE" "$CONTENTS_PATH/MacOS/Needlbar"
 install -m 644 "$INFO_PLIST" "$CONTENTS_PATH/Info.plist"
