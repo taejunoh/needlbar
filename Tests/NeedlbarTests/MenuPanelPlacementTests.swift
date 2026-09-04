@@ -127,4 +127,45 @@ struct MenuPanelPlacementTests {
         #expect(MenuPanelPlacement.frame(contentSize: NSSize(width: 0, height: 350), anchor: anchor) == nil)
         #expect(MenuPanelPlacement.frame(contentSize: NSSize(width: 300, height: 0), anchor: anchor) == nil)
     }
+
+    @Test func dashboardSizingUsesApprovedWidthAndMeasuredHeight() {
+        #expect(SystemDashboardPanelSizing.width == 340)
+        #expect(SystemDashboardPanelSizing.height(
+            naturalContentHeight: 742,
+            visibleScreenHeight: 1_000
+        ) == 742)
+    }
+
+    @Test func dashboardSizingClampsToMinimumAndScreenAllowance() {
+        #expect(SystemDashboardPanelSizing.height(
+            naturalContentHeight: 120,
+            visibleScreenHeight: 1_000
+        ) == 180)
+        #expect(SystemDashboardPanelSizing.height(
+            naturalContentHeight: 900,
+            visibleScreenHeight: 824
+        ) == 800)
+        #expect(SystemDashboardPanelSizing.height(
+            naturalContentHeight: 400,
+            visibleScreenHeight: 150
+        ) == 126)
+    }
+
+    @Test func dashboardSizingFallsBackForEveryInvalidMeasurement() {
+        for measurement in [CGFloat?.none, 0, -1, .nan, .infinity, -.infinity] {
+            #expect(SystemDashboardPanelSizing.height(
+                naturalContentHeight: measurement,
+                visibleScreenHeight: 1_000
+            ) == 680)
+        }
+    }
+
+    @Test func dashboardSizingRejectsInvalidScreenAllowanceAndUsesResizeEpsilon() {
+        #expect(SystemDashboardPanelSizing.height(
+            naturalContentHeight: 400,
+            visibleScreenHeight: .nan
+        ) == 0)
+        #expect(!SystemDashboardPanelSizing.shouldResize(current: 700, proposed: 700.49))
+        #expect(SystemDashboardPanelSizing.shouldResize(current: 700, proposed: 700.5))
+    }
 }
