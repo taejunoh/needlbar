@@ -27,74 +27,67 @@ printf '%s\n' "$notice_text" | grep -Eq 'not endorsed by' || die "notice is miss
 printf '%s\n' "$notice_text" | grep -Eq 'not affiliated with' || die "notice is missing non-affiliation language"
 printf '%s\n' "$notice_text" | grep -Eq 'terms remain in force' || die "notice is missing terms language"
 
-asset_count=0
-while plutil -extract "assets.$asset_count.id" raw -o - "$manifest" >/dev/null 2>&1; do
-  asset_count=$((asset_count + 1))
+manifest_dump=$(plutil -p "$manifest")
+top_key_count=$(printf '%s\n' "$manifest_dump" | grep -Ec '^  "[^"]+" => \{' || true)
+[ "$top_key_count" -eq 3 ] || die "manifest must contain exactly three resource IDs"
+for resource_id in provider-brand-claude provider-brand-openai-blossom provider-brand-cursor-2d; do
+  printf '%s\n' "$manifest_dump" | grep -Eq "^  \"$resource_id\" => \{" || die "missing resource ID: $resource_id"
 done
-[ "$asset_count" -eq 3 ] || die "manifest must declare exactly three assets"
-seen_claude=0
-seen_codex=0
-seen_cursor=0
+
+field_count=$(printf '%s\n' "$manifest_dump" | grep -Ec '^    "[^"]+" =>' || true)
+[ "$field_count" -eq 27 ] || die "manifest must contain exactly nine fields per resource"
+field_lines=$(printf '%s\n' "$manifest_dump" | grep -E '^    "[^"]+" =>' || true)
+while IFS= read -r field_line; do
+  [ -n "$field_line" ] || continue
+  field_name=$(printf '%s\n' "$field_line" | sed -E 's/^    "([^"]+)" =>.*/\1/')
+  case "$field_name" in
+    provider|file|sourcePage|sourceAsset|variant|imageType|rendering|fallbackSymbol|sha256) ;;
+    *) die "unexpected manifest field: $field_name" ;;
+  esac
+done <<EOF
+$field_lines
+EOF
+printf '%s\n' "$manifest_dump" | grep -Eq '^    "assets" =>' && die "legacy assets array is not allowed"
 
 read_field() {
-  plutil -extract "assets.$1.$2" raw -o - "$manifest" 2>/dev/null || die "missing assets.$1.$2"
+  plutil -extract "$1.$2" raw -o - "$manifest" 2>/dev/null || die "missing $1.$2"
 }
 
-for index in 0 1 2; do
-  id=$(read_field "$index" id)
-  provider=$(read_field "$index" provider)
-  variant=$(read_field "$index" variant)
-  source_page=$(read_field "$index" sourcePage)
-  source_asset=$(read_field "$index" sourceAsset)
-  mime_type=$(read_field "$index" mimeType)
-  rendering=$(read_field "$index" rendering)
-  fallback=$(read_field "$index" fallbackSFSymbol)
-  file_name=$(read_field "$index" file)
-  expected_hash=$(read_field "$index" sha256)
+verify_resource() {
+  resource_id=$1
+  expected_provider=$2
+  expected_variant=$3
+  expected_rendering=$4
+  expected_fallback=$5
+  expected_file=$6
+  expected_page=$7
+  expected_asset=$8
 
-  [ -n "$source_asset" ] || die "$id has an empty sourceAsset"
-  [ -n "$rendering" ] || die "$id has an empty rendering"
-  [ -n "$source_page" ] || die "$id has an empty sourcePage"
+  provider=$(read_field "$resource_id" provider)
+  file_name=$(read_field "$resource_id" file)
+  source_page=$(read_field "$resource_id" sourcePage)
+  source_asset=$(read_field "$resource_id" sourceAsset)
+  variant=$(read_field "$resource_id" variant)
+  image_type=$(read_field "$resource_id" imageType)
+  rendering=$(read_field "$resource_id" rendering)
+  fallback=$(read_field "$resource_id" fallbackSymbol)
+  expected_hash=$(read_field "$resource_id" sha256)
+
+  [ "$provider" = "$expected_provider" ] || die "incorrect provider mapping: $resource_id"
+  [ "$variant" = "$expected_variant" ] || die "incorrect variant mapping: $resource_id"
+  [ "$rendering" = "$expected_rendering" ] || die "incorrect rendering mapping: $resource_id"
+  [ "$fallback" = "$expected_fallback" ] || die "incorrect fallback mapping: $resource_id"
+  [ "$file_name" = "$expected_file" ] || die "incorrect file mapping: $resource_id"
+  [ "$source_page" = "$expected_page" ] || die "incorrect source page: $resource_id"
+  [ "$source_asset" = "$expected_asset" ] || die "incorrect source asset: $resource_id"
+  [ -n "$source_asset" ] || die "$resource_id has an empty sourceAsset"
+  [ -n "$variant" ] || die "$resource_id has an empty variant"
+  [ "$image_type" = image/png ] || die "$resource_id must declare image/png"
   case "$source_page" in
     https://*) ;;
-    *) die "$id sourcePage must use HTTPS" ;;
+    *) die "$resource_id sourcePage must use HTTPS" ;;
   esac
-  [ "$mime_type" = image/png ] || die "$id must declare image/png"
-  printf '%s\n' "$expected_hash" | grep -Eq '^[0-9A-Fa-f]{64}$' || die "$id has an invalid SHA-256"
-
-  case "$id" in
-    provider-brand-claude)
-      [ "$seen_claude" -eq 0 ] || die "duplicate Claude asset mapping"
-      seen_claude=1
-      [ "$provider" = claude ] || die "incorrect Claude provider mapping"
-      [ "$variant" = officialOrange ] || die "incorrect Claude variant mapping"
-      [ "$fallback" = sparkles ] || die "incorrect Claude fallback mapping"
-      [ "$file_name" = provider-brand-claude.png ] || die "incorrect Claude file mapping"
-      [ "$source_page" = https://brandfolder.com/anthropic/collection/newsroom ] || die "incorrect Claude source page"
-      [ "$source_asset" = 'Anthropic media resources/Anthropic logos/Claude logos/3 Claude Spark/PNG/Claude Spark - Clay.png' ] || die "incorrect Claude source asset"
-      ;;
-    provider-brand-openai-blossom)
-      [ "$seen_codex" -eq 0 ] || die "duplicate Codex asset mapping"
-      seen_codex=1
-      [ "$provider" = codex ] || die "incorrect Codex provider mapping"
-      [ "$variant" = systemMonochrome ] || die "incorrect Codex variant mapping"
-      [ "$fallback" = chevron.left.forwardslash.chevron.right ] || die "incorrect Codex fallback mapping"
-      [ "$file_name" = provider-brand-openai-blossom.png ] || die "incorrect Codex file mapping"
-      [ "$source_page" = https://openai.com/brand/ ] || die "incorrect Codex source page"
-      [ "$source_asset" = 'OpenAI-logos/PNGs/OAI_OpenAI-Blossom_Black.png' ] || die "incorrect Codex source asset"
-      ;;
-    provider-brand-cursor-2d)
-      [ "$seen_cursor" -eq 0 ] || die "duplicate Cursor asset mapping"
-      seen_cursor=1
-      [ "$provider" = cursor ] || die "incorrect Cursor provider mapping"
-      [ "$variant" = systemMonochrome ] || die "incorrect Cursor variant mapping"
-      [ "$fallback" = cursorarrow ] || die "incorrect Cursor fallback mapping"
-      [ "$file_name" = provider-brand-cursor-2d.png ] || die "incorrect Cursor file mapping"
-      [ "$source_page" = https://cursor.com/en-US/brand ] || die "incorrect Cursor source page"
-      [ "$source_asset" = 'General Logos/Cube/PNG/CUBE_2D_LIGHT.png' ] || die "incorrect Cursor source asset"
-      ;;
-    *) die "undeclared asset mapping: $id" ;;
-  esac
+  printf '%s\n' "$expected_hash" | grep -Eq '^[0-9A-Fa-f]{64}$' || die "$resource_id has an invalid SHA-256"
 
   asset_path="$provider_dir/$file_name"
   [ -f "$asset_path" ] || die "missing asset file: $file_name"
@@ -102,11 +95,17 @@ for index in 0 1 2; do
   [ "$(file -b --mime-type "$asset_path")" = image/png ] || die "asset is not PNG: $file_name"
   actual_hash=$(shasum -a 256 "$asset_path" | awk '{print $1}')
   [ "$actual_hash" = "$expected_hash" ] || die "SHA-256 mismatch: $file_name"
-done
+}
 
-[ "$seen_claude" -eq 1 ] || die "missing Claude asset mapping"
-[ "$seen_codex" -eq 1 ] || die "missing Codex asset mapping"
-[ "$seen_cursor" -eq 1 ] || die "missing Cursor asset mapping"
+verify_resource provider-brand-claude claude "Claude Spark - Clay" officialOrange sparkles \
+  provider-brand-claude.png https://brandfolder.com/anthropic/collection/newsroom \
+  'Anthropic media resources.zip :: Anthropic media resources/Anthropic logos/Claude logos/3 Claude Spark/PNG/Claude Spark - Clay.png'
+verify_resource provider-brand-openai-blossom codex "OpenAI Blossom Black" systemMonochrome \
+  chevron.left.forwardslash.chevron.right provider-brand-openai-blossom.png https://openai.com/brand/ \
+  'openai-logos.zip :: OpenAI-logos/PNGs/OAI_OpenAI-Blossom_Black.png'
+verify_resource provider-brand-cursor-2d cursor "Cursor Cube 2D Light" systemMonochrome cursorarrow \
+  provider-brand-cursor-2d.png https://cursor.com/en-US/brand \
+  'cursor-brand-assets.zip :: General Logos/Cube/PNG/CUBE_2D_LIGHT.png'
 
 for entry in "$provider_dir"/* "$provider_dir"/.[!.]*; do
   [ -e "$entry" ] || continue

@@ -2,74 +2,68 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>assets</key>
-	<array>
-		<dict>
-			<key>id</key>
-			<string>provider-brand-claude</string>
-			<key>provider</key>
-			<string>claude</string>
-			<key>variant</key>
-			<string>officialOrange</string>
-			<key>sourcePage</key>
-			<string>https://brandfolder.com/anthropic/collection/newsroom</string>
-			<key>sourceAsset</key>
-			<string>Anthropic media resources/Anthropic logos/Claude logos/3 Claude Spark/PNG/Claude Spark - Clay.png</string>
-			<key>mimeType</key>
-			<string>image/png</string>
-			<key>rendering</key>
-			<string>Original PNG pixels, transparency, proportions, padding, and colors; no transformation.</string>
-			<key>fallbackSFSymbol</key>
-			<string>sparkles</string>
-			<key>file</key>
-			<string>provider-brand-claude.png</string>
-			<key>sha256</key>
-			<string>c7d8415b1edba67e5337d3684b480b563826f07be9e28e10ccc14bf92037ef6d</string>
-		</dict>
-		<dict>
-			<key>id</key>
-			<string>provider-brand-openai-blossom</string>
-			<key>provider</key>
-			<string>codex</string>
-			<key>variant</key>
-			<string>systemMonochrome</string>
-			<key>sourcePage</key>
-			<string>https://openai.com/brand/</string>
-			<key>sourceAsset</key>
-			<string>OpenAI-logos/PNGs/OAI_OpenAI-Blossom_Black.png</string>
-			<key>mimeType</key>
-			<string>image/png</string>
-			<key>rendering</key>
-			<string>Original PNG pixels, transparency, proportions, padding, and colors; no transformation.</string>
-			<key>fallbackSFSymbol</key>
-			<string>chevron.left.forwardslash.chevron.right</string>
-			<key>file</key>
-			<string>provider-brand-openai-blossom.png</string>
-			<key>sha256</key>
-			<string>9897fc6c24e0dfb8cb81c287f456d7a01a5861066d7f3f93d2392e4e1c9eff38</string>
-		</dict>
-		<dict>
-			<key>id</key>
-			<string>provider-brand-cursor-2d</string>
-			<key>provider</key>
-			<string>cursor</string>
-			<key>variant</key>
-			<string>systemMonochrome</string>
-			<key>sourcePage</key>
-			<string>https://cursor.com/en-US/brand</string>
-			<key>sourceAsset</key>
-			<string>General Logos/Cube/PNG/CUBE_2D_LIGHT.png</string>
-			<key>mimeType</key>
-			<string>image/png</string>
-			<key>rendering</key>
-			<string>Original PNG pixels, transparency, proportions, padding, and colors; no transformation.</string>
-			<key>fallbackSFSymbol</key>
-			<string>cursorarrow</string>
-			<key>file</key>
-			<string>provider-brand-cursor-2d.png</string>
-			<key>sha256</key>
-			<string>c61776321cea03d00860d5059029397a9b60e95e5c1f36f1b3bafe5a3a59c545</string>
-		</dict>
-	</array>
+	<key>provider-brand-claude</key>
+	<dict>
+		<key>provider</key>
+		<string>claude</string>
+		<key>file</key>
+		<string>provider-brand-claude.png</string>
+		<key>sourcePage</key>
+		<string>https://brandfolder.com/anthropic/collection/newsroom</string>
+		<key>sourceAsset</key>
+		<string>Anthropic media resources.zip :: Anthropic media resources/Anthropic logos/Claude logos/3 Claude Spark/PNG/Claude Spark - Clay.png</string>
+		<key>variant</key>
+		<string>Claude Spark - Clay</string>
+		<key>imageType</key>
+		<string>image/png</string>
+		<key>rendering</key>
+		<string>officialOrange</string>
+		<key>fallbackSymbol</key>
+		<string>sparkles</string>
+		<key>sha256</key>
+		<string>c7d8415b1edba67e5337d3684b480b563826f07be9e28e10ccc14bf92037ef6d</string>
+	</dict>
+	<key>provider-brand-openai-blossom</key>
+	<dict>
+		<key>provider</key>
+		<string>codex</string>
+		<key>file</key>
+		<string>provider-brand-openai-blossom.png</string>
+		<key>sourcePage</key>
+		<string>https://openai.com/brand/</string>
+		<key>sourceAsset</key>
+		<string>openai-logos.zip :: OpenAI-logos/PNGs/OAI_OpenAI-Blossom_Black.png</string>
+		<key>variant</key>
+		<string>OpenAI Blossom Black</string>
+		<key>imageType</key>
+		<string>image/png</string>
+		<key>rendering</key>
+		<string>systemMonochrome</string>
+		<key>fallbackSymbol</key>
+		<string>chevron.left.forwardslash.chevron.right</string>
+		<key>sha256</key>
+		<string>9897fc6c24e0dfb8cb81c287f456d7a01a5861066d7f3f93d2392e4e1c9eff38</string>
+	</dict>
+	<key>provider-brand-cursor-2d</key>
+	<dict>
+		<key>provider</key>
+		<string>cursor</string>
+		<key>file</key>
+		<string>provider-brand-cursor-2d.png</string>
+		<key>sourcePage</key>
+		<string>https://cursor.com/en-US/brand</string>
+		<key>sourceAsset</key>
+		<string>cursor-brand-assets.zip :: General Logos/Cube/PNG/CUBE_2D_LIGHT.png</string>
+		<key>variant</key>
+		<string>Cursor Cube 2D Light</string>
+		<key>imageType</key>
+		<string>image/png</string>
+		<key>rendering</key>
+		<string>systemMonochrome</string>
+		<key>fallbackSymbol</key>
+		<string>cursorarrow</string>
+		<key>sha256</key>
+		<string>c61776321cea03d00860d5059029397a9b60e95e5c1f36f1b3bafe5a3a59c545</string>
+	</dict>
 </dict>
 </plist>
