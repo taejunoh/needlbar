@@ -2430,6 +2430,68 @@ candidate signature/registration. macOS 14 arm64 acceptance remains unavailable.
 Escape and outside-click behavior are not newly claimed here; earlier external-system dismissal
 evidence remains labeled only at its previously verified scope.
 
+## Compact Dashboard Width and Auth Copy — 2026-09-04
+
+Implementation commits for this bounded change are `925b149` (compact dashboard
+width), `0cbc7da` (quota/status copy), and `f402628` (login control). The exact
+implemented behavior is: the shared dashboard width constant is 312 points;
+the remaining caption is `Quota remaining`; the singleton authentication state
+is `Sign-in required`; and the browser-visible login control is `Sign in`, with
+the full provider help text and accessibility behavior retained. Fable/data,
+authentication, refresh, and menu-bar behavior are unchanged. These are source
+and automated-contract facts, not claims of native visual observation.
+
+The corrected literal-escaped focused filter command exited 0 with 95 tests in
+3 suites. The raw unescaped form first failed because Make/the shell interpreted
+the pipes; this was a deliberate command-invocation correction, not a product
+failure. The acceptance suite exited 0 with 9 tests. The authoritative serial
+`make test` rerun exited 0: project Rust reported 132 passing tests; vendored
+tokScale reported 1,398 passed, 0 failed, and 1 ignored; Swift reported 392
+tests in 15 suites; and the widget, package, and notarization contracts passed.
+`make package`, `make smoke`, `git diff --check`, and `git status --short` all
+exited 0, with the final status clean.
+
+Known warnings remain: the existing `matching` variable warning; Rust objects
+built on macOS 26.5 linked for the macOS 14.0 deployment target; and three
+benign test-cleanup messages, `kill: PID: No such process`. All gates still
+passed.
+
+The exact source executable was
+`/Users/taejunoh/Developer/LFG/needlbar/.worktrees/compact-dashboard-width-copy/dist/Needlbar.app/Contents/MacOS/Needlbar`.
+The runtime executable was
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app/Contents/MacOS/Needlbar`.
+Both were verified for strict code signing and plist identity, with SHA-256
+`182f371aa9e518dc1e5405a328bbd2461b553f22f9ff5999b067dd1124b75f3c`. The
+recovery backup
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/Needlbar.app.20260904-080502`
+was retained. The old exact runtime PID `42725` received TERM. The source
+development PID `45614` command was revalidated as the exact source executable
+immediately before TERM to avoid same-bundle ambiguity. The target was copied
+via `ditto` and launched as the exact runtime PID `66586`. No atomic replacement
+was performed or claimed.
+
+Package/process identity and relaunch were verified; native visual acceptance is
+not verified. The Orca macOS provider lacks menu-bar/menu surfaces; both source
+and runtime exposed zero accessibility windows and returned `window_not_found`.
+No app-only capture exists, so capture path, dimensions, SHA, and sanitization
+are all `none`/not applicable. `README.md` and `docs/images/system-dashboard.png`
+were deliberately left unchanged.
+
+The following remain unobserved: visual 312-point width, anchor, and bottom
+edge; all-enabled content and Fable; compact-height and configuration
+restoration; scrolling with fixed chrome; light/dark mode; CPU alignment; no
+motion; Settings, Analytics, provider actions, and outside-click behavior; and
+the one-line `Sign-in required`/`Sign in` presentation. No configuration was
+changed, so no restoration was needed. No provider login, Cursor Spending,
+network refresh, credential access, fixture, browser, or full-desktop capture
+was used. macOS 14 native acceptance is deferred.
+
+The next continuation is user/manual or future menu-bar-capable native
+app-only inspection of the exact installed runtime. Only if a sanitized
+312-point capture qualifies should `README.md` or the dashboard image be
+updated. Keep the recovery backup until explicit cleanup authorization. No
+push, merge, or release is claimed.
+
 ## v0.1 Constraints to Preserve
 
 - macOS 14+.
