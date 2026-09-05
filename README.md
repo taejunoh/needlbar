@@ -45,9 +45,9 @@ Settings controls visible modules and title metrics. Claude and Codex expose pro
 
 The main dashboard combines enabled CPU, RAM, disk, network, battery, and AI usage in a compact, content-sized popover. It grows to fit enabled rows when screen space permits, scrolls only when needed, uses aligned high-contrast values, hides normal freshness noise, and keeps stale or failed states visible without changing the underlying metrics or provider actions.
 
-<img src="docs/images/system-dashboard.png" alt="Needlbar development dashboard showing CPU, RAM, Disk, Network, Battery, and Claude, Codex, and Cursor AI usage with IP values hidden" width="312" />
+<img src="docs/images/system-dashboard.png" alt="Needlbar development dashboard showing CPU, RAM, Disk, Network, Battery, and remaining Claude and Codex quota with IP values hidden" width="312" />
 
-*Development build, not the public v0.2.2 artifact: values are native examples, provider visibility is configurable, and IP values are omitted.*
+*Development build, not the public v0.2.2 artifact. This screenshot shows remaining Claude and Codex quota; provider visibility is configurable, and IP values are omitted.*
 
 AI summaries default to remaining subscription quota (the most constrained
 available window), not token totals.
