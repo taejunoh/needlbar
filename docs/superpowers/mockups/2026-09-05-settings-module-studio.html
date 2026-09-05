@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Needlbar — Module Studio preview</title>
+  <style>
+    :root { color-scheme:light; --ink:#182330; --muted:#657180; --faint:#8a95a2; --line:#e1e6eb; --line2:#cfd7e0; --canvas:#f2f4f7; --panel:#fff; --soft:#f7f8fa; --blue:#3276e5; --blueSoft:#eaf2ff; --blueLine:#b9d1fa; --green:#2a8a63; --amber:#9b6c2c; --shadow:0 20px 55px rgba(27,39,54,.14),0 3px 9px rgba(27,39,54,.08); font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif; }
+    * { box-sizing:border-box; }
+    html,body { min-height:100%; margin:0; background:var(--canvas); color:var(--ink); }
+    body { padding:28px 20px 44px; font-size:13px; letter-spacing:-.012em; }
+    button,select { font:inherit; }
+    button { cursor:pointer; }
+    .outside-note { width:min(1050px,100%); margin:0 auto 14px; color:#55616e; font-size:12px; letter-spacing:.01em; }
+    .outside-note strong { color:#273443; font-weight:700; }
+    .window { width:min(1050px,100%); min-height:740px; display:flex; margin:0 auto; overflow:hidden; border:1px solid #d8dee5; border-radius:13px; background:#fff; box-shadow:var(--shadow); }
+    .sidebar { flex:0 0 220px; display:flex; flex-direction:column; padding:24px 12px 14px; background:#f7f8fa; border-right:1px solid var(--line); }
+    .brand { display:flex; align-items:center; gap:10px; padding:0 11px 26px; }
+    .brand-mark { width:31px; height:31px; display:grid; place-items:center; border-radius:9px; color:#fff; background:#1d2937; font-weight:700; }
+    .brand-name { font-size:16px; font-weight:750; line-height:1; }
+    .brand-version { display:block; margin-top:5px; color:var(--faint); font-size:11px; }
+    .side-scroll { min-height:0; overflow:auto; }
+    .nav-group { margin-bottom:22px; }
+    .group-label { padding:0 12px 7px; color:#8994a0; font-size:10px; font-weight:750; letter-spacing:.11em; text-transform:uppercase; }
+    .nav-item { width:100%; min-height:36px; display:flex; align-items:center; gap:10px; padding:7px 11px; border:0; border-radius:8px; background:transparent; color:#5d6977; text-align:left; font-size:13px; transition:.12s; }
+    .nav-item:hover { color:var(--ink); background:#e9edf2; }
+    .nav-item[aria-current="page"] { color:#fff; background:var(--blue); font-weight:700; }
+    .nav-icon { width:17px; height:17px; display:grid; place-items:center; color:#7c8794; font-size:12px; font-weight:600; }
+    .nav-item[aria-current="page"] .nav-icon { color:#fff; }
+    .sidebar-bottom { margin-top:auto; padding-top:11px; border-top:1px solid var(--line); }
+    .main { min-width:0; flex:1; display:flex; flex-direction:column; background:#fff; }
+    .main-scroll { min-height:0; flex:1; overflow:auto; }
+    .main-header { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; padding:30px 34px 18px; border-bottom:1px solid var(--line); }
+    .eyebrow { color:var(--blue); font-size:11px; font-weight:750; letter-spacing:.1em; text-transform:uppercase; }
+    h1 { margin:6px 0 0; font-size:24px; line-height:1.15; letter-spacing:-.035em; }
+    .lead { max-width:650px; margin-top:8px; color:var(--muted); font-size:13px; line-height:1.45; }
+    .header-icon { width:42px; height:42px; display:grid; place-items:center; flex:0 0 auto; border:1px solid var(--line); border-radius:12px; color:#607080; background:var(--soft); font-size:19px; }
+    .content { padding:20px 34px 35px; }
+    .surface-tabs { display:inline-flex; align-items:center; gap:3px; padding:3px; margin-bottom:18px; border:1px solid var(--line2); border-radius:9px; background:#f1f3f6; }
+    .surface-tabs button { border:0; border-radius:6px; min-width:88px; padding:6px 12px; color:#7b8692; background:transparent; font-size:11px; }
+    .surface-tabs button[aria-selected="true"] { color:#fff; background:var(--blue); box-shadow:0 1px 3px rgba(25,38,52,.15); font-weight:700; }
+    .group-card { margin-bottom:15px; overflow:hidden; border:1px solid var(--line); border-radius:10px; background:#fff; }
+    .group-title { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 15px; border-bottom:1px solid var(--line); background:var(--soft); }
+    .group-title strong { color:#3d4a58; font-size:12px; }
+    .group-title span { color:var(--faint); font-size:10px; }
+    .setting-row { min-height:54px; display:flex; align-items:center; justify-content:space-between; gap:20px; padding:10px 15px; border-bottom:1px solid #edf0f3; }
+    .setting-row:last-child { border-bottom:0; }
+    .setting-label { color:#273545; font-size:16px; font-weight:600; line-height:1.15; }
+    .setting-sub { display:block; margin-top:4px; color:#778390; font-size:11px; font-weight:400; line-height:1.3; }
+    .control { display:flex; align-items:center; gap:10px; flex:0 0 auto; }
+    .control-value { color:#647180; font-size:12px; font-variant-numeric:tabular-nums; }
+    .badge { display:inline-flex; align-items:center; padding:3px 6px; border-radius:5px; font-size:9px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; white-space:nowrap; }
+    .badge.existing { color:#74808d; background:#edf0f3; }
+    .badge.new { color:#835e20; background:#fff3dc; }
+    .badge.approved { color:#2e629e; background:#eaf2ff; }
+    .switch { appearance:none; -webkit-appearance:none; position:relative; width:37px; height:22px; padding:0; border:0; border-radius:12px; background:#c5ccd5; transition:.15s; cursor:pointer; }
+    .switch::after { content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.18); transition:.15s; }
+    .switch:checked { background:var(--blue); }
+    .switch:checked::after { transform:translateX(15px); }
+    .switch:focus-visible,button:focus-visible,select:focus-visible { outline:3px solid rgba(50,118,229,.24); outline-offset:2px; }
+    .metric-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; padding:13px 15px; }
+    .metric { padding:11px; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; }
+    .metric b { display:block; color:#263648; font-size:18px; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
+    .metric span { display:block; margin-top:3px; color:#85909d; font-size:10px; }
+    .style-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:9px; padding:13px 15px; }
+    .style-card { position:relative; min-height:84px; padding:10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:#6e7a87; text-align:left; }
+    .style-card:hover { border-color:var(--blueLine); }
+    .style-card[aria-pressed="true"] { border-color:var(--blue); color:#fff; background:var(--blue); box-shadow:0 0 0 2px rgba(50,118,229,.16); }
+    .style-card strong { display:block; margin-top:6px; color:#536171; font-size:10px; font-weight:650; }
+    .style-card[aria-pressed="true"] strong { color:#fff; }
+    .style-card[aria-pressed="true"] .style-mark { border-color:rgba(255,255,255,.35); color:#fff; background:rgba(255,255,255,.14); }
+    .style-mark { height:36px; display:flex; align-items:center; justify-content:center; border:1px solid #e6eaee; border-radius:6px; background:#f9fafb; color:#506071; }
+    .style-card .badge { position:absolute; top:6px; right:6px; padding:2px 4px; font-size:8px; }
+    .twoline-mark { display:flex; flex-direction:column; gap:2px; align-items:flex-start; padding-left:11px; }
+    .twoline-mark span { color:#687789; font-size:9px; font-weight:650; letter-spacing:.04em; }
+    .twoline-mark strong { color:#304258; font-size:13px; line-height:1; }
+    .line-mark svg { width:70px; height:28px; fill:none; stroke:var(--blue); stroke-width:2; }
+    .bars-mark { align-items:end; gap:4px; padding:0 17px 5px; }
+    .bars-mark i { width:8px; border-radius:2px 2px 0 0; background:#89afe8; }.bars-mark i:nth-child(1){height:12px}.bars-mark i:nth-child(2){height:24px}.bars-mark i:nth-child(3){height:17px}.bars-mark i:nth-child(4){height:29px}
+    .ring-mark::before { content:""; width:26px; height:26px; border:4px solid #dce7f9; border-top-color:var(--blue); border-right-color:var(--blue); border-radius:50%; }
+    .select { min-width:128px; padding:7px 25px 7px 9px; border:1px solid var(--line2); border-radius:7px; color:#4e5c6a; background:#fff; font-size:12px; }
+    .threshold { width:78px; padding:7px 8px; border:1px solid var(--line2); border-radius:7px; color:#4e5c6a; background:#fff; font-size:12px; text-align:right; }
+    .threshold:disabled { color:#a6afb9; background:#f1f3f5; cursor:not-allowed; }
+    .action-row { display:flex; flex-wrap:wrap; gap:8px; padding:13px 15px; }
+    .primary,.secondary { padding:8px 11px; border-radius:7px; font-size:11px; font-weight:650; }
+    .primary { border:1px solid #286acb; color:#fff; background:var(--blue); }.secondary { border:1px solid var(--line2); color:#52606d; background:#fff; }.secondary:disabled { opacity:.45; cursor:not-allowed; }
+    .notice { display:none; margin:0 15px 13px; padding:9px 10px; border:1px solid var(--blueLine); border-radius:7px; color:#315d9e; background:var(--blueSoft); font-size:11px; line-height:1.35; }.notice.visible { display:block; }
+    .empty { padding:25px 15px; color:#89939f; font-size:12px; text-align:center; }
+    .footer { padding:11px 34px 13px; border-top:1px solid var(--line); color:#8a949f; font-size:10px; }.footer::before { content:"⌁"; margin-right:5px; }
+    @media(max-width:780px){body{padding:12px 10px 30px}.main-header,.content,.footer{padding-left:22px;padding-right:22px}.style-grid{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:700px){.window{width:100%;min-height:0;display:block}.sidebar{padding:14px 12px 8px;border-right:0;border-bottom:1px solid var(--line)}.brand{padding:0 9px 13px}.side-scroll{overflow-x:auto;overflow-y:hidden}.side-scroll nav{display:flex;gap:8px;width:max-content}.nav-group{display:flex;align-items:center;gap:3px;margin:0}.group-label{display:none}.nav-item{width:auto;min-width:42px;white-space:nowrap}.sidebar-bottom{display:flex;gap:8px;margin-top:8px;padding-top:8px}.main-header{padding-top:23px}.setting-row{align-items:flex-start;min-height:58px}.control{padding-top:2px}.surface-tabs{max-width:100%;overflow:auto}.surface-tabs button{min-width:82px}}
+  </style>
+</head>
+<body>
+  <div class="outside-note"><strong>구조·기능 확장 시안</strong> · 신규=추가 개발 필요 · 인터랙티브 예시이며 실제 설정은 변경되지 않습니다</div>
+  <div class="window">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">N</div><div><div class="brand-name">Needlbar</div><span class="brand-version">Settings preview</span></div></div>
+      <div class="side-scroll">
+        <nav aria-label="Settings navigation">
+          <div class="nav-group"><div class="group-label">Layout</div><button class="nav-item" data-page="layout" aria-current="false"><span class="nav-icon">▦</span><span>Menu &amp; dashboard</span></button></div>
+          <div class="nav-group"><div class="group-label">System</div><button class="nav-item" data-page="cpu" aria-current="page"><span class="nav-icon">◫</span><span>CPU</span></button><button class="nav-item" data-page="ram" aria-current="false"><span class="nav-icon">▤</span><span>RAM</span></button><button class="nav-item" data-page="disk" aria-current="false"><span class="nav-icon">◉</span><span>Disk</span></button><button class="nav-item" data-page="network" aria-current="false"><span class="nav-icon">⌁</span><span>Network</span></button><button class="nav-item" data-page="battery" aria-current="false"><span class="nav-icon">▯</span><span>Battery</span></button></div>
+          <div class="nav-group"><div class="group-label">AI providers</div><button class="nav-item" data-page="claude" aria-current="false"><span class="nav-icon">•</span><span>Claude</span></button><button class="nav-item" data-page="codex" aria-current="false"><span class="nav-icon">•</span><span>Codex</span></button><button class="nav-item" data-page="cursor" aria-current="false"><span class="nav-icon">•</span><span>Cursor</span></button></div>
+        </nav>
+      </div>
+      <div class="sidebar-bottom"><button class="nav-item" data-page="notifications" aria-current="false"><span class="nav-icon">◌</span><span>Notifications</span></button><button class="nav-item" data-page="privacy" aria-current="false"><span class="nav-icon">▣</span><span>Data &amp; Privacy</span></button></div>
+    </aside>
+    <main class="main"><div class="main-scroll" id="mainScroll"></div><div class="footer">Preview-only controls update this example. No preferences, accounts, files, permissions, or network state are changed.</div></main>
+  </div>
+  <script>
+  (() => {
+    const pages = {
+      layout:{eyebrow:'Layout',title:'Menu bar & dashboard',icon:'▦',desc:'Shape the two surfaces independently while keeping module order shared.'},
+      cpu:{eyebrow:'System',title:'CPU',icon:'◫',desc:'A clear read of processor activity, with a compact widget preview.'},
+      ram:{eyebrow:'System',title:'RAM',icon:'▤',desc:'See used memory and availability without opening Activity Monitor.'},
+      disk:{eyebrow:'System',title:'Disk',icon:'◉',desc:'Keep storage capacity and transfer activity close at hand.'},
+      network:{eyebrow:'System',title:'Network',icon:'⌁',desc:'Choose the network details that are useful in each surface.'},
+      battery:{eyebrow:'System',title:'Battery',icon:'▯',desc:'A glanceable level, status, and health signal.'},
+      claude:{eyebrow:'AI provider',title:'Claude',icon:'•',desc:'Choose the Claude signal to keep visible across both surfaces.'},
+      codex:{eyebrow:'AI provider',title:'Codex',icon:'•',desc:'Choose the Codex signal to keep visible across both surfaces.'},
+      cursor:{eyebrow:'AI provider',title:'Cursor',icon:'•',desc:'Keep local Cursor usage visible without another connections page.'},
+      notifications:{eyebrow:'Preferences',title:'Notifications',icon:'◌',desc:'Decide whether Needlbar should surface quota reminders.'},
+      privacy:{eyebrow:'Preferences',title:'Data & Privacy',icon:'▣',desc:'Understand the preview’s export boundary and local-only behavior.'}
+    };
+    const modules = [
+      {id:'cpu',label:'CPU',value:'18%',kind:'System',menu:true,dashboard:true},
+      {id:'ram',label:'RAM',value:'69%',kind:'System',menu:true,dashboard:true},
+      {id:'disk',label:'Disk',value:'42%',kind:'System',menu:false,dashboard:true},
+      {id:'network',label:'Network',value:'48 Mbps',kind:'System',menu:false,dashboard:true},
+      {id:'battery',label:'Battery',value:'86%',kind:'System',menu:false,dashboard:true},
+      {id:'aiUsage',label:'AI usage',value:'',kind:'Provider group',menu:true,dashboard:true}
+    ];
+    const providers = {
+      claude:{status:'Connected · example',menu:true,dashboard:true,metric:'Remaining',value:'100%'},
+      codex:{status:'Connected · example',menu:true,dashboard:true,metric:'Remaining',value:'27%'},
+      cursor:{status:'Local usage · example',menu:false,dashboard:true,metric:'Usage',value:'local'}
+    };
+    const system = {cpu:['18%','82%'],ram:['11.1 GB','4.9 GB','69%'],disk:['42%','680 MB/s','120 MB/s'],network:['48 Mbps','12 Mbps','Wi‑Fi'],battery:['86%','Charging','Good']};
+    const metricNames = {cpu:['Usage','Idle'],ram:['Used','Available','Memory pressure'],disk:['Used','Read','Write'],network:['Download','Upload','Connection'],battery:['Level','Status','Health']};
+    let page='cpu', surface='menu', style='twoline';
+    const networkVisibility={localIP:false,publicIP:false};
+    const alertState={cpu:false,ram:false,disk:false,network:false,battery:false};
+    let notificationsEnabled=true;
+    const root=document.getElementById('mainScroll');
+    const module=id=>modules.find(x=>x.id===id);
+    const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const badge=(type,label)=>`<span class="badge ${type}">${label}</span>`;
+    const switchHTML=(label,on,action)=>`<input class="switch" type="checkbox" aria-label="${esc(label)}" data-action="${action}" ${on?'checked':''}>`;
+    const header=p=>`<header class="main-header"><div><div class="eyebrow">${p.eyebrow}</div><h1>${p.title}</h1><p class="lead">${p.desc}</p></div><div class="header-icon" aria-hidden="true">${p.icon}</div></header>`;
+    const surfaceTabs=()=>`<div class="surface-tabs" role="tablist" aria-label="Surface"><button role="tab" aria-selected="${surface==='menu'}" data-surface="menu">Menu bar</button><button role="tab" aria-selected="${surface==='dashboard'}" data-surface="dashboard">Dashboard</button><button role="tab" aria-selected="${surface==='alerts'}" data-surface="alerts">Alerts</button></div>`;
+    const layoutTabs=()=>`<div class="surface-tabs" role="tablist" aria-label="Layout surface"><button role="tab" aria-selected="${surface==='menu'}" data-surface="menu">Menu bar</button><button role="tab" aria-selected="${surface==='dashboard'}" data-surface="dashboard">Dashboard</button></div>`;
+    const metricCard=id=>`<div class="group-card"><div class="group-title"><strong>Example reading</strong><span>Sample data only</span></div><div class="metric-grid">${system[id].map((v,i)=>`<div class="metric"><b>${v}</b><span>${metricNames[id][i]}</span></div>`).join('')}</div></div>`;
+    const styleSelector=()=>`<div class="group-card"><div class="group-title"><strong>Widget style</strong><span>${badge('new','NEW · proposal')}</span></div><div class="style-grid"><button class="style-card" aria-pressed="${style==='twoline'}" data-style="twoline"><div class="style-mark twoline-mark"><span>CPU</span><strong>18%</strong></div><strong>Two-line number</strong></button><button class="style-card" aria-pressed="${style==='line'}" data-style="line"><span class="badge new">NEW</span><div class="style-mark line-mark"><svg viewBox="0 0 70 28"><path d="M2 23 C12 20 16 8 26 15 S40 17 48 8 S59 10 68 2"/></svg></div><strong>Line graph</strong></button><button class="style-card" aria-pressed="${style==='bars'}" data-style="bars"><span class="badge new">NEW</span><div class="style-mark bars-mark"><i></i><i></i><i></i><i></i></div><strong>Bars</strong></button><button class="style-card" aria-pressed="${style==='ring'}" data-style="ring"><span class="badge new">NEW</span><div class="style-mark ring-mark"></div><strong>Progress ring</strong></button></div></div>`;
+    const sharedRows=(id)=>{const m=module(id),surfaceKey=surface==='dashboard'?'dashboard':'menu',surfaceLabel=surfaceKey==='menu'?'menu bar':'dashboard'; return `<div class="group-card"><div class="group-title"><strong>Surface visibility</strong><span>${badge('approved','NEW · approved direction')}</span></div>${row(`Show in ${surfaceLabel}`,surfaceKey==='menu'?'A compact value in the status strip.':'A glanceable panel module.',switchHTML(`${pages[id].title} in ${surfaceLabel}`,m[surfaceKey],`module-${surfaceKey}:${id}`),'NEW · approved')}</div>`};
+    const alertPanel=(id)=>`<div class="group-card"><div class="group-title"><strong>${pages[id].title} alerts</strong><span>${badge('new','NEW · proposal')}</span></div>${row('Enable threshold alert','A future reminder when this module crosses a limit.',switchHTML(`Enable ${pages[id].title} threshold alert`,alertState[id],`alert-toggle:${id}`),'NEW · proposal')}${row('Alert above','Preview-only threshold; inactive until enabled.',`<input class="threshold" type="number" min="1" max="100" value="80" aria-label="${pages[id].title} alert threshold" ${alertState[id]?'':'disabled'} data-threshold="${id}">`,'NEW · proposal')}<div class="notice visible">NEW proposal — no alert is scheduled and no macOS permission is requested.</div></div>`;
+    const row=(label,sub,control,mark='')=>`<div class="setting-row"><div><div class="setting-label">${label}</div><span class="setting-sub">${sub}</span></div><div class="control">${mark?badge(mark.toLowerCase().includes('new')?'new':'existing',mark):''}${control}</div></div>`;
+    const proposalRows=id=>{let s=''; if(id==='cpu'||id==='ram'||id==='disk'||id==='battery') s+=row('Update interval','How often this module would refresh in a future build.',`<span class="control-value">30 seconds</span>`, 'NEW · proposal'); if(id==='cpu'||id==='ram'||id==='disk'||id==='battery') s+=row('Accent color','A future per-module color choice.',`<span class="control-value">System blue</span>`, 'NEW · proposal'); if(id==='disk') s+=row('Disk selection','Choose a volume in a future build.',`<span class="control-value">Startup disk</span>`, 'NEW · proposal'); if(id==='network') {s+=row('Network interface','Choose Wi‑Fi or Ethernet in a future build.',`<span class="control-value">Automatic</span>`, 'NEW · proposal');s+=row('Units','Choose transfer units in a future build.',`<span class="control-value">Mbps</span>`, 'NEW · proposal');} return s?`<div class="group-card"><div class="group-title"><strong>Future module options</strong><span>${badge('new','NEW · proposal')}</span></div>${s}</div>`:'';};
+    const systemPage=id=>{const p=pages[id]; let extra=''; if(id==='network') extra=`<div class="group-card"><div class="group-title"><strong>Network details</strong><span>${badge('existing','Existing')}</span></div>${row('Local IP','UI-only example; no address is requested.',switchHTML('Show local IP',networkVisibility.localIP,'network-localIP'),'Existing control')}${row('Public IP','Optional and off by default; no request in this preview.',switchHTML('Show public IP',networkVisibility.publicIP,'network-publicIP'),'Existing control')}</div>`; const body=surface==='alerts'?alertPanel(id):`${id==='cpu'&&surface==='menu'?styleSelector():''}${sharedRows(id)}${metricCard(id)}${extra}${proposalRows(id)}`; return `${header(p)}<section class="content">${surfaceTabs()}${body}</section>`;};
+    const layoutRows=()=>modules.map((m,i)=>`<div class="setting-row"><button class="drag" type="button" aria-label="Drag ${m.label} to reorder">⋮⋮</button><div class="order-copy"><div class="setting-label">${m.label}</div><span class="setting-sub">${m.kind}</span></div><div class="control">${badge('existing','Existing')} ${switchHTML(`${m.label} in ${surface}`,m[surface==='menu'?'menu':'dashboard'],`layout-toggle:${m.id}`)}<button class="move" type="button" aria-label="Move ${m.label} up" data-move="up:${m.id}" ${i===0?'disabled':''}>↑</button><button class="move" type="button" aria-label="Move ${m.label} down" data-move="down:${m.id}" ${i===modules.length-1?'disabled':''}>↓</button></div></div>`).join('');
+    const layoutPage=()=>`${header(pages.layout)}<section class="content">${layoutTabs()}${surface==='alerts'?'<div class="group-card"><div class="group-title"><strong>Alerts</strong><span>'+badge('existing','Existing')+'</span></div><div class="empty">Quota alerts are managed globally in Notifications.<br>Layout has no separate alert surface.</div></div>':`<div class="group-card"><div class="group-title"><strong>${surface==='menu'?'Menu bar':'Dashboard'} visibility &amp; shared order</strong><span>${badge('approved','NEW · approved direction')}</span></div>${layoutRows()}</div><div class="notice visible">Order is shared across menu bar and dashboard. Visibility is independent for each surface.</div>`}</section>`;
+    const providerPage=id=>{const p=pages[id],s=providers[id]; const weekly=id==='claude'&&s.metric==='Remaining'?row('Fable weekly detail','Informational example from the Claude allowance.',`<span class="control-value">100% remaining · resets in 4 days</span>`,'Existing detail'):''; const body=surface==='alerts'?`<div class="group-card"><div class="group-title"><strong>Quota alerts</strong><span>${badge('existing','Existing')}</span></div><div class="empty">Provider alerts are managed globally in Notifications.<br>No provider-specific alert toggle is added here.</div></div>`:`<div class="group-card"><div class="group-title"><strong>Connection</strong><span>${badge('existing','Existing')}</span></div><div class="setting-row"><div><div class="setting-label">${s.status}</div><span class="setting-sub">Example provider state · no account is accessed.</span></div><span class="control-value">${p.title}</span></div>${row('Show in menu bar','Independent provider visibility.',switchHTML(`${p.title} in menu bar`,s.menu,`provider-menu:${id}`),'NEW · approved')}${row('Show in dashboard','Independent provider visibility.',switchHTML(`${p.title} in dashboard`,s.dashboard,`provider-dashboard:${id}`),'NEW · approved')}${row('Metric','One shared metric for both surfaces.',`<select class="select" aria-label="Metric for ${p.title}" data-metric="${id}"><option ${s.metric==='Remaining'?'selected':''}>Remaining</option><option ${s.metric==='Usage'?'selected':''}>Usage</option><option ${s.metric==='Cost'?'selected':''}>Cost</option><option ${s.metric==='Connection'?'selected':''}>Connection</option></select>`,'Existing')} ${weekly}</div><div class="action-row"><button class="primary" type="button" data-demo="${id}">${id==='cursor'?'Open Cursor Spending':id==='claude'?'Reconnect Claude':'Reconnect ChatGPT'}</button></div><div class="notice" id="notice-${id}" role="status"></div>`; return `${header(p)}<section class="content">${surfaceTabs()}${body}</section>`;};
+    const prefPage=id=>id==='notifications'?`${header(pages.notifications)}<section class="content"><div class="group-card"><div class="group-title"><strong>Quota reminders</strong><span>${badge('existing','Existing')}</span></div>${row('Quota alerts','A mock reminder when an example quota gets low.',switchHTML('Quota alerts',notificationsEnabled,'notifications-toggle'),'Existing control')}${row('Module alerts','Per-module alert thresholds in a future build.',badge('new','NEW · proposal'),'NEW · proposal')}<div class="notice visible">macOS notification permission is never requested by this preview.</div></div></section>`:`${header(pages.privacy)}<section class="content"><div class="group-card"><div class="group-title"><strong>Export</strong><span>${badge('existing','Existing')}</span></div>${row('Export snapshot','Create a portable copy of current example data.',`<button class="secondary" type="button" disabled>Export snapshot</button>`,'Existing')}<div class="notice visible">Disabled in this visual preview. No preferences, files, or source data are changed.</div></div></section>`;
+    function render(){root.innerHTML=page==='layout'?layoutPage():module(page)?systemPage(page):providers[page]?providerPage(page):prefPage(page);document.querySelectorAll('.nav-item').forEach(b=>b.setAttribute('aria-current',b.dataset.page===page?'page':'false'));bind();}
+    function showDemo(id){render();const n=document.getElementById(`notice-${id}`);if(!n)return;n.textContent=id==='cursor'?'Demo only — this would explain opening Cursor Spending without leaving this preview.':id==='claude'?'Demo only — this would explain reconnecting Claude without opening a login page.':'Demo only — this would explain reconnecting ChatGPT without opening a login page.';n.classList.add('visible');}
+    function bind(){root.querySelectorAll('[data-surface]').forEach(b=>b.addEventListener('click',()=>{surface=b.dataset.surface;render();}));root.querySelectorAll('[data-style]').forEach(b=>b.addEventListener('click',()=>{style=b.dataset.style;render();}));root.querySelectorAll('[data-metric]').forEach(s=>s.addEventListener('change',e=>{providers[e.target.dataset.metric].metric=e.target.value;render();}));root.querySelectorAll('[data-demo]').forEach(b=>b.addEventListener('click',()=>showDemo(b.dataset.demo)));root.querySelectorAll('[data-move]').forEach(b=>b.addEventListener('click',()=>{const [dir,id]=b.dataset.move.split(':');const i=modules.findIndex(m=>m.id===id),j=dir==='up'?i-1:i+1;if(j>=0&&j<modules.length)[modules[i],modules[j]]=[modules[j],modules[i]];render();}));root.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>{const [type,id]=b.dataset.action.split(':');if(type==='module-menu'||type==='module-dashboard'){const m=module(id);m[type==='module-menu'?'menu':'dashboard']=!m[type==='module-menu'?'menu':'dashboard'];}if(type==='layout-toggle'){const m=module(id);m[surface==='menu'?'menu':'dashboard']=!m[surface==='menu'?'menu':'dashboard'];}if(type==='provider-menu'||type==='provider-dashboard'){const s=providers[id];s[type==='provider-menu'?'menu':'dashboard']=!s[type==='provider-menu'?'menu':'dashboard'];}if(type==='network-localIP'||type==='network-publicIP'){networkVisibility[type==='network-localIP'?'localIP':'publicIP']=!networkVisibility[type==='network-localIP'?'localIP':'publicIP'];}if(type==='alert-toggle'){alertState[id]=!alertState[id];}if(type==='notifications-toggle'){notificationsEnabled=!notificationsEnabled;render();const n=root.querySelector('.group-card .notice');if(n){n.textContent=notificationsEnabled?'Demo only — enabling this would request macOS permission in the real app.':'Demo only — quota alerts are disabled in this preview.';n.classList.add('visible');}return;}render();}));}
+    document.querySelectorAll('.nav-item').forEach(b=>b.addEventListener('click',()=>{page=b.dataset.page;if(page==='layout')surface='menu';render();}));render();
+  })();
+  </script>
+</body>
+</html>

@@ -1,9 +1,32 @@
 # Needlbar Development Status
 
-**Updated:** 2026-09-04
-**Branch:** `codex/provider-brand-icons` at `c8c9c69` before this documentation checkpoint (v0.2.2 public release remains at source `299c1a9eec04573d16469d5b6a7b6aab8fb559e8`).
-**Current phase:** Provider brand icons Tasks 1–4 have their fresh automated Task 5 verification record below. The requested native visual acceptance is deliberately `DONE_WITH_CONCERNS`: no safe fixture exists in the exact public development bundle, and a separate production UI launch would schedule refresh work. Do not infer native branding, sizing, anchoring, scrolling, dismissal, Settings, Overview, or provider-detail behavior from the automated results.
-**Next action:** Parent-agent review/integration of the complete Task 5 documentation checkpoint—`7e25138` (`docs: record provider brand icon verification`) through `dee63c8` (`docs: clarify provider icon verification evidence`)—is the exact continuation point. Native visual acceptance needs explicit maintainer direction for an isolated fixture-capable development bundle or other credential/network-safe setup; macOS 14 acceptance remains a separate deferred gate. Push, merge, publish, sign, notarize, or release only on the user's request.
+**Updated:** 2026-09-05
+**Branch:** `main`, based on `911e28c` before this documentation checkpoint.
+**Current phase:** Settings Module Studio visual design approved. The written design is awaiting user review; production Settings implementation has not started.
+**Next action:** Review `docs/superpowers/specs/2026-09-05-settings-module-studio-design.md` with the user, then write its scoped implementation plan. Preserve the existing dirty `vendor/tokscale-core` checkout and unrelated `.logs/` and brainstorming files. macOS 14 acceptance remains deferred. Push, merge, publish, sign, notarize, or release only on the user's request.
+
+## Settings Module Studio — visual approval — 2026-09-05
+
+The user approved the revised module-oriented Settings mockup after comparing
+Stats screens. The design uses a sidebar, larger headings and aligned setting
+rows, display-style previews, and context-specific Menu bar / Dashboard / Alerts
+tabs. Independent module and AI-provider visibility for menu bar and dashboard
+was also approved; order and provider display metrics remain shared.
+
+The approved visual artifact is archived at
+`docs/superpowers/mockups/2026-09-05-settings-module-studio.html`; research and
+existing-capability boundaries are recorded in
+`docs/research/2026-09-05-settings-ui-review.md`.
+
+Browser-only checks observed CPU style selection, distinct tab contents,
+threshold-input enablement, Network navigation, and Layout's two surface tabs.
+These are mockup observations, not native app or implemented-feature evidence.
+The mockup uses example data and does not modify preferences, accounts,
+permissions, or collection schedules. `NEW` proposals are not shipped features.
+
+This checkpoint is documentation/design only. No application build, installation,
+runtime configuration change, or release is part of it. Historical verification
+records below retain their original limitations.
 
 ## Provider brand icons Task 5 — full verification and bounded native evidence — 2026-09-04
 
