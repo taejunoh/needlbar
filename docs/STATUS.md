@@ -1,9 +1,26 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-05
-**Branch:** `main`, based on `911e28c` before this documentation checkpoint.
-**Current phase:** Settings Module Studio visual design approved. The written design is awaiting user review; production Settings implementation has not started.
-**Next action:** Review `docs/superpowers/specs/2026-09-05-settings-module-studio-design.md` with the user, then write its scoped implementation plan. Preserve the existing dirty `vendor/tokscale-core` checkout and unrelated `.logs/` and brainstorming files. macOS 14 acceptance remains deferred. Push, merge, publish, sign, notarize, or release only on the user's request.
+**Branch:** `main`, based on `4a77b8d` before this planning checkpoint.
+**Current phase:** Settings Module Studio visual design and written specification approved. The Phase 1 implementation plan is written and self-reviewed; production implementation has not started.
+**Next action:** Resolve execution availability for `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`, then run its isolated-worktree baseline and Task 1. Both configured worker roles returned usage-limit errors while planning. No reset was redeemed or alternate execution model selected. Preserve the existing dirty `vendor/tokscale-core` checkout and unrelated `.logs/` and brainstorming files. macOS 14 acceptance remains deferred. Push, merge, publish, sign, notarize, or release only on the user's request.
+
+## Settings Module Studio — Phase 1 plan — 2026-09-05
+
+The user approved the written specification. The implementation plan contains
+seven ordered tasks: value/migration, surface consumers, Settings editor,
+native components, shell/actions/preview, controller/window integration, and
+regression/native verification. The root completed planning after both
+configured subagents hit usage limits. Application files were read only to
+resolve actual symbols and test dependencies; no application code was edited.
+
+Self-review covered specification mapping, source symbol consistency, retained
+brand-surface tests, existing fixed-width test updates, passive snapshot delivery,
+and the existing macOS-14-only acceptance harness boundary. Test commands and
+code blocks in the plan are intended implementation steps, not executed results.
+Execution must obtain fresh baseline and RED/GREEN evidence. If native Settings
+interaction cannot be safely observed, its gate remains pending rather than
+being inferred from test-host layout results.
 
 ## Settings Module Studio — visual approval — 2026-09-05
 

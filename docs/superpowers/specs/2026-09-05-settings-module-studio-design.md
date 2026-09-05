@@ -1,6 +1,6 @@
 # Needlbar Settings Module Studio Design
 
-**Status:** Visual design approved; written specification awaiting user review.
+**Status:** Visual design and written specification approved by the user on 2026-09-05.
 **Date:** 2026-09-05
 **Scope:** Rework native Settings around the approved Module Studio visual direction and add independently persisted menu-bar and dashboard visibility. This does not approve every Stats-like mockup proposal.
 

@@ -1,6 +1,6 @@
 # Settings UI Review — 2026-09-05
 
-**Status: Revised visual mockup and independent visibility approved; written design under review.**
+**Status: Revised visual mockup, independent visibility, and written design approved; Phase 1 implementation planning.**
 
 This note records a read-only comparison of Settings information architecture.
 It is not a product specification, implementation plan, or approval to change
