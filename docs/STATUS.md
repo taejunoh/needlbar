@@ -1,9 +1,25 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-06
-**Branch:** `codex/settings-module-studio`, based on `9f1fefa`.
+**Branch:** `main`; Settings Module Studio fast-forwarded from `9f1fefa` to `7417c14` on 2026-09-06.
 **Current phase:** Settings Module Studio Phase 1 implementation and Task 7 automated regression gates verified; native acceptance partially observed, not fully complete.
-**Next action:** Finish the remaining native matrix using the separate action-review executable: keyboard/drag, display transitions, full accessibility and the unobserved Codex verifying UI phase. Then obtain the user's integration decision. Phase 2 styles/units needs a separate approved feature specification. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+**Next action:** Finish the remaining native matrix using the separate action-review executable: keyboard/drag, display transitions, full accessibility and the unobserved Codex verifying UI phase. Local integration was explicitly authorized and completed; push and installation remain unrequested. Phase 2 styles/units needs a separate approved feature specification. Preserve the dirty main checkout and use an isolated worktree for further implementation. macOS 14 acceptance remains deferred. Push, install, publish, sign, notarize, or release only on the user's request.
+
+## Local integration — 2026-09-06
+
+The user requested merge. `main` fast-forwarded to `7417c14` without conflicts.
+The pre-merge full log completed all gates (433 Swift tests in 19 suites), but
+its shell wrapper errored afterward on zsh's read-only `status` variable; that
+wrapper exit is not recorded as a clean verification exit. A fresh post-merge
+`make test` exited 0: 433 Swift tests in 19 suites plus all Rust/vendor/asset/
+widget/package/notarization shell gates. It ran against the identical committed tree in the clean
+Settings worktree, because main's pre-existing vendor checkout differs from
+the pinned submodule. No vendor checkout/reset was performed. Existing `.logs/`
+and brainstorming files are preserved. No push or installation was performed.
+Log: `/Users/taejunoh/Developer/LFG/needlbar-settings-postmerge-20260906.log`.
+Normal worktree cleanup was refused because the worktree contains submodules;
+no forced removal was attempted. The merged feature branch and its worktree
+are retained. This retention is not an incomplete merge.
 
 ## Task 7 — standalone review host and action-state observations — 2026-09-06
 
