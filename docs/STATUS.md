@@ -3,7 +3,60 @@
 **Updated:** 2026-09-06
 **Branch:** `codex/settings-module-studio`, based on `9f1fefa`.
 **Current phase:** Settings Module Studio Phase 1 implementation and Task 7 automated regression gates verified; native acceptance partially observed, not fully complete.
-**Next action:** Finish the remaining Task 7 native matrix below (keyboard/drag, display transitions, action-state fixtures), then obtain the user's integration decision. Phase 2 styles/units needs a separate approved feature specification. The user approved direct root implementation as an exception while the configured workers were usage-limited; independent agent review is not claimed. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+**Next action:** Agree on a separate native action-review host before retrying asynchronous UI acceptance: the existing opt-in Swift Testing host blocks MainActor work while its AppKit loop runs. Keyboard/drag, display transitions and full accessibility also remain pending. Then obtain the user's integration decision. Phase 2 styles/units needs a separate approved feature specification. The user approved direct root implementation as an exception while the configured workers were usage-limited; independent agent review is not claimed. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+
+## Task 7 follow-up — action fixtures and native-host boundary — 2026-09-06
+
+Starting checkpoint: `8610153`. Added test-only external-boundary doubles for
+the real ProviderLoginCoordinator, SnapshotExportController and SettingsActions.
+Both providers traverse idle → launching → connected, then retry → rejected;
+export traverses exporting → exported, then exporting → failed. The helper
+returns empty captures, uses an inert command runner/destination presenter and
+an inert export action: no executable, browser, save panel, credentials or files
+are accessed. The focused state-propagation test passed (exit 0, one test,
+0.035 seconds; `needlbar-settings-studio-action-fixtures-unit.log` in LFG).
+
+The inert native review was rerun and closed normally (exit 0, one test,
+119.430 seconds; `needlbar-settings-studio-native-interaction.log`). Tab moved
+focus between lists after a restore attempt, but keyboard button activation was
+not established. A synthetic drag did not produce a configuration/order change;
+this is not a drag pass or sufficient evidence of a product defect. A requested
+manual focus assist was superseded when the temporary windows were closed.
+
+Injecting real asynchronous coordinators into that host exposed a test-harness
+limitation: the UI remained at Starting sign-in with a disabled button until
+the AppKit loop ended. Queued state changes then ran. The combined run also
+starved the new automated test and exited 2 (`native-actions.log`). A yielding
+manual event-pump experiment exited 0 without a Swift Testing completion footer
+(`native-actions-yielding.log`); that is **not** a pass. Both experiments were
+reverted, and the committed inert native host is unchanged. All temporary
+review processes/windows have ended. Do not reuse these failed experiments as
+connected/failure/export-state native acceptance evidence.
+
+Repeated event-loop experiments are stopped at this checkpoint. A separate
+native review executable with a normal AppKit main loop is the proposed next
+approach; it must retain isolated defaults, passive snapshots and the inert
+external boundaries. No production code, installation, push or release changed.
+The previous native matrix remains partial. The first full gate run
+(`needlbar-settings-studio-actions-full.log`) exited 2: only the new fixture test
+failed, because its two-second wall-clock budget expired behind concurrent
+MainActor layout tests. Other UI tests took over five seconds in that same log.
+Its bounded wait now counts observation opportunities and stops on a required
+assertion instead of continuing into dependent checks after a timeout.
+
+Fresh final verification completed serially with exit 0:
+
+- `make test`: 432 Swift tests in 19 suites, including the opt-in native review
+  skipped by default; all standard Rust/vendor/asset/shell gates passed.
+  Log: `needlbar-settings-studio-actions-full-confirmed.log` in LFG.
+- `make acceptance-test`: 9 tests in 1 suite, not macOS 14 native evidence.
+  Log: `needlbar-settings-studio-actions-acceptance.log` in LFG.
+- `git diff --check`: exit 0. Existing linker warnings remain.
+
+Do not use the initial full log as a passing gate. Only the new action-fixture
+test file and this status record changed; the native host and product code are
+unchanged from `8610153`. Main's dirty vendor and unrelated untracked directories
+were preserved.
 
 ## Settings Module Studio — Task 7 regression/native checkpoint — 2026-09-06
 
