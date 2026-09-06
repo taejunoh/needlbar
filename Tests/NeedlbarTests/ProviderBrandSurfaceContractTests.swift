@@ -85,8 +85,10 @@ struct ProviderBrandSurfaceContractTests {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let model = SystemMonitorSettingsModel(configuration: ModuleConfiguration(defaults: defaults))
-        let light = Self.host(Form { SystemMonitorSettingsView(model: model) }, appearance: .aqua)
-        let dark = Self.host(Form { SystemMonitorSettingsView(model: model) }, appearance: .darkAqua)
+        let pane = SettingsStudioConfigurationPane(model: model, page: .layout, surface: .menuBar)
+            .frame(width: 700, height: 660)
+        let light = Self.host(pane, appearance: .aqua)
+        let dark = Self.host(pane, appearance: .darkAqua)
 
         let lightSize = light.view.fittingSize
         let darkSize = dark.view.fittingSize
@@ -116,8 +118,8 @@ struct ProviderBrandSurfaceContractTests {
             ),
             openCursorSpending: {}
         )
-        let light = Self.host(view, appearance: .aqua)
-        let dark = Self.host(view, appearance: .darkAqua)
+        let light = Self.host(view.frame(width: 960, height: 720), appearance: .aqua)
+        let dark = Self.host(view.frame(width: 960, height: 720), appearance: .darkAqua)
 
         let lightSize = light.view.fittingSize
         let darkSize = dark.view.fittingSize
@@ -126,8 +128,8 @@ struct ProviderBrandSurfaceContractTests {
         #expect(light.view.effectiveAppearance.bestMatch(from: Self.appearanceNames) == .aqua)
         #expect(dark.view.effectiveAppearance.bestMatch(from: Self.appearanceNames) == .darkAqua)
         #expect(lightSize == darkSize)
-        #expect(lightSize.width == 520)
-        #expect(darkSize.width == 520)
+        #expect(lightSize.width == 960 && lightSize.height == 720)
+        #expect(darkSize.width == 960 && darkSize.height == 720)
         #expect(lightSize.width > 0 && lightSize.height > 0)
         #expect(darkSize.width > 0 && darkSize.height > 0)
     }
@@ -136,7 +138,8 @@ struct ProviderBrandSurfaceContractTests {
         "Sources/Needlbar/Modules/Overview/SystemDashboardPopoverView.swift",
         "Sources/Needlbar/Modules/Overview/OverviewPopoverView.swift",
         "Sources/Needlbar/Modules/Provider/ProviderPopoverView.swift",
-        "Sources/Needlbar/Settings/SystemMonitorSettingsView.swift",
+        "Sources/Needlbar/Settings/SettingsStudioConfigurationPane.swift",
+        "Sources/Needlbar/Settings/SettingsStudioComponents.swift",
         "Sources/Needlbar/Settings/SettingsView.swift",
     ]
 

@@ -8,6 +8,17 @@ import Testing
 @Suite("SettingsStudio", .serialized)
 @MainActor
 struct SettingsStudioTests {
+    @Test func previewUsesProductionRendererAndHasNoFixtureValues() {
+        let model = SettingsPreviewModel()
+        var configuration = SystemMonitorConfiguration()
+        configuration.menuBarVisibleModules = [.cpu]
+        model.update(snapshot: Self.emptySnapshot, configuration: configuration)
+        #expect(model.result == MenuBarDashboardRenderer.render(snapshot: Self.emptySnapshot,
+            configuration: configuration, availableWidth: 240))
+        #expect(model.result.tooltip == "CPU —")
+        #expect(model.result.configuredModuleIDs == [.cpu])
+    }
+
     @Test func tabsCannotRouteAlertsIntoVisibility() {
         #expect(SettingsStudioTab.alerts.surface == nil)
         #expect(SettingsStudioTab.menuBar.surface == .menuBar)

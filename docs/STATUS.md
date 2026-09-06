@@ -2,8 +2,26 @@
 
 **Updated:** 2026-09-06
 **Branch:** `codex/settings-module-studio`, based on `9f1fefa`.
-**Current phase:** Settings Module Studio Phase 1 Tasks 1–4 verified, including native navigation and configuration components.
-**Next action:** Task 5 of `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`: compose Settings shell/actions/passive preview, then Tasks 6–7 window integration and acceptance. The user approved direct root implementation as an exception while both configured workers are usage-limited. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+**Current phase:** Settings Module Studio Phase 1 Tasks 1–5 verified, including the sidebar shell, retained actions and passive preview.
+**Next action:** Task 6 of `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`: connect preview delivery and screen-safe resizable window, then Task 7 regression/native acceptance. The user approved direct root implementation as an exception while both configured workers are usage-limited. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+
+## Settings Module Studio — Task 5 — 2026-09-06
+
+Task 4 commit: `f0c55b1`. Replaced the grouped Form/fixed-width Settings root
+with the approved sidebar, page headings, per-page tabs and configuration panes.
+Preserved connection/export/notification action helpers and top-aligned provider
+marks. The extracted editor is StateObject-owned. Configuration notifications
+refresh it on the main run loop. Added the passive existing-renderer preview;
+controller delivery is still Task 6. Removed only the retired legacy view and
+updated existing brand/appearance hosting coverage for the new components.
+
+RED exited 2 for the missing preview type. Focused SettingsStudio GREEN exited 0
+(10 tests in 2 suites); Settings filter exited 0 (17 tests in 3 suites);
+`make test` exited 0 (418 Swift tests in 19 suites and standard gates).
+`git diff --check`: exit 0. Log prefix:
+`/Users/taejunoh/Developer/LFG/needlbar-settings-studio-task5-`, suffixes `red.log`,
+`green.log`, `settings.log`, `full.log`. Native visual inspection, installation,
+push, merge and release remain unperformed.
 
 ## Settings Module Studio — Task 4 — 2026-09-06
 
