@@ -456,6 +456,8 @@ public final class MenuBarController: NSObject {
     private var displayedDashboardLayout: SystemDashboardPopoverLayout?
     private var displayedDashboardAnchor: StatusItemPresentationAnchor?
 
+    var settingsPreviewResult: MenuBarDashboardRenderResult { settingsWindowController.previewResult }
+
     public init(
         configuration: ModuleConfiguration,
         snapshotStore: ProviderSnapshotStore,
@@ -623,6 +625,7 @@ public final class MenuBarController: NSObject {
     private func reconcile(using snapshot: CombinedUsageSnapshot) {
         cachedCombinedSnapshot = snapshot
         let monitorConfiguration = configuration.systemMonitor
+        settingsWindowController.update(snapshot: snapshot, configuration: monitorConfiguration)
         if let dashboardModel {
             dashboardModel.update(snapshot: snapshot, configuration: monitorConfiguration)
         } else {

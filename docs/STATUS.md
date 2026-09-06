@@ -2,8 +2,28 @@
 
 **Updated:** 2026-09-06
 **Branch:** `codex/settings-module-studio`, based on `9f1fefa`.
-**Current phase:** Settings Module Studio Phase 1 Tasks 1–5 verified, including the sidebar shell, retained actions and passive preview.
-**Next action:** Task 6 of `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`: connect preview delivery and screen-safe resizable window, then Task 7 regression/native acceptance. The user approved direct root implementation as an exception while both configured workers are usage-limited. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+**Current phase:** Settings Module Studio Phase 1 Tasks 1–6 verified, including passive snapshot delivery and screen-safe window sizing.
+**Next action:** Task 7 of `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`: regression matrix and bounded native acceptance. The user approved direct root implementation as an exception while both configured workers are usage-limited. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+
+## Settings Module Studio — Task 6 — 2026-09-06
+
+Task 5 commit: `c49dbfa`. Settings now receives passive snapshots from the existing
+MenuBarController reconciliation path. The resizable window starts at 960×720
+content points, uses a screen-bounded 760×560 minimum, and fits its frame to the
+usable screen. In addition to the plan's display-topology observer, it observes
+its own screen changes so moving between existing displays also updates bounds.
+No refresh stream, timer, login, or system collector was added.
+
+Geometry and controller RED commands exited 2 for the absent APIs. GREEN
+SettingsStudio passed 11 tests in 2 suites; MenuBarController passed 34 tests.
+The first complete full log records all gates passing; its command completion
+handle was unavailable after context continuation, so `make test` was rerun
+serially for a directly observed exit 0: 420 Swift tests in 19 suites, plus all
+standard gates. `git diff --check`: exit 0. Logs use prefix
+`/Users/taejunoh/Developer/LFG/needlbar-settings-studio-task6-`, including
+`red.log`, `integration-red.log`, `green.log`, `controller.log`, `full.log`, and
+`full-confirmed.log` (authoritative full exit). Native inspection and CI remain
+unverified; no install, push, merge, signing or release occurred.
 
 ## Settings Module Studio — Task 5 — 2026-09-06
 

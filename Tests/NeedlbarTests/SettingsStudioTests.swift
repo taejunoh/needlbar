@@ -8,6 +8,16 @@ import Testing
 @Suite("SettingsStudio", .serialized)
 @MainActor
 struct SettingsStudioTests {
+    @Test func settingsWindowFitsSmallAndOffsetScreens() {
+        let screen = NSRect(x: -1440, y: 50, width: 800, height: 600)
+        let desired = NSRect(x: 1000, y: -1000, width: 960, height: 720)
+        let frame = SettingsWindowController.fittedFrame(desired, in: screen)
+        #expect(screen.contains(frame))
+        #expect(frame == screen)
+        let inside = NSRect(x: -1400, y: 100, width: 500, height: 400)
+        #expect(SettingsWindowController.fittedFrame(inside, in: screen) == inside)
+    }
+
     @Test func previewUsesProductionRendererAndHasNoFixtureValues() {
         let model = SettingsPreviewModel()
         var configuration = SystemMonitorConfiguration()

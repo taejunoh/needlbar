@@ -313,6 +313,39 @@ import Testing
 }
 
 @MainActor
+@Test func settingsStudioEditsResizeOnlyDashboardAndRefreshPreview() async throws {
+    let name = "SettingsStudio.controller.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: name)!
+    defer { defaults.removePersistentDomain(forName: name) }
+    let configuration = ModuleConfiguration(defaults: defaults)
+    let combinedStore = CombinedSnapshotStore()
+    let factory = FakeStatusItemFactory()
+    let presenter = FakeMenuPanelPresenter()
+    let controller = makeMenuBarController(configuration: configuration,
+        snapshotStore: ProviderSnapshotStore(), combinedSnapshotStore: combinedStore,
+        loginCoordinator: testLoginCoordinator(), statusItemFactory: factory, panelPresenter: presenter)
+    await controller.startObserving()
+    defer { controller.stopObserving() }
+    let item = try #require(factory.created.first)
+    item.performAction()
+    #expect(await eventually { presenter.presentCount == 1 && presenter.isShown })
+    var value = configuration.systemMonitor
+    value.menuBarVisibleModules = [.cpu]
+    configuration.setSystemMonitor(value)
+    #expect(await eventually { controller.settingsPreviewResult.configuredModuleIDs == [.cpu] })
+    #expect(presenter.resizedSizes.isEmpty)
+    value.dashboardVisibleModules.insert(.disk)
+    configuration.setSystemMonitor(value)
+    #expect(await eventually { presenter.resizedSizes.count == 1 })
+    #expect(presenter.presentCount == 1)
+    #expect(presenter.resizedAnchors == presenter.presentedAnchors)
+    #expect(presenter.presentedContentViewControllers.count == 1)
+    let combined = await combinedStore.snapshot()
+    #expect(controller.settingsPreviewResult == MenuBarDashboardRenderer.render(
+        snapshot: combined, configuration: configuration.systemMonitor, availableWidth: 240))
+}
+
+@MainActor
 @Test func visibleAIProviderChangeResizesWithoutRepresentingAndKeepsAnchor() async throws {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     let factory = FakeStatusItemFactory()
