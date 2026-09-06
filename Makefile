@@ -1,4 +1,4 @@
-.PHONY: rust swift swift-test acceptance-test acceptance-build-test native-acceptance-harness-test provider-brand-assets-test widget-extension-test package-test notarize-test test run package smoke
+.PHONY: rust swift swift-test acceptance-test acceptance-build-test native-acceptance-harness-test provider-brand-assets-test widget-extension-test package-test notarize-test test run package smoke settings-native-review
 
 rust:
 	./scripts/build-rust.sh
@@ -89,6 +89,9 @@ test:
 
 run: rust
 	swift run Needlbar
+
+settings-native-review: rust
+	swift run NeedlbarSettingsStudioReview --settings-studio-review
 
 package:
 	./scripts/package-app.sh

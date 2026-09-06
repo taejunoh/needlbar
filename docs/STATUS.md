@@ -3,7 +3,64 @@
 **Updated:** 2026-09-06
 **Branch:** `codex/settings-module-studio`, based on `9f1fefa`.
 **Current phase:** Settings Module Studio Phase 1 implementation and Task 7 automated regression gates verified; native acceptance partially observed, not fully complete.
-**Next action:** Agree on a separate native action-review host before retrying asynchronous UI acceptance: the existing opt-in Swift Testing host blocks MainActor work while its AppKit loop runs. Keyboard/drag, display transitions and full accessibility also remain pending. Then obtain the user's integration decision. Phase 2 styles/units needs a separate approved feature specification. The user approved direct root implementation as an exception while the configured workers were usage-limited; independent agent review is not claimed. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+**Next action:** Finish the remaining native matrix using the separate action-review executable: keyboard/drag, display transitions, full accessibility and the unobserved Codex verifying UI phase. Then obtain the user's integration decision. Phase 2 styles/units needs a separate approved feature specification. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+
+## Task 7 — standalone review host and action-state observations — 2026-09-06
+
+Starting checkpoint: `40b295c`. The user approved the separate normal-AppKit
+executable. Its bounded implementation/verification contract is recorded in
+`docs/superpowers/plans/2026-09-06-settings-native-review-host.md`.
+Fresh baseline `make swift-test SWIFT_TEST_FILTER=settingsStudioActionFixtures`
+passed (exit 0, one test, 0.038 seconds;
+`/Users/taejunoh/Developer/LFG/needlbar-settings-review-host-baseline.log`).
+Architecture review selected a review-only support target and opt-in executable
+using existing public APIs, with no product visibility changes or production
+side effects. The review-only support/executable targets are implemented; the
+production executable dependencies and installed application are unchanged.
+`make settings-native-review` explicitly starts the bounded review app. Normal
+AppKit `application.run()` owns its loop, outside Swift Testing, so asynchronous
+login/export state updates now progress while the windows remain open.
+
+The launch-validation test first failed because the validator did not exist.
+After implementation, `make swift-test SWIFT_TEST_FILTER=settingsStudio` passed
+(4 tests, including the default-skipped native test), the product build passed,
+and direct invocation without arguments exited 64. Root independently confirmed
+the refusal. Spec review passed after adding the Make target to `.PHONY`;
+independent code-quality review found no findings. Both review targets use only
+public product APIs and remain outside the packaged production executable.
+
+Native host PID 91483 opened light/default and dark/minimum real Settings windows.
+In the dark minimum window, Claude idle, launching, awaiting-browser, verifying,
+connected and rejected states were observed. Codex idle, launching,
+awaiting-browser, connected and rejected states were observed; its verifying
+transition is in the state log but its UI was not captured during that phase.
+In-flight login buttons were disabled and became enabled on completion/failure.
+Export busy (disabled button), Exported, and Could not export snapshot states
+were observed. No external login, account, save panel or file writer ran.
+Both owned windows were closed; the process exited 0 and PID 91483 was absent.
+The close tool's post-action AX error was not treated as a failed close or retried
+after process completion. Keyboard/drag, display changes, VoiceOver and the
+remaining page/tab matrix are still not accepted; no system preferences changed.
+
+Native log: `/Users/taejunoh/Developer/LFG/needlbar-settings-review-host-native.log`.
+Window-only captures: `/Users/taejunoh/Developer/LFG/needlbar-settings-review-native-qa.WOl5Is/`
+(`claude-launching/awaiting/verifying/connected/failed.png`,
+`codex-launching/awaiting/connected/failed.png`, and
+`export-busy/success/failed.png`). These are fixture observations, not real-account
+or installed-app acceptance. An independent six-image success/failure review
+found no clipping, overlap or important readability issue.
+
+Fresh final gates completed serially with exit 0:
+
+- `make test`: 433 Swift tests in 19 suites (the opt-in native test remains
+  skipped by default), plus Rust/vendor, provider assets, widget, packaging and
+  notarization shell contracts. Log: `needlbar-settings-review-host-full.log`.
+- `make acceptance-test`: 9 tests in 1 suite; this is not macOS 14 native
+  evidence. Log: `needlbar-settings-review-host-acceptance.log`.
+- `git diff --check`: exit 0. Logs are under `/Users/taejunoh/Developer/LFG/`.
+
+No production installation, integration or release action was taken. Main's
+dirty vendor and unrelated untracked directories were preserved.
 
 ## Task 7 follow-up — action fixtures and native-host boundary — 2026-09-06
 
@@ -127,8 +184,8 @@ so no close action was repeated after the process/test had finished.
 | Typography/appearance | Light Layout and dark minimum module/provider pages inspected with official marks. VoiceOver and full keyboard traversal remain unobserved; the tool omitted labels for some SwiftUI controls, so source labels alone are not an accessibility pass. |
 | Visibility | CPU menu off/dashboard on observed before layout correction; Claude dashboard off/menu on observed after correction. Automated consumer/editor isolation also passes. |
 | Order/reset | CPU down moved RAM first in both the editor and the other window's passive preview; recorded configuration confirms shared order. Compact reset is covered automatically; keyboard reorder and drag remain unobserved. |
-| Provider state | Claude/Codex idle connection panes and Cursor Spending-only pane inspected. In-flight/connected/failure native fixtures remain pending; inert buttons are not proof of real sign-in. |
-| Data/privacy | Data pane and privacy copy inspected; no credential/IP/source-path data displayed. Busy/success/failure native export fixtures remain pending. No export was invoked. |
+| Provider state | Standalone follow-up above adds Claude/Codex in-flight, connected and rejected fixture observations. Codex verifying UI phase remains unobserved. Cursor Spending-only pane inspected. These are not real sign-in acceptance. |
+| Data/privacy | Data pane and privacy copy inspected; no credential/IP/source-path data displayed. Standalone follow-up adds busy/success/failure with an inert exporter; no real file was exported. |
 | Notifications | Global-only preference and provider Alerts navigation inspected; no system threshold controls. Permission requests/notification submission were not invoked. |
 | Preview | Neutral missing values and cross-window order update observed. No fixture percentages or proposed style controls shipped. |
 | Dashboard regression | Existing automated panel identity/resize/anchor/scroll/dismissal coverage passed. No production dashboard was opened for this Settings review. |

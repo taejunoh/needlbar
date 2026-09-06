@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .executable(name: "Needlbar", targets: ["Needlbar"]),
+        .executable(name: "NeedlbarSettingsStudioReview", targets: ["NeedlbarSettingsStudioReview"]),
         .library(name: "NeedlbarCore", targets: ["NeedlbarCore"]),
         .library(name: "NeedlbarApp", targets: ["NeedlbarApp"]),
     ],
@@ -33,9 +34,11 @@ let package = Package(
             resources: [.copy("Resources/ProviderBrands")]
         ),
         .target(name: "NeedlbarWidgetSupport"),
+        .target(name: "NeedlbarSettingsStudioReviewSupport", dependencies: ["NeedlbarApp", "NeedlbarCore"]),
         .executableTarget(name: "Needlbar", dependencies: ["NeedlbarApp"], path: "Sources/NeedlbarMain"),
+        .executableTarget(name: "NeedlbarSettingsStudioReview", dependencies: ["NeedlbarApp", "NeedlbarCore", "NeedlbarSettingsStudioReviewSupport"], path: "Sources/NeedlbarSettingsStudioReview"),
         .testTarget(name: "NeedlbarCoreTests", dependencies: ["NeedlbarCore", "NeedlbarWidgetSupport"]),
-        .testTarget(name: "NeedlbarTests", dependencies: ["NeedlbarApp"]),
+        .testTarget(name: "NeedlbarTests", dependencies: ["NeedlbarApp", "NeedlbarSettingsStudioReviewSupport"]),
         .testTarget(name: "NeedlbarWidgetSupportTests", dependencies: ["NeedlbarWidgetSupport"]),
     ]
 )
