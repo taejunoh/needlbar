@@ -138,7 +138,9 @@ public final class ModuleConfiguration {
     }
 
     private func validOrder(from rawValues: [String]?) -> [MonitorModuleID] {
-        guard let rawValues else { return MonitorModuleID.defaultOrder }
+        guard let rawValues, rawValues.count == MonitorModuleID.allCases.count else {
+            return MonitorModuleID.defaultOrder
+        }
         let parsed = rawValues.compactMap(MonitorModuleID.init(rawValue:))
         return Set(parsed).count == MonitorModuleID.allCases.count && parsed.count == MonitorModuleID.allCases.count
             ? parsed
@@ -157,7 +159,9 @@ public final class ModuleConfiguration {
     }
 
     private func validAIOrder(from rawValues: [String]?) -> [ProviderID] {
-        guard let rawValues else { return ProviderID.allCases }
+        guard let rawValues, rawValues.count == ProviderID.allCases.count else {
+            return ProviderID.allCases
+        }
         let parsed = rawValues.compactMap(ProviderID.init(rawValue:))
         return Set(parsed).count == ProviderID.allCases.count && parsed.count == ProviderID.allCases.count
             ? parsed

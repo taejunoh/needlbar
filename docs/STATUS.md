@@ -2,8 +2,94 @@
 
 **Updated:** 2026-09-06
 **Branch:** `codex/settings-module-studio`, based on `9f1fefa`.
-**Current phase:** Settings Module Studio Phase 1 Tasks 1–6 verified, including passive snapshot delivery and screen-safe window sizing.
-**Next action:** Task 7 of `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`: regression matrix and bounded native acceptance. The user approved direct root implementation as an exception while both configured workers are usage-limited. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+**Current phase:** Settings Module Studio Phase 1 implementation and Task 7 automated regression gates verified; native acceptance partially observed, not fully complete.
+**Next action:** Finish the remaining Task 7 native matrix below (keyboard/drag, display transitions, action-state fixtures), then obtain the user's integration decision. Phase 2 styles/units needs a separate approved feature specification. The user approved direct root implementation as an exception while the configured workers were usage-limited; independent agent review is not claimed. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+
+## Settings Module Studio — Task 7 regression/native checkpoint — 2026-09-06
+
+Task 6 commit: `80ac292`. Expanded isolated migration cases for missing,
+malformed, empty and valid surface values, non-Boolean provider values, old
+enabled flags, saved usage/cost metrics, noncanonical/invalid orders and read-only
+getters (zero notifications). Both compact-reset directions are covered.
+
+The matrix found an existing order-validation gap: a complete reordered array
+plus an unknown identifier incorrectly retained its order. Two RED assertions
+failed; raw-count validation now enforces the approved canonical fallback.
+Native inspection then found collapsed settings rows and SwiftUI overwriting
+the AppKit window minimum. Reproducible layout tests failed before correction.
+Settings now uses full-width rows/right-aligned controls, an explicit sidebar
+accessibility label and an AppKit content container around the hosting view.
+The container keeps SwiftUI from rewriting window size bounds, consistent with
+[Apple's hosting-view sizing contract](https://developer.apple.com/documentation/swiftui/nshostingview/sizingoptions).
+These are deliberate small production corrections discovered in Task 7, beyond
+the plan's expected tests/documentation-only file set; no new feature was added.
+
+Fresh serial verification (Cargo environment sourced):
+
+- `make swift-test SWIFT_TEST_FILTER=SettingsStudio`: exit 0; 22 declared tests
+  in 2 suites, including the opt-in native review test skipped by default.
+- `make test`: exit 0; Swift Testing reported 431 tests in 19 suites (the same
+  single opt-in skip), plus Rust, vendor, assets and packaging shell gates.
+- `make acceptance-test`: exit 0; 9 tests in 1 suite. This is fixture coverage,
+  not macOS 14 native acceptance.
+- `git diff --check`: exit 0. Existing deployment-target linker warnings remain.
+
+Final gate logs use prefix
+`/Users/taejunoh/Developer/LFG/needlbar-settings-studio-task7-` and suffixes
+`focused-final.log`, `full.log`, `acceptance.log`. RED evidence is `red.log`
+(two invalid-order issues) and `layout-red-final.log` (row width/window minimum).
+Earlier layout-probe attempts (`layout-red.log`, `layout-red-attached.log`) were
+unsuccessful test scaffolding, including a signal 11 during temporary window
+teardown, not production crash evidence. They are superseded by the measured
+Layout probe and `layout-green-final.log`.
+
+### Native evidence and remaining boundary
+
+The opt-in `settingsStudioNativeReview` test creates two real Settings windows
+with one generated UserDefaults suite, empty/passive snapshots, inert
+`SettingsActions`, and a denied fake notification client. It does not start
+AppDelegate, collection, provider refresh, the notification service, export
+writers or external links. Both windows close and the suite is removed at exit.
+The native host is skipped in ordinary gates; a timeout is a failure, not a pass.
+
+Initial AX inspection failed despite granted permissions because the test host
+lacked an AppKit event loop. Only that exact temporary test process was stopped.
+The review host now runs a bounded AppKit loop; no permission toggle was changed.
+The first working review exposed the above layout defects. The corrected run
+(`needlbar-settings-studio-native-review-final.log`) exited 0, one opt-in test,
+and recorded content/minimum sizes 960×720/760×560 and 760×560/760×560.
+Actions were evaluated from returned state/screenshots, not merely tool success.
+After the final picker/connection-row alignment adjustment, the opt-in host ran
+again (`needlbar-settings-studio-native-review-polish.log`): exit 0, one test,
+73.094 seconds. The minimum-size Claude pane was inspected with the picker
+right-aligned and connection row padded. Closing the last fixture window ended
+the host normally; the tool's subsequent AX read sometimes reported no window,
+so no close action was repeated after the process/test had finished.
+
+| Acceptance item | Observed result / remaining work |
+| --- | --- |
+| Default/minimum window | Light 960×720 and dark 760×560 content captured; full-width CPU/Network rows and unclipped controls observed. Automated minimum retention passed. |
+| Screen changes | Pure geometry covers small/offset screens; real drag/resize across displays remains unobserved. |
+| Navigation | All 11 sidebar pages opened; Menu bar/Dashboard and system/provider Alerts content changes observed. Preferences had no duplicate tabs. Not every page/tab combination was manually exercised. |
+| Typography/appearance | Light Layout and dark minimum module/provider pages inspected with official marks. VoiceOver and full keyboard traversal remain unobserved; the tool omitted labels for some SwiftUI controls, so source labels alone are not an accessibility pass. |
+| Visibility | CPU menu off/dashboard on observed before layout correction; Claude dashboard off/menu on observed after correction. Automated consumer/editor isolation also passes. |
+| Order/reset | CPU down moved RAM first in both the editor and the other window's passive preview; recorded configuration confirms shared order. Compact reset is covered automatically; keyboard reorder and drag remain unobserved. |
+| Provider state | Claude/Codex idle connection panes and Cursor Spending-only pane inspected. In-flight/connected/failure native fixtures remain pending; inert buttons are not proof of real sign-in. |
+| Data/privacy | Data pane and privacy copy inspected; no credential/IP/source-path data displayed. Busy/success/failure native export fixtures remain pending. No export was invoked. |
+| Notifications | Global-only preference and provider Alerts navigation inspected; no system threshold controls. Permission requests/notification submission were not invoked. |
+| Preview | Neutral missing values and cross-window order update observed. No fixture percentages or proposed style controls shipped. |
+| Dashboard regression | Existing automated panel identity/resize/anchor/scroll/dismissal coverage passed. No production dashboard was opened for this Settings review. |
+
+Safe window-only captures are retained outside the repository at
+`/Users/taejunoh/Developer/LFG/needlbar-settings-studio-qa.DfiRG1/`:
+`layout-default-light.png` (1920×1504), `cpu-minimum-dark.png`,
+`network-minimum-dark.png`, `data-scrolled-minimum-dark.png`, and
+`claude-minimum-dark.png` (each 1520×1184).
+The native captures are fixture-state observations, not installed-app or account
+acceptance. CI, push, merge, installation, signing, release and macOS 14 native
+acceptance remain unperformed. Main's dirty vendor and unrelated untracked
+directories were preserved. Do not claim full Phase 1 native acceptance or
+Stats feature parity from this checkpoint.
 
 ## Settings Module Studio — Task 6 — 2026-09-06
 

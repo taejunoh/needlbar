@@ -8,6 +8,7 @@ struct SettingsStudioSection<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title).font(.headline)
             VStack(alignment: .leading, spacing: 0, content: content)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
         }
@@ -17,9 +18,12 @@ struct SettingsStudioToggle: View {
     let title: String
     @Binding var value: Bool
     var body: some View {
-        Toggle(title, isOn: $value).toggleStyle(.switch)
-            .font(.system(size: 17)).frame(minHeight: 54)
-            .accessibilityLabel(title)
+        HStack {
+            Text(title).font(.system(size: 17)).accessibilityHidden(true)
+            Spacer()
+            Toggle(title, isOn: $value).labelsHidden().toggleStyle(.switch)
+                .accessibilityLabel(title)
+        }.frame(maxWidth: .infinity, minHeight: 54)
     }
 }
 struct SettingsStudioSidebar: View {
@@ -37,6 +41,7 @@ struct SettingsStudioSidebar: View {
             .background(selection == page ? Color.accentColor : .clear, in: RoundedRectangle(cornerRadius: 7))
             .foregroundStyle(selection == page ? Color.white : Color.primary)
         }.buttonStyle(.plain)
+         .accessibilityLabel(page.title)
          .accessibilityAddTraits(selection == page ? .isSelected : [])
     }
     var body: some View {

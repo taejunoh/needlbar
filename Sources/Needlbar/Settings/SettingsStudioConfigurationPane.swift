@@ -70,11 +70,15 @@ struct SettingsStudioConfigurationPane: View {
                 SettingsStudioSection(title: surface == .menuBar ? "Show in menu bar" : "Show in dashboard") {
                     providerToggle(id)
                     Divider()
-                    Picker("Display value (shared)", selection: Binding(
-                        get: { model.value.ai[id]?.metric ?? .remaining },
-                        set: { model.setAIProvider(id, metric: $0) })) {
+                    HStack {
+                        Text("Display value (shared)")
+                        Spacer(minLength: 12)
+                        Picker("Display value (shared)", selection: Binding(
+                            get: { model.value.ai[id]?.metric ?? .remaining },
+                            set: { model.setAIProvider(id, metric: $0) })) {
                             ForEach(AIProviderDisplayMetric.allCases, id: \.self) { Text($0.title).tag($0) }
-                        }.font(.system(size: 17)).frame(minHeight: 54)
+                        }.labelsHidden()
+                    }.font(.system(size: 17)).frame(minHeight: 54)
                 }
             case .notifications, .data: EmptyView()
             }

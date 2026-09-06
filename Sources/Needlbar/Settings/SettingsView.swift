@@ -185,7 +185,7 @@ public struct SettingsView: View {
                 actions.connect(provider)
             }
             .disabled(isLoginInFlight(for: provider))
-        }
+        }.frame(minHeight: 54)
     }
 
     private func isLoginInFlight(for provider: ProviderID) -> Bool {

@@ -25,7 +25,7 @@ public final class SettingsWindowController: NSWindowController {
             defer: false
         )
         window.title = "Needlbar Settings"
-        window.contentView = NSHostingView(rootView: SettingsView(
+        let hostingView = NSHostingView(rootView: SettingsView(
             configuration: configuration,
             actions: actions,
             notificationPreferences: notificationPreferences,
@@ -33,6 +33,14 @@ public final class SettingsWindowController: NSWindowController {
             openCursorSpending: openCursorSpending,
             preview: preview
         ))
+        // AppKit owns the screen-safe limits; intrinsic SwiftUI sizing must not
+        // overwrite them when a detail pane or its content changes.
+        hostingView.sizingOptions = []
+        let container = NSView(frame: window.contentLayoutRect)
+        hostingView.frame = container.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        container.addSubview(hostingView)
+        window.contentView = container
         window.isReleasedWhenClosed = false
         super.init(window: window)
         screenObservation = SettingsScreenObservation(window: window) { [weak self] in
