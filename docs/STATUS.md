@@ -1,9 +1,38 @@
 # Needlbar Development Status
 
-**Updated:** 2026-09-05
-**Branch:** `main`, based on `4a77b8d` before this planning checkpoint.
-**Current phase:** Settings Module Studio visual design and written specification approved. The Phase 1 implementation plan is written and self-reviewed; production implementation has not started.
-**Next action:** Resolve execution availability for `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`, then run its isolated-worktree baseline and Task 1. Both configured worker roles returned usage-limit errors while planning. No reset was redeemed or alternate execution model selected. Preserve the existing dirty `vendor/tokscale-core` checkout and unrelated `.logs/` and brainstorming files. macOS 14 acceptance remains deferred. Push, merge, publish, sign, notarize, or release only on the user's request.
+**Updated:** 2026-09-06
+**Branch:** `codex/settings-module-studio`, based on `9f1fefa`.
+**Current phase:** Settings Module Studio Phase 1 Task 1 verified: independent visibility values and lazy preferences migration.
+**Next action:** Task 2 of `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`: route menu and dashboard consumers to their respective visibility fields. The user approved direct root implementation as an exception while both configured workers are usage-limited. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+
+## Settings Module Studio — Task 1 — 2026-09-06
+
+Created the isolated worktree at `.worktrees/settings-module-studio` from
+`9f1fefa` and initialized its submodule at the committed `ecfb694` pin. The main
+checkout's vendor state and unrelated files were not changed. No reset credit
+was used. Root execution follows the user's explicit role-rule exception.
+
+Core now persists separate menu/dashboard module sets and provider flags.
+Legacy getters remain read-only, explicit writes leave legacy keys untouched,
+and source-compatible shared setters plus legacy JSON decoding remain available.
+Malformed numeric/string provider flags fall through to valid legacy Booleans.
+No renderer or native Settings layout change is included in Task 1.
+
+Verification (Cargo sourced before each Make invocation):
+
+- Baseline `make test`: exit 0; Swift 408 tests in 17 suites.
+- Task 1 RED `make swift-test SWIFT_TEST_FILTER=SettingsStudioConfiguration`:
+  exit 2, expected missing new visibility members before implementation.
+- Same focused GREEN: exit 0; 6 tests in 1 suite.
+- Task 1 `make test`: exit 0; Swift 414 tests in 18 suites, plus Rust, vendor,
+  provider assets, widget, packaging and notarization-shell contract gates.
+- `git diff --check`: exit 0.
+
+Logs are `/Users/taejunoh/Developer/LFG/needlbar-settings-studio-baseline.log`
+and sibling `needlbar-settings-studio-task1-{red,green,full}.log` files.
+Existing macOS 26.5-object/macOS 14-link warnings remain; this is current-host
+automated evidence, not macOS 14 or native Settings acceptance. No installation,
+production preference change, push, merge or release was performed.
 
 ## Settings Module Studio — Phase 1 plan — 2026-09-05
 

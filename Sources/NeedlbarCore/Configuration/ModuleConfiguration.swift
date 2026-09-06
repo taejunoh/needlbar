@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 
 public enum MenuModuleID: String, CaseIterable, Sendable {
@@ -68,41 +69,46 @@ public final class ModuleConfiguration {
 
     public var systemMonitor: SystemMonitorConfiguration {
         let order = validOrder(from: defaults.stringArray(forKey: "needlbar.systemMonitor.order"))
-        let visibleModules = validVisibleModules(from: defaults.stringArray(forKey: "needlbar.systemMonitor.visible"))
         let localIPEnabled = defaults.object(forKey: "needlbar.systemMonitor.localIP") as? Bool ?? false
         let publicIPEnabled = defaults.object(forKey: "needlbar.systemMonitor.publicIP") as? Bool ?? false
         let aiOrder = validAIOrder(from: defaults.stringArray(forKey: "needlbar.systemMonitor.ai.order"))
         let ai = Dictionary(uniqueKeysWithValues: ProviderID.allCases.map { provider in
-            let visibleKey = "needlbar.systemMonitor.ai.\(provider.rawValue).visible"
             let metricKey = "needlbar.systemMonitor.ai.\(provider.rawValue).metric"
             let preference = AIProviderDisplayPreference(
-                isVisible: defaults.object(forKey: visibleKey) as? Bool ?? migratedAIVisibility(for: provider),
+                isVisible: providerVisible(provider, surface: .menuBar),
                 metric: defaults.string(forKey: metricKey)
-                    .flatMap(AIProviderDisplayMetric.init(rawValue:)) ?? .remaining
+                    .flatMap(AIProviderDisplayMetric.init(rawValue:)) ?? .remaining,
+                dashboardVisible: providerVisible(provider, surface: .dashboard)
             )
             return (provider, preference)
         })
         return SystemMonitorConfiguration(
             order: order,
-            visibleModules: visibleModules,
+            visibleModules: visibleModules(for: .menuBar),
             publicIPEnabled: publicIPEnabled,
             aiOrder: aiOrder,
             ai: ai,
-            localIPEnabled: localIPEnabled
+            localIPEnabled: localIPEnabled,
+            dashboardVisibleModules: visibleModules(for: .dashboard)
         )
     }
 
     public func setSystemMonitor(_ configuration: SystemMonitorConfiguration) {
         let order = validOrder(configuration.order)
-        let visibleModules = configuration.visibleModules.intersection(Set(MonitorModuleID.allCases))
         defaults.set(order.map(\.rawValue), forKey: "needlbar.systemMonitor.order")
-        defaults.set(visibleModules.map(\.rawValue).sorted(), forKey: "needlbar.systemMonitor.visible")
+        defaults.set(configuration.menuBarVisibleModules.map(\.rawValue).sorted(),
+                     forKey: "needlbar.systemMonitor.menuBar.visible")
+        defaults.set(configuration.dashboardVisibleModules.map(\.rawValue).sorted(),
+                     forKey: "needlbar.systemMonitor.dashboard.visible")
         defaults.set(configuration.localIPEnabled, forKey: "needlbar.systemMonitor.localIP")
         defaults.set(configuration.publicIPEnabled, forKey: "needlbar.systemMonitor.publicIP")
         defaults.set(validAIOrder(configuration.aiOrder).map(\.rawValue), forKey: "needlbar.systemMonitor.ai.order")
         for provider in ProviderID.allCases {
             let preference = configuration.ai[provider] ?? AIProviderDisplayPreference()
-            defaults.set(preference.isVisible, forKey: "needlbar.systemMonitor.ai.\(provider.rawValue).visible")
+            defaults.set(preference.menuBarVisible,
+                         forKey: "needlbar.systemMonitor.ai.\(provider.rawValue).menuBar.visible")
+            defaults.set(preference.dashboardVisible,
+                         forKey: "needlbar.systemMonitor.ai.\(provider.rawValue).dashboard.visible")
             defaults.set(preference.metric.rawValue, forKey: "needlbar.systemMonitor.ai.\(provider.rawValue).metric")
         }
         NotificationCenter.default.post(name: Self.systemMonitorDidChangeNotification, object: self)
@@ -164,16 +170,24 @@ public final class ModuleConfiguration {
             : ProviderID.allCases
     }
 
-    private func migratedAIVisibility(for provider: ProviderID) -> Bool {
-        let legacyModule: MenuModuleID
-        switch provider {
-        case .claude: legacyModule = .claude
-        case .codex: legacyModule = .codex
-        case .cursor: legacyModule = .cursor
-        }
-        let key = key(for: legacyModule, property: "enabled")
-        guard defaults.object(forKey: key) != nil else { return true }
-        return settings(for: legacyModule).isEnabled
+    private func strictBool(_ key: String) -> Bool? {
+        guard let number = defaults.object(forKey: key) as? NSNumber,
+              CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }
+        return number.boolValue
+    }
+
+    private func visibleModules(for surface: MonitorDisplaySurface) -> Set<MonitorModuleID> {
+        let raw = defaults.stringArray(forKey: "needlbar.systemMonitor.\(surface.rawValue).visible")
+            ?? defaults.stringArray(forKey: "needlbar.systemMonitor.visible")
+        return validVisibleModules(from: raw)
+    }
+
+    private func providerVisible(_ provider: ProviderID, surface: MonitorDisplaySurface) -> Bool {
+        let base = "needlbar.systemMonitor.ai.\(provider.rawValue)"
+        return strictBool("\(base).\(surface.rawValue).visible")
+            ?? strictBool("\(base).visible")
+            ?? strictBool("needlbar.menuBar.\(provider.rawValue).enabled")
+            ?? true
     }
 
     private func key(for module: MenuModuleID, property: String) -> String {

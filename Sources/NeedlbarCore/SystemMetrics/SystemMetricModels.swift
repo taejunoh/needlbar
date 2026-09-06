@@ -33,13 +33,52 @@ public enum AIProviderDisplayMetric: String, CaseIterable, Codable, Sendable {
     case connectionStatus
 }
 
+public enum MonitorDisplaySurface: String, CaseIterable, Sendable {
+    case menuBar
+    case dashboard
+}
+
 public struct AIProviderDisplayPreference: Codable, Equatable, Sendable {
-    public var isVisible: Bool
+    public var menuBarVisible: Bool
+    public var dashboardVisible: Bool
     public var metric: AIProviderDisplayMetric
 
-    public init(isVisible: Bool = true, metric: AIProviderDisplayMetric = .remaining) {
-        self.isVisible = isVisible
+    /// Compatibility for callers that explicitly configure both surfaces together.
+    public var isVisible: Bool {
+        get { menuBarVisible }
+        set {
+            menuBarVisible = newValue
+            dashboardVisible = newValue
+        }
+    }
+
+    public init(
+        isVisible: Bool = true,
+        metric: AIProviderDisplayMetric = .remaining,
+        dashboardVisible: Bool? = nil
+    ) {
+        menuBarVisible = isVisible
+        self.dashboardVisible = dashboardVisible ?? isVisible
         self.metric = metric
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case menuBarVisible, dashboardVisible, isVisible, metric
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let shared = try container.decodeIfPresent(Bool.self, forKey: .isVisible) ?? true
+        menuBarVisible = try container.decodeIfPresent(Bool.self, forKey: .menuBarVisible) ?? shared
+        dashboardVisible = try container.decodeIfPresent(Bool.self, forKey: .dashboardVisible) ?? shared
+        metric = try container.decodeIfPresent(AIProviderDisplayMetric.self, forKey: .metric) ?? .remaining
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(menuBarVisible, forKey: .menuBarVisible)
+        try container.encode(dashboardVisible, forKey: .dashboardVisible)
+        try container.encode(metric, forKey: .metric)
     }
 }
 
@@ -150,7 +189,16 @@ public struct SystemMetricsSnapshot: Equatable, Sendable {
 
 public struct SystemMonitorConfiguration: Codable, Equatable, Sendable {
     public var order: [MonitorModuleID]
-    public var visibleModules: Set<MonitorModuleID>
+    public var menuBarVisibleModules: Set<MonitorModuleID>
+    public var dashboardVisibleModules: Set<MonitorModuleID>
+    /// Compatibility for callers that explicitly configure both surfaces together.
+    public var visibleModules: Set<MonitorModuleID> {
+        get { menuBarVisibleModules }
+        set {
+            menuBarVisibleModules = newValue
+            dashboardVisibleModules = newValue
+        }
+    }
     /// Allows the dashboard to disclose active local IPv4 addresses.
     /// Public IP display is controlled independently by `publicIPEnabled`.
     public var localIPEnabled: Bool
@@ -166,13 +214,47 @@ public struct SystemMonitorConfiguration: Codable, Equatable, Sendable {
         ai: [ProviderID: AIProviderDisplayPreference] = Dictionary(
             uniqueKeysWithValues: ProviderID.allCases.map { ($0, AIProviderDisplayPreference()) }
         ),
-        localIPEnabled: Bool = false
+        localIPEnabled: Bool = false,
+        dashboardVisibleModules: Set<MonitorModuleID>? = nil
     ) {
         self.order = order
-        self.visibleModules = visibleModules
+        self.menuBarVisibleModules = visibleModules
+        self.dashboardVisibleModules = dashboardVisibleModules ?? visibleModules
         self.localIPEnabled = localIPEnabled
         self.publicIPEnabled = publicIPEnabled
         self.aiOrder = aiOrder
         self.ai = ai
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case order, visibleModules, menuBarVisibleModules, dashboardVisibleModules
+        case localIPEnabled, publicIPEnabled, aiOrder, ai
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let shared = try container.decodeIfPresent(Set<MonitorModuleID>.self, forKey: .visibleModules)
+            ?? Set([.cpu, .memory, .ai])
+        self.init(
+            order: try container.decodeIfPresent([MonitorModuleID].self, forKey: .order) ?? MonitorModuleID.defaultOrder,
+            visibleModules: try container.decodeIfPresent(Set<MonitorModuleID>.self, forKey: .menuBarVisibleModules) ?? shared,
+            publicIPEnabled: try container.decodeIfPresent(Bool.self, forKey: .publicIPEnabled) ?? false,
+            aiOrder: try container.decodeIfPresent([ProviderID].self, forKey: .aiOrder) ?? ProviderID.allCases,
+            ai: try container.decodeIfPresent([ProviderID: AIProviderDisplayPreference].self, forKey: .ai)
+                ?? Dictionary(uniqueKeysWithValues: ProviderID.allCases.map { ($0, AIProviderDisplayPreference()) }),
+            localIPEnabled: try container.decodeIfPresent(Bool.self, forKey: .localIPEnabled) ?? false,
+            dashboardVisibleModules: try container.decodeIfPresent(Set<MonitorModuleID>.self, forKey: .dashboardVisibleModules) ?? shared
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(order, forKey: .order)
+        try container.encode(menuBarVisibleModules, forKey: .menuBarVisibleModules)
+        try container.encode(dashboardVisibleModules, forKey: .dashboardVisibleModules)
+        try container.encode(localIPEnabled, forKey: .localIPEnabled)
+        try container.encode(publicIPEnabled, forKey: .publicIPEnabled)
+        try container.encode(aiOrder, forKey: .aiOrder)
+        try container.encode(ai, forKey: .ai)
     }
 }
