@@ -178,7 +178,7 @@ public enum MenuBarDashboardRenderer {
             )
         case .ai:
             let providers = configuration.aiOrder.filter {
-                configuration.ai[$0]?.isVisible ?? true
+                configuration.ai[$0]?.menuBarVisible ?? true
             }
             guard let provider = providers.first else {
                 return .init(id, label: "AI", primary: .init("—", samples: percentSamples))
@@ -290,7 +290,7 @@ public enum MenuBarDashboardRenderer {
     private static func orderedVisibleModules(_ configuration: SystemMonitorConfiguration) -> [MonitorModuleID] {
         var seen = Set<MonitorModuleID>()
         return configuration.order.filter {
-            configuration.visibleModules.contains($0) && seen.insert($0).inserted
+            configuration.menuBarVisibleModules.contains($0) && seen.insert($0).inserted
         }
     }
 
@@ -334,7 +334,7 @@ public enum MenuBarDashboardRenderer {
         configuration: SystemMonitorConfiguration,
         compact: Bool
     ) -> String {
-        let providers = configuration.aiOrder.filter { configuration.ai[$0]?.isVisible ?? true }
+        let providers = configuration.aiOrder.filter { configuration.ai[$0]?.menuBarVisible ?? true }
         let values = providers.prefix(compact ? 1 : providers.count).compactMap { provider -> String? in
             let preference = configuration.ai[provider] ?? AIProviderDisplayPreference()
             let providerSnapshot = snapshot.providers.first { $0.provider == provider }

@@ -203,7 +203,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
 
         ai = configuration.aiOrder.compactMap { provider in
             let preference = configuration.ai[provider] ?? AIProviderDisplayPreference()
-            guard preference.isVisible else { return nil }
+            guard preference.dashboardVisible else { return nil }
             let providerSnapshot = snapshot.providers.first { $0.provider == provider }
             let popover = ProviderPopoverPresentation(snapshot: providerSnapshot ?? .unavailable(for: provider))
             return AIProvider(
@@ -222,7 +222,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
             && Set(configuredOrder) == Set(MonitorModuleID.allCases)
             ? configuredOrder
             : MonitorModuleID.defaultOrder
-        moduleIDs = validOrder.filter(configuration.visibleModules.contains)
+        moduleIDs = validOrder.filter(configuration.dashboardVisibleModules.contains)
     }
 
     private static func providerValue(_ metric: AIProviderDisplayMetric, snapshot: ProviderSnapshot?) -> String {

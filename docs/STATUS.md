@@ -2,8 +2,24 @@
 
 **Updated:** 2026-09-06
 **Branch:** `codex/settings-module-studio`, based on `9f1fefa`.
-**Current phase:** Settings Module Studio Phase 1 Task 1 verified: independent visibility values and lazy preferences migration.
-**Next action:** Task 2 of `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`: route menu and dashboard consumers to their respective visibility fields. The user approved direct root implementation as an exception while both configured workers are usage-limited. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+**Current phase:** Settings Module Studio Phase 1 Tasks 1–2 verified: independent visibility persistence and renderer routing.
+**Next action:** Task 3 of `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`: extract the surface-aware Settings editor. The user approved direct root implementation as an exception while both configured workers are usage-limited. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+
+## Settings Module Studio — Task 2 — 2026-09-06
+
+Task 1 is committed as `f304eb8`. Menu-bar text and segment rendering now read
+menu visibility, while dashboard module/provider rows read dashboard visibility.
+The new test first failed with three expected cross-surface assertions, then
+passed after the focused consumer changes. Existing formatting, provider order,
+empty-state handling and panel behavior remain unchanged.
+
+Serial verification: `make swift-test SWIFT_TEST_FILTER=SettingsStudio` (7 tests),
+`make swift-test SWIFT_TEST_FILTER=renderer` (10),
+`make swift-test SWIFT_TEST_FILTER=dashboard` (33), and `make test` (415 Swift
+tests in 19 suites plus all standard gates) each exited 0. `git diff --check`
+exited 0. Logs: `/Users/taejunoh/Developer/LFG/needlbar-settings-studio-task2-`
+with `red.log`, `green.log`, `renderer.log`, `dashboard.log`, and `full.log` suffixes.
+Native Settings and installed application are unchanged; this is not UI acceptance.
 
 ## Settings Module Studio — Task 1 — 2026-09-06
 
