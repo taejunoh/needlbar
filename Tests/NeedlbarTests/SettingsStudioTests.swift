@@ -8,6 +8,17 @@ import Testing
 @Suite("SettingsStudio", .serialized)
 @MainActor
 struct SettingsStudioTests {
+    @Test func tabsCannotRouteAlertsIntoVisibility() {
+        #expect(SettingsStudioTab.alerts.surface == nil)
+        #expect(SettingsStudioTab.menuBar.surface == .menuBar)
+        #expect(SettingsStudioTab.dashboard.surface == .dashboard)
+        #expect(SettingsStudioPage.layout.tabs == [.menuBar, .dashboard])
+        #expect(SettingsStudioPage.notifications.tabs.isEmpty)
+        #expect(SettingsStudioPage.data.tabs.isEmpty)
+        #expect(SettingsStudioPage.module(.cpu).tabs == [.menuBar, .dashboard, .alerts])
+        #expect(SettingsStudioPage.provider(.claude).tabs == [.menuBar, .dashboard, .alerts])
+    }
+
     static var emptySnapshot: CombinedUsageSnapshot {
         .init(system: nil, providers: [], capturedAt: .distantPast, systemAvailability: [:])
     }

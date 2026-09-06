@@ -2,8 +2,26 @@
 
 **Updated:** 2026-09-06
 **Branch:** `codex/settings-module-studio`, based on `9f1fefa`.
-**Current phase:** Settings Module Studio Phase 1 Tasks 1–3 verified: independent visibility persistence, renderer routing, and surface-aware Settings editor.
-**Next action:** Task 4 of `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`: build native sidebar/navigation and configuration components, then Tasks 5–7 shell/preview/window integration and acceptance. The user approved direct root implementation as an exception while both configured workers are usage-limited. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+**Current phase:** Settings Module Studio Phase 1 Tasks 1–4 verified, including native navigation and configuration components.
+**Next action:** Task 5 of `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`: compose Settings shell/actions/passive preview, then Tasks 6–7 window integration and acceptance. The user approved direct root implementation as an exception while both configured workers are usage-limited. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+
+## Settings Module Studio — Task 4 — 2026-09-06
+
+Added page/tab policy, native sidebar/sections/toggles, and configuration panes
+with surface-specific visibility, shared order/metric, explicit reorder buttons,
+and existing Network IP switches. Moved shared Settings labels out of the legacy
+view. Unsupported style/threshold controls are absent. Shell wiring remains Task 5.
+
+RED exited 2 for missing navigation types. The first GREEN attempt hit a Swift
+6.3.3 IRGen compiler crash in the configuration pane's direct Boolean setter
+references. Replacing just those references with explicit closures (the existing
+view's pattern) resolved it; no toolchain or deployment setting changed.
+Final focused `make swift-test SWIFT_TEST_FILTER=SettingsStudio`: exit 0, 9 tests
+in 2 suites. `make test`: exit 0, 417 Swift tests in 19 suites and all standard
+gates. `git diff --check`: exit 0. Log prefix:
+`/Users/taejunoh/Developer/LFG/needlbar-settings-studio-task4-`, suffixes `red.log`,
+`green.log` (compiler crash), `green-final.log`, `full.log`.
+No native visual/interaction acceptance, install, push, or release is claimed.
 
 ## Settings Module Studio — Task 3 — 2026-09-06
 

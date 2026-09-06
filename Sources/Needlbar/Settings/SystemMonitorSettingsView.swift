@@ -82,38 +82,3 @@ public struct SystemMonitorSettingsView: View {
         }
     }
 }
-
-private extension MonitorModuleID {
-    var title: String {
-        switch self {
-        case .cpu: "CPU"
-        case .memory: "RAM"
-        case .disk: "Disk"
-        case .network: "Network"
-        case .battery: "Battery"
-        case .ai: "AI usage"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .cpu: "cpu"
-        case .memory: "memorychip"
-        case .disk: "internaldrive"
-        case .network: "network"
-        case .battery: "battery.100"
-        case .ai: "sparkles"
-        }
-    }
-}
-
-private extension AIProviderDisplayMetric {
-    var title: String {
-        switch self {
-        case .usage: "Usage"
-        case .remaining: "Remaining"
-        case .cost: "Cost"
-        case .connectionStatus: "Connection"
-        }
-    }
-}
