@@ -2,8 +2,29 @@
 
 **Updated:** 2026-09-06
 **Branch:** `codex/settings-module-studio`, based on `9f1fefa`.
-**Current phase:** Settings Module Studio Phase 1 Tasks 1–2 verified: independent visibility persistence and renderer routing.
-**Next action:** Task 3 of `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`: extract the surface-aware Settings editor. The user approved direct root implementation as an exception while both configured workers are usage-limited. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+**Current phase:** Settings Module Studio Phase 1 Tasks 1–3 verified: independent visibility persistence, renderer routing, and surface-aware Settings editor.
+**Next action:** Task 4 of `docs/superpowers/plans/2026-09-05-settings-module-studio-phase-1.md`: build native sidebar/navigation and configuration components, then Tasks 5–7 shell/preview/window integration and acceptance. The user approved direct root implementation as an exception while both configured workers are usage-limited. Preserve the dirty main checkout; work only in `.worktrees/settings-module-studio`. macOS 14 acceptance remains deferred. Push, merge, install, publish, sign, notarize, or release only on the user's request.
+
+## Settings Module Studio — Task 3 — 2026-09-06
+
+Task 2 is committed as `6445fe5`. Extracted `SystemMonitorSettingsModel` into
+its own file. Visibility and compact-default edits target one explicit surface;
+module/provider order, provider metric and IP flags retain their existing scope.
+The old view remains temporarily in place until the Task 5 shell replacement;
+this intermediate branch is not ready for installation or native UI acceptance.
+
+RED: new editor tests failed on missing surface arguments before the change.
+GREEN: `make swift-test SWIFT_TEST_FILTER=SettingsStudio` exited 0 (8 tests in
+2 suites); `make swift-test SWIFT_TEST_FILTER=Settings` exited 0 (15 tests in
+3 suites). `make test` exited 0 (416 Swift tests in 19 suites and all standard
+gates), and `git diff --check` exited 0. Logs have prefix
+`/Users/taejunoh/Developer/LFG/needlbar-settings-studio-task3-` and suffixes
+`red.log`, `green.log`, `settings.log`, and `full.log`.
+
+Root reviewed the scoped changes under the approved execution exception;
+independent agent review remains unavailable due usage limits and is not claimed.
+No background scheduler, login, notification, export, Rust or ABI code changed.
+Tasks 4–7, native UI inspection, and all integration/release decisions remain.
 
 ## Settings Module Studio — Task 2 — 2026-09-06
 

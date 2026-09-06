@@ -1,116 +1,5 @@
-import Combine
 import NeedlbarCore
 import SwiftUI
-
-@MainActor
-public final class SystemMonitorSettingsModel: ObservableObject {
-    @Published public private(set) var value: SystemMonitorConfiguration
-
-    private let configuration: ModuleConfiguration
-
-    public init(configuration: ModuleConfiguration) {
-        self.configuration = configuration
-        value = configuration.systemMonitor
-    }
-
-    public var orderedModules: [MonitorModuleID] {
-        value.order
-    }
-
-    public var orderedProviders: [ProviderID] {
-        value.aiOrder
-    }
-
-    public func setVisible(_ module: MonitorModuleID, _ visible: Bool) {
-        var next = value
-        if visible {
-            next.visibleModules.insert(module)
-        } else {
-            next.visibleModules.remove(module)
-        }
-        commit(next)
-    }
-
-    public func move(_ module: MonitorModuleID, before target: MonitorModuleID) {
-        guard module != target, value.order.contains(module), value.order.contains(target) else { return }
-        var next = value
-        next.order.removeAll { $0 == module }
-        guard let index = next.order.firstIndex(of: target) else { return }
-        next.order.insert(module, at: index)
-        commit(next)
-    }
-
-    public func moveModules(from offsets: IndexSet, to destination: Int) {
-        var next = value
-        next.order.move(fromOffsets: offsets, toOffset: destination)
-        guard Set(next.order) == Set(MonitorModuleID.allCases), next.order.count == MonitorModuleID.allCases.count else {
-            return
-        }
-        commit(next)
-    }
-
-    public func setPublicIPEnabled(_ enabled: Bool) {
-        var next = value
-        next.publicIPEnabled = enabled
-        commit(next)
-    }
-
-    public func setLocalIPEnabled(_ enabled: Bool) {
-        var next = value
-        next.localIPEnabled = enabled
-        commit(next)
-    }
-
-    public func useCompactDefaults() {
-        var next = value
-        next.visibleModules = [.cpu, .memory, .ai]
-        commit(next)
-    }
-
-    public func setAIProvider(
-        _ provider: ProviderID,
-        visible: Bool? = nil,
-        metric: AIProviderDisplayMetric? = nil
-    ) {
-        var next = value
-        var preference = next.ai[provider] ?? AIProviderDisplayPreference()
-        if let visible {
-            preference.isVisible = visible
-        }
-        if let metric {
-            preference.metric = metric
-        }
-        next.ai[provider] = preference
-        commit(next)
-    }
-
-    public func moveAIProvider(_ provider: ProviderID, before target: ProviderID) {
-        guard provider != target, value.aiOrder.contains(provider), value.aiOrder.contains(target) else { return }
-        var next = value
-        next.aiOrder.removeAll { $0 == provider }
-        guard let index = next.aiOrder.firstIndex(of: target) else { return }
-        next.aiOrder.insert(provider, at: index)
-        commit(next)
-    }
-
-    public func moveAIProviders(from offsets: IndexSet, to destination: Int) {
-        var next = value
-        next.aiOrder.move(fromOffsets: offsets, toOffset: destination)
-        guard Set(next.aiOrder) == Set(ProviderID.allCases), next.aiOrder.count == ProviderID.allCases.count else {
-            return
-        }
-        commit(next)
-    }
-
-    public func refresh() {
-        value = configuration.systemMonitor
-    }
-
-    private func commit(_ next: SystemMonitorConfiguration) {
-        value = next
-        configuration.setSystemMonitor(next)
-    }
-}
 
 public struct SystemMonitorSettingsView: View {
     @ObservedObject private var model: SystemMonitorSettingsModel
@@ -144,7 +33,7 @@ public struct SystemMonitorSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Button("Use compact defaults", action: model.useCompactDefaults)
+            Button("Use compact defaults") { model.useCompactDefaults() }
                 .help("Show CPU, RAM, and AI in the menu bar without changing provider preferences.")
 
             Toggle("Show local IP addresses", isOn: Binding(

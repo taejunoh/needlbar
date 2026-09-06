@@ -12,6 +12,37 @@ struct SettingsStudioTests {
         .init(system: nil, providers: [], capturedAt: .distantPast, systemAvailability: [:])
     }
 
+    @Test func editorDoesNotCrossSurfaces() {
+        let name = "SettingsStudio.editor.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = ModuleConfiguration(defaults: defaults)
+        var initial = SystemMonitorConfiguration(visibleModules: Set(MonitorModuleID.allCases))
+        initial.publicIPEnabled = true
+        initial.localIPEnabled = true
+        initial.order = [.ai, .network, .battery, .disk, .memory, .cpu]
+        initial.aiOrder = [.cursor, .codex, .claude]
+        store.setSystemMonitor(initial)
+        let model = SystemMonitorSettingsModel(configuration: store)
+        model.setVisible(.cpu, false, surface: .menuBar)
+        model.setAIProvider(.claude, visible: false, surface: .dashboard)
+        model.setAIProvider(.claude, metric: .cost)
+        model.useCompactDefaults(surface: .dashboard)
+        let value = store.systemMonitor
+        #expect(value.menuBarVisibleModules == [.memory, .disk, .network, .battery, .ai])
+        #expect(value.dashboardVisibleModules == [.cpu, .memory, .ai])
+        #expect(value.ai[.claude]?.menuBarVisible == true)
+        #expect(value.ai[.claude]?.dashboardVisible == false)
+        #expect(value.ai[.claude]?.metric == .cost)
+        #expect(value.publicIPEnabled && value.localIPEnabled)
+        #expect(value.order == [.ai, .network, .battery, .disk, .memory, .cpu])
+        #expect(value.aiOrder == [.cursor, .codex, .claude])
+        #expect(model.isVisible(.cpu, surface: .dashboard))
+        #expect(!model.isVisible(.cpu, surface: .menuBar))
+        #expect(model.isVisible(.claude, surface: .menuBar))
+        #expect(!model.isVisible(.claude, surface: .dashboard))
+    }
+
     @Test func consumersUseDifferentSurfaces() {
         var configuration = SystemMonitorConfiguration()
         configuration.menuBarVisibleModules = [.cpu, .ai]
