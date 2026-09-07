@@ -2,8 +2,19 @@
 
 **Updated:** 2026-09-06
 **Branch:** `main`; Settings Module Studio fast-forwarded from `9f1fefa` to `7417c14` on 2026-09-06.
-**Current phase:** Settings Module Studio Phase 1 implementation and Task 7 automated regression gates verified; native acceptance partially observed, not fully complete.
-**Next action:** User review of the reinstalled Settings Module Studio development build, followed by the remaining native matrix: keyboard/drag, display transitions, full accessibility and the unobserved Codex verifying UI phase. Local integration, push and reinstall were explicitly authorized. Phase 2 styles/units needs a separate approved feature specification. Preserve the dirty main checkout and use an isolated worktree for further implementation. macOS 14 acceptance remains deferred. Public release/signing/notarization was not requested.
+**Current phase:** v0.3.0 public-release-first and subsequent Homebrew distribution design approved; written specification review precedes implementation. Current Settings native acceptance remains partial.
+**Next action:** Review `docs/superpowers/specs/2026-09-06-v0.3-release-homebrew-design.md`, then write the implementation plan. Scope freezes current implemented features; validate signing/notarization without publication first, then verify the public v0.3.0 artifact before adding it to the existing Homebrew tap. No tag, release or tap change has been made at this design checkpoint. Preserve dirty main and use an isolated worktree for implementation. macOS 14 native acceptance and the remaining Settings matrix remain explicitly unverified; Phase 2 features are excluded.
+
+## v0.3.0 release and Homebrew design — 2026-09-06
+
+The user selected current-feature v0.3.0 distribution rather than adding the
+existing v0.2.2 artifact to Homebrew, then approved tagless signed validation
+followed by public release and Homebrew. The written design freezes current
+features and reuses the protected release pipeline. No implementation, version
+bump, workflow run, public tag or external tap write occurs in this checkpoint.
+The latest existing public artifact remains v0.2.2. The intended command is
+`brew install --cask taejunoh/tap/needlbar`, available only after the verified
+v0.3.0 artifact and Cask have actually been published.
 
 ## README and local reinstall — 2026-09-06
 
