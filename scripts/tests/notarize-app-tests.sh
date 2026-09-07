@@ -613,6 +613,10 @@ test_documentation_contract() {
     fail 'STATUS release-validation continuation contract is invalid'
   grep -F 'no tag or release action is authorized' "$status_file" >/dev/null ||
     fail 'STATUS must state that no tag or release action is authorized'
+  release_preparation_status_contract_is_valid "$status_file" ||
+    fail 'STATUS release-preparation contract is invalid'
+  grep -Fx '## v0.2.2 Public Release Record — 2026-09-01' "$status_file" >/dev/null ||
+    fail 'STATUS must retain exact v0.2.2 Public Release Record heading'
 
   ruby - "$published_readme" <<'RUBY'
 destination = ARGV.fetch(0)
