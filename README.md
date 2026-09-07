@@ -39,7 +39,7 @@ Native signed macOS 14 arm64 Widget Gallery/App Group and notification-permissio
 
 Needlbar presents locally aggregated token usage and estimated cost together with provider quota windows and reset times. Overview combines today’s tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status, and Settings. Provider views show today’s usage/cost, input/output/cache token detail, quota/reset information, freshness, and safe recovery states. Usage and quota are independent refresh streams; a failure in one does not replace a previously valid value with zero.
 
-Settings controls visible modules and title metrics. Claude and Codex expose provider-owned browser sign-in actions (`claude auth login --claudeai` and `codex login`); Needlbar does not implement a second OAuth flow. Cursor has no Needlbar credential or connection workflow.
+Settings is a native Module Studio for module and provider visibility, ordering, display metrics, and existing actions. Claude and Codex expose provider-owned browser sign-in actions (`claude auth login --claudeai` and `codex login`); Needlbar does not implement a second OAuth flow. Cursor has no Needlbar credential or connection workflow.
 
 ### System monitor (v0.3 development build)
 
@@ -67,10 +67,13 @@ shown as unavailable rather than estimated from tokens or the overall weekly quo
 
 The live dashboard can show all six sections when enabled, alongside usage
 gauges, per-core CPU bars, and recent disk/network trends. Configured
-visibility controls which rows appear; the defaults keep CPU, RAM, and AI
-enabled. Its fixed header and footer surround scrollable content sized for the
-current screen. Trends retain at most 60 samples in memory; no system-history
-database is created. Missing or stale readings are identified explicitly.
+visibility controls which rows appear on each surface independently; the
+defaults keep CPU, RAM, and AI enabled. Module and provider order is shared
+between the menu bar and dashboard, while each provider's display metric is
+shared between those surfaces. Its fixed header and footer surround scrollable
+content sized for the current screen. Trends retain at most 60 samples in
+memory; no system-history database is created. Missing or stale readings are
+identified explicitly.
 These changes are not in the public v0.2.2 ZIP above.
 
 RAM excludes file-backed and purgeable cache from consumed physical memory;
@@ -89,17 +92,31 @@ two-second timeout and at least a five-minute in-memory cache. IP values never
 enter exports, widgets, notifications, analytics, diagnostics, or provider
 requests.
 
-Settings also lets each Claude, Codex, and Cursor row be shown or hidden,
-reordered, and set to display usage, remaining quota, cost, or connection
-status. Existing provider refresh and browser-login ownership is unchanged.
+Settings independently controls menu-bar and dashboard visibility for each
+system module and for Claude, Codex, and Cursor. Module and provider ordering
+is shared across both surfaces, and provider metrics remain shared as
+Remaining, Usage, Cost, or Connection. Existing provider refresh and
+browser-login ownership is unchanged.
 
 ### Settings (v0.3 development build)
 
-<img src="docs/images/settings-modules.png" alt="Needlbar development Settings showing dashboard module visibility and disabled local and public IP controls" width="520" />
+The development build uses a native, resizable Module Studio with sidebar pages
+for Menu bar & dashboard, CPU, RAM, Disk, Network, Battery, Claude, Codex,
+Cursor, Notifications, and Data & Privacy. System and provider pages expose a
+context-specific tab bar with Menu bar, Dashboard, and Alerts; Layout exposes only
+Menu bar and Dashboard, while Notifications and Data & Privacy remain
+non-surface-specific pages.
 
-<img src="docs/images/settings-providers.png" alt="Needlbar development Settings showing Claude, Codex, and Cursor visibility, order, Remaining selections, and provider actions" width="520" />
+The Layout page shows a passive, read-only preview of the current two-line
+menu-bar composition. It derives from the current snapshot and configuration;
+it does not refresh providers, collect system metrics, make network requests,
+start a timer, or persist separate preview state. Network retains the existing
+local/public IP controls; Claude and Codex retain their provider-owned sign-in
+actions; Cursor retains its Spending action; Data & Privacy retains snapshot
+export; and Notifications retains the existing global quota-alert preference.
 
-*Same development Settings window at upper and lower scroll positions; module and provider display controls are configurable, all provider rows use Remaining for this capture, and local/public IP display is off.*
+*The existing Settings image files predate Module Studio's sidebar layout and
+are not embedded here as current screenshots.*
 
 ### Local snapshot export
 

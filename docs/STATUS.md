@@ -3,7 +3,29 @@
 **Updated:** 2026-09-06
 **Branch:** `main`; Settings Module Studio fast-forwarded from `9f1fefa` to `7417c14` on 2026-09-06.
 **Current phase:** Settings Module Studio Phase 1 implementation and Task 7 automated regression gates verified; native acceptance partially observed, not fully complete.
-**Next action:** Finish the remaining native matrix using the separate action-review executable: keyboard/drag, display transitions, full accessibility and the unobserved Codex verifying UI phase. Local integration was explicitly authorized and completed; push and installation remain unrequested. Phase 2 styles/units needs a separate approved feature specification. Preserve the dirty main checkout and use an isolated worktree for further implementation. macOS 14 acceptance remains deferred. Push, install, publish, sign, notarize, or release only on the user's request.
+**Next action:** User review of the reinstalled Settings Module Studio development build, followed by the remaining native matrix: keyboard/drag, display transitions, full accessibility and the unobserved Codex verifying UI phase. Local integration, push and reinstall were explicitly authorized. Phase 2 styles/units needs a separate approved feature specification. Preserve the dirty main checkout and use an isolated worktree for further implementation. macOS 14 acceptance remains deferred. Public release/signing/notarization was not requested.
+
+## README and local reinstall — 2026-09-06
+
+The README now describes the merged Module Studio sidebar, independent surface
+visibility, shared order/metrics and passive preview. Old Settings screenshots
+are no longer presented as the current interface; the dashboard image remains.
+No new Settings screenshot or expanded native acceptance is claimed.
+
+`make package` and `make smoke` both exited 0 from the clean Settings worktree
+at `7417c14` (the same application sources as main). Logs are
+`/Users/taejunoh/Developer/LFG/needlbar-reinstall-package-20260906.log` and
+`needlbar-reinstall-smoke-20260906.log`. This is an ad-hoc development build,
+not a replacement public release. Smoke briefly runs production refresh paths.
+The existing runtime app was backed up at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/reinstall-20260906.4rhUGV/Needlbar.app`.
+The exact old runtime PID was checked before TERM, then the app at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app` was replaced
+and relaunched. Source and installed executable SHA-256 both equal
+`206315ddd374b7eb8a0c6e09cea9ee97b0f572aea2c0261322a57167d1d8fbdc`;
+strict signature verification passed. No defaults or credentials were reset.
+The user also authorized pushing main; remote synchronization is checked after
+this documentation commit, not inferred from the local commit.
 
 ## Local integration — 2026-09-06
 
