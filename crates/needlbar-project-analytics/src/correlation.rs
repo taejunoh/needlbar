@@ -520,7 +520,7 @@ fn parse_commits(output: &GitOutput) -> Result<(Vec<RawCommit>, bool), &'static 
     }
     let mut parsed = Vec::new();
     let mut ids = BTreeSet::new();
-    for chunk in fields.chunks_exact(3) {
+    for chunk in fields.as_chunks::<3>().0 {
         if chunk[0].is_empty() || chunk[1].is_empty() || chunk[2].len() > 8192 {
             return Err("repositoryUnavailable");
         }
