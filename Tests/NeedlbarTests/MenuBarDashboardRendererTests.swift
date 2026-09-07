@@ -265,7 +265,7 @@ private func fixtureCombinedSnapshot(tokens: UInt64 = 1_420_000, hasQuota: Bool 
     let system = SystemMetricsSnapshot(
         capturedAt: date,
         cpu: .init(totalUsage: MetricPercentage(24), perCoreUsage: [MetricPercentage(24)!]),
-        memory: .init(usedBytes: 8 * 1_024 * 1_024 * 1_024, freeBytes: 2 * 1_024 * 1_024 * 1_024, swapUsedBytes: 0, pressure: "normal"),
+        memory: .init(usedBytes: UInt64(8 * 1_024 * 1_024 * 1_024), freeBytes: UInt64(2 * 1_024 * 1_024 * 1_024), swapUsedBytes: 0, pressure: "normal"),
         disks: [.init(name: "Macintosh HD", usedBytes: 100, freeBytes: 200, readBytesPerSecond: 10, writeBytesPerSecond: 20)],
         network: .init(uploadBytesPerSecond: 1_000, downloadBytesPerSecond: 2_000, localIPAddresses: ["192.0.2.10"], publicIPAddress: nil),
         battery: .init(level: MetricPercentage(100), isCharging: true, health: MetricPercentage(96)),
