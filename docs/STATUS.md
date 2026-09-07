@@ -1,9 +1,35 @@
 # Needlbar Development Status
 
-**Updated:** 2026-09-06
+**Updated:** 2026-09-07
 **Branch:** `codex/v030-release-homebrew`; release preparation based on `main` at `da2dc3e`.
-**Current phase:** v0.3.0 release source and reviews complete; post-integration full gate precedes protected tagless validation. Current Settings native acceptance remains partial.
-**Next action:** Fast-forward the reviewed source into main preserving unrelated changes, and run the full gate against the identical clean candidate. Only then push and dispatch protected tagless validation at exact candidate G. Environment policy admits only main/v*; do not change it. No tag, public release or tap change has been made. Keep subsequent validation evidence outside git until Task 4 public-download verification, so the validated/tagged G does not drift. macOS 14 native acceptance and the remaining Settings matrix remain explicitly unverified; Phase 2 features are excluded.
+**Current phase:** v0.3.0 candidate `31d1e9e` rejected; minimal Rust lint and Swift 6.0 corrections committed, awaiting fresh candidate verification.
+**Next action:** Review and locally verify both compatibility corrections, then integrate/push a new candidate and require successful ordinary CI plus a fresh protected tagless validation of that exact commit. Do not tag `31d1e9e` or reuse its failed run. Environment policy admits only main/v*; do not change it. No tag, public release or tap change has been made. Native acceptance remains partial and Phase 2 is excluded.
+
+## v0.3.0 remote validation blockers — 2026-09-07
+
+Candidate `31d1e9e9cbd3b7cec78d5b8d8aee0edf923c1f9e` was fast-forwarded to
+main, passed the clean post-integration local full gate, and was pushed.
+The user approved the protected release environment, but remote checks found
+two pre-existing toolchain compatibility issues:
+
+- CI run `34073610340` failed Rust 1.98 Clippy's
+  `chunks_exact_to_as_chunks` lint in project analytics `correlation.rs`.
+- Tagless release run `34073619635` failed Swift 6.0.3 compilation on
+  `mach_task_self_` imported from Darwin in `MacSystemMetricsCollector.swift`.
+
+Neither failure involves release credentials. The tagless run did not reach
+packaging, signing, notarization or artifact upload. Local success did not
+establish compatibility with the remote toolchains. The candidate is rejected;
+the minimal source corrections require a new commit and independent validation.
+No tag has been created. Existing main-worktree changes remain preserved.
+
+Corrections: `ba36c4a` scopes legacy Darwin interoperability with
+`@preconcurrency import Darwin`; `8f9a42b` replaces only the validated
+three-field iteration with `as_chunks::<3>().0`. Swift parsing and targeted
+Rust tests (40), project formatting and the CI Clippy command passed locally.
+The local Clippy version is not the remote Rust 1.98 version; remote reruns
+remain mandatory. No vendor formatting changes were made. Full local and
+remote verification of the corrected candidate are not yet claimed here.
 
 ## v0.3.0 Task 2 — release source prepared — 2026-09-06
 
