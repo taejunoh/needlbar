@@ -2,8 +2,20 @@
 
 **Updated:** 2026-09-07
 **Branch:** `codex/v030-release-homebrew`; release preparation based on `main` at `da2dc3e`.
-**Current phase:** v0.3.0 candidate `66a82ae` blocked by a Swift 6.0 test-fixture type inference error; earlier Rust/Darwin corrections passed remote checks.
-**Next action:** Verify the test-only explicit UInt64 correction, integrate/push a new candidate, and require successful ordinary CI before requesting fresh protected tagless validation approval. Do not tag `31d1e9e` or `66a82ae`. Environment policy admits only main/v*; do not change it. No tag, public release or tap change has been made. Native acceptance remains partial and Phase 2 is excluded.
+**Current phase:** v0.3.0 test-fixture UInt64 correction committed; fresh local full gate exposed an independent watcher-test scheduling race, with test-only synchronization in progress.
+**Next action:** Verify both test-only corrections, integrate/push a new candidate, and require successful ordinary CI before requesting fresh protected tagless validation approval. Do not tag `31d1e9e` or `66a82ae`. Environment policy admits only main/v*; do not change it. No tag, public release or tap change has been made. Native acceptance remains partial and Phase 2 is excluded.
+
+## v0.3.0 local watcher-test synchronization — 2026-09-07
+
+`b150e38` explicitly types the two fixture byte values as UInt64 and passed
+focused review. The subsequent full local run compiled Swift successfully but
+failed the existing `threeEventsInsideDebounceIntervalRequestOneUsageRefresh`
+test (expected one refresh, observed zero). Log:
+`/Users/taejunoh/Developer/LFG/needlbar-v030-fixture-candidate-test.log`.
+The test waited for one active sleeper, which did not acknowledge all three
+asynchronously delivered events before advancing its fake clock. The bounded
+test-only correction acknowledges each debounce registration before sending
+the next event, at unchanged virtual time. Production debounce is unchanged.
 
 ## v0.3.0 second candidate CI — 2026-09-07
 
