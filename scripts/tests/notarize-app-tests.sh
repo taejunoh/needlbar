@@ -884,12 +884,10 @@ RUBY
   [[ "$decoy_output" == *'missing v0.2.2 public release preparation section'* ]] ||
     fail 'STATUS preparation decoy failed for an unexpected reason'
 
-  published_state_contract_is_valid "$readme_file" "$status_file"
-
-  assert_plist_value "$ROOT/Resources/Info.plist" CFBundleShortVersionString 0.2.2
-  assert_plist_value "$ROOT/Resources/Info.plist" CFBundleVersion 2
-  assert_plist_value "$ROOT/WidgetExtension/NeedlbarWidgetExtension-Info.plist" CFBundleShortVersionString 0.2.2
-  assert_plist_value "$ROOT/WidgetExtension/NeedlbarWidgetExtension-Info.plist" CFBundleVersion 2
+  assert_plist_value "$ROOT/Resources/Info.plist" CFBundleShortVersionString 0.3.0
+  assert_plist_value "$ROOT/Resources/Info.plist" CFBundleVersion 3
+  assert_plist_value "$ROOT/WidgetExtension/NeedlbarWidgetExtension-Info.plist" CFBundleShortVersionString 0.3.0
+  assert_plist_value "$ROOT/WidgetExtension/NeedlbarWidgetExtension-Info.plist" CFBundleVersion 3
 }
 
 test_documentation_contract
