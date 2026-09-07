@@ -6,7 +6,9 @@ Needlbar is local-first: it has no Needlbar account, backend, hosted sync, cloud
 
 ## Availability and download
 
-Needlbar v0.2.2 is publicly available for macOS 14 or later on Apple Silicon.
+Needlbar v0.3.0 is prepared for public release for macOS 14 or later on Apple Silicon. It is not publicly available yet.
+
+The current public release remains Needlbar v0.2.2 for macOS 14 or later on Apple Silicon.
 
 [Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)
 
@@ -41,13 +43,13 @@ Needlbar presents locally aggregated token usage and estimated cost together wit
 
 Settings is a native Module Studio for module and provider visibility, ordering, display metrics, and existing actions. Claude and Codex expose provider-owned browser sign-in actions (`claude auth login --claudeai` and `codex login`); Needlbar does not implement a second OAuth flow. Cursor has no Needlbar credential or connection workflow.
 
-### System monitor (v0.3 development build)
+### System monitor (v0.3.0 prepared for public release)
 
 The main dashboard combines enabled CPU, RAM, disk, network, battery, and AI usage in a compact, content-sized popover. It grows to fit enabled rows when screen space permits, scrolls only when needed, uses aligned high-contrast values, hides normal freshness noise, and keeps stale or failed states visible without changing the underlying metrics or provider actions.
 
 <img src="docs/images/system-dashboard.png" alt="Needlbar development dashboard showing CPU, RAM, Disk, Network, Battery, and remaining Claude and Codex quota with IP values hidden" width="312" />
 
-*Development build, not the public v0.2.2 artifact. This screenshot shows remaining Claude and Codex quota; provider visibility is configurable, and IP values are omitted.*
+*Prepared v0.3.0 release content, not the public v0.2.2 artifact. This screenshot shows remaining Claude and Codex quota; provider visibility is configurable, and IP values are omitted.*
 
 AI summaries default to remaining subscription quota (the most constrained
 available window), not token totals.
@@ -98,9 +100,9 @@ is shared across both surfaces, and provider metrics remain shared as
 Remaining, Usage, Cost, or Connection. Existing provider refresh and
 browser-login ownership is unchanged.
 
-### Settings (v0.3 development build)
+### Settings (v0.3.0 prepared for public release)
 
-The development build uses a native, resizable Module Studio with sidebar pages
+The prepared v0.3.0 release uses a native, resizable Module Studio with sidebar pages
 for Menu bar & dashboard, CPU, RAM, Disk, Network, Battery, Claude, Codex,
 Cursor, Notifications, and Data & Privacy. System and provider pages expose a
 context-specific tab bar with Menu bar, Dashboard, and Alerts; Layout exposes only
