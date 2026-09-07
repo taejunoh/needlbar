@@ -1,9 +1,59 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-06
-**Branch:** `main`; Settings Module Studio fast-forwarded from `9f1fefa` to `7417c14` on 2026-09-06.
-**Current phase:** v0.3.0 release/Homebrew written specification approved; implementation plan written and self-reviewed. Current Settings native acceptance remains partial.
-**Next action:** Execute `docs/superpowers/plans/2026-09-06-v0.3-release-homebrew.md` after execution handoff, starting with an isolated worktree and version-contract RED/GREEN tests. Scope freezes current implemented features; validate signing/notarization without publication first, then verify the public v0.3.0 artifact before adding it to the existing Homebrew tap. No tag, release or tap change has been made at this planning checkpoint. Preserve dirty main. macOS 14 native acceptance and the remaining Settings matrix remain explicitly unverified; Phase 2 features are excluded.
+**Branch:** `codex/v030-release-homebrew`; release preparation based on `main` at `da2dc3e`.
+**Current phase:** v0.3.0 release source and reviews complete; post-integration full gate precedes protected tagless validation. Current Settings native acceptance remains partial.
+**Next action:** Fast-forward the reviewed source into main preserving unrelated changes, and run the full gate against the identical clean candidate. Only then push and dispatch protected tagless validation at exact candidate G. Environment policy admits only main/v*; do not change it. No tag, public release or tap change has been made. Keep subsequent validation evidence outside git until Task 4 public-download verification, so the validated/tagged G does not drift. macOS 14 native acceptance and the remaining Settings matrix remain explicitly unverified; Phase 2 features are excluded.
+
+## v0.3.0 Task 2 — release source prepared — 2026-09-06
+
+Commit `a789001` adds fixed v0.3.0 release notes, changes only the workflow's
+release-notes body path, and describes v0.3.0 as prepared in README while
+retaining the working public v0.2.2 ZIP and sidecar. Historical release records,
+security boundaries and vendor revision remain unchanged. Full `make test`
+passed (433 Swift tests), and package/smoke/narrow checks each explicitly exited
+0. Logs: `/Users/taejunoh/Developer/LFG/needlbar-v030-task2-` followed by
+`make-test.log`, `make-package.log`, `make-smoke.log`, `green-narrow.log`.
+
+Spec review passed. Quality review identified future-public-state false passes:
+bare record headings, retained old current links, prepared feature headings,
+and stale install instructions. Test-only follow-ups `7a30668` and `52f03b8`
+require bounded observed public evidence and state-specific README wording.
+Targeted negative fixtures and restored narrow checks passed. Spec re-review
+and final quality re-review approved the corrections with no remaining findings.
+The post-integration full gate is still required, not an inferred success.
+Follow-up logs use the same prefix with `followup-` and `rereview-` suffixes.
+These documentation fields do not replace actual public artifact verification.
+
+## v0.3.0 Task 1 — version contract verified — 2026-09-06
+
+Commits `ee17562` and `7e8b072` set host/widget to `0.3.0` / build `3` and
+separate current-version assertions from historical v0.2.2 README fixtures.
+The real STATUS preparation/public-record checks remain enforced independently
+of README. Spec review found their initial omission; the follow-up restored
+them with negative missing-section/heading evidence. Spec re-review and
+independent quality review both passed with no remaining findings.
+
+RED version assertion and each of four independently changed plist fields
+exited 1 with the expected mismatch; restored narrow checks exited 0. Fresh
+post-review `make test` exited 0 (433 Swift tests and all standard gates).
+Logs use `/Users/taejunoh/Developer/LFG/needlbar-v030-task1-` with suffixes
+`red-version.log`, `mutation-host-version.log`, `mutation-host-build.log`,
+`mutation-widget-version.log`, `mutation-widget-build.log`,
+`status-contract-red.log`, `status-contract-final.log`, and
+`full-reviewed.log`. No external distribution action occurred.
+
+## v0.3.0 execution baseline — 2026-09-06
+
+The user approved subagent-driven execution. Created branch
+`codex/v030-release-homebrew` at `da2dc3e` in the corresponding isolated worktree.
+Remote submodule cloning failed twice; a command-scoped URL rewrite cloned the
+same pinned commit from the existing verified Settings worktree's object store.
+The stored origin remains the original GitHub URL, and the gitlink remains
+`ecfb69497307b3bfbb5d9c25fc7d2fcc5c6dfefc`. Main's dirty vendor was not changed.
+Fresh baseline `make test` exited 0, including all standard Rust/vendor/Swift/
+asset/widget/package/notarization-shell gates. Log:
+`/Users/taejunoh/Developer/LFG/needlbar-v030-baseline.log`.
 
 ## v0.3.0 release implementation plan — 2026-09-06
 
