@@ -592,8 +592,6 @@ v030_zip = '[Download Needlbar v0.3.0 for Apple Silicon](https://github.com/taej
 v030_sidecar = '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip.sha256)'
 
 [
-  v022_zip,
-  v022_sidecar,
   'ad-hoc signed and is not a substitute',
   'Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration.',
   'Native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance still require external evidence; the local macOS 26 build is not that acceptance.',
@@ -617,15 +615,30 @@ end
   abort "documentation contract: v0.3.0 release notes are missing #{fact.inspect}" unless notes.include?(fact)
 end
 
-public_record = status.match?(/^## v0\.3\.0 Public Release Record — 2026-09-06$/)
+public_record = status.match(/^## v0\.3\.0 Public Release Record — 2026-09-06\n(.*?)(?=^## |\z)/m)
 if public_record
+  evidence = public_record[1]
+  {
+    'Tag' => /^Tag: `v0\.3\.0`$/,
+    'Candidate commit' => /^Candidate commit: `[0-9a-f]{40}`$/,
+    'Public release URL' => /^Public release URL: `https:\/\/github\.com\/taejunoh\/needlbar\/releases\/tag\/v0\.3\.0`$/,
+    'Public ZIP verification' => /^Public ZIP verification: passed$/,
+    'Public checksum sidecar verification' => /^Public checksum sidecar verification: passed$/
+  }.each do |field, pattern|
+    abort "documentation contract: public v0.3 release record is missing #{field} evidence" unless evidence.match?(pattern)
+  end
   abort 'documentation contract: public v0.3 README contains preparation availability claim' if readme.include?('Needlbar v0.3.0 is prepared for public release')
   abort 'documentation contract: public v0.3 README is missing public availability statement' unless readme.include?('Needlbar v0.3.0 is publicly available for macOS 14 or later on Apple Silicon.')
   abort 'documentation contract: public v0.3 README is missing exact ZIP download link' unless readme.include?(v030_zip)
   abort 'documentation contract: public v0.3 README is missing exact checksum download link' unless readme.include?(v030_sidecar)
+  abort 'documentation contract: public v0.3 README is missing v0.3 install wording' unless readme.include?('To install the public v0.3.0 release:')
+  abort 'documentation contract: public v0.3 README retains v0.2.2 as current' if readme.include?('The current public release remains Needlbar v0.2.2')
+  abort 'documentation contract: public v0.3 README retains v0.2.2 download URLs' if readme.include?(v022_zip) || readme.include?(v022_sidecar)
 else
   abort 'documentation contract: prepared v0.3 README contains public availability claim' if readme.include?('Needlbar v0.3.0 is publicly available for macOS 14 or later on Apple Silicon.')
   abort 'documentation contract: prepared v0.3 README is missing prepared availability statement' unless readme.include?('Needlbar v0.3.0 is prepared for public release for macOS 14 or later on Apple Silicon.')
+  abort 'documentation contract: prepared v0.3 README is missing current v0.2.2 ZIP download link' unless readme.include?(v022_zip)
+  abort 'documentation contract: prepared v0.3 README is missing current v0.2.2 checksum download link' unless readme.include?(v022_sidecar)
   abort 'documentation contract: prepared v0.3 README advertises a nonexistent v0.3.0 download' if readme.include?('/releases/download/v0.3.0/')
 end
 RUBY
@@ -960,6 +973,8 @@ test_v030_release_source_contract() {
   local release_notes_file="$ROOT/.github/release-notes/v0.3.0.md"
   local public_readme="$temp_root/v030-public-readme.md"
   local public_status="$temp_root/v030-public-status.md"
+  local bare_heading_status="$temp_root/v030-bare-heading-status.md"
+  local contradictory_public_readme="$temp_root/v030-contradictory-public-readme.md"
   local stale_url_readme="$temp_root/v030-stale-url-readme.md"
   local premature_public_readme="$temp_root/v030-premature-public-readme.md"
   local missing_privacy_readme="$temp_root/v030-missing-privacy-readme.md"
@@ -969,16 +984,29 @@ test_v030_release_source_contract() {
   v030_release_source_contract_is_valid "$readme_file" "$status_file" "$release_notes_file" ||
     fail 'live v0.3.0 release-source contract is invalid'
 
-  ruby - "$readme_file" "$status_file" "$public_readme" "$public_status" \
-    "$stale_url_readme" "$premature_public_readme" "$missing_privacy_readme" "$missing_native_readme" <<'RUBY'
-source_readme, source_status, public_readme, public_status, stale_url, premature_public, missing_privacy, missing_native = ARGV
+  ruby - "$readme_file" "$status_file" "$public_readme" "$public_status" "$bare_heading_status" \
+    "$contradictory_public_readme" "$stale_url_readme" "$premature_public_readme" "$missing_privacy_readme" "$missing_native_readme" <<'RUBY'
+source_readme, source_status, public_readme, public_status, bare_heading_status, contradictory_public, stale_url, premature_public, missing_privacy, missing_native = ARGV
 prepared = File.read(source_readme)
-public = prepared.sub('Needlbar v0.3.0 is prepared for public release for macOS 14 or later on Apple Silicon.', 'Needlbar v0.3.0 is publicly available for macOS 14 or later on Apple Silicon.')
+public = prepared.sub('Needlbar v0.3.0 is prepared for public release for macOS 14 or later on Apple Silicon. It is not publicly available yet.', 'Needlbar v0.3.0 is publicly available for macOS 14 or later on Apple Silicon.')
 abort 'fixture setup: v0.3 prepared availability missing' if public == prepared
-public << "\n[Download Needlbar v0.3.0 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip)\n"
-public << "[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip.sha256)\n"
+public = public.sub('[Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)', '[Download Needlbar v0.3.0 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip)')
+public = public.sub('[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip.sha256)', '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip.sha256)')
+public = public.sub('To install the public release:', 'To install the public v0.3.0 release:').sub('from the v0.2.2 GitHub Release.', 'from the v0.3.0 GitHub Release.')
+File.write(contradictory_public, public)
+public = public.sub("The current public release remains Needlbar v0.2.2 for macOS 14 or later on Apple Silicon.\n\n", '')
 File.write(public_readme, public)
-File.write(public_status, File.read(source_status) + "\n## v0.3.0 Public Release Record — 2026-09-06\n")
+File.write(bare_heading_status, File.read(source_status) + "\n## v0.3.0 Public Release Record — 2026-09-06\n")
+File.write(public_status, File.read(source_status) + <<~'MARKDOWN')
+
+  ## v0.3.0 Public Release Record — 2026-09-06
+
+  Tag: `v0.3.0`
+  Candidate commit: `0123456789abcdef0123456789abcdef01234567`
+  Public release URL: `https://github.com/taejunoh/needlbar/releases/tag/v0.3.0`
+  Public ZIP verification: passed
+  Public checksum sidecar verification: passed
+MARKDOWN
 File.write(stale_url, public.sub('/releases/download/v0.3.0/Needlbar-macos-arm64.zip', '/releases/download/v0.2.2/Needlbar-macos-arm64.zip'))
 File.write(premature_public, prepared.sub('Needlbar v0.3.0 is prepared for public release for macOS 14 or later on Apple Silicon.', 'Needlbar v0.3.0 is publicly available for macOS 14 or later on Apple Silicon.'))
 File.write(missing_privacy, prepared.sub('Needlbar does not use Cursor credentials, cookies, private endpoints, or remote usage hydration.', ''))
@@ -986,6 +1014,22 @@ File.write(missing_native, prepared.gsub('Native signed macOS 14 arm64 Widget Ga
 RUBY
   v030_release_source_contract_is_valid "$public_readme" "$public_status" "$release_notes_file" ||
     fail 'public v0.3.0 fixture is unexpectedly invalid'
+
+  set +e
+  decoy_output="$(v030_release_source_contract_is_valid "$public_readme" "$bare_heading_status" "$release_notes_file" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'bare v0.3 public-record heading decoy was accepted'
+  [[ "$decoy_output" == *'public v0.3 release record is missing Tag evidence'* ]] ||
+    fail 'bare v0.3 public-record heading decoy failed for an unexpected reason'
+
+  set +e
+  decoy_output="$(v030_release_source_contract_is_valid "$contradictory_public_readme" "$public_status" "$release_notes_file" 2>&1)"
+  decoy_rc=$?
+  set -e
+  [[ "$decoy_rc" -ne 0 ]] || fail 'contradictory v0.2.2-current public README decoy was accepted'
+  [[ "$decoy_output" == *'public v0.3 README retains v0.2.2 as current'* ]] ||
+    fail 'contradictory v0.2.2-current public README decoy failed for an unexpected reason'
 
   set +e
   decoy_output="$(v030_release_source_contract_is_valid "$stale_url_readme" "$public_status" "$release_notes_file" 2>&1)"
