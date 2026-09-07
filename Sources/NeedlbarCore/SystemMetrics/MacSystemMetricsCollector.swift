@@ -1,4 +1,4 @@
-import Darwin
+@preconcurrency import Darwin
 import Foundation
 import IOKit
 import IOKit.ps
