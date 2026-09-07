@@ -2,8 +2,18 @@
 
 **Updated:** 2026-09-07
 **Branch:** `codex/v030-release-homebrew`; release preparation based on `main` at `da2dc3e`.
-**Current phase:** v0.3.0 candidate `31d1e9e` rejected; minimal Rust lint and Swift 6.0 corrections committed, awaiting fresh candidate verification.
-**Next action:** Review and locally verify both compatibility corrections, then integrate/push a new candidate and require successful ordinary CI plus a fresh protected tagless validation of that exact commit. Do not tag `31d1e9e` or reuse its failed run. Environment policy admits only main/v*; do not change it. No tag, public release or tap change has been made. Native acceptance remains partial and Phase 2 is excluded.
+**Current phase:** v0.3.0 candidate `66a82ae` blocked by a Swift 6.0 test-fixture type inference error; earlier Rust/Darwin corrections passed remote checks.
+**Next action:** Verify the test-only explicit UInt64 correction, integrate/push a new candidate, and require successful ordinary CI before requesting fresh protected tagless validation approval. Do not tag `31d1e9e` or `66a82ae`. Environment policy admits only main/v*; do not change it. No tag, public release or tap change has been made. Native acceptance remains partial and Phase 2 is excluded.
+
+## v0.3.0 second candidate CI — 2026-09-07
+
+CI `34112744059` at `66a82ae` passed both Rust Clippy checks and compiled
+past the prior Darwin error. Its complete-project step then found two Swift
+6.0.3 test-fixture errors in `MenuBarDashboardRendererTests.swift`: arithmetic
+inferred as Int where optional UInt64 bytes were required. The bounded fix
+explicitly converts those two fixture values; no production behavior changes.
+Tagless run `34112751661` remained approval-pending and must not be used to
+validate corrected sources. No successful candidate validation is claimed.
 
 ## v0.3.0 remote validation blockers — 2026-09-07
 
