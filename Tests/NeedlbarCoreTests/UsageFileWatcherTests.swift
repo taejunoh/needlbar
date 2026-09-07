@@ -17,9 +17,16 @@ import Testing
 
     await watcher.start(using: UsageRefreshRequestToken { calls.increment() })
     source.sendEvent()
+    await eventually { clock.sleeperRegistrationCount >= 1 }
+    try #require(clock.sleeperRegistrationCount >= 1)
+
     source.sendEvent()
+    await eventually { clock.sleeperRegistrationCount >= 2 }
+    try #require(clock.sleeperRegistrationCount >= 2)
+
     source.sendEvent()
-    await eventually { clock.sleeperCount == 1 }
+    await eventually { clock.sleeperRegistrationCount >= 3 }
+    try #require(clock.sleeperRegistrationCount >= 3)
 
     clock.advance(by: 0.999)
     await Task.yield()
@@ -312,6 +319,7 @@ private final class WatcherClock: ClockLike, @unchecked Sendable {
     private let lock = NSLock()
     private var date: Date
     private var continuations: [UUID: Sleeper] = [:]
+    private var registeredSleeperCount = 0
     private var sleeperCountWaiters: [SleeperCountWaiter] = []
 
     init(now: Date) {
@@ -324,6 +332,10 @@ private final class WatcherClock: ClockLike, @unchecked Sendable {
 
     var sleeperCount: Int {
         lock.withLock { continuations.count }
+    }
+
+    var sleeperRegistrationCount: Int {
+        lock.withLock { registeredSleeperCount }
     }
 
     func waitUntilSleeperCount(_ expectedCount: Int) async {
@@ -348,6 +360,7 @@ private final class WatcherClock: ClockLike, @unchecked Sendable {
                         deadline: date.addingTimeInterval(timeInterval(for: duration)),
                         continuation: continuation
                     )
+                    registeredSleeperCount += 1
                     let ready = sleeperCountWaiters.filter { continuations.count >= $0.expectedCount }.map(\.continuation)
                     sleeperCountWaiters.removeAll { continuations.count >= $0.expectedCount }
                     ready.forEach { $0.resume() }
