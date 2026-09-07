@@ -2,8 +2,18 @@
 
 **Updated:** 2026-09-06
 **Branch:** `main`; Settings Module Studio fast-forwarded from `9f1fefa` to `7417c14` on 2026-09-06.
-**Current phase:** v0.3.0 public-release-first and subsequent Homebrew distribution design approved; written specification review precedes implementation. Current Settings native acceptance remains partial.
-**Next action:** Review `docs/superpowers/specs/2026-09-06-v0.3-release-homebrew-design.md`, then write the implementation plan. Scope freezes current implemented features; validate signing/notarization without publication first, then verify the public v0.3.0 artifact before adding it to the existing Homebrew tap. No tag, release or tap change has been made at this design checkpoint. Preserve dirty main and use an isolated worktree for implementation. macOS 14 native acceptance and the remaining Settings matrix remain explicitly unverified; Phase 2 features are excluded.
+**Current phase:** v0.3.0 release/Homebrew written specification approved; implementation plan written and self-reviewed. Current Settings native acceptance remains partial.
+**Next action:** Execute `docs/superpowers/plans/2026-09-06-v0.3-release-homebrew.md` after execution handoff, starting with an isolated worktree and version-contract RED/GREEN tests. Scope freezes current implemented features; validate signing/notarization without publication first, then verify the public v0.3.0 artifact before adding it to the existing Homebrew tap. No tag, release or tap change has been made at this planning checkpoint. Preserve dirty main. macOS 14 native acceptance and the remaining Settings matrix remain explicitly unverified; Phase 2 features are excluded.
+
+## v0.3.0 release implementation plan — 2026-09-06
+
+The user approved the written design. The six-task plan covers version/history
+contracts, release source, exact-candidate tagless validation, independent tag
+publication and public-download verification, the external Cask, and final
+evidence. Self-review corrected document/code formatting, task dependencies,
+candidate branch naming, prepared/public wording, runtime-derived checksums,
+and preservation of production Settings preview versus test-host exclusion.
+No implementation or external distribution action was run while planning.
 
 ## v0.3.0 release and Homebrew design — 2026-09-06
 
