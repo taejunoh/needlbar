@@ -6,13 +6,11 @@ Needlbar is local-first: it has no Needlbar account, backend, hosted sync, cloud
 
 ## Availability and download
 
-Needlbar v0.3.0 is prepared for public release for macOS 14 or later on Apple Silicon. It is not publicly available yet.
+Needlbar v0.3.0 is publicly available for macOS 14 or later on Apple Silicon.
 
-The current public release remains Needlbar v0.2.2 for macOS 14 or later on Apple Silicon.
+[Download Needlbar v0.3.0 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip)
 
-[Download Needlbar v0.2.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip)
-
-[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.2.2/Needlbar-macos-arm64.zip.sha256)
+[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip.sha256)
 
 The `Needlbar-macos-arm64.zip.sha256` file is the SHA-256 checksum sidecar for the ZIP. Verify both downloaded files from the same directory:
 
@@ -22,9 +20,9 @@ shasum -a 256 -c Needlbar-macos-arm64.zip.sha256
 
 The public artifact is Developer ID-signed and notarized.
 
-To install the public release:
+To install the public v0.3.0 release:
 
-1. Download the ZIP and checksum sidecar from the v0.2.2 GitHub Release.
+1. Download the ZIP and checksum sidecar from the v0.3.0 GitHub Release.
 2. Run the checksum command from the directory containing both files.
 3. Open the verified ZIP and drag `Needlbar.app` into `/Applications`.
 4. Launch Needlbar from `/Applications`; it appears in the macOS menu bar.
@@ -35,6 +33,22 @@ Protected tagless validation is historical/pre-release evidence only and is not 
 
 Native signed macOS 14 arm64 Widget Gallery/App Group and notification-permission acceptance still require external evidence; the local macOS 26 build is not that acceptance.
 
+### Homebrew
+
+Install the same public release with Homebrew Cask:
+
+```bash
+brew install --cask taejunoh/tap/needlbar
+```
+
+Needlbar has no automatic updater. Update a Homebrew installation with:
+
+```bash
+brew upgrade --cask needlbar
+```
+
+The Cask has no `zap` stanza; uninstalling it does not remove Needlbar settings or other user data.
+
 ## Current features
 
 ### Usage and quota monitoring
@@ -43,13 +57,13 @@ Needlbar presents locally aggregated token usage and estimated cost together wit
 
 Settings is a native Module Studio for module and provider visibility, ordering, display metrics, and existing actions. Claude and Codex expose provider-owned browser sign-in actions (`claude auth login --claudeai` and `codex login`); Needlbar does not implement a second OAuth flow. Cursor has no Needlbar credential or connection workflow.
 
-### System monitor (v0.3.0 prepared for public release)
+### System monitor (v0.3.0)
 
 The main dashboard combines enabled CPU, RAM, disk, network, battery, and AI usage in a compact, content-sized popover. It grows to fit enabled rows when screen space permits, scrolls only when needed, uses aligned high-contrast values, hides normal freshness noise, and keeps stale or failed states visible without changing the underlying metrics or provider actions.
 
-<img src="docs/images/system-dashboard.png" alt="Needlbar development dashboard showing CPU, RAM, Disk, Network, Battery, and remaining Claude and Codex quota with IP values hidden" width="312" />
+<img src="docs/images/system-dashboard.png" alt="Needlbar dashboard showing CPU, RAM, Disk, Network, Battery, and remaining Claude and Codex quota with IP values hidden" width="312" />
 
-*Prepared v0.3.0 release content, not the public v0.2.2 artifact. This screenshot shows remaining Claude and Codex quota; provider visibility is configurable, and IP values are omitted.*
+*Needlbar v0.3.0 dashboard showing remaining Claude and Codex quota; provider visibility is configurable, and IP values are omitted.*
 
 AI summaries default to remaining subscription quota (the most constrained
 available window), not token totals.
@@ -76,7 +90,6 @@ shared between those surfaces. Its fixed header and footer surround scrollable
 content sized for the current screen. Trends retain at most 60 samples in
 memory; no system-history database is created. Missing or stale readings are
 identified explicitly.
-These changes are not in the public v0.2.2 ZIP above.
 
 RAM excludes file-backed and purgeable cache from consumed physical memory;
 Available is the complement and includes reclaimable memory. Memory uses
@@ -100,9 +113,9 @@ is shared across both surfaces, and provider metrics remain shared as
 Remaining, Usage, Cost, or Connection. Existing provider refresh and
 browser-login ownership is unchanged.
 
-### Settings (v0.3.0 prepared for public release)
+### Settings (v0.3.0)
 
-The prepared v0.3.0 release uses a native, resizable Module Studio with sidebar pages
+Needlbar v0.3.0 uses a native, resizable Module Studio with sidebar pages
 for Menu bar & dashboard, CPU, RAM, Disk, Network, Battery, Claude, Codex,
 Cursor, Notifications, and Data & Privacy. System and provider pages expose a
 context-specific tab bar with Menu bar, Dashboard, and Alerts; Layout exposes only
@@ -130,7 +143,7 @@ The released app includes one medium Overview widget backed by a sanitized local
 
 ## Native macOS 14 acceptance (maintainer-only)
 
-The public v0.2.2 ZIP is the production Gallery and entitlement evidence. The
+The public v0.3.0 ZIP is the production Gallery and entitlement evidence. The
 separately signed fixture-driven artifact is acceptance-only and is not a
 release or notarization substitute. It uses no provider account, credential,
 network, Rust/C ABI, Keychain, or export data: sanitized fixtures are supplied
