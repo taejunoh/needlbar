@@ -1,9 +1,46 @@
 # Needlbar Development Status
 
-**Updated:** 2026-09-08
-**Branch:** `main`; v0.3.0 release documentation integrated and pushed at `ca712d3`.
-**Current phase:** Analytics summary-first written design approved; five-task implementation plan prepared and self-reviewed.
-**Next action:** Confirm execution of `docs/superpowers/plans/2026-09-08-analytics-summary-first.md`, then create an isolated worktree and begin Task 1 (nonshipping aggregate-only probe). No app changes or live probe runs have been made for this scope. Preserve the public v0.3.0 tag and unrelated dirty vendor checkout.
+**Updated:** 2026-09-09
+**Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
+**Current phase:** Task 1 diagnostic probe and independent reviews complete; Task 2 Core presentation semantics in progress.
+**Next action:** Complete Task 2 tests and independent reviews, then implement the A layout. Preserve the public v0.3.0 tag and unrelated dirty main vendor checkout.
+
+## Analytics execution baseline — 2026-09-09
+
+The user approved subagent-driven execution. Worktree:
+`/Users/taejunoh/Developer/LFG/needlbar/.worktrees/analytics-summary-first`.
+The pinned vendor is `ecfb69497307b3bfbb5d9c25fc7d2fcc5c6dfefc`; its official
+remote was retained after a command-scoped local object clone. Main's dirty vendor
+and unrelated local artifacts were not modified. Before any implementation edits,
+`make test` exited 0. Evidence:
+`/Users/taejunoh/Developer/LFG/needlbar-analytics-baseline-20260909.log`.
+The baseline is not evidence of an attribution fix.
+
+### Task 1 interim aggregate evidence
+
+One explicit live probe ran, with stdout validated in memory and stderr discarded.
+Only one allowlisted numeric JSON object was retained; 32 non-JSON/untrusted stdout
+lines were counted, not stored. Discarded stderr means absence of upstream errors
+cannot be claimed. Evidence:
+`/Users/taejunoh/Developer/LFG/needlbar-analytics-probe-20260909.log`.
+
+This capture reported 434 normalized-timestamp-unavailable fragments (Claude 37,
+Codex 397), 12 absent-path canonicalization outcomes, 12 stage-unknown discovery
+failures and 0 mapped / 446 unmapped fragments. Timing observations overflowed by
+161,414; fragment/model overflow and the vendor record-limit flag were zero.
+These values are a later capture than the user's screenshot, not a discrepancy
+against a fixed fixture. Source-level timestamp loss and generic discovery stage
+are not resolved; no parser or attribution correction has been made.
+
+Task 1 commits: `d8eca27` (probe) and `464011c` (automatic normal-build surface
+guard). Spec and quality review both passed after correcting a missing automated
+nonshipping check. Probe full `make test` exited 0; the guard's full suite also
+exited 0 before the final generic-marker-only change, which passed fresh focused
+behavior tests and normal build. Final-tree full verification is retained in Task 5.
+Root independently reran `make bridge-archive-test` successfully and verified the
+normal archive contains neither diagnostic nor test markers. Apple `nm` cannot
+decode the Rust LLVM 22 objects; binary-safe marker checks and the gated/private
+source contract are the explicitly documented substitute, not an nm success claim.
 
 ## Analytics summary-first design — 2026-09-08
 

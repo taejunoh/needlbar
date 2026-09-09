@@ -33,13 +33,22 @@
 
 ### Task 1: Add the nonshipping aggregate-only diagnostic probe
 
+Completed at `d8eca27` plus `464011c`, with spec/quality re-review PASS.
+Actual internal feature-only names are `FragmentProbeCount`,
+`CanonicalizationProbeCounts`, `DiscoveryProbeCounts`, `MappingProbeCounts`;
+they replace the shorter illustrative names below without any C ABI change.
+The automated nonshipping gate additionally owns `Makefile`, `scripts/build-rust.sh`,
+`scripts/verify-public-bridge-surface.sh` and its synthetic behavior test under
+`scripts/tests/verify-public-bridge-surface-tests.sh`. Final generic-marker delta
+had fresh focused/normal-build verification; full final-tree gates remain Task 5.
+
 **Files:**
 - Modify: `crates/needlbar-project-analytics/Cargo.toml`, `crates/needlbar-project-analytics/src/lib.rs`, `crates/needlbar-project-analytics/src/correlation.rs`
 - Create: `crates/needlbar-project-analytics/src/diagnostic_probe.rs`
 - Modify: `crates/needlbar-bridge/Cargo.toml`, `crates/needlbar-bridge/src/analytics.rs`
 - Test: `crates/needlbar-project-analytics/tests/diagnostic_probe.rs`, `crates/needlbar-project-analytics/tests/privacy.rs`
 
-- [ ] **Step 1: Write failing deterministic probe and redaction tests.**
+- [x] **Step 1: Write failing deterministic probe and redaction tests.**
 
 First add only `analytics-diagnostic-probe = []` in `crates/needlbar-project-analytics/Cargo.toml`, `analytics-diagnostic-probe = ["needlbar-project-analytics/analytics-diagnostic-probe"]` in `crates/needlbar-bridge/Cargo.toml`, and the feature-gated test modules. Use this complete local fixture in `crates/needlbar-project-analytics/tests/diagnostic_probe.rs`; it is derived from the existing correlation test types and exposes no live source:
 
@@ -98,13 +107,13 @@ fn probe_keeps_units_separate_and_never_serializes_source_values() {
 
 Extend the same test with a fake successful discovery `GitOutput::new(b"/private/raw-git-canary\n".to_vec(), vec![])`; assert that neither its bytes nor the session/path canaries appear in `serde_json::to_string(&probe)` or `format!("{probe:?}")`.
 
-- [ ] **Step 2: Run the RED test.**
+- [x] **Step 2: Run the RED test.**
 
 Run: `cargo test -p needlbar-project-analytics --features analytics-diagnostic-probe --test diagnostic_probe`
 
 Expected: compile failure because `build_analytics_diagnostic_probe` and `AnalyticsDiagnosticProbe` do not exist. The declared feature ensures this test is compiled rather than silently skipped.
 
-- [ ] **Step 3: Implement one feature-gated, observer-backed probe without changing the payload or ABI.**
+- [x] **Step 3: Implement one feature-gated, observer-backed probe without changing the payload or ABI.**
 
 Export the API only under the feature in `src/lib.rs`; have `correlation::build` use a no-op observer and have the probe reuse the same validation, canonicalization fallback, `GitRunner::run`, caps, and result branches. It records the fixed provider categories below and only numeric counters; it never stores a `PathBuf`, `String` derived from a path/error/output, token amount, cost, session ID, or model label.
 
@@ -164,7 +173,7 @@ fn collect_analytics_diagnostic_probe() -> Result<needlbar_project_analytics::An
 }
 ```
 
-- [ ] **Step 4: Add explicit one-shot invocation and prove it is nonshipping.**
+- [x] **Step 4: Add explicit one-shot invocation and prove it is nonshipping.**
 
 Insert the ignored unit test inside the existing `mod tests` in `crates/needlbar-bridge/src/analytics.rs` (not at module root). It serializes only the returned aggregate struct to stdout and does no file write. It is the sole permitted live invocation:
 
@@ -180,7 +189,7 @@ fn one_shot_local_probe_is_json_and_has_no_ffi_surface() {
 
 Add a normal-build contract assertion that `Sources/CNeedlbar/include/needlbar.h` contains no `diagnostic_probe` and `nm -gU target/release/libneedlbar_bridge.a` contains neither `analytics_diagnostic_probe` nor `needlbar_test_`. Do not run the ignored test during CI/package verification; an investigator runs it once only after fixture tests pass.
 
-- [ ] **Step 5: Run narrow tests and commit.**
+- [x] **Step 5: Run narrow tests and commit.**
 
 Run: `cargo test -p needlbar-project-analytics --features analytics-diagnostic-probe --test diagnostic_probe && cargo test -p needlbar-project-analytics --features analytics-diagnostic-probe --test privacy && cargo test -p needlbar-bridge --features analytics-diagnostic-probe analytics::tests::one_shot_local_probe_is_json_and_has_no_ffi_surface -- --ignored --exact --nocapture`
 
