@@ -2,10 +2,17 @@
 
 **Updated:** 2026-09-08
 **Branch:** `main`; v0.3.0 release documentation integrated and pushed at `ca712d3`.
-**Current phase:** Analytics summary-first redesign and attribution investigation scoped and approved in conversation; written design awaiting review.
-**Next action:** Review `docs/superpowers/specs/2026-09-08-analytics-summary-first-design.md`, then write the implementation plan. No app changes have been made for this scope. Preserve the public v0.3.0 tag and unrelated dirty vendor checkout.
+**Current phase:** Analytics summary-first written design approved; five-task implementation plan prepared and self-reviewed.
+**Next action:** Confirm execution of `docs/superpowers/plans/2026-09-08-analytics-summary-first.md`, then create an isolated worktree and begin Task 1 (nonshipping aggregate-only probe). No app changes or live probe runs have been made for this scope. Preserve the public v0.3.0 tag and unrelated dirty vendor checkout.
 
 ## Analytics summary-first design — 2026-09-08
+
+The user approved the written design. The implementation plan separates the
+one-shot Rust diagnostic, UI-free Core semantics, adaptive native layout, native
+acceptance, and final serial gates. Main self-review corrected API/test routing,
+layer ownership, mixed diagnostic units and fixture-versus-live evidence labels.
+Planned commands are not evidence of completed implementation tests. Attribution
+corrections still require evidence and a reviewed technical amendment.
 
 User selected A (summary first), approved the detailed display rules and authorized
 investigating the zero-repository result. The new design preserves the v0.2.2

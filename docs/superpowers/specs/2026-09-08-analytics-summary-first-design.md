@@ -1,6 +1,6 @@
 # Analytics Summary-First Design
 
-**Status:** A layout and detailed scope approved in conversation; written spec awaiting user review.
+**Status:** Written spec approved by the user on 2026-09-08; implementation plan prepared for execution review.
 
 ## Purpose and scope
 
@@ -68,6 +68,9 @@ have accessible labels and explicit expanded state; color is not the sole signal
   failures. Counts for different units must not be added together. Explain timing
   truncation independently from Git output/record limits; do not claim lost cost
   merely because timing observations were bounded.
+  Where the existing schema merges units or causes, explicitly label that
+  ambiguity rather than inferring a breakdown from matching counts. A future
+  precise breakdown requires reviewed producer/schema evidence.
 - Initial loading, refreshing with existing data, stale last-good, unavailable,
   partial and complete states remain distinct. Disable Refresh while in flight.
   A failed refresh preserves the last successful content with a stale notice.
