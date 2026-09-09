@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-09
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** Tasks 1–2 implemented and reviewed; Task 3 implemented, with spec-review corrections in progress.
-**Next action:** Correct the timestamp caveat predicate and strengthen actual hosted AX/scroll assertions, then repeat Task 3 review before native acceptance. Preserve the public v0.3.0 tag and unrelated dirty main vendor checkout.
+**Current phase:** Tasks 1–2 implemented and reviewed; Task 3 semantic correction implemented, rendered accessibility acceptance blocked.
+**Next action:** Restore native Analytics window inspection / a usable rendered accessibility test path, finish Task 3 review, then Tasks 4–5. Preserve the public v0.3.0 tag and unrelated dirty main vendor checkout.
 
 ## Analytics Task 3 — review in progress
 
@@ -17,6 +17,27 @@ rather than the required rendered accessibility and scroll behavior. These are
 not accepted as complete. A minimal Core predicate/test extension is authorized
 to retain layer ownership; DTO, ABI, parsing and source behavior remain unchanged.
 Native pixel, keyboard and VoiceOver acceptance has not yet been performed.
+
+Correction commits `23978cf` and `e9e1ccb` move the timestamp predicate to Core
+and consume it in the view. Only a positive `missingTimestamp` count establishes
+incomplete timestamp coverage; pricing/Git/workspace errors do not. Core focused
+tests passed 13/13 and the final controller focused run passed 18/18. These are
+not final-tree full-suite or rendered-accessibility acceptance evidence.
+
+Two bounded test-only native AX probes failed to expose rendered labels/values.
+The refined attempt used `NSApplication`, an `NSHostingController` mounted in a
+real `NSWindow`, front/display/layout, a main-run-loop drain, and unignored AX
+traversal; all returned rendered strings were empty. Evidence:
+`/Users/taejunoh/Developer/LFG/needlbar-task3-ax-red-5.log` and
+`/Users/taejunoh/Developer/LFG/needlbar-task3-ax-refined-20260909.log`.
+Temporary failing probes were removed, not replaced by formatter proxies.
+Existing hosting tests prove geometry and scroll-view composition only, not
+rendered AX content, keyboard behavior, or last-disclosure reachability. Task 3
+remains unaccepted; Tasks 4–5 are pending. CUA queries of the existing runtime
+Needlbar by exact app path and name both timed out (`-10005 timeoutReached`),
+while the general surface inventory worked. The user was asked to open the
+Analytics window so native inspection connectivity can be checked. No new app
+was installed, no release asset changed, and nothing was pushed.
 
 ## Analytics Task 2 — Core presentation semantics
 
