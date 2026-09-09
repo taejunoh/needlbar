@@ -145,7 +145,7 @@ public struct AnalyticsView: View {
                             .font(.headline.monospacedDigit())
                     }
                     LabeledContent("Unlinked fragments", value: "\(snapshot.unattributed.fragments)")
-                    if unattributedTimestampCoverageIsIncomplete(snapshot) {
+                    if summary.unattributedTimestampCoverageIsIncomplete {
                         Text("Timestamp coverage is incomplete or uncertain, so this is not a verified 30-day total.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -209,12 +209,6 @@ public struct AnalyticsView: View {
     private func unattributedCost(_ snapshot: AnalyticsSnapshot) -> String {
         guard let cost = snapshot.unattributed.usage.estimatedCostUSDValue else { return "—" }
         return AnalyticsDisplayFormatter.cost(cost)
-    }
-
-    private func unattributedTimestampCoverageIsIncomplete(_ snapshot: AnalyticsSnapshot) -> Bool {
-        let timestampReasons = Set(["missingTimestamp", "invalidWorkspace", "missingWorkspace"])
-        return !snapshot.unattributed.reasons.isEmpty ||
-            snapshot.coverage.reasons.keys.contains(where: timestampReasons.contains)
     }
 
     @ViewBuilder
