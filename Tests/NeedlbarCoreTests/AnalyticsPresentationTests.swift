@@ -158,6 +158,23 @@ func missingDurationDoesNotEraseValidZeroActiveTime() {
     #expect(result.observedAIActivitySeconds == 0)
 }
 
+@Test("unattributed timestamp coverage is incomplete only for a positive missing timestamp diagnostic")
+func unattributedTimestampCoverageRequiresPositiveMissingTimestamp() {
+    let unrelatedReasons = AnalyticsPresentation.summary(
+        for: snapshot(coverageReasons: ["missingCost": 1, "gitTimedOut": 1])
+    )
+    let zeroTimestampCount = AnalyticsPresentation.summary(
+        for: snapshot(coverageReasons: ["missingTimestamp": 0])
+    )
+    let missingTimestamp = AnalyticsPresentation.summary(
+        for: snapshot(coverageReasons: ["missingTimestamp": 1])
+    )
+
+    #expect(unrelatedReasons.unattributedTimestampCoverageIsIncomplete == false)
+    #expect(zeroTimestampCount.unattributedTimestampCoverageIsIncomplete == false)
+    #expect(missingTimestamp.unattributedTimestampCoverageIsIncomplete == true)
+}
+
 @Test("time parsing and checked addition return unavailable on malformed or overflowing input")
 func timeParsingAndCheckedAdditionReturnUnavailableOnMalformedOrOverflowingInput() {
     let malformed = AnalyticsPresentation.summary(

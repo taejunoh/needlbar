@@ -14,6 +14,7 @@ public struct AnalyticsPresentationSummary: Sendable, Equatable {
     public let linkedRepositoryCount: UInt64
     public let unlinkedFragmentCount: UInt64
     public let eligibleFragmentCount: UInt64?
+    public let unattributedTimestampCoverageIsIncomplete: Bool
 
     public init(
         repositoryAttributedCostUSD: Decimal?,
@@ -21,7 +22,8 @@ public struct AnalyticsPresentationSummary: Sendable, Equatable {
         observedAIActivitySeconds: UInt64?,
         linkedRepositoryCount: UInt64,
         unlinkedFragmentCount: UInt64,
-        eligibleFragmentCount: UInt64?
+        eligibleFragmentCount: UInt64?,
+        unattributedTimestampCoverageIsIncomplete: Bool
     ) {
         self.repositoryAttributedCostUSD = repositoryAttributedCostUSD
         self.repositoryCostIsKnownSubtotal = repositoryCostIsKnownSubtotal
@@ -29,6 +31,7 @@ public struct AnalyticsPresentationSummary: Sendable, Equatable {
         self.linkedRepositoryCount = linkedRepositoryCount
         self.unlinkedFragmentCount = unlinkedFragmentCount
         self.eligibleFragmentCount = eligibleFragmentCount
+        self.unattributedTimestampCoverageIsIncomplete = unattributedTimestampCoverageIsIncomplete
     }
 }
 
@@ -82,7 +85,8 @@ public enum AnalyticsPresentation {
             observedAIActivitySeconds: activeTime,
             linkedRepositoryCount: UInt64(repositories.count),
             unlinkedFragmentCount: snapshot.unattributed.fragments,
-            eligibleFragmentCount: eligibleFragmentCount
+            eligibleFragmentCount: eligibleFragmentCount,
+            unattributedTimestampCoverageIsIncomplete: snapshot.coverage.reasons["missingTimestamp", default: 0] > 0
         )
     }
 
