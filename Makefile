@@ -21,7 +21,7 @@ swift-test:
 					echo "failed to inspect restored bridge archive" >&2; \
 					restore_status=1; \
 				else \
-					if grep -F 'needlbar_test_' "$$symbols_file" >/dev/null; then \
+					if grep -F 'needlbar_test_' "$$symbols_file" >/dev/null || grep -F 'analytics_diagnostic_probe' "$$symbols_file" >/dev/null || grep -F 'diagnostic_probe' "$$symbols_file" >/dev/null; then \
 						echo "restored bridge archive contains test-only symbols" >&2; \
 						restore_status=1; \
 					else \
@@ -66,6 +66,9 @@ acceptance-build-test:
 native-acceptance-harness-test:
 	./scripts/tests/native-acceptance-harness-tests.sh
 
+bridge-archive-test:
+	./scripts/tests/verify-public-bridge-surface-tests.sh
+
 provider-brand-assets-test:
 	./scripts/tests/provider-brand-assets-tests.sh
 
@@ -81,6 +84,7 @@ notarize-test:
 test:
 	cargo test --workspace --features bridge-test-runtime
 	sh ./scripts/tests/vendor-tokscale-test.sh
+	$(MAKE) bridge-archive-test
 	$(MAKE) swift-test
 	$(MAKE) provider-brand-assets-test
 	$(MAKE) widget-extension-test
