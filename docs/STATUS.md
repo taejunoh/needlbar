@@ -2,8 +2,23 @@
 
 **Updated:** 2026-09-09
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** Task 1 diagnostic probe and independent reviews complete; Task 2 Core presentation semantics in progress.
-**Next action:** Complete Task 2 tests and independent reviews, then implement the A layout. Preserve the public v0.3.0 tag and unrelated dirty main vendor checkout.
+**Current phase:** Tasks 1–2 implemented and reviewed; Task 3 A-layout native presentation in progress.
+**Next action:** Complete Task 3 tests and independent reviews, then native acceptance. Preserve the public v0.3.0 tag and unrelated dirty main vendor checkout.
+
+## Analytics Task 2 — Core presentation semantics
+
+`9f9a76b` implements pure summary/diagnostic projection and 11 focused tests.
+Empty repository evidence yields unavailable cost/activity, valid zero stays zero,
+Decimal/UInt64 calculations fail closed, and diagnostic keys are allowlisted.
+`make test` exited 0 with 444 Swift tests; log:
+`/Users/taejunoh/Developer/LFG/needlbar-analytics-task2-make-test-20260909.log`.
+Spec review required the planned public model names; rename-only `dd4486b`
+exports `AnalyticsPresentationSummary` and `AnalyticsPresentationDiagnostic`,
+with typed-test RED/GREEN and 11 focused tests passing afterward. Both spec and
+quality review passed. The full suite predates only that naming delta; Task 5
+will verify the full final tree. Quality noted a nonblocking direct-test gap for
+the two legacy cap known-subtotal predicates; implementation exactly preserves
+the existing predicate. No UI, DTO, ABI or provider change occurred in Task 2.
 
 ## Analytics execution baseline — 2026-09-09
 

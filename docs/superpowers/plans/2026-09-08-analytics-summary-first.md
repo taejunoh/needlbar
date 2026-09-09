@@ -203,7 +203,7 @@ Commit: `git add crates/needlbar-project-analytics/Cargo.toml crates/needlbar-pr
 - Create: `Sources/NeedlbarCore/Analytics/AnalyticsPresentation.swift`
 - Create: `Tests/NeedlbarCoreTests/AnalyticsPresentationTests.swift`
 
-- [ ] **Step 1: Add failing formatter tests for all truthful states.**
+- [x] **Step 1: Add failing formatter tests for all truthful states.**
 
 Add Core fixtures for: no repositories with unlinked fragments; no data; one repository with genuine `$0.00` and `0s`; mixed attribution with partial pricing; overflow signals; and a maximum snapshot. Define the named cases using the fixture constructor in the implementation detail section below. Test the Core facts below; the App target supplies localized UI strings.
 
@@ -217,13 +217,13 @@ Add Core fixtures for: no repositories with unlinked fragments; no data; one rep
 #expect(AnalyticsPresentation.diagnostics(for: mixedCounterSnapshot).first?.unit == .mixedBoundedProcessing)
 ```
 
-- [ ] **Step 2: Run the RED test.**
+- [x] **Step 2: Run the RED test.**
 
 Run: `make swift-test SWIFT_TEST_FILTER=AnalyticsPresentationTests`
 
 Expected: compile failure because `AnalyticsPresentation` does not exist.
 
-- [ ] **Step 3: Implement pure formatter helpers before changing view structure.**
+- [x] **Step 3: Implement pure formatter helpers before changing view structure.**
 
 Keep `AnalyticsSnapshot` unchanged. Create this UI-free Core model and computation; all values are validated snapshot values, not strings for the view:
 
@@ -260,7 +260,7 @@ public enum AnalyticsPresentation {
 
 `summary(for:)` returns nil cost/activity for `repositories.isEmpty`; otherwise it uses checked `UInt64.addingReportingOverflow` for activity, so a valid repository value of zero remains `0`. It sums only repository cost; `unattributed.usage` remains separate. `eligibleFragmentCount` is a checked sum of `coverage.attributedFragments` and `coverage.unattributedFragments`, nil for zero/overflow. `repositoryCostIsKnownSubtotal` preserves the existing missing-cost/cap semantics. `diagnostics(for:)` gives `recordLimitReached` `.mixedBoundedProcessing`, `missingDuration` `.observations`, `gitOutputLimitReached`, `gitTimedOut`, and `gitUnavailable` `.inspectionFailures`, and all other existing coverage reasons `.fragments`; it does not add counts or manufacture a cause.
 
-- [ ] **Step 4: Run the focused test and commit.**
+- [x] **Step 4: Run the focused test and commit.**
 
 Run: `make swift-test SWIFT_TEST_FILTER=AnalyticsPresentationTests`
 
