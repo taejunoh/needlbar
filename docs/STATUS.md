@@ -5,6 +5,31 @@
 **Current phase:** Tasks 1–2 implemented and reviewed; Task 3 semantic correction implemented, rendered accessibility acceptance blocked.
 **Next action:** Restore native Analytics window inspection / a usable rendered accessibility test path, finish Task 3 review, then Tasks 4–5. Preserve the public v0.3.0 tag and unrelated dirty main vendor checkout.
 
+## Analytics preview installed — 2026-09-09
+
+The user explicitly requested installation/execution after a screenshot showed
+the old Analytics UI. `make package` and `make smoke` exited 0 on `4bc0137`
+(application source through `e9e1ccb`); log:
+`/Users/taejunoh/Developer/LFG/needlbar-analytics-preview-build-20260909.log`.
+This is an ad-hoc development preview retaining version/build `0.3.0 (3)`, not
+a new signed public release. Strict deep signature verification passed.
+
+Two old Needlbar instances were identified and terminated after checking exact
+executable paths: PID 55662 from `needlbar-v030-final-tag/dist`, and PID 82733
+from `needlbar-runtime/latest`. The old runtime bundle was moved recoverably to
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/analytics-20260909.DdDenR/Needlbar.app`.
+The new bundle was staged and moved to
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app` without
+resetting preferences or credentials. Source, staged and installed executable
+SHA-256 all match:
+`7c6cb246b0086b6be6293b6a8606aac35847874600a57c5cb27768306ae8e1ce`.
+
+CUA selection of the exact installed app launched it, but its UI observation
+timed out (`-10005`). A subsequent process check found only PID 75598 running
+from the new runtime path. This proves replacement/startup, not visual or AX
+acceptance. The rendered native inspection blocker remains. No push, merge,
+public tag, release asset or Homebrew change was performed.
+
 ## Analytics Task 3 — review in progress
 
 `8f767dc` adds the summary-first view. The full `make test` run exited 0
