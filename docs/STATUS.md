@@ -2,8 +2,21 @@
 
 **Updated:** 2026-09-09
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** Tasks 1–2 implemented and reviewed; Task 3 A-layout native presentation in progress.
-**Next action:** Complete Task 3 tests and independent reviews, then native acceptance. Preserve the public v0.3.0 tag and unrelated dirty main vendor checkout.
+**Current phase:** Tasks 1–2 implemented and reviewed; Task 3 implemented, with spec-review corrections in progress.
+**Next action:** Correct the timestamp caveat predicate and strengthen actual hosted AX/scroll assertions, then repeat Task 3 review before native acceptance. Preserve the public v0.3.0 tag and unrelated dirty main vendor checkout.
+
+## Analytics Task 3 — review in progress
+
+`8f767dc` adds the summary-first view. The full `make test` run exited 0
+(447 Swift tests), before a bounded final formatter/assertion delta; the final
+focused Analytics suite passed 18 tests. Evidence:
+`/Users/taejunoh/Developer/LFG/needlbar-analytics-task3-make-test-20260909.log`.
+Spec review found that the timestamp caveat inferred incomplete dates from
+unrelated reasons, and hosted assertions checked geometry/scroll-view presence
+rather than the required rendered accessibility and scroll behavior. These are
+not accepted as complete. A minimal Core predicate/test extension is authorized
+to retain layer ownership; DTO, ABI, parsing and source behavior remain unchanged.
+Native pixel, keyboard and VoiceOver acceptance has not yet been performed.
 
 ## Analytics Task 2 — Core presentation semantics
 
