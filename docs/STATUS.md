@@ -1,9 +1,86 @@
 # Needlbar Development Status
 
-**Updated:** 2026-09-07
+**Updated:** 2026-09-08
 **Branch:** `codex/v030-release-homebrew`; release preparation based on `main` at `da2dc3e`.
-**Current phase:** v0.3.0 test-fixture UInt64 correction committed; fresh local full gate exposed an independent watcher-test scheduling race, with test-only synchronization in progress.
-**Next action:** Verify both test-only corrections, integrate/push a new candidate, and require successful ordinary CI before requesting fresh protected tagless validation approval. Do not tag `31d1e9e` or `66a82ae`. Environment policy admits only main/v*; do not change it. No tag, public release or tap change has been made. Native acceptance remains partial and Phase 2 is excluded.
+**Current phase:** v0.3.0 public release and Homebrew distribution complete; final documentation ready for integration after its committed-tree contract check.
+**Next action:** Run the committed documentation contract and push this follow-up without changing the public tag. Remaining product work requires separately approved scope; native acceptance remains partial and Phase 2 is excluded.
+
+## v0.3.0 final source verification — 2026-09-08
+
+In a separate detached worktree at the immutable public tag, `make test`,
+`make package`, and `make smoke` each exited 0. Swift reported 433 passing tests.
+Log: `/Users/taejunoh/Developer/LFG/needlbar-v030-final-tag-gates.log` records
+`TEST_EXIT=0`, `PACKAGE_EXIT=0`, `SMOKE_EXIT=0`. This ad-hoc local package was
+not substituted for the independently verified public signed ZIP. The pinned
+submodule was reused through a command-scoped local object-store clone; its
+stored remote and gitlink were unchanged. The validation worktree is retained
+at `/Users/taejunoh/Developer/LFG/needlbar-v030-final-tag` with its local build.
+
+Public README and release-contract follow-up `0f5d935` passed its focused
+contract gate and spec review. The public record uses the actual publication
+date, 2026-09-08, rather than the plan's earlier anticipated date. No product
+code, release tag or public assets changed in this documentation follow-up.
+Final independent review found no distribution or contract regression; its
+remaining condition is committing the coherent README/STATUS state and checking
+that exact documentation tree before push. The existing non-fatal Swift warning
+about `matching` being immutable is deferred, not changed in the public tag.
+
+## v0.3.0 Homebrew Cask — 2026-09-08
+
+Tap commit `ab144e7` adds only `Casks/needlbar.rb` to `taejunoh/homebrew-tap`.
+It fixes version `0.3.0`, the verified public ZIP SHA below, macOS 14 minimum
+and arm64, with no zap/trash, updater or script hooks. Spec and independent
+quality reviews passed. Existing `claudebeat.rb` was unchanged.
+
+Homebrew `6.0.18-113-gecbeb2e` style and online audit passed. This version
+rejects audit-by-file-path, so a temporary local validation tap was used.
+Installation with `--require-sha` and normal quarantine into
+`/Users/taejunoh/Developer/LFG/needlbar-cask-apps.BCB2Nl` passed; host/widget
+bytes matched the fresh public download. Version/build, architecture,
+Developer ID/team/hardened runtime, strict signature, staple and Gatekeeper
+checks passed on that installed app. The test Cask was uninstalled without
+zap and the empty test app directory removed. User apps/settings were preserved.
+
+`brew untap` hit Homebrew's `uninitialized constant Cask::CaskLoader` bug.
+Only the newly created temporary tap checkout was moved out of Homebrew to
+`/Users/taejunoh/Developer/LFG/needlbar-validation-tap-backup-20260908` for
+recoverable cleanup; no other tap or installed Cask was removed. Official
+`taejunoh/tap` was fast-forwarded, and `brew info --cask --json=v2
+taejunoh/tap/needlbar` confirmed the published version, SHA and requirements.
+
+Install: `brew install --cask taejunoh/tap/needlbar`.
+Update: `brew upgrade --cask needlbar`. No in-app updater is implied.
+
+## v0.3.0 Public Release Record — 2026-09-08
+
+Tag: `v0.3.0`
+Candidate commit: `32f6258f8b13db3d950c9bb74370a1b3da7c7290`
+Public release URL: `https://github.com/taejunoh/needlbar/releases/tag/v0.3.0`
+Public ZIP verification: passed
+Public checksum sidecar verification: passed
+
+ZIP SHA-256: `83949a1334cd49070ac2c33189b295c1f3949c5cd511dcf5faaf0f7f4f1f8ebc`.
+CI `34130879665` and tagless validation `34167381950` succeeded at the exact
+candidate. Distinct tag-push run `34168306068` independently rebuilt, signed,
+notarized, stapled, validated and published its own ZIP plus checksum sidecar.
+The annotated tag is fixed; failed earlier candidates were never tagged.
+
+A fresh public download in
+`/Users/taejunoh/Developer/LFG/needlbar-v030-public.RX0el1` passed the single
+ZIP/sidecar record check, host/widget arm64-only and `0.3.0`/build `3`, one
+embedded extension, and review/acceptance-fixture exclusion checks. Developer
+ID team `3BMF4LM6TM` matches the previous public artifact. Host/widget strict
+signature and hardened runtime, staple, Gatekeeper and isolated downloaded-app
+smoke checks passed. The initial log wrapper had a zsh substitution error;
+the affected assertion was rerun explicitly and passed, as did an independent
+review's security checks. No whole-wrapper success is inferred from that error.
+Evidence: `verification.log` in the download directory. Temporary smoke harness
+was removed; user runtime, settings and credentials were preserved.
+
+The signed release does not establish the still-pending native macOS 14 arm64
+Widget Gallery/App Group or notification-permission acceptance. Settings
+keyboard/drag/display/VoiceOver and Codex verifying-state acceptance remain
+partial. Historical v0.2.2 records below remain unchanged.
 
 ## v0.3.0 local watcher-test synchronization — 2026-09-07
 
