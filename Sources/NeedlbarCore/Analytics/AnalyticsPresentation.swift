@@ -7,7 +7,7 @@ public enum AnalyticsDiagnosticUnit: Sendable, Equatable {
     case mixedBoundedProcessing
 }
 
-public struct AnalyticsSummary: Sendable, Equatable {
+public struct AnalyticsPresentationSummary: Sendable, Equatable {
     public let repositoryAttributedCostUSD: Decimal?
     public let repositoryCostIsKnownSubtotal: Bool
     public let observedAIActivitySeconds: UInt64?
@@ -32,7 +32,7 @@ public struct AnalyticsSummary: Sendable, Equatable {
     }
 }
 
-public struct AnalyticsDiagnostic: Sendable, Equatable {
+public struct AnalyticsPresentationDiagnostic: Sendable, Equatable {
     public let code: String
     public let count: UInt64
     public let unit: AnalyticsDiagnosticUnit
@@ -45,8 +45,8 @@ public struct AnalyticsDiagnostic: Sendable, Equatable {
 }
 
 public enum AnalyticsPresentation {
-    public typealias Summary = AnalyticsSummary
-    public typealias Diagnostic = AnalyticsDiagnostic
+    public typealias Summary = AnalyticsPresentationSummary
+    public typealias Diagnostic = AnalyticsPresentationDiagnostic
 
     private static let diagnosticOrder = [
         "missingWorkspace",
@@ -65,7 +65,7 @@ public enum AnalyticsPresentation {
         "gitUnavailable"
     ]
 
-    public static func summary(for snapshot: AnalyticsSnapshot) -> Summary {
+    public static func summary(for snapshot: AnalyticsSnapshot) -> AnalyticsPresentationSummary {
         let repositories = snapshot.repositories
         let cost = repositories.isEmpty ? nil : repositoryCost(for: repositories)
         let activeTime = repositories.isEmpty ? nil : observedActiveTime(for: repositories)
@@ -76,7 +76,7 @@ public enum AnalyticsPresentation {
             ? nil
             : eligibleFragments.partialValue
 
-        return Summary(
+        return AnalyticsPresentationSummary(
             repositoryAttributedCostUSD: cost,
             repositoryCostIsKnownSubtotal: hasPartialRepositoryCost(snapshot),
             observedAIActivitySeconds: activeTime,
@@ -86,10 +86,10 @@ public enum AnalyticsPresentation {
         )
     }
 
-    public static func diagnostics(for snapshot: AnalyticsSnapshot) -> [Diagnostic] {
+    public static func diagnostics(for snapshot: AnalyticsSnapshot) -> [AnalyticsPresentationDiagnostic] {
         diagnosticOrder.compactMap { code in
             guard let count = snapshot.coverage.reasons[code] else { return nil }
-            return Diagnostic(code: code, count: count, unit: diagnosticUnit(for: code))
+            return AnalyticsPresentationDiagnostic(code: code, count: count, unit: diagnosticUnit(for: code))
         }
     }
 

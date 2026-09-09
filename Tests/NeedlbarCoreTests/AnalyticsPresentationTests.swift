@@ -74,7 +74,9 @@ private func snapshot(
 
 @Test("empty repositories keep repository cost and observed time unavailable")
 func emptyRepositoriesKeepRepositoryCostAndObservedTimeUnavailable() {
-    let result = AnalyticsPresentation.summary(for: snapshot(unattributedCost: "99", unattributedFragments: 446))
+    let result: AnalyticsPresentationSummary = AnalyticsPresentation.summary(
+        for: snapshot(unattributedCost: "99", unattributedFragments: 446)
+    )
 
     #expect(result.repositoryAttributedCostUSD == nil)
     #expect(result.observedAIActivitySeconds == nil)
@@ -225,14 +227,14 @@ func diagnosticsUseStableUnitsAndFixedOrderingWithoutExposingUnknownRawKeys() {
     )
 
     #expect(result == [
-        AnalyticsDiagnostic(code: "missingTimestamp", count: 434, unit: .fragments),
-        AnalyticsDiagnostic(code: "missingCost", count: 2, unit: .fragments),
-        AnalyticsDiagnostic(code: "missingDuration", count: 434, unit: .observations),
-        AnalyticsDiagnostic(code: "pendingCommitWindow", count: 5, unit: .fragments),
-        AnalyticsDiagnostic(code: "recordLimitReached", count: 446, unit: .mixedBoundedProcessing),
-        AnalyticsDiagnostic(code: "gitOutputLimitReached", count: 3, unit: .inspectionFailures),
-        AnalyticsDiagnostic(code: "gitTimedOut", count: 4, unit: .inspectionFailures),
-        AnalyticsDiagnostic(code: "gitUnavailable", count: 12, unit: .inspectionFailures)
+        AnalyticsPresentationDiagnostic(code: "missingTimestamp", count: 434, unit: .fragments),
+        AnalyticsPresentationDiagnostic(code: "missingCost", count: 2, unit: .fragments),
+        AnalyticsPresentationDiagnostic(code: "missingDuration", count: 434, unit: .observations),
+        AnalyticsPresentationDiagnostic(code: "pendingCommitWindow", count: 5, unit: .fragments),
+        AnalyticsPresentationDiagnostic(code: "recordLimitReached", count: 446, unit: .mixedBoundedProcessing),
+        AnalyticsPresentationDiagnostic(code: "gitOutputLimitReached", count: 3, unit: .inspectionFailures),
+        AnalyticsPresentationDiagnostic(code: "gitTimedOut", count: 4, unit: .inspectionFailures),
+        AnalyticsPresentationDiagnostic(code: "gitUnavailable", count: 12, unit: .inspectionFailures)
     ])
     #expect(result.allSatisfy { $0.code != "unknownRawReason" })
 }
@@ -254,8 +256,8 @@ func allUnlinkedCoverageRemainsFragmentDiagnosticsWithSeparateCounts() {
     #expect(summary.unlinkedFragmentCount == 446)
     #expect(summary.eligibleFragmentCount == 446)
     #expect(diagnostics == [
-        AnalyticsDiagnostic(code: "repositoryUnavailable", count: 12, unit: .fragments),
-        AnalyticsDiagnostic(code: "missingTimestamp", count: 434, unit: .fragments)
+        AnalyticsPresentationDiagnostic(code: "repositoryUnavailable", count: 12, unit: .fragments),
+        AnalyticsPresentationDiagnostic(code: "missingTimestamp", count: 434, unit: .fragments)
     ])
 }
 
