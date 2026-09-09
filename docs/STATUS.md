@@ -2,8 +2,22 @@
 
 **Updated:** 2026-09-09
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** Tasks 1–2 implemented and reviewed; Task 3 semantic correction implemented, rendered accessibility acceptance blocked.
-**Next action:** Restore native Analytics window inspection / a usable rendered accessibility test path, finish Task 3 review, then Tasks 4–5. Preserve the public v0.3.0 tag and unrelated dirty main vendor checkout.
+**Current phase:** Analytics visual redesign brainstorming after the user rejected the installed preview's hierarchy, color and grouping. Earlier native acceptance remains incomplete.
+**Next action:** Get feedback on the new visual comparison, then approve a revised visual spec/plan before changing app presentation. Preserve the current data semantics, public v0.3.0 tag and unrelated dirty main vendor checkout.
+
+## Analytics visual redesign — 2026-09-09
+
+The user approved carrying the system dashboard's semantic colors and icons into
+Analytics. A visual-only comparison of balanced dashboard (recommended) and
+compact report layouts is retained at
+`.superpowers/brainstorm/92301-1788996568/content/analytics-visual-directions.html`
+in the main checkout. Browser light/wide and dark/compact layouts were inspected;
+this is mockup evidence, not native app acceptance. The mockup uses a centered
+bounded content width, equal colored summary cards, separate evidence panels,
+one warning area and collapsed nonduplicated diagnostics/definitions. It keeps
+unavailable values unavailable and explicitly qualifies uncertain-period cost.
+No new native presentation code or installed bundle change accompanied this
+brainstorming step. Layout selection and revised written spec remain pending.
 
 ## Analytics preview installed — 2026-09-09
 
