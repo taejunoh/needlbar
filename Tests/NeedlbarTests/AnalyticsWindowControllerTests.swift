@@ -123,6 +123,24 @@ struct AnalyticsWindowControllerTests {
         #expect(AnalyticsDisplayFormatter.metric("") == nil)
     }
 
+    @Test func summaryFirstFormattingKeepsAbsentEvidenceDistinctFromMeasuredZero() {
+        #expect(AnalyticsDisplayFormatter.repositoryAttributedEstimate(nil, knownSubtotal: false) == "—")
+        #expect(AnalyticsDisplayFormatter.repositoryAttributedEstimate(.zero, knownSubtotal: false) == "$0.00")
+        #expect(AnalyticsDisplayFormatter.repositoryAttributedEstimate(Decimal(string: "1.25")!, knownSubtotal: true) == "$1.25 (known subtotal)")
+        #expect(AnalyticsDisplayFormatter.observedAIActivity(nil) == "—")
+        #expect(AnalyticsDisplayFormatter.observedAIActivity(0) == "0s")
+    }
+
+    @Test func summaryFirstDisclosuresHaveDistinctAccessibleNamesAndStates() {
+        let labels = AnalyticsDisplayFormatter.disclosureAccessibilityLabels
+
+        #expect(labels.diagnostics == "Analytics diagnostics")
+        #expect(labels.estimateDefinition == "Estimate definition")
+        #expect(labels.diagnostics != labels.estimateDefinition)
+        #expect(AnalyticsDisplayFormatter.disclosureAccessibilityValue(isExpanded: false) == "Collapsed")
+        #expect(AnalyticsDisplayFormatter.disclosureAccessibilityValue(isExpanded: true) == "Expanded")
+    }
+
     @Test func unavailableRepositoryGetsExplicitSafeStatePresentation() {
         let snapshot = populatedAnalyticsSnapshot()
         let unavailable = snapshot.repositories.first { $0.state == "unavailable" }
@@ -170,6 +188,7 @@ struct AnalyticsWindowControllerTests {
 
         #expect(commit.pullRequestNumber == 42)
         #expect(commit.coverage == "partial")
+        #expect(AnalyticsDisplayFormatter.commitCoverage(commit.coverage) == "Partial")
         let gitReasons = AnalyticsDisplayFormatter.gitReasonCopy(repository.coverage.reasons)
         #expect(gitReasons.map(\.displayText).contains("Git timeout (1)"))
         #expect(gitReasons.map(\.displayText).contains("Repository inspection stopped at a safe limit (3)"))
@@ -237,6 +256,26 @@ struct AnalyticsWindowControllerTests {
         #expect(hostingView.frame.size == NSSize(width: 760, height: 520))
         #expect(elapsed < .seconds(10))
     }
+
+    @Test func summaryFirstViewHostsScrollableContentAtDefaultAndMinimumWindowSizes() async {
+        for snapshot in [testAnalyticsSnapshot(), populatedAnalyticsSnapshot(), maximumAnalyticsSnapshot()] {
+            let repository = ImmediateAnalyticsRepository(snapshot: snapshot)
+            let viewModel = AnalyticsViewModel(store: AnalyticsSnapshotStore(), repository: repository)
+            viewModel.loadIfNeeded()
+            #expect(await eventually { viewModel.snapshot != nil })
+
+            for size in [NSSize(width: 760, height: 520), NSSize(width: 640, height: 400)] {
+                let hostingView = NSHostingView(rootView: AnalyticsView(viewModel: viewModel))
+                hostingView.frame = NSRect(origin: .zero, size: size)
+                hostingView.layoutSubtreeIfNeeded()
+
+                #expect(hostingView.bounds.size == size)
+                #expect(hostingView.fittingSize.width >= 640)
+                #expect(hostingView.fittingSize.height >= 400)
+                #expect(hostingView.containsSubview(ofType: NSScrollView.self))
+            }
+        }
+    }
 }
 
 @MainActor
@@ -298,6 +337,12 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
         await Task.yield()
     }
     return false
+}
+
+private extension NSView {
+    func containsSubview<T: NSView>(ofType type: T.Type) -> Bool {
+        subviews.contains { $0 is T || $0.containsSubview(ofType: type) }
+    }
 }
 
 private func testAnalyticsSnapshot() -> AnalyticsSnapshot {

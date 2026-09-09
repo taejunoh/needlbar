@@ -4,43 +4,60 @@ import SwiftUI
 
 public struct AnalyticsView: View {
     @ObservedObject private var viewModel: AnalyticsViewModel
+    @State private var lastSuccessfulSnapshot: AnalyticsSnapshot?
+    @State private var diagnosticsExpanded = false
+    @State private var estimateDefinitionExpanded = false
+    @State private var expandedSections: Set<String> = []
 
     public init(viewModel: AnalyticsViewModel) {
         _viewModel = ObservedObject(wrappedValue: viewModel)
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                if viewModel.isLoading {
-                    ProgressView(viewModel.statusCopy)
-                        .controlSize(.small)
-                } else if let snapshot = viewModel.snapshot {
-                    snapshotContent(snapshot)
-                } else {
-                    Text(viewModel.statusCopy)
-                        .foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+            header
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if viewModel.isLoading {
+                        ProgressView(viewModel.statusCopy)
+                            .controlSize(.small)
+                    }
+                    if let snapshot = displayedSnapshot {
+                        snapshotContent(snapshot)
+                    } else if !viewModel.isLoading {
+                        Text(viewModel.statusCopy)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                GroupBox("About these estimates") {
-                    Text(AnalyticsDisplayFormatter.aboutEstimates)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(24)
             }
-            .padding(24)
         }
         .frame(minWidth: 640, minHeight: 400)
+        .onReceive(viewModel.$state) { state in
+            switch state {
+            case let .fresh(snapshot), let .stale(snapshot):
+                lastSuccessfulSnapshot = snapshot
+            case .idle, .loading, .unavailable:
+                break
+            }
+        }
+    }
+
+    private var displayedSnapshot: AnalyticsSnapshot? {
+        viewModel.snapshot ?? (viewModel.isLoading ? lastSuccessfulSnapshot : nil)
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Local repository analytics")
+                    Text("Analytics")
                         .font(.title2.weight(.semibold))
-                    Text("Last 30 days")
+                    Text(captureCopy)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -50,15 +67,7 @@ public struct AnalyticsView: View {
                     .accessibilityLabel("Refresh analytics")
                     .accessibilityValue(AnalyticsDisplayFormatter.refreshAccessibilityValue(isLoading: viewModel.isLoading))
             }
-            Text("Local-only estimates from observed AI sessions and repository metadata. This is not a live source-control view.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if let snapshot = viewModel.snapshot {
-                Text("Generated \(AnalyticsDisplayFormatter.date(snapshot.generatedAt))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if viewModel.presentationState == .stale || viewModel.presentationState == .fresh && viewModel.statusCopy != "Local analysis complete." {
+            if viewModel.presentationState == .stale || viewModel.presentationState == .unavailable || viewModel.presentationState == .fresh && viewModel.statusCopy != "Local analysis complete." {
                 Text(viewModel.statusCopy)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -66,65 +75,209 @@ public struct AnalyticsView: View {
         }
     }
 
+    private var captureCopy: String {
+        guard let snapshot = displayedSnapshot else { return "Last 30 days · Capture pending" }
+        return "Last 30 days · Captured \(AnalyticsDisplayFormatter.date(snapshot.generatedAt))"
+    }
+
     @ViewBuilder
     private func snapshotContent(_ snapshot: AnalyticsSnapshot) -> some View {
-        let totalCost = snapshot.repositories.reduce(Decimal.zero) {
-            $0 + ($1.usage.estimatedCostUSDValue ?? .zero)
-        }
+        let summary = AnalyticsPresentation.summary(for: snapshot)
+        let diagnostics = AnalyticsPresentation.diagnostics(for: snapshot)
         VStack(alignment: .leading, spacing: 16) {
-            GroupBox("Summary") {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .leading)], alignment: .leading, spacing: 10) {
-                    summaryMetric("Estimated cost", AnalyticsDisplayFormatter.summaryCost(totalCost, snapshot: snapshot))
-                    summaryMetric("Observed active AI-session time", AnalyticsDisplayFormatter.duration(observedTime(in: snapshot.repositories)))
-                    summaryMetric("Coverage", coverageCopy(snapshot.coverage))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 4)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .leading)], alignment: .leading, spacing: 12) {
+                summaryCard(
+                    "Repository-attributed estimate",
+                    AnalyticsDisplayFormatter.repositoryAttributedEstimate(
+                        summary.repositoryAttributedCostUSD,
+                        knownSubtotal: summary.repositoryCostIsKnownSubtotal
+                    ),
+                    summary.repositoryAttributedCostUSD == nil
+                        ? "No linked repositories"
+                        : summary.repositoryCostIsKnownSubtotal
+                            ? "Known subtotal; some local pricing is unavailable."
+                            : "Local engine pricing; not an invoice."
+                )
+                summaryCard(
+                    "Repository linkage",
+                    "\(summary.linkedRepositoryCount) linked repositories",
+                    summary.linkedRepositoryCount == 0
+                        ? "No linked repositories · \(summary.unlinkedFragmentCount) unlinked fragments"
+                        : "\(summary.unlinkedFragmentCount) unlinked fragments"
+                )
+                summaryCard(
+                    "Observed AI activity",
+                    AnalyticsDisplayFormatter.observedAIActivity(summary.observedAIActivitySeconds),
+                    summary.observedAIActivitySeconds == nil
+                        ? "No repository-attributed timing evidence."
+                        : diagnostics.contains(where: { $0.code == "missingDuration" })
+                            ? "Some responses lack duration; observed activity remains separate."
+                            : "Timestamp-gap observation, not coding hours."
+                )
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             GroupBox("Repositories") {
                 if snapshot.repositories.isEmpty {
-                    Text("No observed repositories in this analysis range.")
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("No usable local repository association was established for this capture.")
+                        Text("This does not mean there were no repositories or AI activity. Review Diagnostics for retained limitations, then use Refresh to run another manual local capture.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     LazyVStack(alignment: .leading, spacing: 10) {
                         ForEach(snapshot.repositories, id: \.repositoryID) { repository in
                             repositoryRow(repository)
+                            if repository.repositoryID != snapshot.repositories.last?.repositoryID {
+                                Divider()
+                            }
                         }
                     }
                 }
             }
 
             GroupBox("Unattributed") {
-                HStack {
-                    Text(AnalyticsDisplayFormatter.cost(snapshot.unattributed.usage.estimatedCostUSDValue ?? .zero))
-                        .font(.headline.monospacedDigit())
-                    Text("Estimated cost")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("\(snapshot.unattributed.fragments) fragments")
-                        .foregroundStyle(.secondary)
-                }
-                if !snapshot.unattributed.reasons.isEmpty {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Some local usage could not be matched to a repository or timestamp.")
+                VStack(alignment: .leading, spacing: 8) {
+                    LabeledContent("Unattributed estimated cost") {
+                        Text(unattributedCost(snapshot))
+                            .font(.headline.monospacedDigit())
+                    }
+                    LabeledContent("Unlinked fragments", value: "\(snapshot.unattributed.fragments)")
+                    if unattributedTimestampCoverageIsIncomplete(snapshot) {
+                        Text("Timestamp coverage is incomplete or uncertain, so this is not a verified 30-day total.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        LazyVStack(alignment: .leading, spacing: 3) {
-                            ForEach(AnalyticsDisplayFormatter.unattributedReasonCopy(snapshot.unattributed.reasons)) { reason in
-                                Text(reason.displayText)
-                            }
+                    }
+                    if !snapshot.unattributed.reasons.isEmpty {
+                        Text("Some local usage could not be matched to a repository.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach(AnalyticsDisplayFormatter.unattributedReasonCopy(snapshot.unattributed.reasons)) { reason in
+                            Text(reason.displayText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            DisclosureGroup(isExpanded: $diagnosticsExpanded) {
+                diagnosticsContent(diagnostics)
+                    .padding(.top, 6)
+            } label: {
+                Text(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.diagnostics)
+                    .font(.headline)
+            }
+            .accessibilityLabel(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.diagnostics)
+            .accessibilityValue(AnalyticsDisplayFormatter.disclosureAccessibilityValue(isExpanded: diagnosticsExpanded))
+            .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
+
+            DisclosureGroup(isExpanded: $estimateDefinitionExpanded) {
+                estimateDefinition
+                    .padding(.top, 6)
+            } label: {
+                Text(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.estimateDefinition)
+                    .font(.headline)
+            }
+            .accessibilityLabel(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.estimateDefinition)
+            .accessibilityValue(AnalyticsDisplayFormatter.disclosureAccessibilityValue(isExpanded: estimateDefinitionExpanded))
+            .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
+        }
+    }
+
+    private func summaryCard(_ title: String, _ value: String, _ detail: String) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(value)
+                    .font(.headline.monospacedDigit())
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
+        } label: {
+            Text(title)
+                .font(.caption.weight(.medium))
+        }
+    }
+
+    private func unattributedCost(_ snapshot: AnalyticsSnapshot) -> String {
+        guard let cost = snapshot.unattributed.usage.estimatedCostUSDValue else { return "—" }
+        return AnalyticsDisplayFormatter.cost(cost)
+    }
+
+    private func unattributedTimestampCoverageIsIncomplete(_ snapshot: AnalyticsSnapshot) -> Bool {
+        let timestampReasons = Set(["missingTimestamp", "invalidWorkspace", "missingWorkspace"])
+        return !snapshot.unattributed.reasons.isEmpty ||
+            snapshot.coverage.reasons.keys.contains(where: timestampReasons.contains)
+    }
+
+    @ViewBuilder
+    private func diagnosticsContent(_ diagnostics: [AnalyticsPresentationDiagnostic]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if diagnostics.isEmpty {
+                Text("No retained diagnostic counts for this capture.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(diagnostics, id: \.code) { diagnostic in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(AnalyticsDisplayFormatter.diagnosticTitle(diagnostic.code))
+                                .font(.subheadline.weight(.medium))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 8)
+                            Text("\(diagnostic.count) \(AnalyticsDisplayFormatter.diagnosticUnit(diagnostic.unit))")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(AnalyticsDisplayFormatter.diagnosticExplanation(diagnostic.code))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var estimateDefinition: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Costs use local engine pricing and are estimates, not invoices or subscription charges.")
+            Text("Observed activity uses timestamp gaps no greater than three minutes; it is not human coding or elapsed wall time.")
+            Text("Commit correlation is a same-repository four-hour association, not causal or measured commit cost.")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .textSelection(.enabled)
+    }
+
+    private func disclosureBinding(_ identifier: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedSections.contains(identifier) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedSections.insert(identifier)
+                } else {
+                    expandedSections.remove(identifier)
+                }
+            }
+        )
     }
 
     private func repositoryRow(_ repository: AnalyticsRepositoryAnalytics) -> some View {
         let gitReasons = AnalyticsDisplayFormatter.gitReasonCopy(repository.coverage.reasons)
+        let providerDisclosure = disclosureBinding("provider-model-\(repository.repositoryID)")
+        let commitsDisclosure = disclosureBinding("commits-\(repository.repositoryID)")
+        let providerAccessibilityLabel = "\(repository.label) \(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.providerAndModel)"
+        let commitsAccessibilityLabel = "\(repository.label) \(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.commits)"
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(repository.label).font(.headline)
@@ -142,7 +295,7 @@ public struct AnalyticsView: View {
                     .foregroundStyle(.secondary)
             }
             HStack {
-                Text(AnalyticsDisplayFormatter.cost(repository.usage.estimatedCostUSDValue ?? .zero))
+                Text(AnalyticsDisplayFormatter.cost(repository.usage.estimatedCostUSDValue))
                     .font(.headline.monospacedDigit())
                 Text("Estimated cost · \(AnalyticsDisplayFormatter.repositoryCostCoverage(repository.coverage, state: repository.state))")
                     .font(.caption)
@@ -166,32 +319,35 @@ public struct AnalyticsView: View {
                     .foregroundStyle(.secondary)
             }
             if repository.state == "available" && !repository.providerModels.isEmpty {
-                DisclosureGroup(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.providerAndModel) {
+                DisclosureGroup(isExpanded: providerDisclosure) {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(Array(repository.providerModels.enumerated()), id: \.offset) { _, model in
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("\(model.provider) · \(model.model)")
                                     .font(.subheadline.weight(.medium))
-                                LabeledContent("Estimated cost", value: AnalyticsDisplayFormatter.cost(model.usage.estimatedCostUSDValue ?? .zero))
+                                LabeledContent("Estimated cost", value: AnalyticsDisplayFormatter.cost(model.usage.estimatedCostUSDValue))
                                 LabeledContent("Cost coverage", value: AnalyticsDisplayFormatter.providerCoverage(model.costCoverage))
                                 LabeledContent("Timing coverage", value: AnalyticsDisplayFormatter.providerTimingCoverage(model.timingCoverage))
                                 LabeledContent("Cost per 1K tokens", value: AnalyticsDisplayFormatter.metric(model.costPer1KTokens) ?? "Unavailable")
                                 LabeledContent("Tokens per observed active hour", value: AnalyticsDisplayFormatter.metric(model.tokensPerObservedActiveHour) ?? "Unavailable")
                                 LabeledContent("Milliseconds per 1K tokens", value: AnalyticsDisplayFormatter.metric(model.millisecondsPer1KTokens) ?? "Unavailable")
                             }
-                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                             .accessibilityElement(children: .contain)
                             .accessibilityLabel("\(model.provider) \(model.model)")
                             .accessibilityValue(AnalyticsDisplayFormatter.modelAccessibilityValue(model))
                             .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
                         }
                     }
+                } label: {
+                    Text(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.providerAndModel)
                 }
-                .accessibilityLabel(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.providerAndModel)
+                .accessibilityLabel(providerAccessibilityLabel)
+                .accessibilityValue(AnalyticsDisplayFormatter.disclosureAccessibilityValue(isExpanded: providerDisclosure.wrappedValue))
                 .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
             }
             if !repository.commits.isEmpty {
-                DisclosureGroup(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.commits) {
+                DisclosureGroup(isExpanded: commitsDisclosure) {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(repository.commits, id: \.commitID) { commit in
                             VStack(alignment: .leading, spacing: 3) {
@@ -203,53 +359,31 @@ public struct AnalyticsView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
-                                LabeledContent("Correlated estimated AI cost", value: AnalyticsDisplayFormatter.cost(commit.correlatedUsage.estimatedCostUSDValue ?? .zero))
+                                LabeledContent("Correlated estimated AI cost", value: AnalyticsDisplayFormatter.cost(commit.correlatedUsage.estimatedCostUSDValue))
+                                LabeledContent("Correlation coverage", value: AnalyticsDisplayFormatter.commitCoverage(commit.coverage))
                                 if let number = commit.pullRequestNumber {
                                     Text("PR #\(number) (local metadata)")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
                             }
-                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                             .accessibilityElement(children: .combine)
                             .accessibilityLabel("Commit \(commit.commitID)")
                             .accessibilityValue(AnalyticsDisplayFormatter.commitAccessibilityValue(commit))
                         }
                     }
+                } label: {
+                    Text(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.commits)
                 }
-                .accessibilityLabel(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.commits)
+                .accessibilityLabel(commitsAccessibilityLabel)
+                .accessibilityValue(AnalyticsDisplayFormatter.disclosureAccessibilityValue(isExpanded: commitsDisclosure.wrappedValue))
                 .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
             }
         }
         .padding(.vertical, 3)
     }
 
-    private func summaryMetric(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.headline.monospacedDigit())
-        }
-    }
-
-    private func coverageCopy(_ coverage: AnalyticsCoverage) -> String {
-        let (total, overflow) = coverage.attributedFragments.addingReportingOverflow(coverage.unattributedFragments)
-        guard !overflow, total > 0 else { return "Unavailable" }
-        let percent = (Double(coverage.attributedFragments) / Double(total)) * 100
-        let value = String(format: "%.0f%%", locale: Locale(identifier: "en_US_POSIX"), percent)
-        let counts = "\(coverage.attributedFragments) attributed · \(coverage.unattributedFragments) unattributed"
-        return coverage.reasons.isEmpty ? "\(value) · \(counts)" : "\(value) · \(counts) · Partial"
-    }
-
-    private func observedTime(in repositories: [AnalyticsRepositoryAnalytics]) -> UInt64? {
-        var total: UInt64 = 0
-        for repository in repositories {
-            guard let seconds = repository.observedActiveTimeSecondsValue else { return nil }
-            let (next, overflow) = total.addingReportingOverflow(seconds)
-            guard !overflow else { return nil }
-            total = next
-        }
-        return total
-    }
 }
 
 public struct AnalyticsReasonDisplay: Identifiable, Equatable, Sendable {
@@ -269,7 +403,9 @@ public struct AnalyticsReasonDisplay: Identifiable, Equatable, Sendable {
 public enum AnalyticsDisplayFormatter {
     public static let disclosureAccessibilityLabels = (
         providerAndModel: "Provider and model metrics",
-        commits: "Commits"
+        commits: "Commits",
+        diagnostics: "Analytics diagnostics",
+        estimateDefinition: "Estimate definition"
     )
     public static let disclosureAccessibilityHint = "Expand or collapse this section"
 
@@ -344,6 +480,14 @@ public enum AnalyticsDisplayFormatter {
         }
     }
 
+    public static func commitCoverage(_ coverage: String) -> String {
+        switch coverage {
+        case "correlated": "Correlated"
+        case "partial": "Partial"
+        default: "Unavailable"
+        }
+    }
+
     public static func correlationCoverage(_ coverage: RepositoryCoverage) -> String {
         let statusReasons = unattributedReasonCopy(
             coverage.reasons.filter { $0.key == "noEligibleCommit" || $0.key == "pendingCommitWindow" }
@@ -395,6 +539,10 @@ public enum AnalyticsDisplayFormatter {
         isLoading ? "Loading; Refresh unavailable" : "Ready"
     }
 
+    public static func disclosureAccessibilityValue(isExpanded: Bool) -> String {
+        isExpanded ? "Expanded" : "Collapsed"
+    }
+
     public static var dateFormatterIdentity: ObjectIdentifier {
         ObjectIdentifier(utcDateFormatter)
     }
@@ -405,6 +553,51 @@ public enum AnalyticsDisplayFormatter {
             snapshot.coverage.reasons["gitOutputLimitReached"] != nil ||
             snapshot.repositories.contains { $0.coverage.reasons["missingCost"] != nil }
         return hasPartialCost ? "\(AnalyticsDisplayFormatter.cost(cost)) (known subtotal)" : AnalyticsDisplayFormatter.cost(cost)
+    }
+
+    public static func repositoryAttributedEstimate(_ cost: Decimal?, knownSubtotal: Bool) -> String {
+        guard let cost else { return "—" }
+        let formatted = AnalyticsDisplayFormatter.cost(cost)
+        return knownSubtotal ? "\(formatted) (known subtotal)" : formatted
+    }
+
+    public static func observedAIActivity(_ seconds: UInt64?) -> String {
+        guard let seconds else { return "—" }
+        return duration(seconds)
+    }
+
+    public static func diagnosticTitle(_ code: String) -> String {
+        switch code {
+        case "recordLimitReached": "Bounded record processing"
+        case "gitOutputLimitReached": "Repository inspection output limit"
+        default: reasonLabels[code] ?? "Limited diagnostics"
+        }
+    }
+
+    public static func diagnosticUnit(_ unit: AnalyticsDiagnosticUnit) -> String {
+        switch unit {
+        case .fragments: "fragments"
+        case .observations: "observations"
+        case .inspectionFailures: "inspection failures"
+        case .mixedBoundedProcessing: "mixed bounded processing"
+        }
+    }
+
+    public static func diagnosticExplanation(_ code: String) -> String {
+        switch code {
+        case "missingDuration":
+            "Missing response duration is distinct from the evidence used for observed AI activity."
+        case "recordLimitReached":
+            "This bounded-processing count has mixed units and unavailable causes; it does not establish equal counts or lost cost."
+        case "gitOutputLimitReached":
+            "Repository inspection output was safely bounded; it is not a fragment count."
+        case "gitTimedOut", "gitUnavailable":
+            "Repository inspection was unavailable or incomplete; no source-level cause is inferred."
+        case "missingTimestamp":
+            "Without a normalized timestamp, time coverage and a verified 30-day total remain incomplete."
+        default:
+            "This retained local diagnostic describes a limitation in the captured evidence."
+        }
     }
 
     public static func compactTokens(_ canonical: String) -> String {
