@@ -1,9 +1,24 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-08
-**Branch:** `codex/v030-release-homebrew`; release preparation based on `main` at `da2dc3e`.
-**Current phase:** v0.3.0 public release and Homebrew distribution complete; final documentation ready for integration after its committed-tree contract check.
-**Next action:** Run the committed documentation contract and push this follow-up without changing the public tag. Remaining product work requires separately approved scope; native acceptance remains partial and Phase 2 is excluded.
+**Branch:** `main`; v0.3.0 release documentation integrated and pushed at `ca712d3`.
+**Current phase:** Analytics summary-first redesign and attribution investigation scoped and approved in conversation; written design awaiting review.
+**Next action:** Review `docs/superpowers/specs/2026-09-08-analytics-summary-first-design.md`, then write the implementation plan. No app changes have been made for this scope. Preserve the public v0.3.0 tag and unrelated dirty vendor checkout.
+
+## Analytics summary-first design — 2026-09-08
+
+User selected A (summary first), approved the detailed display rules and authorized
+investigating the zero-repository result. The new design preserves the v0.2.2
+local-only/manual-refresh contract and separates presentation improvements from
+evidence-dependent attribution corrections. Read-only tracing explains the
+repository-only summary, 418 missing-timestamp plus 12 discovery-unavailable
+fragments, and conflated timing-overflow diagnostics. Provider-level timestamp
+causes and discovery failure stages are not yet proven. A bounded aggregate-only
+probe is the next technical investigation, after written design/plan review.
+
+The earlier v0.3.0 documentation contract passed at committed `ca712d3`, and main
+was pushed. That release/distribution task is complete; historical evidence below
+describes the sequence leading to it.
 
 ## v0.3.0 final source verification — 2026-09-08
 
