@@ -9,6 +9,7 @@ crate-type = ["staticlib", "rlib"]
 
 [features]
 bridge-test-runtime = ["dep:async-trait"]
+analytics-diagnostic-probe = ["needlbar-project-analytics/analytics-diagnostic-probe"]
 
 [dependencies]
 serde.workspace = true

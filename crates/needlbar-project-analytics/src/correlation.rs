@@ -9,11 +9,24 @@ use crate::model::{
 use crate::sanitize::{decimal, label, model, short_oid, Totals};
 use chrono::{DateTime, Duration, Utc};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::io::ErrorKind;
 use tokscale_core::{WorkspaceSessionFragment, WorkspaceSessionReport};
 
 const MAX_REPOSITORIES: usize = 64;
 const MAX_PARSED_COMMITS: usize = 500;
 const MAX_RETURNED_COMMITS: usize = 200;
+
+pub(crate) trait CorrelationObserver {
+    fn timestamp_unavailable_after_normalization(&mut self, _fragment: &WorkspaceSessionFragment) {}
+    fn canonicalization_error(&mut self, _error: ErrorKind) {}
+    fn discovery_error(&mut self, _error: &GitRunnerError) {}
+    fn discovery_output_limited(&mut self) {}
+    fn mapped_fragment(&mut self, _fragment: &WorkspaceSessionFragment) {}
+    fn unmapped_fragment(&mut self, _fragment: &WorkspaceSessionFragment) {}
+}
+
+struct NoopObserver;
+impl CorrelationObserver for NoopObserver {}
 
 #[derive(Clone)]
 struct MappedFragment {
@@ -65,6 +78,15 @@ pub(crate) fn build(
     generated_at: DateTime<Utc>,
     git: &dyn GitRunner,
 ) -> AnalyticsPayload {
+    build_with_observer(report, generated_at, git, &mut NoopObserver)
+}
+
+pub(crate) fn build_with_observer<O: CorrelationObserver>(
+    report: WorkspaceSessionReport,
+    generated_at: DateTime<Utc>,
+    git: &dyn GitRunner,
+    observer: &mut O,
+) -> AnalyticsPayload {
     let start = generated_at - Duration::days(30);
     let global_timing_partial = report.timing_coverage_partial;
     let mut unattributed = MutableBucket::default();
@@ -88,18 +110,23 @@ pub(crate) fn build(
     unattributed.reason_by("recordLimitReached", timing_overflow);
     let mut mapped = Vec::new();
     for fragment in report.fragments {
+        if fragment.last_seen_ms <= 0 {
+            observer.timestamp_unavailable_after_normalization(&fragment);
+        }
         if fragment.workspace_key.is_none()
             || fragment
                 .workspace_key
                 .as_deref()
                 .is_some_and(|v| v.is_empty())
         {
+            observer.unmapped_fragment(&fragment);
             unattributed.add(&fragment, "missingWorkspace");
             coverage.unattributed_fragments += 1;
             bump(&mut coverage.reasons, "missingWorkspace");
             continue;
         }
         if !valid_fragment(&fragment, start, generated_at) {
+            observer.unmapped_fragment(&fragment);
             let reason = if !fragment.estimated_cost_usd.is_finite()
                 || fragment.estimated_cost_usd < 0.0
                 || !nonnegative_tokens(&fragment.tokens)
@@ -114,19 +141,30 @@ pub(crate) fn build(
             continue;
         }
         let workspace = fragment.workspace_key.as_ref().expect("checked");
-        let canonical_workspace =
-            std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.into());
+        let canonical_workspace = match std::fs::canonicalize(workspace) {
+            Ok(path) => path,
+            Err(value) => {
+                observer.canonicalization_error(value.kind());
+                workspace.into()
+            }
+        };
         match git.run(GitRequest::discover(canonical_workspace.clone())) {
             Ok(output) => match parse_root(&output) {
                 Ok(root) if root_contains(&root, &canonical_workspace) => {
+                    observer.mapped_fragment(&fragment);
                     mapped.push(MappedFragment { fragment, root })
                 }
                 Ok(_) => {
+                    observer.unmapped_fragment(&fragment);
                     unattributed.add(&fragment, "invalidWorkspace");
                     coverage.unattributed_fragments += 1;
                     bump(&mut coverage.reasons, "invalidWorkspace");
                 }
                 Err(code) => {
+                    if code == "gitOutputLimitReached" {
+                        observer.discovery_output_limited();
+                    }
+                    observer.unmapped_fragment(&fragment);
                     unattributed.add(&fragment, code);
                     coverage.unattributed_fragments += 1;
                     bump(&mut coverage.reasons, code);
@@ -134,6 +172,8 @@ pub(crate) fn build(
                 }
             },
             Err(err) => {
+                observer.discovery_error(&err);
+                observer.unmapped_fragment(&fragment);
                 let code = git_code(&err);
                 unattributed.add(&fragment, code);
                 coverage.unattributed_fragments += 1;
@@ -602,4 +642,99 @@ fn is_word(value: u8) -> bool {
 }
 fn token_boundary(bytes: &[u8], start: usize, end: usize) -> bool {
     (start == 0 || !is_word(bytes[start - 1])) && (end == bytes.len() || !is_word(bytes[end]))
+}
+
+#[cfg(all(test, feature = "analytics-diagnostic-probe"))]
+mod diagnostic_probe_parity_tests {
+    use super::*;
+    use crate::diagnostic_probe::ProbeObserver;
+    use crate::{GitOutput, GitRequest, GitRequestKind, GitRunner, GitRunnerError};
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
+    use tokscale_core::{TokenBreakdown, WorkspaceSessionFragment, WorkspaceSessionReport};
+
+    struct ScriptedGit {
+        replies: Mutex<VecDeque<Result<GitOutput, GitRunnerError>>>,
+        requests: Mutex<Vec<GitRequestKind>>,
+    }
+
+    impl ScriptedGit {
+        fn new(replies: Vec<Result<GitOutput, GitRunnerError>>) -> Self {
+            Self {
+                replies: Mutex::new(replies.into()),
+                requests: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl GitRunner for ScriptedGit {
+        fn run(&self, request: GitRequest) -> Result<GitOutput, GitRunnerError> {
+            self.requests.lock().unwrap().push(request.kind());
+            self.replies.lock().unwrap().pop_front().unwrap()
+        }
+    }
+
+    fn report() -> WorkspaceSessionReport {
+        WorkspaceSessionReport {
+            fragments: vec![WorkspaceSessionFragment {
+                client: "codex".into(),
+                workspace_key: Some("/nonexistent/probe-parity".into()),
+                session_id: "probe-parity-session".into(),
+                first_seen_ms: 1_788_264_000_000,
+                last_seen_ms: 1_788_264_000_000,
+                active_time_ms: 0,
+                timing_coverage_partial: false,
+                tokens: TokenBreakdown::default(),
+                message_count: 0,
+                estimated_cost_usd: 0.0,
+                models: Vec::new(),
+            }],
+            processing_time_ms: 0,
+            record_limit_reached: false,
+            timing_coverage_partial: false,
+            overflowed_fragment_observations: 0,
+            overflowed_timing_observations: 0,
+            overflowed_model_observations: 0,
+        }
+    }
+
+    fn replies() -> Vec<Result<GitOutput, GitRunnerError>> {
+        vec![
+            Ok(GitOutput::new(
+                b"/nonexistent/probe-parity\n".to_vec(),
+                Vec::new(),
+            )),
+            Ok(GitOutput::new(Vec::new(), Vec::new())),
+        ]
+    }
+
+    #[test]
+    fn probe_observer_preserves_the_normal_payload_and_existing_git_call_order() {
+        let generated_at = "2026-09-01T16:00:00Z".parse().unwrap();
+        let normal_git = ScriptedGit::new(replies());
+        let normal = build(report(), generated_at, &normal_git);
+
+        let observed_git = ScriptedGit::new(replies());
+        let source = report();
+        let mut observer = ProbeObserver::new(&source);
+        let observed = build_with_observer(source, generated_at, &observed_git, &mut observer);
+
+        assert_eq!(
+            serde_json::to_value(observed).unwrap(),
+            serde_json::to_value(normal).unwrap()
+        );
+        assert_eq!(
+            normal_git.requests.lock().unwrap().as_slice(),
+            [
+                GitRequestKind::DiscoverRepository,
+                GitRequestKind::ReadCommits
+            ]
+        );
+        assert_eq!(
+            observed_git.requests.lock().unwrap().as_slice(),
+            normal_git.requests.lock().unwrap().as_slice()
+        );
+        assert!(normal_git.replies.lock().unwrap().is_empty());
+        assert!(observed_git.replies.lock().unwrap().is_empty());
+    }
 }

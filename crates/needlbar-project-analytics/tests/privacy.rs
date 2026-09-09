@@ -1,4 +1,6 @@
 use chrono::{DateTime, Utc};
+#[cfg(feature = "analytics-diagnostic-probe")]
+use needlbar_project_analytics::build_analytics_diagnostic_probe;
 use needlbar_project_analytics::{
     build_analytics_payload, GitOutput, GitRequest, GitRunner, GitRunnerError,
 };
@@ -93,6 +95,52 @@ fn output_never_contains_private_source_canaries() {
     for forbidden in ["/private/repo", "stderr-canary", "credential-canary"] {
         assert!(!debug.contains(forbidden));
         assert!(!display.contains(forbidden));
+    }
+}
+
+#[cfg(feature = "analytics-diagnostic-probe")]
+#[test]
+fn diagnostic_probe_serialization_and_debug_never_contain_private_source_canaries() {
+    let f = WorkspaceSessionFragment {
+        client: "codex".into(),
+        workspace_key: Some("/private/diagnostic-path-canary".into()),
+        session_id: "diagnostic-session-canary".into(),
+        first_seen_ms: time("2026-09-01T10:00:00Z").timestamp_millis(),
+        last_seen_ms: time("2026-09-01T10:00:00Z").timestamp_millis(),
+        active_time_ms: 0,
+        timing_coverage_partial: false,
+        tokens: TokenBreakdown::default(),
+        message_count: 0,
+        estimated_cost_usd: 0.0,
+        models: Vec::new(),
+    };
+    let report = WorkspaceSessionReport {
+        fragments: vec![f],
+        processing_time_ms: 0,
+        record_limit_reached: false,
+        timing_coverage_partial: false,
+        overflowed_fragment_observations: 0,
+        overflowed_timing_observations: 0,
+        overflowed_model_observations: 0,
+    };
+    let probe = build_analytics_diagnostic_probe(
+        report,
+        time("2026-09-01T16:00:00Z"),
+        &Fake(Mutex::new(0)),
+    );
+    let json = serde_json::to_string(&probe).expect("aggregate-only probe JSON");
+    let debug = format!("{probe:?}");
+    for forbidden in [
+        "/private/diagnostic-path-canary",
+        "diagnostic-session-canary",
+        "https://forge.invalid",
+        "secret-branch",
+        "Ada <ada@example.invalid>",
+        "commit secret",
+        "abcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    ] {
+        assert!(!json.contains(forbidden), "JSON leaked {forbidden}");
+        assert!(!debug.contains(forbidden), "Debug leaked {forbidden}");
     }
 }
 

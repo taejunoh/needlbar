@@ -1,6 +1,8 @@
 use chrono::{DateTime, Duration, Utc};
+#[cfg(feature = "analytics-diagnostic-probe")]
+use needlbar_project_analytics::{build_analytics_diagnostic_probe, AnalyticsDiagnosticProbe};
 use needlbar_project_analytics::{build_analytics_payload, AnalyticsPayload, BoundedGitRunner};
-use tokscale_core::ReportOptions;
+use tokscale_core::{ReportOptions, WorkspaceSessionReport};
 
 const ANALYTICS_CLIENTS: [&str; 3] = ["claude", "codex", "cursor"];
 
@@ -26,6 +28,14 @@ pub fn collect_analytics() -> Result<(DateTime<Utc>, AnalyticsPayload), &'static
         };
     }
     let generated_at = Utc::now();
+    let report = collect_workspace_session_report(generated_at)?;
+    let payload = build_analytics_payload(report, generated_at, &BoundedGitRunner::default());
+    Ok((generated_at, payload))
+}
+
+fn collect_workspace_session_report(
+    generated_at: DateTime<Utc>,
+) -> Result<WorkspaceSessionReport, &'static str> {
     let (start, end) = analytics_time_window(generated_at);
     #[cfg(feature = "bridge-test-runtime")]
     let fixture_home = crate::test_runtime::analytics_home();
@@ -45,15 +55,25 @@ pub fn collect_analytics() -> Result<(DateTime<Utc>, AnalyticsPayload), &'static
         .enable_all()
         .build()
         .map_err(|_| "runtimeUnavailable")?;
-    let report = runtime
+    runtime
         .block_on(
             tokscale_core::get_workspace_session_report_cached_pricing_instant_range(
                 options, start, end,
             ),
         )
-        .map_err(|_| "usageReportUnavailable")?;
-    let payload = build_analytics_payload(report, generated_at, &BoundedGitRunner::default());
-    Ok((generated_at, payload))
+        .map_err(|_| "usageReportUnavailable")
+}
+
+#[cfg(feature = "analytics-diagnostic-probe")]
+#[allow(dead_code)]
+fn collect_analytics_diagnostic_probe() -> Result<AnalyticsDiagnosticProbe, &'static str> {
+    let generated_at = Utc::now();
+    let report = collect_workspace_session_report(generated_at)?;
+    Ok(build_analytics_diagnostic_probe(
+        report,
+        generated_at,
+        &BoundedGitRunner::default(),
+    ))
 }
 
 #[cfg(test)]
@@ -74,5 +94,17 @@ mod tests {
 
         assert_eq!(start.to_rfc3339(), "2026-08-02T12:00:00.123+00:00");
         assert_eq!(end, generated_at);
+    }
+
+    #[cfg(feature = "analytics-diagnostic-probe")]
+    #[test]
+    #[ignore = "explicit local aggregate-only diagnostics"]
+    fn one_shot_local_probe_is_json_and_has_no_ffi_surface() {
+        let probe = super::collect_analytics_diagnostic_probe()
+            .expect("local aggregate-only diagnostics unavailable");
+        println!(
+            "{}",
+            serde_json::to_string(&probe).expect("aggregate-only diagnostic JSON")
+        );
     }
 }
