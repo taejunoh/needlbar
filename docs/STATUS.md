@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-09
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** Analytics visual redesign brainstorming after the user rejected the installed preview's hierarchy, color and grouping. Earlier native acceptance remains incomplete.
-**Next action:** Get feedback on the new visual comparison, then approve a revised visual spec/plan before changing app presentation. Preserve the current data semantics, public v0.3.0 tag and unrelated dirty main vendor checkout.
+**Current phase:** A balanced dashboard visual direction selected; revised written specification awaiting user review. Earlier native acceptance remains incomplete.
+**Next action:** Review `docs/superpowers/specs/2026-09-09-analytics-balanced-dashboard-design.md`, then write the revised implementation plan before changing app presentation. Preserve current data semantics, public v0.3.0 tag and unrelated dirty main vendor checkout.
 
 ## Analytics visual redesign — 2026-09-09
 
@@ -17,7 +17,13 @@ bounded content width, equal colored summary cards, separate evidence panels,
 one warning area and collapsed nonduplicated diagnostics/definitions. It keeps
 unavailable values unavailable and explicitly qualifies uncertain-period cost.
 No new native presentation code or installed bundle change accompanied this
-brainstorming step. Layout selection and revised written spec remain pending.
+brainstorming step. The user subsequently selected recommended A in chat. The
+written amendment makes the accent edges/tints, equal-column layout, centered
+960 pt content bound, readable type, nonduplicated diagnostics and native
+acceptance mandatory. Main self-review clarified exact insets/breakpoints,
+refresh-with-data state, and the positive timestamp-count (not cost) predicate.
+Written-spec review remains pending; no new implementation or installation
+occurred in this design-document step.
 
 ## Analytics preview installed — 2026-09-09
 
