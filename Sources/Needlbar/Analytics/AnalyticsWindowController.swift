@@ -83,7 +83,7 @@ public final class AnalyticsViewModel: ObservableObject {
         }
     }
 
-    private static func isPartial(_ snapshot: AnalyticsSnapshot) -> Bool {
+    static func isPartial(_ snapshot: AnalyticsSnapshot) -> Bool {
         if !snapshot.errors.isEmpty || !snapshot.coverage.reasons.isEmpty || !snapshot.unattributed.reasons.isEmpty {
             return true
         }

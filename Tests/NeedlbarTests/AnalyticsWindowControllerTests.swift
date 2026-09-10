@@ -8,6 +8,38 @@ import SwiftUI
 @Suite("AnalyticsWindowControllerTests", .serialized)
 @MainActor
 struct AnalyticsWindowControllerTests {
+    @Test func balancedStatusResolverUsesTheApprovedSinglePriorityOrder() {
+        #expect(AnalyticsDashboardStatus.resolve(isLoading: true, presentationState: .loading, hasDisplayedSnapshot: false, hasPartialDisplayedSnapshot: false, statusCopy: "ignored") == .initialLoading)
+        let updating = AnalyticsDashboardStatus.resolve(isLoading: true, presentationState: .loading, hasDisplayedSnapshot: true, hasPartialDisplayedSnapshot: true, statusCopy: "ignored")
+        #expect(updating.text.contains("last captured snapshot"))
+        #expect(updating.text.contains("partial"))
+        #expect(AnalyticsDashboardStatus.resolve(isLoading: false, presentationState: .unavailable, hasDisplayedSnapshot: false, hasPartialDisplayedSnapshot: false, statusCopy: "Analytics unavailable. Refresh to try again.").isWarning)
+        #expect(AnalyticsDashboardStatus.resolve(isLoading: false, presentationState: .stale, hasDisplayedSnapshot: true, hasPartialDisplayedSnapshot: true, statusCopy: "Showing the last successful local analysis. Refresh to try again.").isWarning)
+        #expect(AnalyticsDashboardStatus.resolve(isLoading: false, presentationState: .fresh, hasDisplayedSnapshot: true, hasPartialDisplayedSnapshot: true, statusCopy: "Some local usage or repository coverage is partial.").isWarning)
+        #expect(AnalyticsDashboardStatus.resolve(isLoading: false, presentationState: .fresh, hasDisplayedSnapshot: true, hasPartialDisplayedSnapshot: false, statusCopy: "Local analysis complete.").isWarning == false)
+    }
+
+    @Test func viewDiagnosticsExpandsThenScrollsWithoutFetching() async {
+        let repository = TestAnalyticsRepository()
+        let controller = AnalyticsWindowController(store: AnalyticsSnapshotStore(), repository: repository)
+        controller.showAnalytics()
+        await repository.waitForCall(1)
+        await repository.completeNext(with: .success(populatedAnalyticsSnapshot()))
+        #expect(await eventually { controller.viewModel.presentationState == .fresh })
+
+        var expanded = false
+        let spy = AnalyticsScrollSpy()
+        AnalyticsDiagnosticsInteraction.reveal(
+            diagnosticsExpanded: Binding(get: { expanded }, set: { expanded = $0 }),
+            scrollToDiagnostics: { spy.targets.append("analytics-diagnostics") }
+        )
+
+        #expect(expanded)
+        #expect(await eventually { spy.targets == ["analytics-diagnostics"] })
+        #expect(await repository.callCount == 1)
+        #expect(controller.viewModel.isLoading == false)
+    }
+
     @Test func createsTheNativeAnalyticsWindowWithStablePresentationContract() {
         let repository = TestAnalyticsRepository()
         let controller = AnalyticsWindowController(
@@ -345,6 +377,11 @@ struct AnalyticsWindowControllerTests {
         scroll.reflectScrolledClipView(scroll.contentView)
         #expect(scroll.contentView.bounds.maxY >= document.bounds.maxY - 1)
     }
+}
+
+@MainActor
+private final class AnalyticsScrollSpy {
+    var targets: [String] = []
 }
 
 @MainActor

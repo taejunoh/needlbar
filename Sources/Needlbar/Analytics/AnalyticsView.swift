@@ -2,6 +2,57 @@ import Foundation
 import NeedlbarCore
 import SwiftUI
 
+enum AnalyticsDashboardStatus: Equatable {
+    case initialLoading
+    case updating(String)
+    case unavailable(String)
+    case stale(String)
+    case partial(String)
+    case complete(String)
+
+    static func resolve(
+        isLoading: Bool,
+        presentationState: AnalyticsViewModel.PresentationState,
+        hasDisplayedSnapshot: Bool,
+        hasPartialDisplayedSnapshot: Bool,
+        statusCopy: String
+    ) -> AnalyticsDashboardStatus {
+        if isLoading {
+            guard hasDisplayedSnapshot else { return .initialLoading }
+            let caveat = hasPartialDisplayedSnapshot ? " Some local usage or repository coverage is partial." : ""
+            return .updating("Refreshing local analysis. Showing the last captured snapshot.\(caveat)")
+        }
+        return switch presentationState {
+        case .unavailable: .unavailable(statusCopy)
+        case .stale: .stale(statusCopy)
+        case .fresh: hasPartialDisplayedSnapshot ? .partial(statusCopy) : .complete(statusCopy)
+        case .idle, .loading: .initialLoading
+        }
+    }
+
+    var text: String {
+        switch self {
+        case .initialLoading: "Analyzing local repository data…"
+        case let .updating(text), let .unavailable(text), let .stale(text), let .partial(text), let .complete(text): text
+        }
+    }
+
+    var isWarning: Bool {
+        switch self {
+        case .partial, .stale, .unavailable: true
+        case .initialLoading, .updating, .complete: false
+        }
+    }
+}
+
+@MainActor
+enum AnalyticsDiagnosticsInteraction {
+    static func reveal(diagnosticsExpanded: Binding<Bool>, scrollToDiagnostics: @escaping @MainActor () -> Void) {
+        diagnosticsExpanded.wrappedValue = true
+        DispatchQueue.main.async { scrollToDiagnostics() }
+    }
+}
+
 public struct AnalyticsView: View {
     @ObservedObject private var viewModel: AnalyticsViewModel
     @State private var lastSuccessfulSnapshot: AnalyticsSnapshot?
@@ -16,21 +67,31 @@ public struct AnalyticsView: View {
     public var body: some View {
         GeometryReader { windowProxy in
             let contentWidth = AnalyticsDashboardLayout.contentColumnWidth(forWindowContentWidth: windowProxy.size.width)
+            let snapshot = displayedSnapshot
+            let status = AnalyticsDashboardStatus.resolve(
+                isLoading: viewModel.isLoading,
+                presentationState: viewModel.presentationState,
+                hasDisplayedSnapshot: snapshot != nil,
+                hasPartialDisplayedSnapshot: snapshot.map(AnalyticsViewModel.isPartial) ?? false,
+                statusCopy: viewModel.statusCopy
+            )
+
             ScrollViewReader { proxy in
                 let revealDiagnostics = {
-                    diagnosticsExpanded = true
-                    DispatchQueue.main.async { withAnimation { proxy.scrollTo("analytics-diagnostics", anchor: .top) } }
+                    AnalyticsDiagnosticsInteraction.reveal(diagnosticsExpanded: $diagnosticsExpanded) {
+                        withAnimation { proxy.scrollTo("analytics-diagnostics", anchor: .top) }
+                    }
                 }
                 VStack(spacing: 0) {
-                    header
-                        .frame(width: contentWidth, alignment: .leading)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    header(status, contentWidth: contentWidth, onViewDiagnostics: revealDiagnostics)
                         .padding(.vertical, 16)
                     Divider()
                     ScrollView {
                         VStack(alignment: .leading, spacing: AnalyticsDashboardLayout.sectionSpacing) {
-                            if viewModel.isLoading { ProgressView(viewModel.statusCopy).controlSize(.small) }
-                            if let snapshot = displayedSnapshot {
+                            if case .initialLoading = status {
+                                ProgressView().controlSize(.small).accessibilityHidden(true)
+                            }
+                            if let snapshot {
                                 AnalyticsDashboardContent(
                                     snapshot: snapshot,
                                     contentWidth: contentWidth,
@@ -39,8 +100,6 @@ public struct AnalyticsView: View {
                                     expandedSections: $expandedSections,
                                     onViewDiagnostics: revealDiagnostics
                                 )
-                            } else if !viewModel.isLoading {
-                                Text(viewModel.statusCopy).font(.system(size: 13)).foregroundStyle(.secondary)
                             }
                         }
                         .frame(width: contentWidth, alignment: .leading)
@@ -61,14 +120,18 @@ public struct AnalyticsView: View {
         viewModel.snapshot ?? (viewModel.isLoading ? lastSuccessfulSnapshot : nil)
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private func header(
+        _ status: AnalyticsDashboardStatus,
+        contentWidth: CGFloat,
+        onViewDiagnostics: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Analytics")
                         .font(.title2.weight(.semibold))
                     Text(captureCopy)
-                        .font(.subheadline)
+                        .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -77,12 +140,27 @@ public struct AnalyticsView: View {
                     .accessibilityLabel("Refresh analytics")
                     .accessibilityValue(AnalyticsDisplayFormatter.refreshAccessibilityValue(isLoading: viewModel.isLoading))
             }
-            if viewModel.presentationState == .stale || viewModel.presentationState == .unavailable || viewModel.presentationState == .fresh && viewModel.statusCopy != "Local analysis complete." {
-                Text(viewModel.statusCopy)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if status.isWarning {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Label(status.text, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if displayedSnapshot != nil {
+                        Button("View diagnostics", action: onViewDiagnostics)
+                            .font(.system(size: 12, weight: .medium))
+                            .accessibilityLabel("View analytics diagnostics")
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            } else {
+                Text(status.text).font(.system(size: 12)).foregroundStyle(.secondary)
             }
         }
+        .frame(width: contentWidth, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private var captureCopy: String {
