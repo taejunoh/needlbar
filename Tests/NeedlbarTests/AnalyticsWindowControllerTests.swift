@@ -377,11 +377,368 @@ struct AnalyticsWindowControllerTests {
         scroll.reflectScrolledClipView(scroll.contentView)
         #expect(scroll.contentView.bounds.maxY >= document.bounds.maxY - 1)
     }
+
+    @Test func balancedNativeFixturePixelMatrixCoversRequiredStatesWidthsAndAppearances() throws {
+        let fixtures: [(name: String, snapshot: AnalyticsSnapshot)] = [
+            ("empty", testAnalyticsSnapshot()),
+            ("mixed", populatedAnalyticsSnapshot()),
+            ("maximum", maximumAnalyticsSnapshot()),
+        ]
+        let widths: [CGFloat] = [640, 760, 1_400]
+        let appearances: [(name: String, appearance: NSAppearance)] = [
+            ("light", try #require(NSAppearance(named: .aqua))),
+            ("dark", try #require(NSAppearance(named: .darkAqua))),
+        ]
+
+        for fixture in fixtures {
+            for width in widths {
+                for appearance in appearances {
+                    let png = try renderAnalyticsFixturePNG(
+                        snapshot: fixture.snapshot,
+                        width: width,
+                        appearance: appearance.appearance
+                    )
+                    #expect(png.count > 64, "\(fixture.name) at \(width) in \(appearance.name) must produce native pixels")
+                    try png.write(
+                        to: try analyticsPixelQAFile("\(fixture.name)-\(Int(width))-\(appearance.name).png"),
+                        options: .atomic
+                    )
+                }
+            }
+        }
+    }
+
+    @Test func balancedNativeFixturePixelEvidenceIncludesExpandedLongAndMaximumEndpoints() throws {
+        let light = try #require(NSAppearance(named: .aqua))
+        let dark = try #require(NSAppearance(named: .darkAqua))
+        let expandedSections: Set<String> = ["provider-model-repo-0", "commits-repo-0"]
+        let fixtures: [(name: String, snapshot: AnalyticsSnapshot, appearance: NSAppearance, position: AnalyticsFixtureScrollPosition)] = [
+            ("long-label-expanded-top-640-light", longLabelAnalyticsSnapshot(), light, .top),
+            ("maximum-expanded-top-640-dark", maximumAnalyticsSnapshot(), dark, .top),
+            ("maximum-expanded-bottom-640-dark", maximumAnalyticsSnapshot(), dark, .bottom),
+        ]
+
+        for fixture in fixtures {
+            let png = try renderAnalyticsFixturePNG(
+                snapshot: fixture.snapshot,
+                width: 640,
+                appearance: fixture.appearance,
+                diagnosticsExpanded: true,
+                estimateDefinitionExpanded: true,
+                expandedSections: expandedSections,
+                scrollPosition: fixture.position
+            )
+            #expect(png.count > 64, "\(fixture.name) must render mounted native pixels")
+            try png.write(to: try analyticsPixelQAFile("\(fixture.name).png"), options: .atomic)
+        }
+    }
+
+    @Test func balancedNativeShellPixelMatrixIncludesCompletePartialLoadingUpdatingStaleAndUnavailable() async throws {
+        let widths: [CGFloat] = [640, 760, 1_400]
+        let appearances: [(name: String, appearance: NSAppearance)] = [
+            ("light", try #require(NSAppearance(named: .aqua))),
+            ("dark", try #require(NSAppearance(named: .darkAqua))),
+        ]
+
+        for state in ["loading", "complete", "partial", "updating", "stale", "unavailable"] {
+            let repository = TestAnalyticsRepository()
+            let model = AnalyticsViewModel(store: AnalyticsSnapshotStore(), repository: repository)
+            model.loadIfNeeded()
+            await repository.waitForCall(1)
+            let host = AnalyticsShellFixtureHost(viewModel: model)
+            defer { host.close() }
+
+            switch state {
+            case "complete":
+                await repository.completeNext(with: .success(testAnalyticsSnapshot()))
+                #expect(await eventually { model.presentationState == .fresh && !model.isLoading })
+            case "partial":
+                await repository.completeNext(with: .success(populatedAnalyticsSnapshot()))
+                #expect(await eventually { model.presentationState == .fresh && !model.isLoading })
+            case "updating", "stale":
+                await repository.completeNext(with: .success(populatedAnalyticsSnapshot()))
+                #expect(await eventually { model.presentationState == .fresh && !model.isLoading })
+                host.drainLayout()
+                model.refresh()
+                await repository.waitForCall(2)
+                if state == "stale" {
+                    await repository.completeNext(with: .failure(TestAnalyticsError(raw: "fixture stale")))
+                    #expect(await eventually { model.presentationState == .stale && !model.isLoading })
+                }
+            case "unavailable":
+                await repository.completeNext(with: .failure(TestAnalyticsError(raw: "fixture unavailable")))
+                #expect(await eventually { model.presentationState == .unavailable && !model.isLoading })
+            default:
+                break
+            }
+
+            for width in widths {
+                for appearance in appearances {
+                    let png = try host.renderPNG(width: width, appearance: appearance.appearance)
+                    #expect(png.count > 64, "\(state) at \(width) in \(appearance.name) must produce mounted native pixels")
+                    try png.write(
+                        to: try analyticsPixelQAFile("shell-\(state)-\(Int(width))-\(appearance.name).png"),
+                        options: .atomic
+                    )
+                }
+            }
+
+            if state == "loading" || state == "updating" {
+                await repository.completeNext(with: .success(populatedAnalyticsSnapshot()))
+                #expect(await eventually { !model.isLoading })
+            }
+        }
+    }
+
+    @Test func balancedNativeFixtureCaptureHoldsAPartialFullShellOnlyWhenExplicitlyOptedIn() async throws {
+        guard let captureDirectoryPath = ProcessInfo.processInfo.environment["NEEDLBAR_ANALYTICS_FIXTURE_CAPTURE_DIRECTORY"] else {
+            return
+        }
+        guard captureDirectoryPath.hasPrefix("/") else {
+            throw analyticsFixtureError("The fixture capture directory must be an absolute path.")
+        }
+        let captureDirectory = URL(fileURLWithPath: captureDirectoryPath, isDirectory: true)
+        try FileManager.default.createDirectory(at: captureDirectory, withIntermediateDirectories: true)
+
+        let model = AnalyticsViewModel(
+            store: AnalyticsSnapshotStore(),
+            repository: ImmediateAnalyticsRepository(snapshot: populatedAnalyticsSnapshot())
+        )
+        model.loadIfNeeded()
+        #expect(await eventually { model.presentationState == .fresh && !model.isLoading })
+
+        let host = AnalyticsShellFixtureHost(viewModel: model, title: "Needlbar Analytics Fixture")
+        defer { host.close() }
+        host.setContentSize(NSSize(width: 760, height: 520), appearance: try #require(NSAppearance(named: .aqua)))
+        try host.writeCaptureReady(in: captureDirectory)
+
+        let releaseMarker = captureDirectory.appendingPathComponent("needlbar-analytics-fixture-release")
+        let deadline = Date(timeIntervalSinceNow: 120)
+        while !FileManager.default.fileExists(atPath: releaseMarker.path), Date() < deadline {
+            host.drainLayout()
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(
+            FileManager.default.fileExists(atPath: releaseMarker.path),
+            "Fixture capture timed out after 120 seconds; create \(releaseMarker.path) after capture."
+        )
+    }
 }
 
 @MainActor
 private final class AnalyticsScrollSpy {
     var targets: [String] = []
+}
+
+private enum AnalyticsFixtureScrollPosition {
+    case top
+    case bottom
+}
+
+@MainActor
+private final class AnalyticsShellFixtureHost {
+    private let hosted: NSHostingView<AnalyticsView>
+    private let window: NSWindow
+
+    init(viewModel: AnalyticsViewModel, title: String = "Needlbar Analytics Fixture") {
+        _ = NSApplication.shared
+        hosted = NSHostingView(rootView: AnalyticsView(viewModel: viewModel))
+        hosted.frame = NSRect(x: 0, y: 0, width: 760, height: 520)
+        window = NSWindow(
+            contentRect: hosted.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.title = title
+        window.contentView = hosted
+        window.makeKeyAndOrderFront(nil)
+        drainLayout()
+    }
+
+    func renderPNG(width: CGFloat, appearance: NSAppearance) throws -> Data {
+        window.appearance = appearance
+        hosted.appearance = appearance
+        window.setContentSize(NSSize(width: width, height: analyticsFixtureHeight(for: width)))
+        drainLayout()
+        return try analyticsFixturePNG(from: hosted)
+    }
+
+    func setContentSize(_ size: NSSize, appearance: NSAppearance) {
+        window.appearance = appearance
+        hosted.appearance = appearance
+        window.setContentSize(size)
+        window.makeKeyAndOrderFront(nil)
+        drainLayout()
+    }
+
+    func writeCaptureReady(in directory: URL) throws {
+        let ready = directory.appendingPathComponent("needlbar-analytics-fixture-ready.json")
+        let metadata: [String: Any] = [
+            "pid": ProcessInfo.processInfo.processIdentifier,
+            "windowNumber": window.windowNumber,
+            "title": window.title,
+            "size": ["width": window.contentView?.bounds.width ?? 0, "height": window.contentView?.bounds.height ?? 0],
+            "releaseMarker": directory.appendingPathComponent("needlbar-analytics-fixture-release").path,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: ready, options: .atomic)
+    }
+
+    func drainLayout() {
+        for _ in 0..<8 {
+            window.display()
+            hosted.layoutSubtreeIfNeeded()
+            if attachedAnalyticsFixtureScrollView(in: hosted)?.documentView?.superview != nil { return }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+        }
+    }
+
+    func close() {
+        window.close()
+    }
+}
+
+@MainActor
+private func renderAnalyticsFixturePNG(
+    snapshot: AnalyticsSnapshot,
+    width: CGFloat,
+    appearance: NSAppearance,
+    diagnosticsExpanded: Bool = false,
+    estimateDefinitionExpanded: Bool = false,
+    expandedSections: Set<String> = [],
+    scrollPosition: AnalyticsFixtureScrollPosition = .top
+) throws -> Data {
+    var diagnosticsExpanded = diagnosticsExpanded
+    var estimateDefinitionExpanded = estimateDefinitionExpanded
+    var expandedSections = expandedSections
+    let root = ScrollView {
+        AnalyticsDashboardContent(
+            snapshot: snapshot,
+            contentWidth: AnalyticsDashboardLayout.contentColumnWidth(forWindowContentWidth: width),
+            diagnosticsExpanded: Binding(get: { diagnosticsExpanded }, set: { diagnosticsExpanded = $0 }),
+            estimateDefinitionExpanded: Binding(get: { estimateDefinitionExpanded }, set: { estimateDefinitionExpanded = $0 }),
+            expandedSections: Binding(get: { expandedSections }, set: { expandedSections = $0 }),
+            onViewDiagnostics: {}
+        )
+    }
+    return try renderMountedAnalyticsViewPNG(
+        root,
+        width: width,
+        appearance: appearance,
+        scrollPosition: scrollPosition
+    )
+}
+
+@MainActor
+private func renderMountedAnalyticsViewPNG<V: View>(
+    _ root: V,
+    width: CGFloat,
+    appearance: NSAppearance,
+    scrollPosition: AnalyticsFixtureScrollPosition
+) throws -> Data {
+    _ = NSApplication.shared
+    let hosted = NSHostingView(rootView: root)
+    hosted.appearance = appearance
+    hosted.frame = NSRect(x: 0, y: 0, width: width, height: analyticsFixtureHeight(for: width))
+    let window = NSWindow(
+        contentRect: hosted.frame,
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false
+    )
+    window.isReleasedWhenClosed = false
+    window.appearance = appearance
+    window.contentView = hosted
+    defer { window.close() }
+    window.makeKeyAndOrderFront(nil)
+    try drainAnalyticsFixtureLayout(window: window, hosted: hosted)
+
+    if scrollPosition == .bottom {
+        let scroll = try analyticsFixtureScrollView(in: hosted)
+        let document = try analyticsFixtureDocumentView(in: scroll)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, document.bounds.height - scroll.contentView.bounds.height)))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        try drainAnalyticsFixtureLayout(window: window, hosted: hosted)
+        guard scroll.contentView.bounds.maxY >= document.bounds.maxY - 1 else {
+            throw analyticsFixtureError("The mounted fixture did not reach its final scroll position.")
+        }
+    }
+
+    return try analyticsFixturePNG(from: hosted)
+}
+
+@MainActor
+private func drainAnalyticsFixtureLayout(window: NSWindow, hosted: NSView) throws {
+    for _ in 0..<8 {
+        window.display()
+        hosted.layoutSubtreeIfNeeded()
+        if attachedAnalyticsFixtureScrollView(in: hosted)?.documentView?.superview != nil { return }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+    }
+    throw analyticsFixtureError("The native scroll document did not attach within the bounded layout drain.")
+}
+
+@MainActor
+private func attachedAnalyticsFixtureScrollView(in hosted: NSView) -> NSScrollView? {
+    hosted.firstSubview(ofType: NSScrollView.self)
+}
+
+@MainActor
+private func analyticsFixtureScrollView(in hosted: NSView) throws -> NSScrollView {
+    guard let scroll = attachedAnalyticsFixtureScrollView(in: hosted) else {
+        throw analyticsFixtureError("The mounted native fixture has no scroll view.")
+    }
+    return scroll
+}
+
+@MainActor
+private func analyticsFixtureDocumentView(in scroll: NSScrollView?) throws -> NSView {
+    guard let document = scroll?.documentView else {
+        throw analyticsFixtureError("The mounted native fixture has no scroll document.")
+    }
+    return document
+}
+
+@MainActor
+private func analyticsFixturePNG(from hosted: NSView) throws -> Data {
+    let width = Int(hosted.bounds.width)
+    let height = Int(hosted.bounds.height)
+    guard let bitmap = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: width,
+        pixelsHigh: height,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) else {
+        throw analyticsFixtureError("The native fixture bitmap could not be allocated.")
+    }
+    hosted.cacheDisplay(in: hosted.bounds, to: bitmap)
+    guard let png = bitmap.representation(using: .png, properties: [:]) else {
+        throw analyticsFixtureError("The native fixture bitmap could not be encoded as PNG.")
+    }
+    return png
+}
+
+private func analyticsFixtureHeight(for width: CGFloat) -> CGFloat {
+    width == 640 ? 400 : 520
+}
+
+private func analyticsPixelQAFile(_ name: String) throws -> URL {
+    let directory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("needlbar-analytics-pixel-qa", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory.appendingPathComponent(name)
+}
+
+private func analyticsFixtureError(_ description: String) -> NSError {
+    NSError(domain: "NeedlbarAnalyticsFixture", code: 1, userInfo: [NSLocalizedDescriptionKey: description])
 }
 
 @MainActor
@@ -560,6 +917,31 @@ private func populatedAnalyticsSnapshot() -> AnalyticsSnapshot {
             reasons: ["gitTimedOut": 1]
         ),
         errors: [AnalyticsBridgeError(scope: "git", code: "gitTimedOut")]
+    )
+}
+
+private func longLabelAnalyticsSnapshot() -> AnalyticsSnapshot {
+    let snapshot = populatedAnalyticsSnapshot()
+    let repository = snapshot.repositories[0]
+    let longLabel = AnalyticsRepositoryAnalytics(
+        repositoryID: repository.repositoryID,
+        label: "Repository with an intentionally long local label that must wrap without clipping its evidence details",
+        state: repository.state,
+        usage: repository.usage,
+        observedActiveTimeSeconds: repository.observedActiveTimeSeconds,
+        providerModels: repository.providerModels,
+        commits: repository.commits,
+        coverage: repository.coverage
+    )
+    return AnalyticsSnapshot(
+        schemaVersion: snapshot.schemaVersion,
+        ok: snapshot.ok,
+        generatedAt: snapshot.generatedAt,
+        analysisRange: snapshot.analysisRange,
+        repositories: [longLabel] + snapshot.repositories.dropFirst(),
+        unattributed: snapshot.unattributed,
+        coverage: snapshot.coverage,
+        errors: snapshot.errors
     )
 }
 
