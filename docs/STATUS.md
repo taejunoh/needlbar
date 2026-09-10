@@ -19,6 +19,18 @@ Release preparation evidence (2026-09-10): existing implementation through
 `make test` passed (Swift 464 tests / 19 suites, Rust and shell contracts), and
 `make package` plus `make smoke` passed. Final release-contract review and
 protected remote validation precede tagging, publication, and reinstall.
+
+Remote release validation `34539844781` at candidate `c3ea7e0` failed before
+packaging/signing: macOS 14.8.9 / Swift 6.0.3 reported one expanded Analytics
+fixture bottom-scroll failure among 464 Swift tests. The fixture measured its
+document before deferred layout completed and scrolled only once. Local macOS
+26.6.2 / Swift 6.3.3 did not reproduce that failure. A test-only bounded
+layout/scroll convergence correction and deferred-height regression are under
+verification; product code and release security gates remain unchanged. No tag
+or public artifact was created from the failed candidate. The corrected tree
+passed fresh `make test` (465 Swift tests / 19 suites), `make package`, and
+`make smoke`; independent review approved the fixture-only change. A new
+protected remote validation remains required before any release claim.
 Native visual/accessibility acceptance remains explicitly partial, and the
 unresolved menu-bar visibility and attribution/timing issues remain separate
 from this presentation work.

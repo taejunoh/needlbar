@@ -530,6 +530,26 @@ struct AnalyticsWindowControllerTests {
         }
     }
 
+    @Test func balancedNativeFixtureBottomDrainWaitsForDeferredDocumentGrowth() throws {
+        var deferredExtents = [240, 620, 620, 620]
+        let settled = try settleAnalyticsFixtureBottomGeometry(
+            maxPasses: deferredExtents.count,
+            observe: {
+                let extent = deferredExtents.removeFirst()
+                return AnalyticsFixtureBottomGeometry(
+                    documentMaxY: CGFloat(extent),
+                    viewportHeight: 120,
+                    visibleMaxY: CGFloat(extent)
+                )
+            },
+            pump: {}
+        )
+
+        #expect(settled.documentMaxY == 620)
+        #expect(settled.atBottom)
+        #expect(deferredExtents.isEmpty)
+    }
+
     @Test func balancedNativeShellPixelMatrixIncludesCompletePartialLoadingUpdatingStaleAndUnavailable() async throws {
         let widths: [CGFloat] = [640, 760, 1_400]
         let appearances: [(name: String, appearance: NSAppearance)] = [
@@ -663,6 +683,54 @@ private enum AnalyticsFixtureScrollPosition {
     case bottom
 }
 
+private struct AnalyticsFixtureBottomGeometry: Equatable {
+    let documentMaxY: CGFloat
+    let viewportHeight: CGFloat
+    let visibleMaxY: CGFloat
+
+    var atBottom: Bool {
+        visibleMaxY >= documentMaxY - 1
+    }
+
+    func isStable(with previous: Self) -> Bool {
+        abs(documentMaxY - previous.documentMaxY) <= 0.5 &&
+            abs(viewportHeight - previous.viewportHeight) <= 0.5 &&
+            abs(visibleMaxY - previous.visibleMaxY) <= 0.5
+    }
+}
+
+private func settleAnalyticsFixtureBottomGeometry(
+    maxPasses: Int,
+    observe: () throws -> AnalyticsFixtureBottomGeometry?,
+    pump: () -> Void
+) throws -> AnalyticsFixtureBottomGeometry {
+    guard maxPasses > 0 else {
+        throw analyticsFixtureError("The native fixture bottom drain has no layout passes.")
+    }
+
+    var previous: AnalyticsFixtureBottomGeometry?
+    var stablePasses = 0
+    for _ in 0..<maxPasses {
+        if let current = try observe() {
+            if current.atBottom, let previous, current.isStable(with: previous) {
+                stablePasses += 1
+                if stablePasses >= 2 {
+                    return current
+                }
+            } else {
+                stablePasses = 0
+            }
+            previous = current
+        } else {
+            stablePasses = 0
+            previous = nil
+        }
+        pump()
+    }
+
+    throw analyticsFixtureError("The mounted fixture did not reach a stable final scroll position.")
+}
+
 @MainActor
 private final class AnalyticsShellFixtureHost {
     private let hosted: NSHostingView<AnalyticsView>
@@ -780,14 +848,31 @@ private func renderMountedAnalyticsViewPNG<V: View>(
     try drainAnalyticsFixtureLayout(window: window, hosted: hosted)
 
     if scrollPosition == .bottom {
-        let scroll = try analyticsFixtureScrollView(in: hosted)
-        let document = try analyticsFixtureDocumentView(in: scroll)
-        scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, document.bounds.height - scroll.contentView.bounds.height)))
-        scroll.reflectScrolledClipView(scroll.contentView)
-        try drainAnalyticsFixtureLayout(window: window, hosted: hosted)
-        guard scroll.contentView.bounds.maxY >= document.bounds.maxY - 1 else {
-            throw analyticsFixtureError("The mounted fixture did not reach its final scroll position.")
-        }
+        _ = try settleAnalyticsFixtureBottomGeometry(
+            maxPasses: 16,
+            observe: {
+                window.display()
+                hosted.layoutSubtreeIfNeeded()
+                guard let scroll = attachedAnalyticsFixtureScrollView(in: hosted),
+                      let document = scroll.documentView,
+                      document.superview != nil else {
+                    return nil
+                }
+                let targetY = max(0, document.bounds.maxY - scroll.contentView.bounds.height)
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: targetY))
+                scroll.reflectScrolledClipView(scroll.contentView)
+                window.display()
+                hosted.layoutSubtreeIfNeeded()
+                return AnalyticsFixtureBottomGeometry(
+                    documentMaxY: document.bounds.maxY,
+                    viewportHeight: scroll.contentView.bounds.height,
+                    visibleMaxY: scroll.contentView.bounds.maxY
+                )
+            },
+            pump: {
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+            }
+        )
     }
 
     return try analyticsFixturePNG(from: hosted)
@@ -807,22 +892,6 @@ private func drainAnalyticsFixtureLayout(window: NSWindow, hosted: NSView) throw
 @MainActor
 private func attachedAnalyticsFixtureScrollView(in hosted: NSView) -> NSScrollView? {
     hosted.firstSubview(ofType: NSScrollView.self)
-}
-
-@MainActor
-private func analyticsFixtureScrollView(in hosted: NSView) throws -> NSScrollView {
-    guard let scroll = attachedAnalyticsFixtureScrollView(in: hosted) else {
-        throw analyticsFixtureError("The mounted native fixture has no scroll view.")
-    }
-    return scroll
-}
-
-@MainActor
-private func analyticsFixtureDocumentView(in scroll: NSScrollView?) throws -> NSView {
-    guard let document = scroll?.documentView else {
-        throw analyticsFixtureError("The mounted native fixture has no scroll document.")
-    }
-    return document
 }
 
 @MainActor
