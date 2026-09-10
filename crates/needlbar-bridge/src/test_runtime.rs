@@ -440,6 +440,45 @@ pub fn install_analytics_redaction_fixture(generated_at: DateTime<Utc>) -> bool 
     true
 }
 
+/// Installs the existing populated analytics fixture for the Swift bridge
+/// contract test. This is deliberately C-callable only in the feature-gated
+/// test runtime, so production's public C header and archive remain unchanged.
+fn install_analytics_populated_fixture(include_commit: bool) -> bool {
+    let generated_at = match DateTime::parse_from_rfc3339("2026-09-01T12:00:00.000Z") {
+        Ok(value) => value.with_timezone(&Utc),
+        Err(_) => return false,
+    };
+    if !install_analytics_redaction_fixture(generated_at) {
+        return false;
+    }
+    let mut fixture = ANALYTICS_FIXTURE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(AnalyticsFixture::Success { payload, .. }) = fixture.as_mut() {
+        for repository in &mut payload.repositories {
+            if !include_commit {
+                repository.commits.clear();
+            }
+        }
+    }
+    true
+}
+
+#[no_mangle]
+pub extern "C" fn needlbar_test_install_analytics_repository_fixture() -> bool {
+    install_analytics_populated_fixture(false)
+}
+
+#[no_mangle]
+pub extern "C" fn needlbar_test_install_analytics_commit_fixture() -> bool {
+    install_analytics_populated_fixture(true)
+}
+
+#[no_mangle]
+pub extern "C" fn needlbar_test_clear_analytics_populated_fixture() {
+    clear_analytics_fixture();
+}
+
 fn toksale_fragment(last_seen_ms: i64) -> tokscale_core::WorkspaceSessionFragment {
     tokscale_core::WorkspaceSessionFragment {
         client: "claude".to_owned(),

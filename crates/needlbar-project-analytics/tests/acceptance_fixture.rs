@@ -204,7 +204,7 @@ fn analytics_acceptance_fixture_exactly_matches_sanitized_golden() {
         1
     );
     assert_eq!(
-        value["repositories"][0]["commits"][0]["commitId"],
+        value["repositories"][0]["commits"][0]["commitID"],
         "aaaaaaaaaaaa"
     );
     assert_eq!(

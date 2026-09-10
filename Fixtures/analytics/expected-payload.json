@@ -5,7 +5,7 @@
   },
   "repositories": [
     {
-      "repositoryId": "r00000000",
+      "repositoryID": "r00000000",
       "label": "repo",
       "state": "available",
       "usage": {
@@ -76,7 +76,7 @@
       ],
       "commits": [
         {
-          "commitId": "aaaaaaaaaaaa",
+          "commitID": "aaaaaaaaaaaa",
           "committedAt": "2026-09-01T14:00:00Z",
           "correlatedUsage": {
             "inputTokens": "100",

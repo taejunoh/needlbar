@@ -2,6 +2,15 @@ import Foundation
 import Testing
 @testable import NeedlbarCore
 
+@_silgen_name("needlbar_test_install_analytics_repository_fixture")
+private func needlbar_test_install_analytics_repository_fixture() -> Bool
+
+@_silgen_name("needlbar_test_install_analytics_commit_fixture")
+private func needlbar_test_install_analytics_commit_fixture() -> Bool
+
+@_silgen_name("needlbar_test_clear_analytics_populated_fixture")
+private func needlbar_test_clear_analytics_populated_fixture()
+
 private let analyticsFixture = """
 {
   "schemaVersion":"needlbar.analytics.v1",
@@ -77,6 +86,23 @@ private final class AnalyticsRawPointer: @unchecked Sendable {
     #expect(snapshot.repositories.first?.usage.totalTokensValue == 105)
     #expect(snapshot.repositories.first?.providerModels.first?.millisecondsPer1KTokens == nil)
     #expect(snapshot.repositories.first?.commits.first?.commitID == "abcdef012345")
+}
+
+@Test func decodesRustProducedPopulatedAnalyticsRowsWithSchemaIDKeys() throws {
+    #expect(needlbar_test_install_analytics_repository_fixture())
+    defer { needlbar_test_clear_analytics_populated_fixture() }
+
+    let repositoryOnly = try RustBridge().analyticsEnvelope()
+    let repository = try #require(repositoryOnly.repositories.first)
+    #expect(repository.repositoryID == "r00000000")
+    #expect(repository.commits.isEmpty)
+
+    needlbar_test_clear_analytics_populated_fixture()
+    #expect(needlbar_test_install_analytics_commit_fixture())
+
+    let withCommit = try RustBridge().analyticsEnvelope()
+    let commit = try #require(withCommit.repositories.first?.commits.first)
+    #expect(commit.commitID == "aaaaaaaaaaaa")
 }
 
 @Test func rejectsUnknownSchemaAndInvalidEnvelopeConsistency() {

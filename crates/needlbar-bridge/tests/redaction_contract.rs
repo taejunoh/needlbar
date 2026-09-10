@@ -259,7 +259,7 @@ fn analytics_sanitizes_raw_workspace_session_and_git_metadata_before_ffi() {
     assert!(repository.is_object());
     assert!(repository["providerModels"][0].is_object());
     assert!(repository["commits"][0].is_object());
-    assert_eq!(repository["commits"][0]["commitId"], "aaaaaaaaaaaa");
+    assert_eq!(repository["commits"][0]["commitID"], "aaaaaaaaaaaa");
     assert_eq!(repository["commits"][0]["pullRequestNumber"], 42);
     assert_eq!(repository["providerModels"][0]["provider"], "claude");
     assert_eq!(repository["providerModels"][0]["model"], "Other model");

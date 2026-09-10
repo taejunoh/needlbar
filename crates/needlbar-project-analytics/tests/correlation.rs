@@ -82,6 +82,56 @@ fn earliest_same_repository_commit_in_inclusive_four_hour_window_gets_one_fragme
     assert_eq!(payload.repositories[0].commits[0].commit_id, "aaaaaaaaaaaa");
     assert_eq!(payload.repositories[0].coverage.assigned_fragments, 1);
 }
+
+#[test]
+fn commit_after_capture_is_not_emitted_and_repository_usage_is_retained() {
+    let capture = "2026-09-01T12:00:00Z";
+    let git = FakeGitRunner::new(vec![
+        output("/repos/a\n"),
+        output(&commit(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "2026-09-01T12:01:00Z",
+            "future commit",
+        )),
+    ]);
+
+    let payload = build_analytics_payload(
+        report(fragment("/repos/a", "2026-09-01T11:59:00Z")),
+        time(capture),
+        &git,
+    );
+
+    let repository = &payload.repositories[0];
+    assert!(repository.commits.is_empty());
+    assert_eq!(repository.coverage.assigned_fragments, 0);
+    assert_eq!(repository.coverage.unassigned_fragments, 1);
+    assert_eq!(repository.coverage.reasons["pendingCommitWindow"], 1);
+    assert_eq!(repository.usage.total_tokens, "10");
+    assert_eq!(repository.usage.estimated_cost_usd, "1.25");
+}
+
+#[test]
+fn commit_at_capture_is_eligible_for_correlation() {
+    let git = FakeGitRunner::new(vec![
+        output("/repos/a\n"),
+        output(&commit(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "2026-09-01T12:00:00Z",
+            "capture-time commit",
+        )),
+    ]);
+
+    let payload = build_analytics_payload(
+        report(fragment("/repos/a", "2026-09-01T11:59:00Z")),
+        time("2026-09-01T12:00:00Z"),
+        &git,
+    );
+
+    assert_eq!(payload.repositories[0].coverage.assigned_fragments, 1);
+    assert_eq!(payload.repositories[0].coverage.unassigned_fragments, 0);
+    assert_eq!(payload.repositories[0].commits[0].commit_id, "aaaaaaaaaaaa");
+}
+
 #[test]
 fn exact_four_hour_boundary_matches_but_one_second_later_does_not() {
     let matching = FakeGitRunner::new(vec![

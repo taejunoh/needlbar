@@ -22,6 +22,7 @@ pub struct AnalysisRange {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryAnalytics {
+    #[serde(rename = "repositoryID")]
     pub repository_id: String,
     pub label: String,
     pub state: RepositoryState,
@@ -70,6 +71,7 @@ pub struct ProviderModelAnalytics {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitAnalytics {
+    #[serde(rename = "commitID")]
     pub commit_id: String,
     pub committed_at: DateTime<Utc>,
     pub correlated_usage: UsageAggregate,

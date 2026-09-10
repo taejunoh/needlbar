@@ -387,7 +387,11 @@ fn repository(
             let limit = end + Duration::hours(4);
             let found = parsed
                 .iter()
-                .filter(|commit| commit.committed_at >= end && commit.committed_at <= limit)
+                .filter(|commit| {
+                    commit.committed_at >= end
+                        && commit.committed_at <= limit
+                        && commit.committed_at <= state.generated_at
+                })
                 .min_by(|a, b| a.committed_at.cmp(&b.committed_at).then(a.oid.cmp(&b.oid)));
             if let Some(commit) = found {
                 assigned
