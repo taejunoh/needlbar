@@ -446,7 +446,7 @@ struct AnalyticsWindowControllerTests {
             model.loadIfNeeded()
             await repository.waitForCall(1)
             let host = AnalyticsShellFixtureHost(viewModel: model)
-            defer { host.close() }
+            defer { cleanUpAnalyticsShellFixture(host: host, state: state, repository: repository) }
 
             switch state {
             case "complete":
@@ -499,6 +499,7 @@ struct AnalyticsWindowControllerTests {
         }
         let captureDirectory = URL(fileURLWithPath: captureDirectoryPath, isDirectory: true)
         try FileManager.default.createDirectory(at: captureDirectory, withIntermediateDirectories: true)
+        let releaseMarker = try analyticsFixtureReleaseMarker(in: captureDirectory)
 
         let model = AnalyticsViewModel(
             store: AnalyticsSnapshotStore(),
@@ -512,7 +513,6 @@ struct AnalyticsWindowControllerTests {
         host.setContentSize(NSSize(width: 760, height: 520), appearance: try #require(NSAppearance(named: .aqua)))
         try host.writeCaptureReady(in: captureDirectory)
 
-        let releaseMarker = captureDirectory.appendingPathComponent("needlbar-analytics-fixture-release")
         let deadline = Date(timeIntervalSinceNow: 120)
         while !FileManager.default.fileExists(atPath: releaseMarker.path), Date() < deadline {
             host.drainLayout()
@@ -522,6 +522,37 @@ struct AnalyticsWindowControllerTests {
             FileManager.default.fileExists(atPath: releaseMarker.path),
             "Fixture capture timed out after 120 seconds; create \(releaseMarker.path) after capture."
         )
+    }
+
+    @Test func balancedNativeFixtureCaptureRejectsAPreexistingReleaseMarker() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("needlbar-analytics-fixture-release-marker-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let marker = directory.appendingPathComponent("needlbar-analytics-fixture-release")
+        try Data().write(to: marker)
+
+        #expect(throws: Error.self) {
+            _ = try analyticsFixtureReleaseMarker(in: directory)
+        }
+    }
+
+    @Test func balancedNativeShellFixtureCleanupResumesAHeldRequestWhenRenderingThrows() async {
+        let repository = TestAnalyticsRepository()
+        let model = AnalyticsViewModel(store: AnalyticsSnapshotStore(), repository: repository)
+        model.loadIfNeeded()
+        await repository.waitForCall(1)
+        let host = AnalyticsShellFixtureHost(viewModel: model)
+
+        do {
+            defer { cleanUpAnalyticsShellFixture(host: host, state: "loading", repository: repository) }
+            throw analyticsFixtureError("intentional fixture render failure")
+        } catch {
+            #expect((error as NSError).localizedDescription == "intentional fixture render failure")
+        }
+
+        #expect(await eventually { !model.isLoading })
+        #expect(await repository.callCount == 1)
     }
 }
 
@@ -735,6 +766,25 @@ private func analyticsPixelQAFile(_ name: String) throws -> URL {
         .appendingPathComponent("needlbar-analytics-pixel-qa", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appendingPathComponent(name)
+}
+
+private func analyticsFixtureReleaseMarker(in directory: URL) throws -> URL {
+    let marker = directory.appendingPathComponent("needlbar-analytics-fixture-release")
+    guard !FileManager.default.fileExists(atPath: marker.path) else {
+        throw analyticsFixtureError("The fixture capture release marker already exists: \(marker.path)")
+    }
+    return marker
+}
+
+@MainActor
+private func cleanUpAnalyticsShellFixture(
+    host: AnalyticsShellFixtureHost,
+    state: String,
+    repository: TestAnalyticsRepository
+) {
+    host.close()
+    guard state == "loading" || state == "updating" else { return }
+    repository.completeNext(with: .success(populatedAnalyticsSnapshot()))
 }
 
 private func analyticsFixtureError(_ description: String) -> NSError {
