@@ -2,10 +2,16 @@
 
 **Updated:** 2026-09-09
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** Balanced dashboard Tasks 1–2 complete and reviewed; Task 3 status/navigation next. Earlier native acceptance remains incomplete.
-**Next action:** Execute Task 3 of `docs/superpowers/plans/2026-09-09-analytics-balanced-dashboard.md`, then native QA. Preserve current data semantics, public v0.3.0 tag and unrelated dirty main vendor checkout.
+**Current phase:** Balanced dashboard Tasks 1–3 complete and reviewed; native QA in progress. Earlier native acceptance remains incomplete.
+**Next action:** Complete Task 4 fixture/native verification in `docs/superpowers/plans/2026-09-09-analytics-balanced-dashboard.md`. Preserve current data semantics, public v0.3.0 tag and unrelated dirty main vendor checkout.
 
 ## Analytics visual redesign — 2026-09-09
+
+Balanced Task 3: `0865495` adds canonical status and no-fetch diagnostics
+navigation; the existing partial predicate is reused via internal access only.
+Focused23 and full453 Swift tests passed with `make test` exit0; durable logs
+and report are in the execution ledger directory (`task-3-report.md`). Spec and
+quality reviews passed. Interaction-spy evidence is not native scroll/AX acceptance.
 
 Balanced Task 2: `16dc349` connects the width-owned content, summary cards and
 evidence panels, preserving repository details. Focused21 and full451 Swift
