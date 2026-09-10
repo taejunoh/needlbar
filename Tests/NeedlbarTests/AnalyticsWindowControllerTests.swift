@@ -8,6 +8,28 @@ import SwiftUI
 @Suite("AnalyticsWindowControllerTests", .serialized)
 @MainActor
 struct AnalyticsWindowControllerTests {
+    @Test func compactCopyPreservesWarningAndDiagnosticMeaning() {
+        let partial = AnalyticsDashboardStatus.partial("Original coverage qualification")
+        #expect(AnalyticsCompactPresentation.statusTitle(partial) == "Partial coverage")
+        #expect(partial.text == "Original coverage qualification")
+        #expect(AnalyticsCompactPresentation.statusTitle(.stale("Retained snapshot")) == "Retained snapshot")
+        #expect(AnalyticsCompactPresentation.diagnosticContext("recordLimitReached") == "Mixed processing limits")
+        #expect(AnalyticsCompactPresentation.diagnosticContext("missingDuration") == "Response duration missing")
+        #expect(AnalyticsCompactPresentation.diagnosticContext("unrecognized") == "Limited evidence")
+        #expect(AnalyticsCompactPresentation.diagnosticID("missingDuration") == "diagnostic-missingDuration")
+        #expect(AnalyticsCompactPresentation.repositoryID("sample") == "repository-sample")
+        #expect(AnalyticsCompactPresentation.estimateQualifier == "Estimated cost · not a bill")
+    }
+
+    @Test func compactRowWidthsAdaptWithoutChangingEvidenceColumns() {
+        #expect(!AnalyticsCompactPresentation.wideRows(592))
+        #expect(AnalyticsCompactPresentation.wideRows(712))
+        #expect(AnalyticsCompactPresentation.wideRows(960))
+        #expect(AnalyticsCompactPresentation.quality(cost: "Complete", timing: "Complete") == nil)
+        #expect(AnalyticsCompactPresentation.quality(cost: "Complete", timing: "Partial") == "Timing Partial")
+        #expect(AnalyticsCompactPresentation.quality(cost: "Unavailable", timing: "Unavailable") == "Cost Unavailable · Timing Unavailable")
+    }
+
     @Test func balancedStatusResolverUsesTheApprovedSinglePriorityOrder() {
         #expect(AnalyticsDashboardStatus.resolve(isLoading: true, presentationState: .loading, hasDisplayedSnapshot: false, hasPartialDisplayedSnapshot: false, statusCopy: "ignored") == .initialLoading)
         let updating = AnalyticsDashboardStatus.resolve(isLoading: true, presentationState: .loading, hasDisplayedSnapshot: true, hasPartialDisplayedSnapshot: true, statusCopy: "ignored")
@@ -318,7 +340,10 @@ struct AnalyticsWindowControllerTests {
         #expect(AnalyticsDashboardLayout.summaryColumnCount(forContentWidth: 960) == 3)
         #expect(AnalyticsDashboardLayout.evidencePanelColumnCount(forContentWidth: 592) == 1)
         #expect(AnalyticsDashboardLayout.evidencePanelColumnCount(forContentWidth: 712) == 1)
-        #expect(AnalyticsDashboardLayout.evidencePanelColumnCount(forContentWidth: 960) == 2)
+        #expect(AnalyticsDashboardLayout.evidencePanelColumnCount(forContentWidth: 960) == 1)
+        #expect(AnalyticsDashboardLayout.unattributedUsesHorizontalLayout(forContentWidth: 360) == false)
+        #expect(AnalyticsDashboardLayout.unattributedUsesHorizontalLayout(forContentWidth: 592))
+        #expect(AnalyticsDashboardLayout.unattributedUsesHorizontalLayout(forContentWidth: 960))
     }
 
     @Test func balancedDashboardCardStylesDriveTheRenderedSemanticTreatments() {
@@ -336,12 +361,72 @@ struct AnalyticsWindowControllerTests {
         #expect(AnalyticsDashboardLayout.summaryValuePointSize(for: "$123,456,789.00") == 24)
     }
 
+    @Test func balancedDashboardDisclosureStateSurvivesRefreshForDiagnosticAndRepositoryRows() throws {
+        var diagnosticsExpanded = true
+        var definitionExpanded = false
+        var expandedSections: Set<String> = []
+        let bindings = Binding(
+            get: { expandedSections },
+            set: { expandedSections = $0 }
+        )
+        let diagnosticID = AnalyticsCompactPresentation.diagnosticID("missingDuration")
+        let providerModelID = "provider-model-repo-1"
+        let repositoryID = AnalyticsCompactPresentation.repositoryID("repo-1")
+        let content = AnalyticsDashboardContent(
+            snapshot: populatedAnalyticsSnapshot(),
+            contentWidth: 592,
+            diagnosticsExpanded: Binding(get: { diagnosticsExpanded }, set: { diagnosticsExpanded = $0 }),
+            estimateDefinitionExpanded: Binding(get: { definitionExpanded }, set: { definitionExpanded = $0 }),
+            expandedSections: bindings,
+            onViewDiagnostics: {}
+        )
+
+        let diagnosticDisclosure = content.disclosureBinding(diagnosticID)
+        let providerModelDisclosure = content.disclosureBinding(providerModelID)
+        let repositoryDisclosure = content.disclosureBinding(repositoryID)
+        #expect(diagnosticDisclosure.wrappedValue == false)
+        #expect(providerModelDisclosure.wrappedValue == false)
+        #expect(repositoryDisclosure.wrappedValue == false)
+
+        diagnosticDisclosure.wrappedValue = true
+        #expect(diagnosticDisclosure.wrappedValue)
+        #expect(providerModelDisclosure.wrappedValue == false)
+        #expect(repositoryDisclosure.wrappedValue == false)
+        providerModelDisclosure.wrappedValue = true
+        #expect(providerModelDisclosure.wrappedValue)
+        repositoryDisclosure.wrappedValue = true
+        #expect(diagnosticDisclosure.wrappedValue)
+        #expect(providerModelDisclosure.wrappedValue)
+        #expect(repositoryDisclosure.wrappedValue)
+
+        let firstHost = NSHostingView(rootView: content)
+        firstHost.frame = NSRect(x: 0, y: 0, width: 640, height: 400)
+        firstHost.layoutSubtreeIfNeeded()
+
+        let refreshedContent = AnalyticsDashboardContent(
+            snapshot: populatedAnalyticsSnapshot(),
+            contentWidth: 592,
+            diagnosticsExpanded: Binding(get: { diagnosticsExpanded }, set: { diagnosticsExpanded = $0 }),
+            estimateDefinitionExpanded: Binding(get: { definitionExpanded }, set: { definitionExpanded = $0 }),
+            expandedSections: bindings,
+            onViewDiagnostics: {}
+        )
+        let refreshedHost = NSHostingView(rootView: refreshedContent)
+        refreshedHost.frame = firstHost.frame
+        refreshedHost.layoutSubtreeIfNeeded()
+
+        #expect(refreshedContent.disclosureBinding(diagnosticID).wrappedValue)
+        #expect(refreshedContent.disclosureBinding(providerModelID).wrappedValue)
+        #expect(refreshedContent.disclosureBinding(repositoryID).wrappedValue)
+    }
+
     @Test func balancedDashboardConsumerTracksAlignUnequalCardsAndPanelsAtTheTop() {
         let summaryTracks = AnalyticsDashboardLayout.summaryTracks(forContentWidth: 712)
         let evidenceTracks = AnalyticsDashboardLayout.evidencePanelTracks(forContentWidth: 960)
 
         #expect(summaryTracks.allSatisfy { $0.alignment == .top })
         #expect(evidenceTracks.allSatisfy { $0.alignment == .top })
+        #expect(evidenceTracks.count == 1)
     }
 
     @Test func balancedDashboardContentHasNaturalHeightAndReachesItsFinalDisclosure() throws {
@@ -419,7 +504,11 @@ struct AnalyticsWindowControllerTests {
     @Test func balancedNativeFixturePixelEvidenceIncludesExpandedLongAndMaximumEndpoints() throws {
         let light = try #require(NSAppearance(named: .aqua))
         let dark = try #require(NSAppearance(named: .darkAqua))
-        let expandedSections: Set<String> = ["provider-model-repo-0", "commits-repo-0"]
+        let expandedSections: Set<String> = [
+            AnalyticsCompactPresentation.repositoryID("repo-0"),
+            "provider-model-repo-0",
+            "commits-repo-0",
+        ]
         let fixtures: [(name: String, snapshot: AnalyticsSnapshot, appearance: NSAppearance, position: AnalyticsFixtureScrollPosition)] = [
             ("long-label-expanded-top-640-light", longLabelAnalyticsSnapshot(), light, .top),
             ("maximum-expanded-top-640-dark", maximumAnalyticsSnapshot(), dark, .top),

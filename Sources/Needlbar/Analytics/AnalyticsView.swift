@@ -142,19 +142,19 @@ public struct AnalyticsView: View {
             }
             if status.isWarning {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Label(status.text, systemImage: "exclamationmark.triangle.fill")
+                    Label(AnalyticsCompactPresentation.statusTitle(status), systemImage: "exclamationmark.triangle.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel(status.text)
+                        .help(status.text)
                     if displayedSnapshot != nil {
                         Button("View diagnostics", action: onViewDiagnostics)
                             .font(.system(size: 12, weight: .medium))
                             .accessibilityLabel("View analytics diagnostics")
                     }
                 }
-                .padding(.horizontal, 8)
                 .padding(.vertical, 5)
-                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             } else {
                 Text(status.text).font(.system(size: 12)).foregroundStyle(.secondary)
             }
@@ -209,7 +209,7 @@ struct AnalyticsDashboardContent: View {
 
             LazyVGrid(columns: AnalyticsDashboardLayout.evidencePanelTracks(forContentWidth: contentWidth), alignment: .leading, spacing: AnalyticsDashboardLayout.gridSpacing) {
                 repositoriesPanel
-                unattributedPanel(summary)
+                unattributedPanel(summary, contentWidth: contentWidth)
             }
 
             disclosures(diagnostics)
@@ -244,39 +244,76 @@ struct AnalyticsDashboardContent: View {
                         .accessibilityLabel("View analytics diagnostics")
                 }
             } else {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(snapshot.repositories, id: \.repositoryID) { repository in
-                        repositoryRow(repository)
-                        if repository.repositoryID != snapshot.repositories.last?.repositoryID { Divider() }
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text("Repository").frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Estimated cost").frame(width: 132, alignment: .trailing)
+                        Text("Tokens").frame(width: 88, alignment: .trailing)
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 12)
+                    .padding(.trailing, 4)
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(snapshot.repositories, id: \.repositoryID) { repository in
+                            repositoryRow(repository)
+                            if repository.repositoryID != snapshot.repositories.last?.repositoryID { Divider() }
+                        }
                     }
                 }
             }
         }
     }
 
-    private func unattributedPanel(_ summary: AnalyticsPresentationSummary) -> some View {
+    private func unattributedPanel(_ summary: AnalyticsPresentationSummary, contentWidth: CGFloat) -> some View {
         AnalyticsDashboardPanel(title: "Unattributed") {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Unattributed estimated cost")
-                    .font(.system(size: 13, weight: .medium))
-                Text(unattributedCost)
-                    .font(.system(size: AnalyticsDashboardLayout.summaryValuePointSize(for: unattributedCost), weight: .semibold))
-                    .monospacedDigit()
-                LabeledContent("Unlinked fragments", value: "\(snapshot.unattributed.fragments)")
-                Text("Some retained local usage could not be matched to a repository.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                if summary.unattributedTimestampCoverageIsIncomplete {
-                    Label("Not a verified 30-day total", systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.orange)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.orange.opacity(0.14), in: Capsule())
+            if AnalyticsDashboardLayout.unattributedUsesHorizontalLayout(forContentWidth: contentWidth) {
+                HStack(alignment: .top, spacing: AnalyticsDashboardLayout.sectionSpacing) {
+                    unattributedCostSummary
+                    unattributedContext(summary)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    unattributedCostSummary
+                    unattributedContext(summary)
                 }
             }
-            .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var unattributedCostSummary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Unattributed estimated cost")
+                .font(.system(size: 13, weight: .medium))
+            Text(unattributedCost)
+                .font(.system(size: AnalyticsDashboardLayout.summaryValuePointSize(for: unattributedCost), weight: .semibold))
+                .monospacedDigit()
+            Text(AnalyticsCompactPresentation.estimateQualifier)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func unattributedContext(_ summary: AnalyticsPresentationSummary) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            LabeledContent("Unlinked fragments", value: "\(snapshot.unattributed.fragments)")
+            Text("Some retained local usage could not be matched to a repository.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            if summary.unattributedTimestampCoverageIsIncomplete {
+                Label("Not a verified 30-day total", systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.14), in: Capsule())
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var unattributedCost: String {
@@ -310,26 +347,53 @@ struct AnalyticsDashboardContent: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             } else {
+                Text(AnalyticsCompactPresentation.countsQualification)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
                 ForEach(diagnostics, id: \.code) { diagnostic in
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(AnalyticsDisplayFormatter.diagnosticTitle(diagnostic.code))
-                                .font(.system(size: 13, weight: .medium))
-                                .fixedSize(horizontal: false, vertical: true)
-                            Spacer(minLength: 8)
-                            Text("\(diagnostic.count) \(AnalyticsDisplayFormatter.diagnosticUnit(diagnostic.unit))")
-                                .font(.system(size: 12).monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
+                    DisclosureGroup(isExpanded: disclosureBinding(AnalyticsCompactPresentation.diagnosticID(diagnostic.code))) {
                         Text(AnalyticsDisplayFormatter.diagnosticExplanation(diagnostic.code))
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 6)
+                    } label: {
+                        diagnosticLabel(diagnostic)
                     }
+                    .accessibilityLabel("Explanation: \(AnalyticsDisplayFormatter.diagnosticTitle(diagnostic.code))")
+                    Divider()
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func diagnosticLabel(_ diagnostic: AnalyticsPresentationDiagnostic) -> some View {
+        let wide = AnalyticsCompactPresentation.wideRows(contentWidth)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(AnalyticsDisplayFormatter.diagnosticTitle(diagnostic.code))
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("\(diagnostic.count) \(AnalyticsDisplayFormatter.diagnosticUnit(diagnostic.unit))")
+                    .font(.system(size: 12).monospacedDigit())
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: wide ? 190 : 165, alignment: .trailing)
+                if wide {
+                    Text(AnalyticsCompactPresentation.diagnosticContext(diagnostic.code))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 190, alignment: .leading)
+                }
+            }
+            if !wide {
+                Text(AnalyticsCompactPresentation.diagnosticContext(diagnostic.code))
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 5)
     }
 
     private var estimateDefinition: some View {
@@ -345,7 +409,7 @@ struct AnalyticsDashboardContent: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func disclosureBinding(_ identifier: String) -> Binding<Bool> {
+    func disclosureBinding(_ identifier: String) -> Binding<Bool> {
         Binding(
             get: { expandedSections.contains(identifier) },
             set: { isExpanded in
@@ -358,7 +422,7 @@ struct AnalyticsDashboardContent: View {
         )
     }
 
-    private func repositoryRow(_ repository: AnalyticsRepositoryAnalytics) -> some View {
+    private func repositoryDetails(_ repository: AnalyticsRepositoryAnalytics) -> some View {
         let gitReasons = AnalyticsDisplayFormatter.gitReasonCopy(repository.coverage.reasons)
         let providerDisclosure = disclosureBinding("provider-model-\(repository.repositoryID)")
         let commitsDisclosure = disclosureBinding("commits-\(repository.repositoryID)")
@@ -460,6 +524,42 @@ struct AnalyticsDashboardContent: View {
             }
         }
         .padding(.vertical, 3)
+    }
+
+    private func repositoryRow(_ repository: AnalyticsRepositoryAnalytics) -> some View {
+        DisclosureGroup(isExpanded: disclosureBinding(AnalyticsCompactPresentation.repositoryID(repository.repositoryID))) {
+            repositoryDetails(repository).padding(.top, 8)
+        } label: {
+            repositoryComparisonLabel(repository)
+        }
+        .accessibilityLabel("Repository details: \(repository.label)")
+    }
+
+    private func repositoryComparisonLabel(_ repository: AnalyticsRepositoryAnalytics) -> some View {
+        let costCoverage = AnalyticsDisplayFormatter.repositoryCostCoverage(repository.coverage, state: repository.state)
+        let timingCoverage = AnalyticsDisplayFormatter.repositoryTimingCoverage(repository.coverage, state: repository.state)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(repository.label)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(AnalyticsDisplayFormatter.cost(repository.usage.estimatedCostUSDValue))
+                    .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                    .frame(width: 132, alignment: .trailing)
+                    .accessibilityLabel("Estimated cost")
+                    .accessibilityValue(AnalyticsDisplayFormatter.cost(repository.usage.estimatedCostUSDValue))
+                Text(AnalyticsDisplayFormatter.tokens(repository.usage.totalTokens))
+                    .font(.system(size: 12).monospacedDigit())
+                    .frame(width: 88, alignment: .trailing)
+                    .accessibilityLabel("Tokens")
+                    .accessibilityValue(AnalyticsDisplayFormatter.tokensAccessibilityValue(repository.usage.totalTokens))
+            }
+            if let quality = AnalyticsCompactPresentation.quality(cost: costCoverage, timing: timingCoverage) {
+                Text(quality).font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 5)
     }
 
 }

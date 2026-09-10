@@ -114,10 +114,19 @@ theme setting.
 
 ## Evidence panels and repository list
 
-Below the summary row, show two lower panels: **Repositories** and
-**Unattributed**. At **available content width ≥800 pt**, they are equal columns;
-below that they stack vertically. Both use the same panel border/tint/alignment
-language as the summary, without turning absent data into a large empty card.
+User-approved amendment, 2026-09-10: below the unchanged responsive summary row,
+always stack **Repositories**, **Unattributed**, then the existing disclosures
+in one full-content-width column, including at very wide window sizes. This
+replaces the former ≥800 pt equal-column evidence layout, whose unequal content
+heights left unused space beside the repository list.
+
+Repositories use the entire bounded content width. Unattributed is a compact
+full-width card below the repository list; arrange its existing amount/count
+content horizontally when it fits and stack it at narrow widths. Preserve all
+qualifications with wrapping rather than clipping, and never impose a fixed
+height. Both panels keep existing border/tint/alignment semantics. Keep the
+existing960 pt content maximum, insets, summary-card responsiveness and window
+dimensions unchanged.
 
 Repositories retain the existing populated order and details: descending cost,
 then provider/model and local commits in the existing expanded rows with their

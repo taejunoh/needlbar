@@ -7,7 +7,6 @@ enum AnalyticsDashboardLayout {
     static let gridSpacing: CGFloat = 12
     static let minimumCardWidth: CGFloat = 180
     static let summaryWideBreakpoint: CGFloat = 600
-    static let evidenceTwoColumnBreakpoint: CGFloat = 800
 
     static func contentColumnWidth(forWindowContentWidth width: CGFloat) -> CGFloat {
         min(max(0, width - horizontalInset * 2), maximumContentWidth)
@@ -19,7 +18,11 @@ enum AnalyticsDashboardLayout {
     }
 
     static func evidencePanelColumnCount(forContentWidth width: CGFloat) -> Int {
-        width >= evidenceTwoColumnBreakpoint ? 2 : 1
+        1
+    }
+
+    static func unattributedUsesHorizontalLayout(forContentWidth width: CGFloat) -> Bool {
+        width >= minimumCardWidth * 2 + gridSpacing
     }
 
     static func summaryValuePointSize(for value: String) -> CGFloat {

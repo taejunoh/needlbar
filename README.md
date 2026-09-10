@@ -177,6 +177,27 @@ Observed active AI-session time is derived from local session timestamps. It is 
 
 Analytics is manual and local-only: there is no startup scan, timer, watcher, background refresh, remote Git/forge request, provider authentication, network request, backend, database, or analytics history. Analytics does not change the v0.2.0 export schema or v0.2.1 widget/notification behavior.
 
+### Compact Analytics readability (development branch)
+
+The released v0.2.2 analytics baseline remains local-only. This branch also
+contains an unreleased presentation refinement; it is not part of public v0.3.0
+or the Homebrew Cask. It keeps the existing data semantics while adding:
+
+- colored summary cards;
+- full-width, aligned repository rows for name, estimated cost, and tokens;
+- expandable repository details that preserve the existing qualifications and
+  metrics;
+- a separate Unlinked estimate with the visible “Estimated cost · not a bill”
+  qualifier; and
+- compact partial-status text with individually expandable diagnostics that
+  retain each diagnostic’s original unit and caveat.
+
+`make test` passed on 2026-09-10 with 464 Swift tests in 19 suites; see the
+[current development status](docs/STATUS.md). Native inspection covers only
+the default-light 760 × 520 view so far; the width, appearance, state,
+disclosure, scrolling, keyboard, and accessibility interaction matrix remains
+pending. See the approved [compact readability design](docs/superpowers/specs/2026-09-10-analytics-compact-readability-design.md).
+
 ## Provider support
 
 The fixed provider set is Claude Code, Codex, and Cursor.
