@@ -2,10 +2,18 @@
 
 **Updated:** 2026-09-09
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** Balanced dashboard Task 1 complete and reviewed; Task 2 integration next. Earlier native acceptance remains incomplete.
-**Next action:** Execute Task 2 of `docs/superpowers/plans/2026-09-09-analytics-balanced-dashboard.md`, then continue serially. Preserve current data semantics, public v0.3.0 tag and unrelated dirty main vendor checkout.
+**Current phase:** Balanced dashboard Tasks 1–2 complete and reviewed; Task 3 status/navigation next. Earlier native acceptance remains incomplete.
+**Next action:** Execute Task 3 of `docs/superpowers/plans/2026-09-09-analytics-balanced-dashboard.md`, then native QA. Preserve current data semantics, public v0.3.0 tag and unrelated dirty main vendor checkout.
 
 ## Analytics visual redesign — 2026-09-09
+
+Balanced Task 2: `16dc349` connects the width-owned content, summary cards and
+evidence panels, preserving repository details. Focused21 and full451 Swift
+tests passed; `make test` exit0 reported at
+`/Users/taejunoh/Developer/LFG/needlbar-analytics-balanced-task2-make-test-20260909.log`.
+Spec and quality reviews passed. The native scroll test requires a mounted
+NSWindow lifecycle; its50ms attachment bound is a nonblocking CI-stability
+review note for final triage. Native pixel/AX acceptance is still pending.
 
 Balanced Task 1: `4feb769` adds view-owned geometry/card primitives and focused
 tests (20 passed). Spec and code-quality reviews passed. The implementer's full
