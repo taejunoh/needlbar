@@ -1,11 +1,186 @@
 # Needlbar Development Status
 
-**Updated:** 2026-09-09
+**Updated:** 2026-09-10
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** Balanced dashboard Tasks 1–3 complete and reviewed; native QA in progress. Earlier native acceptance remains incomplete.
-**Next action:** Complete Task 4 fixture/native verification in `docs/superpowers/plans/2026-09-09-analytics-balanced-dashboard.md`. Preserve current data semantics, public v0.3.0 tag and unrelated dirty main vendor checkout.
+**Current phase:** Balanced dashboard signed runtime inspected; observed-time-bounds source correction reviewed and full-test verified, not installed. Remaining native matrix and live linkage acceptance stay open.
+**Next action:** Keep one signed runtime at `needlbar-runtime/latest/Needlbar.app`; do not launch from build `dist` or overwrite a running bundle. Observe permission behavior without repeated relaunches or approval requests. Do not reset TCC or grant Full Disk Access. Preserve public v0.3.0 and unrelated main/vendor changes. No merge/push/public release is authorized.
 
 ## Analytics visual redesign — 2026-09-09
+
+### Observed timestamp bounds correction — 2026-09-10
+
+Code tracing identified a separate producer defect: the global 8192 timing sample
+cap could erase bounds for later positive-timestamp detailed fragments or leave
+an earlier fragment's end stale. Synthetic RED reproduced expected timestamp
+1780000100000 versus actual 0 (exit 101). Reviewed technical amendment:
+`docs/superpowers/specs/2026-09-10-analytics-observed-time-bounds-amendment.md`.
+Local vendor commit `3c427e0558932e9c6d36948146059c9ca62cd525` preserves observed
+positive min/max independently of timing samples. Active-time calculation, caps,
+anonymous overflow, range/dedup, pricing and public ABI remain unchanged.
+Parent regression checks actual-end commit association with a zero-time control.
+Read-only review passed; a requested explicit partial-flag assertion was added
+and its focused test passed. No runtime install or external push occurred.
+
+Verification so far: focused vendor workspace unit8 and integration7 pass;
+direct changed-vendor suite 1401 passed /1 ignored, exit0; parent focused
+correlation1 pass; full parent Rust workspace/provider fixture checks exit0.
+Full `make test` passed with exit0, including Swift460 in19 suites and all shell
+contracts. It tested the committed corrected vendor: its helper checks out HEAD
+and would otherwise omit uncommitted vendor edits.
+Logs are `/Users/taejunoh/Developer/LFG/needlbar-time-bounds-{vendor-test,parity,full-test}.log`.
+Vendor-wide fmt check reported pre-existing unrelated formatting differences;
+no bulk formatting was applied. Whitespace diff checks passed.
+This is a synthetic defect correction, not proof that live linkage is repaired:
+absent workspaces, real missing metadata and detail-cap pressure remain separate.
+
+### Repository linkage diagnosis — 2026-09-10
+
+Follow-up explicit one-shot probe completed with exit 0 on September 10. Existing
+feature-gated instrumentation already supplied the requested error categories, so
+the proposed new instrumentation was cancelled before any source/test edits.
+The exact ignored bridge test produced one validated allowlisted numeric JSON
+object; 32 other stdout lines were discarded and stderr discarded, never retained.
+Current aggregates: canonicalization pathAbsent 12, pathInaccessible/pathMalformed/
+pathOther 0; discovery unavailableStageUnknown 12 and all other discovery counts 0;
+mapped 0, unmapped 513. Normalized timestamp-unavailable: Claude 41, Codex 459,
+Other 1 (total 501). Timing overflow 180115, fragment overflow 566, model overflow
+0, recordLimitFlag 1. These are a new capture, not the earlier UI snapshot.
+The repeated absent-path/discovery-failure pattern strongly supports stale or
+removed observed workspace paths; it is not paired runner-internal stage proof.
+Zero inaccessible outcomes do not establish all future runtime reads permitted.
+Timestamp unavailability and current fragment cap are separate unresolved issues;
+do not fabricate timestamps, reassign missing workspaces or raise limits blindly.
+Next: evidence-based technical amendment for source timestamp/cap investigation
+and conservative handling of missing workspaces, preserving existing contracts.
+No runtime reinstall/restart, permission change, source change, or vendor change.
+PID62349 remained the sole installed Needlbar process during the probe.
+
+User requested continuation on zero linked repositories. Read-only investigation
+excludes a universal Git launcher/environment failure: exact production sanitized
+environment and discovery/log arguments on the known implementation worktree
+both exited 0 (74 and 52,514 stdout bytes respectively; stderr empty). Raw Git
+output was not exposed. A focused real Git runner integration test passed (1 test),
+including symlink, dotdot and linked-worktree discovery.
+Commit-log parsing cannot by itself cause zero repository rows: successful
+discovery inserts a repository before commit inspection; later read failure keeps
+that row. The remaining investigation is actual report workspace eligibility and
+runtime discovery failure. The precise cause is not established. Existing
+gitUnavailable coverage also predates the dashboard (September 1 handoff).
+No provider source scan, runtime restart, settings/permission change, source fix,
+vendor change or deployment was performed. Next diagnostic must classify failing
+runtime discovery without exposing workspace paths, raw output or session data;
+do not treat aggregate counters as a proven disjoint partition.
+
+### Signed runtime native inspection — 2026-09-10
+
+User opened Analytics in the existing signed runtime PID62349 (window53704).
+No rebuild, restart, permission grant or settings change was performed.
+At 760x520, actual screen capture confirms colored summary cards, equal card
+heights and bordered sections. Zoomed-window inspection confirms bounded,
+centered content and top-aligned two-column evidence panels. View diagnostics
+expands and scrolls without changing the displayed capture time (09:55 AM).
+Both diagnostic and estimate-definition disclosure children expose their real
+text, rather than the former repeated Expanded value. At the original size,
+scrollbar readback 1 and the screenshot confirm the final definition sentence
+is reachable. Restored original size, both disclosures collapsed, scroll 0.
+This validates the current dark, partial/unlinked-data state only; light mode,
+minimum-size/keyboard and populated-state native acceptance remain open.
+No permission prompt was observed during this inspection, which does not prove
+future prompt recurrence eliminated. Existing source/test results unchanged.
+
+### Approved stable local deployment
+
+The user approved local signing and runtime replacement. Source `0d93476` was
+packaged, then extension-first/host-second signed with the existing Developer ID
+Application identity, Team `3BMF4LM6TM`, hardened runtime, and no timestamp or
+notarization. Both designated requirements now use identifiers and Developer ID
+certificate identity rather than cdhash-only requirements. Both plist and signed
+entitlement App Groups are `3BMF4LM6TM.com.taejunoh.needlbar`; host remains
+unsandboxed and widget sandboxed. Package, re-sign, final strict verification and
+exact entitlement checks exited 0. An initial verification probe exited 1 because
+it queried a nonexistent custom entitlement key; corrected exact checks passed.
+
+Root independently verified signatures, requirements, groups and executable hash,
+copied to separate staging, then stopped only the verified old runtime PID39190.
+The old app is recoverable at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-stable-signing.PQ6eBk/Needlbar.app`.
+The verified replacement was launched once from
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app`; PID62349 was the
+sole Needlbar process afterward. Installed host SHA256:
+`79007169b2d6dc4d79505925469444b66fdaf41b414e8d3e119505e7a6b7b637`.
+Installed deep/strict signature verification passed. The pre-re-sign ZIP was not
+deployed. No preferences, credentials, permission grants, TCC or Keychain ACLs
+were changed. Initial consent after identity migration may remain necessary;
+future prompt recurrence has not yet been tested. No native UI acceptance,
+notarization, public release, push or merge is claimed by this operation.
+
+Earlier execution history follows (the subsequent approval/deployment above
+supersedes earlier paused/identity-not-used statements).
+
+Final correction `0d93476` top-aligns both grids and makes only summary cards
+fill their row height. Scoped final rereview resolves the sole P1; focused30 and
+full460 Swift tests passed, with numeric exit0 in durable
+`logs/final-alignment-{focused,full}.log`. No new app launch was performed.
+
+The user then reported repeated macOS "access data from other apps" prompts.
+Root found two instances: its worktree preview21742 and runtime/latest39190.
+Both disk bundles were ad-hoc signed, had no Team ID and distinct cdhash-only
+designated requirements. The package script recreates the same dist bundle,
+including while the older preview process was running. This unstable identity
+is the strongest evidenced explanation for repeated permission recognition;
+the precise protected read for this dialog was not traced.
+Root stopped only its preview21742; runtime/latest39190 was preserved. No
+permission was granted/reset and no security setting changed. Further package,
+preview launch and native acceptance are paused. Existing Developer ID and Apple
+Development signing identities are available, but were only enumerated, not used.
+The minimal next proposal is one consistent Developer ID-signed runtime bundle,
+never overwritten while running. Initial permission after identity migration may
+still be necessary. Separately, UI provider hiding does not disable source reads;
+an explicit local-data opt-in would require a product behavior change.
+
+Balanced Task 4 automated fixtures: `42e3971`; focused27 and full457 Swift
+tests passed with `make test` exit0. The generated cache-display PNGs were
+inspected and rejected as visual-acceptance evidence because SwiftUI compositing
+omitted text/backgrounds. A bounded mounted test-window experiment also lacked
+an externally readable AX window despite granted permissions. Native visual,
+keyboard and AX acceptance is still open. Test-code review found stale release
+marker and error-path continuation-cleanup issues; `5f33e25` fixes both with
+regressions (focused29/full459 exit0), and scoped spec review passed.
+
+Root `make package` and `make smoke` exited0 on `42e3971`; logs are in the
+execution ledger's `logs/native-package.log` and `logs/native-smoke.log`.
+For normal-app QA only, the old preview process was stopped and the new app
+was launched directly from this worktree's `dist/Needlbar.app` (PID21742).
+Its executable SHA256 is
+`85d9beb933e1a1681ad19646752a58e5775a4c171561a0b4b3984e4a494cc3b3`.
+No runtime bundle was replaced and no push, merge or release was performed.
+The user opened the normal Analytics route. Root inspected the actual packaged
+window (PID21742/window52323), dark appearance at760×520: semantic card colors,
+panel borders and text render correctly; View diagnostics expands and scrolls
+to diagnostics; the final expanded estimate-definition text is reachable with
+the native scrollbar at1.0. Evidence is retained in the execution ledger's
+`native-evidence/dark-760-{summary,expanded-end}.png`.
+External AX exposed repeated `Expanded` instead of diagnostic text. Commit
+`dd82902` removes unsafe container AX metadata from all four disclosures and
+enforces test-host attachment checks; focused29 and full459 Swift tests passed
+with a retained numeric exit0 on the second full gate. The first full attempt's
+numeric status was lost and is not accepted. Rebuilt-app AX confirmation remains
+pending. Task4's original test-code findings are resolved after scoped reviews.
+CUA independently confirms proper Refresh/View diagnostics button descriptions;
+their absence in Orca's simplified tree was not an application defect.
+CUA zoom also allowed wide dark-window inspection: bounded columns work, but
+natural-height cards/panels have offset top edges (centered grid alignment).
+This is included in final branch review. Keyboard Tab did not establish control
+focus; minimum width and light appearance remain unverified.
+
+Final whole-branch review (`2977c2a..dd82902`) found one P1: shared grid tracks
+vertically center natural-height cards/panels, causing ragged top edges in a wide
+window. A single bounded correction is in progress: top-align tracks and fill
+row height only for summary cards, never evidence panels. No further
+correctness, layer, ABI, privacy or attribution issue was found. The older50ms
+test attachment wait remains a deferred nonblocking CI-flake risk. Root package
+and smoke also exited0 on `dd82902`; that build was not relaunched pending the
+alignment fix, so the currently observed process still runs `42e3971`.
 
 Balanced Task 3: `0865495` adds canonical status and no-fetch diagnostics
 navigation; the existing partial predicate is reused via internal access only.
@@ -33,7 +208,7 @@ source edits. The full `make test` then exited 0; evidence:
 `/Users/taejunoh/Developer/LFG/needlbar-balanced-baseline-20260909.log`.
 The baseline passed 448 Swift tests but retained pre-existing collector-variable
 and native-archive deployment-target linker warnings; it does not establish
-macOS 14 runtime acceptance. Task 1 implementation is active; no native acceptance or new installation is
+macOS 14 runtime acceptance. No native acceptance or new installation is
 claimed. Execution ledger: `.superpowers/sdd/2026-09-09-analytics-balanced-dashboard/progress.md`.
 
 The user approved carrying the system dashboard's semantic colors and icons into
@@ -56,9 +231,8 @@ plan is written and self-reviewed. It separates layout/card styling, actual
 content composition, canonical status/local diagnostics navigation, and native
 acceptance. Self-review corrected outer-width ownership, staged dependencies,
 action-test coverage, duplicate status text, and deterministic fixture versus
-live-app evidence. Planned code has not been compiled or executed: its RED/GREEN
-and native checks remain execution work. No new implementation or installation
-occurred in this design-document step.
+live-app evidence. At that design-document checkpoint, no new implementation
+or installation had occurred; subsequent execution evidence is recorded above.
 
 ## Analytics preview installed — 2026-09-09
 

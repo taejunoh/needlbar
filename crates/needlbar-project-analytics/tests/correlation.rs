@@ -106,6 +106,52 @@ fn exact_four_hour_boundary_matches_but_one_second_later_does_not() {
     assert_eq!(unmatched.unattributed.reasons["noEligibleCommit"], 1);
 }
 #[test]
+fn partial_timing_uses_actual_end_for_commit_correlation_and_keeps_zero_timestamp_unattributed() {
+    let end = "2026-09-01T12:00:00Z";
+    let mut source = report(fragment("/repos/a", end));
+    source.timing_coverage_partial = true;
+    source.fragments[0].timing_coverage_partial = true;
+    source.fragments[0].first_seen_ms = time("2026-09-01T10:00:00Z").timestamp_millis();
+
+    let mut zero_timestamp = fragment("/repos/a", end);
+    zero_timestamp.first_seen_ms = 0;
+    zero_timestamp.last_seen_ms = 0;
+    source.fragments.push(zero_timestamp);
+
+    let payload = build_analytics_payload(
+        source,
+        time("2026-09-01T20:00:00Z"),
+        &FakeGitRunner::new(vec![
+            output("/repos/a\n"),
+            output(&format!(
+                "{}{}",
+                commit(
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "2026-09-01T11:59:59Z",
+                    "obsolete sampled end",
+                ),
+                commit(
+                    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    end,
+                    "actual end",
+                ),
+            )),
+        ]),
+    );
+
+    let repository = &payload.repositories[0];
+    assert_eq!(repository.coverage.assigned_fragments, 1);
+    assert_eq!(repository.coverage.unassigned_fragments, 0);
+    assert!(repository.coverage.timing_partial);
+    assert_eq!(repository.provider_models[0].timing_coverage, "partial");
+    assert_eq!(repository.commits.len(), 1);
+    assert_eq!(repository.commits[0].commit_id, "bbbbbbbbbbbb");
+    assert_eq!(payload.coverage.unattributed_fragments, 1);
+    assert_eq!(payload.unattributed.fragments, 1);
+    assert_eq!(payload.unattributed.reasons["missingTimestamp"], 1);
+}
+
+#[test]
 fn fragment_inside_open_window_is_pending_not_no_eligible_commit() {
     let git = FakeGitRunner::new(vec![output("/repos/a\n"), output("")]);
     let payload = build_analytics_payload(
