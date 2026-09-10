@@ -2,12 +2,224 @@
 
 **Updated:** 2026-09-10
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** Balanced dashboard signed runtime inspected; observed-time-bounds source correction reviewed and full-test verified, not installed. Remaining native matrix and live linkage acceptance stay open.
-**Next action:** Keep one signed runtime at `needlbar-runtime/latest/Needlbar.app`; do not launch from build `dist` or overwrite a running bundle. Observe permission behavior without repeated relaunches or approval requests. Do not reset TCC or grant Full Disk Access. Preserve public v0.3.0 and unrelated main/vendor changes. No merge/push/public release is authorized.
+**Current phase:** Compact Analytics readability implementation and automated
+verification are complete in the shared isolated worktree. Native acceptance
+is partial: one corrected default-light fixture viewport is compositor-verified,
+while broader visual and interaction coverage remains open. The
+presentation-only increment is ready for provenance-aware commit curation, and
+development-branch push is authorized as of 2026-09-10. Merge, public release,
+and production installation remain outside this request.
+**Next action:** Parent agent should publish the curated development branch.
+Native visual/accessibility acceptance remains explicitly partial, and the
+unresolved menu-bar visibility and attribution/timing issues remain separate
+from this presentation work.
+
+## Push preparation — 2026-09-10
+
+Development-branch push is authorized. Fresh `make test` completed successfully;
+Swift ran 464 tests in 19 suites in 15.260s, and the final notarize-app shell
+contracts passed. Output is retained locally in `needlbar-prepush-20260910.log`.
+Merge, public release, and production installation remain outside this request;
+native acceptance remains partial.
+
+## Compact readability implementation and final verification — 2026-09-10
+
+Tasks 1–3 added the compact presentation policy, individually expandable
+diagnostics, aligned repository comparison rows, compact status copy, and the
+nearby estimated-cost qualifier. Existing Core/Rust/source semantics,
+formatters, refresh ownership, disclosure detail, and cost-bucket separation
+remain unchanged. Focused verification passed with 33
+`AnalyticsWindowControllerTests` and 12 `AnalyticsPresentationTests`.
+
+Root's final `make test` exited 0 in the locally retained
+`needlbar-compact-readability-test.log`:
+Swift reported 464 tests in 19 suites, with Rust/vendor, provider-brand-assets,
+widget-extension, package-app, and notarize-app contract gates passing.
+`git diff --check` also exited 0. The integrated review found no source
+correctness or scope issue, marked the increment ready for provenance-aware
+handoff, and recorded two Important native QA gaps below.
+
+Native evidence includes a successful, locally retained external compositor
+capture of the default-light, partial/populated shell at 760×520 after the
+four-point inset correction; it is not a public linked artifact.
+Root and the auditor verified header/row alignment, readable contrast, and no
+viewport overlap; the isolated fixture test passed once (exit 0). The AX helper
+could not expose a native window despite permissions reported as granted.
+Minimum/wide widths, dark appearance, empty/long/maximum fixtures,
+loading/updating/stale/unavailable states, disclosure/scroll/keyboard/focus,
+and accessible-label interactions remain unverified as native acceptance.
+Transparent `cacheDisplay` PNGs and HTML/source tests are not substituted for
+that evidence. No production installation, refresh, permission change,
+menu-bar fix, push, merge, or release occurred in this task.
 
 ## Analytics visual redesign — 2026-09-09
 
+### Compact readability design — 2026-09-10
+
+Root observed installed PID78417/window56105 at760×520: colored summary cards,
+full-width repositories and Unattributed beneath them. Scrolled native content
+and inspected screenshots/AX, without triggering Refresh. This verifies the
+single-column arrangement, not all appearance/state scenarios. User subsequently
+found the text hierarchy insufficient and selected A in the private comparison.
+The new compact-readability spec preserves data semantics while aligning rows,
+reducing repeated prose and providing individual diagnostic explanations.
+Mockup only; the installed runtime is unchanged by this design step.
+
+### Single-column evidence layout — 2026-09-10
+
+User approved replacing the wide two-column Repositories/Unattributed layout
+with a full-width vertical sequence. The balanced-dashboard spec's Evidence
+panels section records this amendment. Summary cards and960pt content maximum
+remain unchanged. Evidence uses the existing grid with one flexible track at
+every width; Unattributed lays its unchanged amount/count/explanatory content
+out horizontally when it fits, otherwise vertically. Warnings wrap; disclosures
+remain below. No data/formatting/source/schema or refresh behavior changes.
+
+Focused breakpoint RED observed the old wide count2 instead of1; GREEN and
+AnalyticsWindowControllerTests30 passed. Independent review passed. Root review
+reconnected the actual grid to the tested one-column policy rather than leaving
+an unused policy helper after a VStack replacement. Fullmake passed before that
+container-only followup; final-tree `make test` also exited0, including Swift461
+in19 suites and all script contracts. Final log:
+`/Users/taejunoh/Developer/LFG/needlbar-analytics-single-column-full-test.log`.
+`git diff --check` passed.
+
+User subsequently authorized deployment. Packaged and signed host/widget with
+the existing Developer ID identity, Team3BMF4LM6TM and unchanged App Group;
+root independently verified deep/strict signature and stable designated
+requirements. Staged the bundle, stopped the exact previous host/widget PIDs,
+backed up the old app to
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-single-column.nJqHVa/Needlbar.app`,
+then installed at the canonical `needlbar-runtime/latest/Needlbar.app` path and
+launched once. New host PID78417; installed host SHA256
+`9e3222f45190d6a99a5ee963c105a219104b901920cb38ebb7c4f983005d9921`.
+Widget SHA256 `6b54b9a4047256b151ebe65330519102053058ddb7d1a33721ecc1435818575c`.
+Settings and permission stores were not changed. Native visual acceptance is
+not yet claimed. No push/merge/release or README screenshot change.
+
+### Producer/consumer correction — 2026-09-10
+
+Native observation after user opened Analytics: PID81564/window55360,760x520,
+shows a completed capture at4:49PM, Refresh Ready, linkage4 repositories,
+populated repository rows and the colored summary cards. No Analytics unavailable
+or Capture pending state. Root inspected both native AX and app-window screenshot;
+no Refresh, restart, permission change or additional diagnostic scan was triggered.
+Partial coverage warning and268 unlinked fragments remain, as does displayed0s
+observed activity with timing-partial context. This verifies successful native
+result rendering, not complete attribution/timing evidence or every disclosure,
+scroll/dark-mode scenario. Capture stays temporary/private, not a README asset.
+
+User approved proceeding after diagnosis. Corrective plan:
+`docs/superpowers/plans/2026-09-10-analytics-producer-consumer-contract.md`.
+Rust now explicitly emits the approved repositoryID/commitID names. A new
+Swift test exercises actual Rust-generated populated repository and commit
+fixtures through RustBridge and the strict decoder. Feature-only controls are
+not public header/API additions. Staged RED proved each ID mismatch; GREEN and
+independent review passed. Commit selection now excludes C>generatedAt while
+retaining inclusive capture-time/four-hour boundaries, totals and pending state;
+RED->GREEN plus24 correlation tests and independent review passed.
+
+Full verification initially caught old commitId lookups in two Rust tests and
+the saved golden JSON. Only those key expectations were corrected; no numerical
+expectations or privacy checks were weakened. Final `make test` exited0,
+including Swift461/19 suites, vendor tests, normal public-bridge-surface gate,
+and package/notarization script contracts. Final log:
+`/Users/taejunoh/Developer/LFG/needlbar-contract-correction-full-test.log`.
+
+Fresh Core/scratch compilation against the corrected normal archive followed
+the full gate. A single bounded21.9s live FFI call passed the exact Swift decoder
+using the same returned bytes: success, repositories4, model rows12, commits74,
+attributed fragments245, unattributed268. The snapshot retains4 analytics partial
+errors; success does not mean complete attribution. No raw payload persisted.
+Sanitized result: `/Users/taejunoh/Developer/LFG/needlbar-analytics-boundary-20260910.json`.
+No test/probe markers were found in the normal archive. A scratch compile first
+missed the CNeedlbar include path; corrected before the sole scan invocation.
+This proves the real producer/consumer boundary, not installed native UI yet.
+
+Signed packaging and extension-first/host-second signing completed, using the
+existing Developer ID/Team3BMF4LM6TM, same App Group, hardened runtime and no
+timestamp. Strict verification and normal marker scans passed. Host hash:
+`4b012f80773542402641583f82a5734df68bf89f543e3edb02ab7019611db27b`.
+Package log: `/Users/taejunoh/Developer/LFG/needlbar-contract-correction-package.log`.
+Root independently verified staged signature/hash/entitlements before stopping
+exact old host9164/widget9177, confirmed both exited, then preserved old bundle at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-contract.ON1Evc/Needlbar.app`.
+Replacement installed at canonical runtime/latest, strict verification passed,
+launched once as sole host81564, installed hash matches dist. No preferences,
+permissions, Keychain ACL, provider login, push, merge or public release changed.
+
+Explicit supported Overview URL was sent once to canonical installed app. Orca
+reported no windows; CUA getApp timed out. Do not confuse this UI observation
+limitation with an analytics decoder failure or claim native acceptance. No
+extra scan/refresh/relaunch was used to force a window. Next actual user window
+open is the remaining native observation point. The one corrected scratch scan
+already passed, so avoid repeating diagnostics or reinstalling speculatively.
+
+### Consolidated failure-boundary diagnosis — 2026-09-10
+
+User requested multi-angle root-cause investigation before further attempts.
+Independent producer and decoder audits agree: Rust camelCase serialization
+emits `repositoryId` and `commitId`; Swift exact-field validation requires
+`repositoryID` and `commitID`. A populated repository therefore fails, whereas
+the earlier empty repositories array bypassed this boundary. Hand-authored Swift
+fixtures used the expected spelling; Rust tests did not feed actual emitted
+populated payloads through Swift. AnalyticsSnapshotStore discards the thrown
+reason, collapsing distinct failures into the same Unavailable presentation.
+
+One bounded external scratch FFI scan completed in 16.5 seconds, exit0. The
+unchanged normal Rust archive returned envelope ok=true and 4 repositories.
+The identical in-memory bytes failed the exact current Swift decoder with
+dataCorrupted at root; a separate structural DTO accepted them. Fixed-key audit
+confirmed producer Id spellings present and required ID spellings absent.
+Repository/model/commit count-limit violations were all zero, as were reported
+known and unknown producer error codes. No raw payload or stderr was retained.
+Sanitized evidence: `/private/tmp/needlbar-analytics-boundary.4XyHzO/sanitized-result.json`.
+This scratch boundary reproduction is not a claim of native UI acceptance.
+
+Read-only installation checks found one canonical runtime host PID9164,
+deep/strict signature verification exit0, and identical installed/dist host
+SHA256 `8b19c9fc602b4aecf497c10148de9a9e951a73d0cca7076861033ca4412d0fbc`.
+No production source, package, runtime, permissions, preferences, or credentials
+were changed. No additional native refresh/relaunch, push, merge, or release.
+The user needs no new permission grant, login, or reinstall for this defect.
+
+Secondary contract risks are separately recorded, not asserted as this failure:
+Rust may include a commit after capture time while Swift rejects it (including
+a commit made during the scan); Rust lacks Swift's per-repository 256-model cap.
+Next corrective work must align both ID keys to the approved contract, add a
+real Rust-produced populated-payload-to-Swift regression, cover those boundary
+risks, and preserve safe fixed failure categories before another native install.
+
 ### Observed timestamp bounds correction — 2026-09-10
+
+Post-install native observation: user opened Analytics; PID9164/window54462 shows
+Capture pending / Analytics unavailable / Refresh Ready. Root verified the
+installed hash and deep/strict signature unchanged and correct. One AX Refresh
+changed to disabled Loading, then returned to the same Unavailable state. No
+second retry, restart, permission change or deployment was performed. Synthetic
+time-bound regression success is not end-to-end live acceptance.
+Read-only review found a candidate producer/decoder bound mismatch: Swift limits
+providerModels to256 per repository while Rust can aggregate more distinct model
+rows. This is not established as the live cause; do not implement a guessed fix.
+Next investigation must distinguish collection/envelope/Swift semantic rejection
+with fixed non-sensitive failure categories and a targeted synthetic regression.
+
+User subsequently approved installation. Source5bbd021/vendor3c427e0 was packaged
+and extension-first/host-second re-signed with the existing Developer ID/Team
+3BMF4LM6TM and same App Group, hardened runtime and no timestamp. A worker's first
+package invocation used an invalid identity prefix and failed; corrected exact
+identity invocation and signing/strict verification exited0. Root independently
+verified entitlements, stable designated requirements, strict signature and hash.
+Host SHA256: `8b19c9fc602b4aecf497c10148de9a9e951a73d0cca7076861033ca4412d0fbc`.
+Stopped exact old host62349/widget91207 before moving any running bundle; backed
+up prior signed app at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-time-bounds.xvVaxP/Needlbar.app`.
+Verified staged replacement installed to canonical runtime/latest and launched
+once; PID9164 is the new sole host. No permissions or preferences changed, no
+public release/push/merge. Explicit Overview URL dispatch targeted the canonical
+app, but subsequent CUA observation timed out and window listing returned empty.
+Do not claim post-install Analytics linkage improvement; user opening Analytics
+is the next UI observation point. Do not relaunch to force acceptance.
 
 Code tracing identified a separate producer defect: the global 8192 timing sample
 cap could erase bounds for later positive-timestamp detailed fragments or leave
