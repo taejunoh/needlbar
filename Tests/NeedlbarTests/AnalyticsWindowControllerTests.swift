@@ -303,6 +303,48 @@ struct AnalyticsWindowControllerTests {
         #expect(AnalyticsDashboardLayout.summaryValuePointSize(for: "$12.50") == 28)
         #expect(AnalyticsDashboardLayout.summaryValuePointSize(for: "$123,456,789.00") == 24)
     }
+
+    @Test func balancedDashboardContentHasNaturalHeightAndReachesItsFinalDisclosure() throws {
+        var diagnosticsExpanded = false
+        var definitionExpanded = false
+        var expandedSections: Set<String> = []
+        let content = AnalyticsDashboardContent(
+            snapshot: maximumAnalyticsSnapshot(),
+            contentWidth: 592,
+            diagnosticsExpanded: Binding(get: { diagnosticsExpanded }, set: { diagnosticsExpanded = $0 }),
+            estimateDefinitionExpanded: Binding(get: { definitionExpanded }, set: { definitionExpanded = $0 }),
+            expandedSections: Binding(get: { expandedSections }, set: { expandedSections = $0 }),
+            onViewDiagnostics: {}
+        )
+        _ = NSApplication.shared
+        let hosted = NSHostingView(rootView: ScrollView { content })
+        hosted.frame = NSRect(x: 0, y: 0, width: 640, height: 400)
+        let window = NSWindow(
+            contentRect: hosted.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = hosted
+        defer { window.close() }
+        window.makeKeyAndOrderFront(nil)
+        window.display()
+        hosted.layoutSubtreeIfNeeded()
+
+        let scroll = try #require(hosted.firstSubview(ofType: NSScrollView.self))
+        let document = try #require(scroll.documentView)
+        // SwiftUI attaches the AppKit document container on the next main-loop layout pass.
+        for _ in 0..<5 where document.frame.height <= scroll.contentView.bounds.height {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+            window.display()
+            hosted.layoutSubtreeIfNeeded()
+        }
+        #expect(document.frame.height > scroll.contentView.bounds.height)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, document.frame.height - scroll.contentView.bounds.height)))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        #expect(scroll.contentView.bounds.maxY >= document.bounds.maxY - 1)
+    }
 }
 
 @MainActor
@@ -369,6 +411,14 @@ private func eventually(_ condition: @MainActor () -> Bool) async -> Bool {
 private extension NSView {
     func containsSubview<T: NSView>(ofType type: T.Type) -> Bool {
         subviews.contains { $0 is T || $0.containsSubview(ofType: type) }
+    }
+
+    func firstSubview<T: NSView>(ofType type: T.Type) -> T? {
+        for subview in subviews {
+            if let match = subview as? T { return match }
+            if let match = subview.firstSubview(ofType: type) { return match }
+        }
+        return nil
     }
 }
 

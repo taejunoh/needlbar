@@ -29,6 +29,14 @@ enum AnalyticsDashboardLayout {
     static func equalTracks(count: Int) -> [GridItem] {
         Array(repeating: GridItem(.flexible(minimum: minimumCardWidth), spacing: gridSpacing), count: count)
     }
+
+    static func summaryTracks(forContentWidth width: CGFloat) -> [GridItem] {
+        equalTracks(count: summaryColumnCount(forContentWidth: width))
+    }
+
+    static func evidencePanelTracks(forContentWidth width: CGFloat) -> [GridItem] {
+        equalTracks(count: evidencePanelColumnCount(forContentWidth: width))
+    }
 }
 
 enum AnalyticsDashboardCardKind: CaseIterable {

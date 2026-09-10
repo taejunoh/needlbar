@@ -14,36 +14,46 @@ public struct AnalyticsView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            header
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if viewModel.isLoading {
-                        ProgressView(viewModel.statusCopy)
-                            .controlSize(.small)
-                    }
-                    if let snapshot = displayedSnapshot {
-                        snapshotContent(snapshot)
-                    } else if !viewModel.isLoading {
-                        Text(viewModel.statusCopy)
-                            .foregroundStyle(.secondary)
+        GeometryReader { windowProxy in
+            let contentWidth = AnalyticsDashboardLayout.contentColumnWidth(forWindowContentWidth: windowProxy.size.width)
+            ScrollViewReader { proxy in
+                let revealDiagnostics = {
+                    diagnosticsExpanded = true
+                    DispatchQueue.main.async { withAnimation { proxy.scrollTo("analytics-diagnostics", anchor: .top) } }
+                }
+                VStack(spacing: 0) {
+                    header
+                        .frame(width: contentWidth, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 16)
+                    Divider()
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: AnalyticsDashboardLayout.sectionSpacing) {
+                            if viewModel.isLoading { ProgressView(viewModel.statusCopy).controlSize(.small) }
+                            if let snapshot = displayedSnapshot {
+                                AnalyticsDashboardContent(
+                                    snapshot: snapshot,
+                                    contentWidth: contentWidth,
+                                    diagnosticsExpanded: $diagnosticsExpanded,
+                                    estimateDefinitionExpanded: $estimateDefinitionExpanded,
+                                    expandedSections: $expandedSections,
+                                    onViewDiagnostics: revealDiagnostics
+                                )
+                            } else if !viewModel.isLoading {
+                                Text(viewModel.statusCopy).font(.system(size: 13)).foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(width: contentWidth, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, AnalyticsDashboardLayout.horizontalInset)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(24)
             }
         }
         .frame(minWidth: 640, minHeight: 400)
         .onReceive(viewModel.$state) { state in
-            switch state {
-            case let .fresh(snapshot), let .stale(snapshot):
-                lastSuccessfulSnapshot = snapshot
-            case .idle, .loading, .unavailable:
-                break
-            }
+            if case let .fresh(snapshot) = state { lastSuccessfulSnapshot = snapshot }
+            if case let .stale(snapshot) = state { lastSuccessfulSnapshot = snapshot }
         }
     }
 
@@ -79,108 +89,141 @@ public struct AnalyticsView: View {
         guard let snapshot = displayedSnapshot else { return "Last 30 days · Capture pending" }
         return "Last 30 days · Captured \(AnalyticsDisplayFormatter.date(snapshot.generatedAt))"
     }
+}
 
-    @ViewBuilder
-    private func snapshotContent(_ snapshot: AnalyticsSnapshot) -> some View {
+struct AnalyticsDashboardContent: View {
+    let snapshot: AnalyticsSnapshot
+    let contentWidth: CGFloat
+    @Binding var diagnosticsExpanded: Bool
+    @Binding var estimateDefinitionExpanded: Bool
+    @Binding var expandedSections: Set<String>
+    let onViewDiagnostics: () -> Void
+
+    var body: some View {
         let summary = AnalyticsPresentation.summary(for: snapshot)
         let diagnostics = AnalyticsPresentation.diagnostics(for: snapshot)
-        VStack(alignment: .leading, spacing: 16) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .leading)], alignment: .leading, spacing: 12) {
-                summaryCard(
-                    "Repository-attributed estimate",
-                    AnalyticsDisplayFormatter.repositoryAttributedEstimate(
-                        summary.repositoryAttributedCostUSD,
-                        knownSubtotal: summary.repositoryCostIsKnownSubtotal
-                    ),
-                    summary.repositoryAttributedCostUSD == nil
-                        ? "No linked repositories"
-                        : summary.repositoryCostIsKnownSubtotal
-                            ? "Known subtotal; some local pricing is unavailable."
-                            : "Local engine pricing; not an invoice."
+
+        VStack(alignment: .leading, spacing: AnalyticsDashboardLayout.sectionSpacing) {
+            LazyVGrid(columns: AnalyticsDashboardLayout.summaryTracks(forContentWidth: contentWidth), alignment: .leading, spacing: AnalyticsDashboardLayout.gridSpacing) {
+                AnalyticsDashboardCard(
+                    kind: .repositoryEstimate,
+                    title: "Repository-attributed estimate",
+                    value: AnalyticsDisplayFormatter.repositoryAttributedEstimate(summary.repositoryAttributedCostUSD, knownSubtotal: false),
+                    detail: repositoryEstimateDetail(summary)
                 )
-                summaryCard(
-                    "Repository linkage",
-                    "\(summary.linkedRepositoryCount) linked repositories",
-                    summary.linkedRepositoryCount == 0
-                        ? "No linked repositories · \(summary.unlinkedFragmentCount) unlinked fragments"
-                        : "\(summary.unlinkedFragmentCount) unlinked fragments"
+                AnalyticsDashboardCard(
+                    kind: .repositoryLinkage,
+                    title: "Repository linkage",
+                    value: "\(summary.linkedRepositoryCount)",
+                    detail: "Repositories · \(summary.unlinkedFragmentCount) unlinked fragments"
                 )
-                summaryCard(
-                    "Observed AI activity",
-                    AnalyticsDisplayFormatter.observedAIActivity(summary.observedAIActivitySeconds),
-                    summary.observedAIActivitySeconds == nil
+                AnalyticsDashboardCard(
+                    kind: .observedActivity,
+                    title: "Observed AI activity",
+                    value: AnalyticsDisplayFormatter.observedAIActivity(summary.observedAIActivitySeconds),
+                    detail: summary.observedAIActivitySeconds == nil
                         ? "No repository-attributed timing evidence."
                         : diagnostics.contains(where: { $0.code == "missingDuration" })
                             ? "Some responses lack duration; observed activity remains separate."
                             : "Timestamp-gap observation, not coding hours."
                 )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
-            GroupBox("Repositories") {
-                if snapshot.repositories.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("No usable local repository association was established for this capture.")
-                        Text("This does not mean there were no repositories or AI activity. Review Diagnostics for retained limitations, then use Refresh to run another manual local capture.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(snapshot.repositories, id: \.repositoryID) { repository in
-                            repositoryRow(repository)
-                            if repository.repositoryID != snapshot.repositories.last?.repositoryID {
-                                Divider()
-                            }
-                        }
-                    }
-                }
+            LazyVGrid(columns: AnalyticsDashboardLayout.evidencePanelTracks(forContentWidth: contentWidth), alignment: .leading, spacing: AnalyticsDashboardLayout.gridSpacing) {
+                repositoriesPanel
+                unattributedPanel(summary)
             }
 
-            GroupBox("Unattributed") {
+            disclosures(diagnostics)
+        }
+        .frame(width: contentWidth, alignment: .leading)
+    }
+
+    private func repositoryEstimateDetail(_ summary: AnalyticsPresentationSummary) -> String {
+        guard summary.repositoryAttributedCostUSD != nil else {
+            return summary.linkedRepositoryCount == 0 ? "No linked repositories" : "No estimate available"
+        }
+        return summary.repositoryCostIsKnownSubtotal
+            ? "Known subtotal; local coverage is limited."
+            : "Local engine pricing; not an invoice."
+    }
+
+    private var repositoriesPanel: some View {
+        AnalyticsDashboardPanel(title: "Repositories") {
+            if snapshot.repositories.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    LabeledContent("Unattributed estimated cost") {
-                        Text(unattributedCost(snapshot))
-                            .font(.headline.monospacedDigit())
-                    }
-                    LabeledContent("Unlinked fragments", value: "\(snapshot.unattributed.fragments)")
-                    if summary.unattributedTimestampCoverageIsIncomplete {
-                        Text("Timestamp coverage is incomplete or uncertain, so this is not a verified 30-day total.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !snapshot.unattributed.reasons.isEmpty {
-                        Text("Some local usage could not be matched to a repository.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        ForEach(AnalyticsDisplayFormatter.unattributedReasonCopy(snapshot.unattributed.reasons)) { reason in
-                            Text(reason.displayText)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                    Image(systemName: "folder.badge.questionmark")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text("No usable local repository association was established for this capture.")
+                        .font(.system(size: 13))
+                    Text("This does not mean there were no repositories or AI usage.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Button("View diagnostics", action: onViewDiagnostics)
+                        .font(.system(size: 12, weight: .medium))
+                        .accessibilityLabel("View analytics diagnostics")
+                }
+            } else {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    ForEach(snapshot.repositories, id: \.repositoryID) { repository in
+                        repositoryRow(repository)
+                        if repository.repositoryID != snapshot.repositories.last?.repositoryID { Divider() }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
 
+    private func unattributedPanel(_ summary: AnalyticsPresentationSummary) -> some View {
+        AnalyticsDashboardPanel(title: "Unattributed") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Unattributed estimated cost")
+                    .font(.system(size: 13, weight: .medium))
+                Text(unattributedCost)
+                    .font(.system(size: AnalyticsDashboardLayout.summaryValuePointSize(for: unattributedCost), weight: .semibold))
+                    .monospacedDigit()
+                LabeledContent("Unlinked fragments", value: "\(snapshot.unattributed.fragments)")
+                Text("Some retained local usage could not be matched to a repository.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                if summary.unattributedTimestampCoverageIsIncomplete {
+                    Label("Not a verified 30-day total", systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.orange.opacity(0.14), in: Capsule())
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var unattributedCost: String {
+        guard let cost = snapshot.unattributed.usage.estimatedCostUSDValue else { return "—" }
+        return AnalyticsDisplayFormatter.cost(cost)
+    }
+
+    private func disclosures(_ diagnostics: [AnalyticsPresentationDiagnostic]) -> some View {
+        VStack(alignment: .leading, spacing: AnalyticsDashboardLayout.sectionSpacing) {
             DisclosureGroup(isExpanded: $diagnosticsExpanded) {
-                diagnosticsContent(diagnostics)
-                    .padding(.top, 6)
+                diagnosticsContent(diagnostics).padding(.top, 6)
             } label: {
                 Text(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.diagnostics)
-                    .font(.headline)
+                    .font(.system(size: 13, weight: .semibold))
             }
+            .id("analytics-diagnostics")
             .accessibilityLabel(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.diagnostics)
             .accessibilityValue(AnalyticsDisplayFormatter.disclosureAccessibilityValue(isExpanded: diagnosticsExpanded))
             .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
 
             DisclosureGroup(isExpanded: $estimateDefinitionExpanded) {
-                estimateDefinition
-                    .padding(.top, 6)
+                estimateDefinition.padding(.top, 6)
             } label: {
                 Text(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.estimateDefinition)
-                    .font(.headline)
+                    .font(.system(size: 13, weight: .semibold))
             }
             .accessibilityLabel(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.estimateDefinition)
             .accessibilityValue(AnalyticsDisplayFormatter.disclosureAccessibilityValue(isExpanded: estimateDefinitionExpanded))
@@ -188,50 +231,26 @@ public struct AnalyticsView: View {
         }
     }
 
-    private func summaryCard(_ title: String, _ value: String, _ detail: String) -> some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(value)
-                    .font(.headline.monospacedDigit())
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
-        } label: {
-            Text(title)
-                .font(.caption.weight(.medium))
-        }
-    }
-
-    private func unattributedCost(_ snapshot: AnalyticsSnapshot) -> String {
-        guard let cost = snapshot.unattributed.usage.estimatedCostUSDValue else { return "—" }
-        return AnalyticsDisplayFormatter.cost(cost)
-    }
-
-    @ViewBuilder
     private func diagnosticsContent(_ diagnostics: [AnalyticsPresentationDiagnostic]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if diagnostics.isEmpty {
                 Text("No retained diagnostic counts for this capture.")
-                    .font(.caption)
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(diagnostics, id: \.code) { diagnostic in
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(alignment: .firstTextBaseline) {
                             Text(AnalyticsDisplayFormatter.diagnosticTitle(diagnostic.code))
-                                .font(.subheadline.weight(.medium))
+                                .font(.system(size: 13, weight: .medium))
                                 .fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 8)
                             Text("\(diagnostic.count) \(AnalyticsDisplayFormatter.diagnosticUnit(diagnostic.unit))")
-                                .font(.caption.monospacedDigit())
+                                .font(.system(size: 12).monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
                         Text(AnalyticsDisplayFormatter.diagnosticExplanation(diagnostic.code))
-                            .font(.caption)
+                            .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -247,10 +266,11 @@ public struct AnalyticsView: View {
             Text("Observed activity uses timestamp gaps no greater than three minutes; it is not human coding or elapsed wall time.")
             Text("Commit correlation is a same-repository four-hour association, not causal or measured commit cost.")
         }
-        .font(.caption)
+        .font(.system(size: 12))
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
         .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func disclosureBinding(_ identifier: String) -> Binding<Bool> {
