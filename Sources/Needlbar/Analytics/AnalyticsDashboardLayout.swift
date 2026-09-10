@@ -27,7 +27,7 @@ enum AnalyticsDashboardLayout {
     }
 
     static func equalTracks(count: Int) -> [GridItem] {
-        Array(repeating: GridItem(.flexible(minimum: minimumCardWidth), spacing: gridSpacing), count: count)
+        Array(repeating: GridItem(.flexible(minimum: minimumCardWidth), spacing: gridSpacing, alignment: .top), count: count)
     }
 
     static func summaryTracks(forContentWidth width: CGFloat) -> [GridItem] {
@@ -97,6 +97,7 @@ struct AnalyticsDashboardCard: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 14)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(kind.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 10, style: .continuous)

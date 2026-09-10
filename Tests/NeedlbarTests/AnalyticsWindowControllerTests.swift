@@ -336,6 +336,14 @@ struct AnalyticsWindowControllerTests {
         #expect(AnalyticsDashboardLayout.summaryValuePointSize(for: "$123,456,789.00") == 24)
     }
 
+    @Test func balancedDashboardConsumerTracksAlignUnequalCardsAndPanelsAtTheTop() {
+        let summaryTracks = AnalyticsDashboardLayout.summaryTracks(forContentWidth: 712)
+        let evidenceTracks = AnalyticsDashboardLayout.evidencePanelTracks(forContentWidth: 960)
+
+        #expect(summaryTracks.allSatisfy { $0.alignment == .top })
+        #expect(evidenceTracks.allSatisfy { $0.alignment == .top })
+    }
+
     @Test func balancedDashboardContentHasNaturalHeightAndReachesItsFinalDisclosure() throws {
         var diagnosticsExpanded = false
         var definitionExpanded = false
