@@ -2,8 +2,8 @@
 
 **Updated:** 2026-09-09
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** A balanced dashboard visual direction selected; revised written specification awaiting user review. Earlier native acceptance remains incomplete.
-**Next action:** Review `docs/superpowers/specs/2026-09-09-analytics-balanced-dashboard-design.md`, then write the revised implementation plan before changing app presentation. Preserve current data semantics, public v0.3.0 tag and unrelated dirty main vendor checkout.
+**Current phase:** Balanced dashboard specification approved; revised implementation plan written and self-reviewed, awaiting execution handoff. Earlier native acceptance remains incomplete.
+**Next action:** Execute Task 1 of `docs/superpowers/plans/2026-09-09-analytics-balanced-dashboard.md` after the execution-method handoff. Preserve current data semantics, public v0.3.0 tag and unrelated dirty main vendor checkout.
 
 ## Analytics visual redesign — 2026-09-09
 
@@ -22,7 +22,13 @@ written amendment makes the accent edges/tints, equal-column layout, centered
 960 pt content bound, readable type, nonduplicated diagnostics and native
 acceptance mandatory. Main self-review clarified exact insets/breakpoints,
 refresh-with-data state, and the positive timestamp-count (not cost) predicate.
-Written-spec review remains pending; no new implementation or installation
+The user approved the written specification on 2026-09-09. The revised four-task
+plan is written and self-reviewed. It separates layout/card styling, actual
+content composition, canonical status/local diagnostics navigation, and native
+acceptance. Self-review corrected outer-width ownership, staged dependencies,
+action-test coverage, duplicate status text, and deterministic fixture versus
+live-app evidence. Planned code has not been compiled or executed: its RED/GREEN
+and native checks remain execution work. No new implementation or installation
 occurred in this design-document step.
 
 ## Analytics preview installed — 2026-09-09

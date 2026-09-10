@@ -1,6 +1,6 @@
 # Analytics Balanced Dashboard Visual Amendment
 
-**Status:** Visual direction approved; written specification awaiting user review.
+**Status:** Visual direction and written specification approved by the user on 2026-09-09.
 
 ## Authority, scope, and replacement
 
