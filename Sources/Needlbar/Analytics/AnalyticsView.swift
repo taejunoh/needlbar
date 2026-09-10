@@ -293,9 +293,6 @@ struct AnalyticsDashboardContent: View {
                     .font(.system(size: 13, weight: .semibold))
             }
             .id("analytics-diagnostics")
-            .accessibilityLabel(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.diagnostics)
-            .accessibilityValue(AnalyticsDisplayFormatter.disclosureAccessibilityValue(isExpanded: diagnosticsExpanded))
-            .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
 
             DisclosureGroup(isExpanded: $estimateDefinitionExpanded) {
                 estimateDefinition.padding(.top, 6)
@@ -303,9 +300,6 @@ struct AnalyticsDashboardContent: View {
                 Text(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.estimateDefinition)
                     .font(.system(size: 13, weight: .semibold))
             }
-            .accessibilityLabel(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.estimateDefinition)
-            .accessibilityValue(AnalyticsDisplayFormatter.disclosureAccessibilityValue(isExpanded: estimateDefinitionExpanded))
-            .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
         }
     }
 
@@ -368,8 +362,6 @@ struct AnalyticsDashboardContent: View {
         let gitReasons = AnalyticsDisplayFormatter.gitReasonCopy(repository.coverage.reasons)
         let providerDisclosure = disclosureBinding("provider-model-\(repository.repositoryID)")
         let commitsDisclosure = disclosureBinding("commits-\(repository.repositoryID)")
-        let providerAccessibilityLabel = "\(repository.label) \(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.providerAndModel)"
-        let commitsAccessibilityLabel = "\(repository.label) \(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.commits)"
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(repository.label).font(.headline)
@@ -434,9 +426,6 @@ struct AnalyticsDashboardContent: View {
                 } label: {
                     Text(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.providerAndModel)
                 }
-                .accessibilityLabel(providerAccessibilityLabel)
-                .accessibilityValue(AnalyticsDisplayFormatter.disclosureAccessibilityValue(isExpanded: providerDisclosure.wrappedValue))
-                .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
             }
             if !repository.commits.isEmpty {
                 DisclosureGroup(isExpanded: commitsDisclosure) {
@@ -468,9 +457,6 @@ struct AnalyticsDashboardContent: View {
                 } label: {
                     Text(AnalyticsDisplayFormatter.disclosureAccessibilityLabels.commits)
                 }
-                .accessibilityLabel(commitsAccessibilityLabel)
-                .accessibilityValue(AnalyticsDisplayFormatter.disclosureAccessibilityValue(isExpanded: commitsDisclosure.wrappedValue))
-                .accessibilityHint(AnalyticsDisplayFormatter.disclosureAccessibilityHint)
             }
         }
         .padding(.vertical, 3)

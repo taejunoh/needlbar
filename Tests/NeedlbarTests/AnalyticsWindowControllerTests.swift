@@ -445,7 +445,7 @@ struct AnalyticsWindowControllerTests {
             let model = AnalyticsViewModel(store: AnalyticsSnapshotStore(), repository: repository)
             model.loadIfNeeded()
             await repository.waitForCall(1)
-            let host = AnalyticsShellFixtureHost(viewModel: model)
+            let host = try AnalyticsShellFixtureHost(viewModel: model)
             defer { cleanUpAnalyticsShellFixture(host: host, state: state, repository: repository) }
 
             switch state {
@@ -458,7 +458,7 @@ struct AnalyticsWindowControllerTests {
             case "updating", "stale":
                 await repository.completeNext(with: .success(populatedAnalyticsSnapshot()))
                 #expect(await eventually { model.presentationState == .fresh && !model.isLoading })
-                host.drainLayout()
+                try host.drainLayout()
                 model.refresh()
                 await repository.waitForCall(2)
                 if state == "stale" {
@@ -508,14 +508,14 @@ struct AnalyticsWindowControllerTests {
         model.loadIfNeeded()
         #expect(await eventually { model.presentationState == .fresh && !model.isLoading })
 
-        let host = AnalyticsShellFixtureHost(viewModel: model, title: "Needlbar Analytics Fixture")
+        let host = try AnalyticsShellFixtureHost(viewModel: model, title: "Needlbar Analytics Fixture")
         defer { host.close() }
-        host.setContentSize(NSSize(width: 760, height: 520), appearance: try #require(NSAppearance(named: .aqua)))
+        try host.setContentSize(NSSize(width: 760, height: 520), appearance: try #require(NSAppearance(named: .aqua)))
         try host.writeCaptureReady(in: captureDirectory)
 
         let deadline = Date(timeIntervalSinceNow: 120)
         while !FileManager.default.fileExists(atPath: releaseMarker.path), Date() < deadline {
-            host.drainLayout()
+            try host.drainLayout()
             try? await Task.sleep(for: .milliseconds(50))
         }
         #expect(
@@ -537,12 +537,12 @@ struct AnalyticsWindowControllerTests {
         }
     }
 
-    @Test func balancedNativeShellFixtureCleanupResumesAHeldRequestWhenRenderingThrows() async {
+    @Test func balancedNativeShellFixtureCleanupResumesAHeldRequestWhenRenderingThrows() async throws {
         let repository = TestAnalyticsRepository()
         let model = AnalyticsViewModel(store: AnalyticsSnapshotStore(), repository: repository)
         model.loadIfNeeded()
         await repository.waitForCall(1)
-        let host = AnalyticsShellFixtureHost(viewModel: model)
+        let host = try AnalyticsShellFixtureHost(viewModel: model)
 
         do {
             defer { cleanUpAnalyticsShellFixture(host: host, state: "loading", repository: repository) }
@@ -571,7 +571,7 @@ private final class AnalyticsShellFixtureHost {
     private let hosted: NSHostingView<AnalyticsView>
     private let window: NSWindow
 
-    init(viewModel: AnalyticsViewModel, title: String = "Needlbar Analytics Fixture") {
+    init(viewModel: AnalyticsViewModel, title: String = "Needlbar Analytics Fixture") throws {
         _ = NSApplication.shared
         hosted = NSHostingView(rootView: AnalyticsView(viewModel: viewModel))
         hosted.frame = NSRect(x: 0, y: 0, width: 760, height: 520)
@@ -585,26 +585,27 @@ private final class AnalyticsShellFixtureHost {
         window.title = title
         window.contentView = hosted
         window.makeKeyAndOrderFront(nil)
-        drainLayout()
+        try drainLayout()
     }
 
     func renderPNG(width: CGFloat, appearance: NSAppearance) throws -> Data {
         window.appearance = appearance
         hosted.appearance = appearance
         window.setContentSize(NSSize(width: width, height: analyticsFixtureHeight(for: width)))
-        drainLayout()
+        try drainLayout()
         return try analyticsFixturePNG(from: hosted)
     }
 
-    func setContentSize(_ size: NSSize, appearance: NSAppearance) {
+    func setContentSize(_ size: NSSize, appearance: NSAppearance) throws {
         window.appearance = appearance
         hosted.appearance = appearance
         window.setContentSize(size)
         window.makeKeyAndOrderFront(nil)
-        drainLayout()
+        try drainLayout()
     }
 
     func writeCaptureReady(in directory: URL) throws {
+        try drainLayout()
         let ready = directory.appendingPathComponent("needlbar-analytics-fixture-ready.json")
         let metadata: [String: Any] = [
             "pid": ProcessInfo.processInfo.processIdentifier,
@@ -617,13 +618,8 @@ private final class AnalyticsShellFixtureHost {
         try data.write(to: ready, options: .atomic)
     }
 
-    func drainLayout() {
-        for _ in 0..<8 {
-            window.display()
-            hosted.layoutSubtreeIfNeeded()
-            if attachedAnalyticsFixtureScrollView(in: hosted)?.documentView?.superview != nil { return }
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
-        }
+    func drainLayout() throws {
+        try drainAnalyticsFixtureLayout(window: window, hosted: hosted)
     }
 
     func close() {
