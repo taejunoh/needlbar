@@ -2,14 +2,23 @@
 
 **Updated:** 2026-09-10
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** Compact Analytics readability implementation and automated
-verification are complete in the shared isolated worktree. Native acceptance
-is partial: one corrected default-light fixture viewport is compositor-verified,
-while broader visual and interaction coverage remains open. The
-presentation-only increment is ready for provenance-aware commit curation, and
-development-branch push is authorized as of 2026-09-10. Merge, public release,
-and production installation remain outside this request.
-**Next action:** Parent agent should publish the curated development branch.
+**Current phase:** v0.3.1 release preparation is authorized and in progress in
+the shared isolated worktree. Host and widget release metadata is prepared at
+version 0.3.1 (build 4), with the v0.3.0 public download retained until fresh
+v0.3.1 public verification completes. Native acceptance is partial: one
+corrected default-light fixture viewport is compositor-verified, while broader
+visual and interaction coverage remains open. No v0.3.1 merge, tag, public
+publication, or production installation is claimed here.
+**Next action:** Parent agent should curate and merge the authorized release
+candidate, then run the protected validation and public-verification gates.
+
+Release preparation evidence (2026-09-10): existing implementation through
+`3199665` is fast-forwarded into local main. The pinned vendor commit
+`3c427e0558932e9c6d36948146059c9ca62cd525` is published and remotely verified on
+`taejunoh/tokscale-core` branch `codex/needlbar-v031-time-bounds`. Fresh local
+`make test` passed (Swift 464 tests / 19 suites, Rust and shell contracts), and
+`make package` plus `make smoke` passed. Final release-contract review and
+protected remote validation precede tagging, publication, and reinstall.
 Native visual/accessibility acceptance remains explicitly partial, and the
 unresolved menu-bar visibility and attribution/timing issues remain separate
 from this presentation work.

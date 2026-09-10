@@ -177,11 +177,12 @@ Observed active AI-session time is derived from local session timestamps. It is 
 
 Analytics is manual and local-only: there is no startup scan, timer, watcher, background refresh, remote Git/forge request, provider authentication, network request, backend, database, or analytics history. Analytics does not change the v0.2.0 export schema or v0.2.1 widget/notification behavior.
 
-### Compact Analytics readability (development branch)
+### Compact Analytics readability (v0.3.1 prepared for public release)
 
-The released v0.2.2 analytics baseline remains local-only. This branch also
-contains an unreleased presentation refinement; it is not part of public v0.3.0
-or the Homebrew Cask. It keeps the existing data semantics while adding:
+Needlbar v0.3.1 is prepared for public release for macOS 14 or later on Apple Silicon. It is not publicly available yet; the existing public v0.3.0 download
+and Homebrew Cask remain the supported distribution until fresh v0.3.1 public
+verification completes. The refinement keeps the existing data semantics while
+adding:
 
 - colored summary cards;
 - full-width, aligned repository rows for name, estimated cost, and tokens;
