@@ -276,6 +276,33 @@ struct AnalyticsWindowControllerTests {
             }
         }
     }
+
+    @Test func balancedDashboardUsesTheApprovedBoundedGridBreakpoints() {
+        #expect(AnalyticsDashboardLayout.contentColumnWidth(forWindowContentWidth: 640) == 592)
+        #expect(AnalyticsDashboardLayout.summaryColumnCount(forContentWidth: 592) == 2)
+        #expect(AnalyticsDashboardLayout.contentColumnWidth(forWindowContentWidth: 760) == 712)
+        #expect(AnalyticsDashboardLayout.summaryColumnCount(forContentWidth: 712) == 3)
+        #expect(AnalyticsDashboardLayout.contentColumnWidth(forWindowContentWidth: 1_400) == 960)
+        #expect(AnalyticsDashboardLayout.summaryColumnCount(forContentWidth: 960) == 3)
+        #expect(AnalyticsDashboardLayout.evidencePanelColumnCount(forContentWidth: 592) == 1)
+        #expect(AnalyticsDashboardLayout.evidencePanelColumnCount(forContentWidth: 712) == 1)
+        #expect(AnalyticsDashboardLayout.evidencePanelColumnCount(forContentWidth: 960) == 2)
+    }
+
+    @Test func balancedDashboardCardStylesDriveTheRenderedSemanticTreatments() {
+        let cost = AnalyticsDashboardCardKind.repositoryEstimate
+        let linkage = AnalyticsDashboardCardKind.repositoryLinkage
+        let activity = AnalyticsDashboardCardKind.observedActivity
+
+        #expect(cost.accent == Color.blue)
+        #expect(linkage.accent == Color.teal)
+        #expect(activity.accent == Color.purple)
+        #expect(cost.symbolName == "dollarsign.circle")
+        #expect(linkage.symbolName == "link.circle")
+        #expect(activity.symbolName == "sparkles")
+        #expect(AnalyticsDashboardLayout.summaryValuePointSize(for: "$12.50") == 28)
+        #expect(AnalyticsDashboardLayout.summaryValuePointSize(for: "$123,456,789.00") == 24)
+    }
 }
 
 @MainActor
