@@ -6,11 +6,11 @@ Needlbar is local-first: it has no Needlbar account, backend, hosted sync, cloud
 
 ## Availability and download
 
-Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.
+Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.
 
-[Download Needlbar v0.3.1 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip)
+[Download Needlbar v0.3.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip)
 
-[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip.sha256)
+[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip.sha256)
 
 The `Needlbar-macos-arm64.zip.sha256` file is the SHA-256 checksum sidecar for the ZIP. Verify both downloaded files from the same directory:
 
@@ -20,9 +20,9 @@ shasum -a 256 -c Needlbar-macos-arm64.zip.sha256
 
 The public artifact is Developer ID-signed and notarized.
 
-To install the public v0.3.1 release:
+To install the public v0.3.2 release:
 
-1. Download the ZIP and checksum sidecar from the v0.3.1 GitHub Release.
+1. Download the ZIP and checksum sidecar from the v0.3.2 GitHub Release.
 2. Run the checksum command from the directory containing both files.
 3. Open the verified ZIP and drag `Needlbar.app` into `/Applications`.
 4. Launch Needlbar from `/Applications`; it appears in the macOS menu bar.
@@ -56,6 +56,18 @@ The Cask has no `zap` stanza; uninstalling it does not remove Needlbar settings 
 Needlbar presents locally aggregated token usage and estimated cost together with provider quota windows and reset times. Overview combines today’s tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status, and Settings. Provider views show today’s usage/cost, input/output/cache token detail, quota/reset information, freshness, and safe recovery states. Usage and quota are independent refresh streams; a failure in one does not replace a previously valid value with zero.
 
 Settings is a native Module Studio for module and provider visibility, ordering, display metrics, and existing actions. Claude and Codex expose provider-owned browser sign-in actions (`claude auth login --claudeai` and `codex login`); Needlbar does not implement a second OAuth flow. Cursor has no Needlbar credential or connection workflow.
+
+### Claude connection preflight (v0.3.2)
+
+The v0.3.2 release reduces redundant Claude browser login. On an explicit
+connection click, Needlbar first checks current Claude quota without opening
+Keychain UI; a fresh quota connects directly, while missing or expired
+authentication uses the provider-owned `claude auth login --claudeai` flow. A
+permission-only Keychain failure can use explicit interactive verification
+without rerunning login, while other errors remain visible as errors.
+Background refresh stays non-interactive and Needlbar does not store provider
+credentials. The existing valid-login path was user-confirmed to skip browser
+login; this does not claim every authentication branch was manually accepted.
 
 ### System monitor (v0.3.0)
 
@@ -143,7 +155,8 @@ The released app includes one medium Overview widget backed by a sanitized local
 
 ## Native macOS 14 acceptance (maintainer-only)
 
-The public v0.3.1 ZIP is the production Gallery and entitlement evidence. The
+The public v0.3.2 ZIP is the production artifact for Gallery and entitlement
+acceptance checks. The
 separately signed fixture-driven artifact is acceptance-only and is not a
 release or notarization substitute. It uses no provider account, credential,
 network, Rust/C ABI, Keychain, or export data: sanitized fixtures are supplied
@@ -179,9 +192,9 @@ Analytics is manual and local-only: there is no startup scan, timer, watcher, ba
 
 ### Compact Analytics readability (v0.3.1)
 
-Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.
-The public v0.3.1 download is verified and is now the supported distribution.
-The refinement keeps the existing data semantics while adding:
+The v0.3.1 refinement remains the historical compact-readability release
+record for macOS 14 or later on Apple Silicon. The current supported public
+distribution is v0.3.2 above. The refinement keeps the existing data semantics while adding:
 
 - colored summary cards;
 - full-width, aligned repository rows for name, estimated cost, and tokens;

@@ -1355,6 +1355,7 @@ test_v031_release_source_contract() {
   local readme_file="$ROOT/README.md"
   local status_file="$ROOT/docs/STATUS.md"
   local release_notes_file="$ROOT/.github/release-notes/v0.3.1.md"
+  local historical_readme="$temp_root/v031-historical-public-readme.md"
   local prepared_readme="$temp_root/v031-prepared-readme.md"
   local prepared_status="$temp_root/v031-prepared-status.md"
   local public_readme="$temp_root/v031-public-readme.md"
@@ -1365,10 +1366,28 @@ test_v031_release_source_contract() {
   local public_with_stale_v030_install="$temp_root/v031-public-with-stale-v030-install.md"
   local decoy_output decoy_status
 
-  v031_release_source_contract_is_valid "$readme_file" "$status_file" "$release_notes_file" ||
-    fail 'live v0.3.1 release-source contract is invalid'
+  ruby - "$readme_file" "$historical_readme" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+replacements = {
+  'Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.2 for Apple Silicon]' => '[Download Needlbar v0.3.1 for Apple Silicon]',
+  'https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip',
+  'https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip.sha256' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip.sha256',
+  'To install the public v0.3.2 release:' => 'To install the public v0.3.1 release:',
+  'from the v0.3.2 GitHub Release.' => 'from the v0.3.1 GitHub Release.'
+}
+replacements.each { |from, to| abort "fixture setup: missing #{from.inspect}" unless document.sub!(from, to) }
+anchor = 'The v0.3.1 refinement remains the historical compact-readability release'
+insert = "Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.\n\nThe public v0.3.1 download is verified and is now the supported distribution.\n\n"
+abort 'fixture setup: historical analytics anchor is missing' unless document.sub!(anchor, insert + anchor)
+File.write(destination, document)
+RUBY
 
-  ruby - "$readme_file" "$status_file" "$prepared_readme" "$prepared_status" "$public_readme" "$public_status" <<'RUBY'
+  v031_release_source_contract_is_valid "$historical_readme" "$status_file" "$release_notes_file" ||
+    fail 'synthetic historical v0.3.1 release-source fixture is invalid'
+
+  ruby - "$historical_readme" "$status_file" "$prepared_readme" "$prepared_status" "$public_readme" "$public_status" <<'RUBY'
 readme_path, status_path, prepared_readme_path, prepared_status_path, public_readme_path, public_status_path = ARGV
 source_readme = File.read(readme_path)
 source_status = File.read(status_path)
@@ -1486,6 +1505,101 @@ RUBY
 }
 
 test_v031_release_source_contract
+
+v032_release_source_contract_is_valid() {
+  local readme_file="$1"
+  local status_file="$2"
+  local release_notes_file="$3"
+
+  ruby - "$readme_file" "$status_file" "$release_notes_file" <<'RUBY'
+readme_path, status_path, notes_path = ARGV
+abort 'v0.3.2 release notes are missing' unless File.file?(notes_path)
+
+readme = File.read(readme_path)
+status = File.read(status_path)
+notes = File.read(notes_path)
+
+v032_zip = '[Download Needlbar v0.3.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip)'
+v032_sidecar = '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip.sha256)'
+readme_text = readme.gsub(/\s+/, ' ')
+
+[
+  'reuses a valid existing Claude login and skips browser login',
+  'permission-only verification',
+  'Authentication errors may start the provider-owned CLI login, while network errors stop safely without login',
+  'Settings explains upfront that the existing sign-in is checked first and macOS may request access',
+  'The first macOS permission grant remains controlled by macOS and is not claimed gone or avoidable.'
+].each do |fact|
+  abort "v0.3.2 release notes are missing #{fact.inspect}" unless notes.include?(fact)
+end
+
+abort 'v0.3.2 README contains preparation wording' if readme.include?('v0.3.2 is prepared for public release')
+abort 'v0.3.2 README is missing public availability statement' unless readme.include?('Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.')
+abort 'v0.3.2 README is missing exact ZIP download link' unless readme.include?(v032_zip)
+abort 'v0.3.2 README is missing exact checksum download link' unless readme.include?(v032_sidecar)
+abort 'v0.3.2 README is missing install heading' unless readme.include?('To install the public v0.3.2 release:')
+abort 'v0.3.2 README is missing install source wording' unless readme.include?('from the v0.3.2 GitHub Release.')
+abort 'v0.3.2 README retains v0.3.1 public availability claim' if readme.include?('Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.')
+abort 'v0.3.2 README is missing user-confirmed login limitation' unless readme_text.include?('The existing valid-login path was user-confirmed to skip browser login; this does not claim every authentication branch was manually accepted.')
+
+public_record = status.match(/^## v0\.3\.2 Public Release Record — \d{4}-\d{2}-\d{2}\n(.*?)(?=^## |\z)/m)
+abort 'v0.3.2 STATUS is missing public release record' unless public_record
+evidence = public_record[1]
+evidence_text = evidence.gsub(/\s+/, ' ')
+{
+  'Tag' => /^Tag: `v0\.3\.2`$/,
+  'Candidate commit' => /^Candidate commit: `[0-9a-f]{40}`$/,
+  'Public release URL' => /^Public release URL: <https:\/\/github\.com\/taejunoh\/needlbar\/releases\/tag\/v0\.3\.2>$/,
+  'Public ZIP SHA-256' => /^Public ZIP SHA-256: `[0-9a-f]{64}`$/,
+  'tagless/publication evidence' => /Protected tagless validation .* and tag-triggered publication .* succeeded at the exact candidate above\./
+}.each do |field, pattern|
+  value = field == 'tagless/publication evidence' ? evidence_text : evidence
+  abort "v0.3.2 public release record is missing #{field} evidence" unless value.match?(pattern)
+end
+RUBY
+}
+
+test_v032_release_source_contract() {
+  local readme_file="$ROOT/README.md"
+  local status_file="$ROOT/docs/STATUS.md"
+  local release_notes_file="$ROOT/.github/release-notes/v0.3.2.md"
+  local stale_public_readme="$temp_root/v032-stale-v031-public-readme.md"
+  local prepared_readme="$temp_root/v032-prepared-readme.md"
+  local decoy_output decoy_status
+
+  v032_release_source_contract_is_valid "$readme_file" "$status_file" "$release_notes_file" ||
+    fail 'live v0.3.2 release-source contract is invalid'
+
+  ruby - "$readme_file" "$stale_public_readme" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+document << "\nNeedlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.\n"
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(v032_release_source_contract_is_valid "$stale_public_readme" "$status_file" "$release_notes_file" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'v0.3.2 stale v0.3.1 public-claim decoy was accepted'
+  [[ "$decoy_output" == *'retains v0.3.1 public availability claim'* ]] || fail 'v0.3.2 stale v0.3.1 public-claim decoy failed unexpectedly'
+
+  ruby - "$readme_file" "$prepared_readme" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+public = 'Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.'
+prepared = 'Needlbar v0.3.2 is prepared for public release for macOS 14 or later on Apple Silicon.'
+abort 'fixture setup: v0.3.2 public availability statement is missing' unless document.sub!(public, prepared)
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(v032_release_source_contract_is_valid "$prepared_readme" "$status_file" "$release_notes_file" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'v0.3.2 prepared-claim decoy was accepted'
+  [[ "$decoy_output" == *'contains preparation wording'* ]] || fail 'v0.3.2 prepared-claim decoy failed unexpectedly'
+}
+
+test_v032_release_source_contract
 
 release_workflow_contract_is_valid() {
   local release_workflow="$1"

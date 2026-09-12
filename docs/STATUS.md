@@ -2,32 +2,73 @@
 
 **Updated:** 2026-09-12
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** v0.3.1 is publicly released and independently verified from
-candidate `80484319137e704446c4fac1435c4d3c77d26d77`. The public arm64 ZIP and
-checksum sidecar are available from the v0.3.1 GitHub Release. Native acceptance
-is partial: one corrected default-light fixture viewport is compositor-verified,
-while broader visual and interaction coverage remains open. The Homebrew Cask
-update and canonical production installation are complete and independently
-verified.
-**Next action:** Prepare and publish v0.3.2 through the protected two-run release
-workflow following the user's release authorization. Existing-login native
-acceptance is confirmed; other authentication branches remain synthetic-only.
-The unrelated cancellation-test admission timing fix and native visual/interaction
-acceptance remain separate follow-ups. Automated checks do not close native QA gaps.
+**Current phase:** v0.3.2 is publicly released and independently verified from
+candidate `787865d1f22e1ec4a70daed5264f10740a38726a`. The public arm64 ZIP and
+checksum sidecar are available from the v0.3.2 GitHub Release. Public artifact
+verification passed checksum, archive integrity, host/widget metadata, arm64,
+macOS 14 minimum target, App Group, Developer ID/hardened-runtime signing,
+deep/strict verification, stapling, Gatekeeper, and fixture/review-host
+exclusion. Native visual and interaction acceptance remains partial and is not
+claimed by this release record.
+**Next action:** Continue separately scoped native authentication and visual
+acceptance, or replace the local evaluation build with the public artifact when
+requested. No release or Homebrew publication step remains.
+The Homebrew Cask update was committed and pushed to the tap as
+`6531e116833591d091b0bbda5409d899115b711b`. The
+canonical local installation remains the previously installed locally signed
+v0.3.1/build 4 app (PID `54617`), not the public v0.3.2 artifact. Existing-login
+Claude behavior is user-confirmed; other authentication branches remain
+synthetic-only. The unrelated cancellation-test admission timing fix and native
+visual/interaction acceptance remain separate follow-ups.
+
+## v0.3.2 Public Release Record — 2026-09-12
+
+Tag: `v0.3.2`
+Candidate commit: `787865d1f22e1ec4a70daed5264f10740a38726a`
+Public release URL: <https://github.com/taejunoh/needlbar/releases/tag/v0.3.2>
+Public ZIP SHA-256: `3db2e6bb7aadf7eb1bb26de29139b95073a866428d706f4fc08b6314e4b741c3`
+
+Protected tagless validation [34707625771](https://github.com/taejunoh/needlbar/actions/runs/34707625771)
+and tag-triggered publication [34708964704](https://github.com/taejunoh/needlbar/actions/runs/34708964704)
+succeeded at the exact candidate above. Independent public verification recorded
+host executable SHA-256 `72b1b98b420f39985d6ebbce2702f2576f1cc899a6ca31f1c5d6d50b4d167b1d`
+and widget executable SHA-256
+`f1c3a82e225e0382bbb59e6059eb3cb5f941f26c4a13a5e4e3721542e8f41953`.
+Both host and widget are arm64, version/build 0.3.2/5, and declare macOS 14.0
+as their minimum target. The artifact uses Developer ID team `3BMF4LM6TM`,
+hardened runtime, strict deep signature verification, a stapled host ticket,
+and Gatekeeper acceptance. The public ZIP contains no fixture, review-host,
+test, or credential resources.
+
+The Homebrew Cask is updated locally to version 0.3.2 and the exact public ZIP
+checksum while preserving arm64, macOS Sonoma-or-later, and no-`zap` behavior.
+The tap update was committed and pushed as
+`6531e116833591d091b0bbda5409d899115b711b` after `brew style` and
+`brew audit --cask --online` both exited 0. The successful workflow logs include
+the known GitHub Actions Node 20 action-deprecation warning; it did not affect
+either run's successful result.
+
+Post-publication documentation verification: the historical v0.3.1 source
+contract now uses its own local fixture instead of requiring old download copy
+in the current README. A v0.3.2 public-source contract and stale/prepared decoys
+cover the new documentation. Independent review and fresh `make test` passed
+(Swift 473 tests / 19 suites plus Rust/vendor/shell contracts). No production
+artifact, tag, or signing policy was changed by this documentation-only follow-up.
 
 ## Claude Connection Preflight — 2026-09-12 (implemented and locally installed)
 
 User acceptance: the user confirmed that an existing valid Claude login skipped
 browser login on the installed build. The user then explicitly requested a new
-public release. v0.3.2 (build 5) preparation is in progress under
-`docs/superpowers/plans/2026-09-12-v0.3.2-release.md`; v0.3.1 remains the current
-public release until v0.3.2 publication and artifact verification succeed.
+public release. v0.3.2 (build 5) is now public; the publication evidence is
+recorded above and the continuation plan remains
+`docs/superpowers/plans/2026-09-12-v0.3.2-release.md`.
 
-v0.3.2 release candidate preparation: host/widget metadata is 0.3.2/build 5;
-release notes and historical/current contract fixtures are independently reviewed.
-Fresh `make test` passed, including Swift 473 tests / 19 suites and Rust/vendor/
-shell contracts. The reviewed candidate is ready for commit/push and protected
-tagless validation; no v0.3.2 tag or public artifact exists yet.
+v0.3.2 release candidate preparation completed with host/widget metadata at
+0.3.2/build 5; release notes and historical/current contract fixtures were
+independently reviewed. Fresh `make test` passed before publication, including
+Swift 473 tests / 19 suites and Rust/vendor/shell contracts. Protected tagless
+validation and tag-triggered publication both passed at the exact candidate
+recorded above.
 
 The user approved reducing redundant Claude browser login after observing the
 macOS `Claude Code-credentials` permission prompt. The approved implementation
@@ -64,12 +105,14 @@ Canonical runtime: `/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlb
 Verified host SHA-256:
 `4e67b88ecfc24592af064ddf7fe959a9a7c126e39c5521b59e48cb4e4c76f19c`.
 The new canonical process was verified alive as PID `54617`; old canonical PID
-`19828` was terminated only after exact-path verification. Separate development
-PID `45288` was preserved. The previous public app is recoverable at
+`19828` was terminated only after exact-path verification. The previous public
+app is recoverable at
 `/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-claude-preflight.50QyoD/Needlbar.app`.
 This is a locally signed build, still version/build 0.3.1/4, not a new notarized
-release. No push, release, provider login, or live credential acceptance check was
-performed. The first macOS permission grant remains controlled by the OS.
+release. The canonical installation was not replaced with public v0.3.2 during
+publication-doc preparation. No provider login or live credential acceptance
+check was performed here. The first macOS permission grant remains controlled
+by the OS. Old development PID `45288` was terminated at the user's request.
 
 Release preparation evidence (2026-09-10): existing implementation through
 `3199665` is fast-forwarded into local main. The pinned vendor commit
@@ -105,7 +148,8 @@ matched the public artifact. Deep strict signature verification, stapling,
 Gatekeeper acceptance, public smoke, and fixture exclusion passed. The exact
 recoverable pre-v0.3.1 backup is
 `/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-v031.KyEBC0/Needlbar.app`;
-separate development process PID `45288` was preserved.
+separate development process PID `45288` was later terminated at the user's
+request.
 
 A post-release full `make test` rerun on 2026-09-12 exited 2 at the unrelated
 `cancelledWaiterDoesNotCancelSharedAnalyticsTask` timing assertion (line 73).
