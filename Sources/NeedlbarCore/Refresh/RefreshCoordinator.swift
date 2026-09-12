@@ -15,6 +15,13 @@ public struct SystemClock: ClockLike {
     }
 }
 
+public enum ClaudeLoginPreflightOutcome: Equatable, Sendable {
+    case verified
+    case requiresAuthentication
+    case keychainPermissionRequired
+    case verificationFailed
+}
+
 public actor RefreshCoordinator {
     public static let safetyInterval: Duration = .seconds(5 * 60)
     public static let popoverQuotaRefreshThreshold: TimeInterval = 60
@@ -32,6 +39,11 @@ public actor RefreshCoordinator {
         let generation: UInt64
         let backgroundTicket: UInt64?
         let continuation: CheckedContinuation<Bool, Never>
+    }
+
+    private struct ClaudePreflightWaiter {
+        let generation: UInt64
+        let continuation: CheckedContinuation<ClaudeLoginPreflightOutcome, Never>
     }
 
     private enum UserQuotaWaiterBatch {
@@ -60,6 +72,7 @@ public actor RefreshCoordinator {
     private var activeQuotaIntent: QuotaRefreshIntent?
     private var activeQuotaUserWaiterBatch: UserQuotaWaiterBatch?
     private var queuedBackgroundQuotaRefresh = false
+    private var queuedClaudePreflight = false
     private var queuedUserInitiatedProviders: Set<ProviderID> = []
     private var queuedUserInitiatedProvidersAheadOfBackground: Set<ProviderID>?
     private var queuedUserInitiatedProvidersAfterBackground: Set<ProviderID> = []
@@ -67,6 +80,8 @@ public actor RefreshCoordinator {
     private var nextQueuedBackgroundTicket: UInt64 = 0
     private var userQuotaWaiters: [ProviderID: [UserQuotaWaiter]] = [:]
     private var completingUserQuotaWaiters: [ProviderID: [UserQuotaWaiter]] = [:]
+    private var claudePreflightWaiters: [ClaudePreflightWaiter] = []
+    private var completingClaudePreflightWaiters: [ClaudePreflightWaiter] = []
 
     public init(
         usageRepository: any UsageRepository,
@@ -216,6 +231,33 @@ public actor RefreshCoordinator {
         }
     }
 
+    /// Performs one serialized, Claude-only, no-UI quota check for an
+    /// explicit connection click. The current response, never cached quota,
+    /// determines the outcome used by the login coordinator.
+    public func preflightClaudeLogin() async -> ClaudeLoginPreflightOutcome {
+        guard isRunning else { return .verificationFailed }
+        return await withCheckedContinuation { continuation in
+            let waiter = ClaudePreflightWaiter(generation: runGeneration, continuation: continuation)
+            if activeQuotaIntent == .claudePreflight {
+                if completingClaudePreflightWaiters.contains(where: { $0.generation == runGeneration }) {
+                    completingClaudePreflightWaiters.append(waiter)
+                } else {
+                    claudePreflightWaiters.append(waiter)
+                }
+                quotaIntentRegistered?(.claudePreflight)
+                return
+            }
+
+            claudePreflightWaiters.append(waiter)
+            quotaIntentRegistered?(.claudePreflight)
+            if quotaTask == nil {
+                beginQuotaRefresh(intent: .claudePreflight)
+            } else {
+                queuedClaudePreflight = true
+            }
+        }
+    }
+
     /// Stops timers and invalidates the installed watcher receiver before a later restart.
     public func stop() async {
         runGeneration &+= 1
@@ -229,11 +271,13 @@ public actor RefreshCoordinator {
         usageRefreshRequestedWhileInFlight = false
         usageQueuedGeneration = nil
         queuedBackgroundQuotaRefresh = false
+        queuedClaudePreflight = false
         queuedUserInitiatedProviders.removeAll()
         queuedUserInitiatedProvidersAheadOfBackground = nil
         queuedUserInitiatedProvidersAfterBackground.removeAll()
         queuedBackgroundTicket = nil
         resumeAllUserQuotaWaiters(with: false)
+        resumeAllClaudePreflightWaiters(with: .verificationFailed)
         if let usageFileWatcher {
             await usageFileWatcher.stop()
         }
@@ -381,6 +425,7 @@ public actor RefreshCoordinator {
         generation: UInt64
     ) async {
         var verificationSucceeded = false
+        var preflightOutcome: ClaudeLoginPreflightOutcome = .verificationFailed
         let verifiedProvider: ProviderID?
         let verifiedProviderWaiterBatch: UserQuotaWaiterBatch?
         if case .userInitiated(let provider) = intent {
@@ -395,12 +440,22 @@ public actor RefreshCoordinator {
             verifiedProvider = nil
             verifiedProviderWaiterBatch = nil
         }
+        let isClaudePreflight = intent == .claudePreflight
+        if isClaudePreflight {
+            moveClaudePreflightWaiters(generation: generation)
+        }
         defer {
             if let verifiedProvider {
                 resumeCompletingUserQuotaWaiters(
                     for: verifiedProvider,
                     generation: generation,
                     with: applyResult && generation == runGeneration ? verificationSucceeded : false
+                )
+            }
+            if isClaudePreflight {
+                resumeCompletingClaudePreflightWaiters(
+                    generation: generation,
+                    with: applyResult && generation == runGeneration ? preflightOutcome : .verificationFailed
                 )
             }
             quotaTask = nil
@@ -412,6 +467,9 @@ public actor RefreshCoordinator {
         guard applyResult, generation == runGeneration else { return }
         switch result {
         case .success(let refresh):
+            if isClaudePreflight {
+                preflightOutcome = claudePreflightOutcome(for: refresh)
+            }
             let refreshedAt = clock.now
             if case .backgroundAll = intent, !refresh.snapshots.isEmpty {
                 lastBackgroundQuotaSuccessfulAt = refreshedAt
@@ -432,6 +490,9 @@ public actor RefreshCoordinator {
                 verificationSucceeded = refresh.snapshots[provider] != nil
             }
         case .failure(let error):
+            if isClaudePreflight {
+                preflightOutcome = claudePreflightOutcome(for: error)
+            }
             if let bridgeFailure = error as? BridgeFailure,
                case .bridgeFailed(let bridgeErrors) = bridgeFailure
             {
@@ -469,6 +530,11 @@ public actor RefreshCoordinator {
 
     private func drainQueuedQuotaRefreshes() {
         guard isRunning else { return }
+        if queuedClaudePreflight {
+            queuedClaudePreflight = false
+            beginQuotaRefresh(intent: .claudePreflight)
+            return
+        }
         if let ticket = queuedBackgroundTicket {
             if let provider = ProviderID.allCases.first(where: {
                 queuedUserInitiatedProvidersAheadOfBackground?.contains($0) == true
@@ -504,6 +570,52 @@ public actor RefreshCoordinator {
         userQuotaWaiters.removeAll()
         completingUserQuotaWaiters.removeAll()
         waiters.forEach { $0.continuation.resume(returning: result) }
+    }
+
+    private func moveClaudePreflightWaiters(generation: UInt64) {
+        let captured = claudePreflightWaiters.filter { $0.generation == generation }
+        claudePreflightWaiters.removeAll { $0.generation == generation }
+        completingClaudePreflightWaiters.append(contentsOf: captured)
+    }
+
+    private func resumeCompletingClaudePreflightWaiters(
+        generation: UInt64,
+        with result: ClaudeLoginPreflightOutcome
+    ) {
+        let completed = completingClaudePreflightWaiters.filter { $0.generation == generation }
+        completingClaudePreflightWaiters.removeAll { $0.generation == generation }
+        completed.forEach { $0.continuation.resume(returning: result) }
+    }
+
+    private func resumeAllClaudePreflightWaiters(with result: ClaudeLoginPreflightOutcome) {
+        let waiters = claudePreflightWaiters + completingClaudePreflightWaiters
+        claudePreflightWaiters.removeAll()
+        completingClaudePreflightWaiters.removeAll()
+        waiters.forEach { $0.continuation.resume(returning: result) }
+    }
+
+    private func claudePreflightOutcome(for refresh: QuotaRefreshResult) -> ClaudeLoginPreflightOutcome {
+        if let error = refresh.errors[.claude] {
+            return claudePreflightOutcome(forCode: error.code)
+        }
+        return refresh.snapshots[.claude] == nil ? .verificationFailed : .verified
+    }
+
+    private func claudePreflightOutcome(for error: Error) -> ClaudeLoginPreflightOutcome {
+        guard let bridgeFailure = error as? BridgeFailure,
+              case let .bridgeFailed(errors) = bridgeFailure
+        else { return .verificationFailed }
+        let claudeErrors = errors.filter { $0.providerID == .claude }
+        guard claudeErrors.count == 1 else { return .verificationFailed }
+        return claudePreflightOutcome(forCode: claudeErrors[0].code)
+    }
+
+    private func claudePreflightOutcome(forCode code: String) -> ClaudeLoginPreflightOutcome {
+        switch code {
+        case "requiresAuthentication", "authenticationExpired": .requiresAuthentication
+        case "permissionDenied": .keychainPermissionRequired
+        default: .verificationFailed
+        }
     }
 
     private func moveUserQuotaWaiters(

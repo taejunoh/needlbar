@@ -6,7 +6,7 @@ use std::{
 
 use async_trait::async_trait;
 use needlbar_bridge::quota::{
-    collect_claude_user_initiated_with_source, collect_codex_with_provider,
+    collect_claude_preflight_with_source, collect_claude_user_initiated_with_source, collect_codex_with_provider,
     collect_quota_with_providers, envelope_from_collection, ClaudeUserInitiatedQuotaSource,
 };
 use needlbar_quota::{
@@ -100,6 +100,28 @@ async fn ordinary_all_provider_collection_uses_background_claude_credential_acce
     );
     assert_eq!(collection.providers.len(), 2);
     assert_eq!(collection.errors[0].provider.as_deref(), Some("claude"));
+}
+
+#[tokio::test]
+async fn claude_preflight_uses_only_claude_without_keychain_ui() {
+    // This catches an explicit connection check that accidentally reuses the
+    // UI-capable post-login verifier or fans out to other providers.
+    let accesses = Arc::new(Mutex::new(Vec::new()));
+    let collection = collect_claude_preflight_with_source(Arc::new(RecordingClaudeSource {
+        accesses: Arc::clone(&accesses),
+        result: Ok(successful_snapshot(ProviderId::Claude, "claude.session")),
+    }))
+    .await;
+    let value = serde_json::to_value(envelope_from_collection(collection))
+        .expect("Claude preflight envelope serializes");
+
+    assert_eq!(
+        *accesses.lock().expect("accesses lock"),
+        vec![ClaudeCredentialAccess::BackgroundNoUI]
+    );
+    assert_eq!(value["data"]["providers"].as_array().map(Vec::len), Some(1));
+    assert_eq!(value["data"]["providers"][0]["provider"], "claude");
+    assert_eq!(value["errors"], serde_json::json!([]));
 }
 
 #[tokio::test]

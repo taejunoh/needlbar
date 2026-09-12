@@ -338,6 +338,21 @@ pub unsafe extern "C" fn needlbar_quota_snapshot_json() -> *const c_char {
 /// # Safety
 ///
 /// The returned non-null pointer is Rust-owned and must be passed exactly once
+/// to [`needlbar_free_string`]. This export performs Claude-only verification
+/// with Keychain interaction forbidden.
+#[no_mangle]
+pub unsafe extern "C" fn needlbar_claude_preflight_quota_snapshot_json() -> *const c_char {
+    cursor_credential_cleanup::schedule_obsolete_cursor_session_cleanup();
+    ffi_envelope(|| {
+        let envelope = ffi_claude_preflight_quota_envelope();
+        diagnostics::record_partial_quota(&envelope);
+        envelope
+    })
+}
+
+/// # Safety
+///
+/// The returned non-null pointer is Rust-owned and must be passed exactly once
 /// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_claude_user_initiated_quota_snapshot_json() -> *const c_char {
@@ -377,6 +392,10 @@ fn ffi_quota_envelope() -> Envelope<quota::QuotaPayload> {
 
 fn ffi_claude_user_initiated_quota_envelope() -> Envelope<quota::QuotaPayload> {
     claude_user_initiated_quota_envelope()
+}
+
+fn ffi_claude_preflight_quota_envelope() -> Envelope<quota::QuotaPayload> {
+    claude_preflight_quota_envelope()
 }
 
 fn ffi_codex_quota_envelope() -> Envelope<quota::QuotaPayload> {
@@ -486,6 +505,13 @@ fn quota_envelope() -> Envelope<quota::QuotaPayload> {
 
 fn claude_user_initiated_quota_envelope() -> Envelope<quota::QuotaPayload> {
     match collect_quota_on_bridge_thread(|| Box::pin(quota::collect_claude_user_initiated())) {
+        Ok(collection) => quota::envelope_from_collection(collection),
+        Err(error) => Envelope::failure(error),
+    }
+}
+
+fn claude_preflight_quota_envelope() -> Envelope<quota::QuotaPayload> {
+    match collect_quota_on_bridge_thread(|| Box::pin(quota::collect_claude_preflight())) {
         Ok(collection) => quota::envelope_from_collection(collection),
         Err(error) => Envelope::failure(error),
     }

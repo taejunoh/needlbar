@@ -1,5 +1,15 @@
 # Needlbar Provider-Managed Browser Login Design
 
+> **CLAUDE AMENDMENT — 2026-09-12:** The approved
+> [`Claude connection preflight plan`](../plans/2026-09-12-claude-connection-preflight.md)
+> changes explicit connection actions to check existing Claude quota without
+> Keychain interaction before launching the CLI. Fresh quota skips login;
+> missing/expired authentication runs the existing CLI; permission-only failure
+> permits one explicit interactive verification without first running the CLI.
+> This supersedes statements below requiring a successful CLI exit before every
+> interactive Claude verification. Background interaction remains forbidden and
+> provider-owned credential storage is unchanged.
+
 > **SUPERSEDED FOR CURSOR — 2026-08-26:** This document is retained as historical design
 > record only. Its Cursor session-token, remote usage/quota, and paste/connection
 > requirements are inactive. The approved amendment

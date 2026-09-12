@@ -120,6 +120,7 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
+        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -137,6 +138,72 @@ import Testing
 }
 
 @MainActor
+@Test func claudeFreshPreflightConnectsWithoutResolvingOrLaunchingTheCLI() async {
+    let resolver = CountingLoginResolver()
+    let runner = CountingLoginRunner()
+    let states = LoginStateRecorder()
+    let coordinator = ProviderLoginCoordinator(
+        resolver: resolver,
+        runner: runner,
+        refreshQuota: { _ in true },
+        preflightClaudeLogin: { .verified },
+        stateObserver: { provider, state in await states.record(provider, state) }
+    )
+
+    #expect(coordinator.connect(.claude))
+    await states.wait(for: .claude, state: .connected)
+
+    #expect(resolver.commandCount() == 0)
+    #expect(await runner.invocationCount() == 0)
+}
+
+@MainActor
+@Test func claudeAuthenticationPreflightRunsTheFixedCLIThenOneVerifier() async {
+    let resolver = CountingLoginResolver()
+    let runner = ImmediateLoginRunner(outcomes: [.claude: .exited(status: 0)])
+    let refresh = SuspendedQuotaRefresh()
+    let coordinator = ProviderLoginCoordinator(
+        resolver: resolver,
+        runner: runner,
+        refreshQuota: { provider in await refresh.refresh(provider) },
+        preflightClaudeLogin: { .requiresAuthentication }
+    )
+
+    #expect(coordinator.connect(.claude))
+    await refresh.waitForCall(.claude)
+    #expect(resolver.commandCount() == 1)
+    #expect(await runner.commands().map(\.provider) == [.claude])
+    #expect(await refresh.callCount(for: .claude) == 1)
+
+    await refresh.complete(.claude, with: true)
+    await eventually { coordinator.state(for: .claude) == .connected }
+}
+
+@MainActor
+@Test func claudePermissionPreflightRunsOneInteractiveVerifierWithoutCLIAndStopsAfterDenial() async {
+    let resolver = CountingLoginResolver()
+    let runner = CountingLoginRunner()
+    let refresh = SuspendedQuotaRefresh()
+    let states = LoginStateRecorder()
+    let coordinator = ProviderLoginCoordinator(
+        resolver: resolver,
+        runner: runner,
+        refreshQuota: { provider in await refresh.refresh(provider) },
+        preflightClaudeLogin: { .keychainPermissionRequired },
+        stateObserver: { provider, state in await states.record(provider, state) }
+    )
+
+    #expect(coordinator.connect(.claude))
+    await refresh.waitForCall(.claude)
+    await refresh.complete(.claude, with: false)
+    await states.wait(for: .claude, state: .failed(.verificationFailed))
+
+    #expect(resolver.commandCount() == 0)
+    #expect(await runner.invocationCount() == 0)
+    #expect(await refresh.callCount(for: .claude) == 1)
+}
+
+@MainActor
 @Test func coordinatorVerifiesExactlyOnceAfterAZeroExit() async {
     let runner = SuspendedLoginRunner()
     let refresh = SuspendedQuotaRefresh()
@@ -145,6 +212,7 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { provider in await refresh.refresh(provider) },
+        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -169,6 +237,7 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { provider in await refresh.refresh(provider) },
+        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -193,6 +262,7 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
+        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -215,6 +285,7 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
+        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) },
         runFinished: { provider in await finished.record(provider) }
     )
@@ -247,9 +318,10 @@ import Testing
         resolver: MissingLoginResolver(),
         runner: ImmediateLoginRunner(outcomes: [:]),
         refreshQuota: { _ in true },
+        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
-    #expect(!missingCLI.connect(.claude))
+    #expect(missingCLI.connect(.claude))
     await states.wait(for: .claude, state: .failed(.cliNotInstalled))
 
     let runner = ImmediateLoginRunner(outcomes: [.claude: .timedOut, .codex: .cancelled])
@@ -257,6 +329,7 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
+        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
     #expect(coordinator.connect(.claude))
@@ -271,7 +344,8 @@ import Testing
     let coordinator = ProviderLoginCoordinator(
         resolver: FixedLoginResolver(),
         runner: runner,
-        refreshQuota: { _ in true }
+        refreshQuota: { _ in true },
+        preflightClaudeLogin: { .requiresAuthentication }
     )
 
     #expect(coordinator.connect(.claude))
@@ -290,6 +364,7 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { provider in await refresh.refresh(provider) },
+        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -312,7 +387,8 @@ import Testing
     let coordinator = ProviderLoginCoordinator(
         resolver: FixedLoginResolver(),
         runner: runner,
-        refreshQuota: { _ in true }
+        refreshQuota: { _ in true },
+        preflightClaudeLogin: { .requiresAuthentication }
     )
 
     #expect(coordinator.connect(.claude))
@@ -349,6 +425,7 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
+        preflightClaudeLogin: { .requiresAuthentication },
         runFinished: { provider in await finished.record(provider) }
     )
 
@@ -395,6 +472,7 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
+        preflightClaudeLogin: { .requiresAuthentication },
         runFinished: { provider in await finished.record(provider) }
     )
 
@@ -437,6 +515,7 @@ import Testing
         resolver: resolver,
         runner: runner,
         refreshQuota: { _ in true },
+        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -469,7 +548,8 @@ import Testing
     let coordinator = ProviderLoginCoordinator(
         resolver: resolver,
         runner: runner,
-        refreshQuota: { _ in true }
+        refreshQuota: { _ in true },
+        preflightClaudeLogin: { .requiresAuthentication }
     )
 
     #expect(coordinator.connect(.claude))
@@ -511,6 +591,7 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { provider in await refresh.refresh(provider) },
+        preflightClaudeLogin: { .requiresAuthentication },
         beforeProcessStart: { _ in await startGate.wait() },
         runFinished: { provider in await finished.record(provider) }
     )
@@ -519,6 +600,34 @@ import Testing
     await startGate.waitForEntry()
     await coordinator.stop()
     await startGate.release()
+    await finished.wait(for: .claude)
+
+    #expect(coordinator.state(for: .claude) == .idle)
+    #expect(await runner.invocationCount() == 0)
+    #expect(await refresh.callCount(for: .claude) == 0)
+}
+
+@MainActor
+@Test func stoppingClaudeDuringPreflightCannotStartCLIOrInteractiveVerification() async {
+    let preflightGate = SuspensionGate()
+    let runner = CountingLoginRunner()
+    let refresh = SuspendedQuotaRefresh()
+    let finished = RunCompletionRecorder()
+    let coordinator = ProviderLoginCoordinator(
+        resolver: FixedLoginResolver(),
+        runner: runner,
+        refreshQuota: { provider in await refresh.refresh(provider) },
+        preflightClaudeLogin: {
+            await preflightGate.wait()
+            return .keychainPermissionRequired
+        },
+        runFinished: { provider in await finished.record(provider) }
+    )
+
+    #expect(coordinator.connect(.claude))
+    await preflightGate.waitForEntry()
+    await coordinator.stop()
+    await preflightGate.release()
     await finished.wait(for: .claude)
 
     #expect(coordinator.state(for: .claude) == .idle)
@@ -735,6 +844,7 @@ private struct ProviderLoginProcessRunnerTests {
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
+        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 

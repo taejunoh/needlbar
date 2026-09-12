@@ -200,7 +200,9 @@ public struct SettingsView: View {
     private func loginStatusCopy(for provider: ProviderID) -> String {
         switch actions.loginState(for: provider) {
         case .idle:
-            "Sign in opens the provider's browser flow."
+            provider == .claude
+                ? "Checks your existing Claude sign-in first. macOS may request access to Claude Code credentials."
+                : "Sign in opens the provider's browser flow."
         case .launching:
             "Starting sign-in…"
         case .awaitingBrowser:
@@ -218,7 +220,7 @@ public struct SettingsView: View {
             case .cancelled: "Login cancelled."
             case .timedOut: "Login timed out."
             case .providerRejected, .unsupportedProvider: "Login incomplete."
-            case .verificationFailed: "Sign-in completed but quota could not be verified."
+            case .verificationFailed: "Could not verify the connection."
             }
         }
     }

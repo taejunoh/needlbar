@@ -471,6 +471,57 @@ struct RefreshCoordinatorTests {
     await coordinator.stop()
 }
 
+@Test func claudePreflightClassifiesTheCurrentSilentResultBeforeCachedQuota() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let store = ProviderSnapshotStore()
+    let cached = QuotaSnapshot(windows: [try .init(id: "claude.session", title: "Session", usedPercent: 42, resetsAt: nil)])
+    await store.applyQuota(cached, for: .claude)
+    let coordinator = makeRunningCoordinator(quota: quota, store: store)
+    await coordinator.start()
+    await quota.waitUntilCallCount(1)
+    try quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+
+    let authentication = Task { await coordinator.preflightClaudeLogin() }
+    await quota.waitUntilCallCount(2)
+    try quota.releaseNext(with: .init(snapshots: [:], errors: [.claude: BridgeError(provider: "claude", code: "requiresAuthentication", message: "sign in", action: nil)]))
+    #expect(await authentication.value == .requiresAuthentication)
+    #expect(await store.snapshot(for: .claude).quota == cached)
+
+    let expiredAuthentication = Task { await coordinator.preflightClaudeLogin() }
+    await quota.waitUntilCallCount(3)
+    try quota.releaseNext(with: .init(snapshots: [:], errors: [.claude: BridgeError(provider: "claude", code: "authenticationExpired", message: "expired", action: nil)]))
+    #expect(await expiredAuthentication.value == .requiresAuthentication)
+
+    let permission = Task { await coordinator.preflightClaudeLogin() }
+    await quota.waitUntilCallCount(4)
+    try quota.releaseNext(with: .init(snapshots: [:], errors: [.claude: permissionDenied(for: .claude)]))
+    #expect(await permission.value == .keychainPermissionRequired)
+
+    let failed = Task { await coordinator.preflightClaudeLogin() }
+    await quota.waitUntilCallCount(5)
+    try quota.releaseNext(with: .init(snapshots: [.claude: cached], errors: [.claude: BridgeError(provider: "claude", code: "networkUnavailable", message: "offline", action: nil)]))
+    #expect(await failed.value == .verificationFailed)
+    await coordinator.stop()
+}
+
+@Test func claudePreflightCoalescesCallersAndStopCompletesThemOnceWithFailure() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let coordinator = makeRunningCoordinator(quota: quota)
+    await coordinator.start()
+    await quota.waitUntilCallCount(1)
+    try quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+
+    let first = Task { await coordinator.preflightClaudeLogin() }
+    let second = Task { await coordinator.preflightClaudeLogin() }
+    await quota.waitUntilCallCount(2)
+    #expect(quota.intents == [.backgroundAll, .claudePreflight])
+    await coordinator.stop()
+
+    #expect(await first.value == .verificationFailed)
+    #expect(await second.value == .verificationFailed)
+    try quota.releaseNext(with: quotaResult(for: .claude))
+}
+
 @Test func timerPopoverAndManualQuotaPathsAlwaysUseBackgroundAllIntent() async throws {
     let now = try #require(BridgeDecoder.date("2026-08-25T12:00:00Z"))
     let clock = ManualClock(now: now)

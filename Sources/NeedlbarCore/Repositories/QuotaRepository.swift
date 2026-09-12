@@ -10,6 +10,7 @@ public struct QuotaRefreshResult: Sendable {
 
 public enum QuotaRefreshIntent: Equatable, Sendable {
     case backgroundAll
+    case claudePreflight
     case userInitiated(provider: ProviderID)
 }
 
@@ -38,6 +39,8 @@ public struct RustQuotaRepository: QuotaRepository, Sendable {
         switch intent {
         case .backgroundAll:
             return try refreshAggregate(bridge.quotaEnvelope())
+        case .claudePreflight:
+            return try refreshDedicated(bridge.claudePreflightQuotaEnvelope(), for: .claude)
         case .userInitiated(provider: .claude):
             return try refreshDedicated(bridge.claudeUserInitiatedQuotaEnvelope(), for: .claude)
         case .userInitiated(provider: .codex):
@@ -116,6 +119,9 @@ public struct RustQuotaRepository: QuotaRepository, Sendable {
                 message: error.message,
                 action: error.action
             )
+            guard errors[expectedProvider] == nil else {
+                throw invalidDedicatedResponse(for: expectedProvider)
+            }
             errors[expectedProvider] = normalized
         }
         return errors

@@ -20,6 +20,7 @@ public func settingsStudioReviewActions(delay: Duration) -> SettingsActions {
             try? await Task.sleep(for: delay)
             return true
         },
+        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in
             print("SETTINGS_ACTION_FIXTURE provider=\(provider.rawValue) state=\(state)")
         },

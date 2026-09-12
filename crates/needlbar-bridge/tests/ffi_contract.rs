@@ -10,6 +10,7 @@ fn provider_verification_exports_are_declared_in_the_public_c_header() {
     .expect("public C header");
 
     assert!(header.contains("needlbar_claude_user_initiated_quota_snapshot_json(void)"));
+    assert!(header.contains("needlbar_claude_preflight_quota_snapshot_json(void)"));
     assert!(header.contains("needlbar_codex_quota_snapshot_json(void)"));
     assert!(header.contains("const char *needlbar_analytics_snapshot_json(void);"));
 
@@ -19,13 +20,15 @@ fn provider_verification_exports_are_declared_in_the_public_c_header() {
         needlbar_bridge::needlbar_quota_snapshot_json;
     let claude: unsafe extern "C" fn() -> *const std::os::raw::c_char =
         needlbar_bridge::needlbar_claude_user_initiated_quota_snapshot_json;
+    let claude_preflight: unsafe extern "C" fn() -> *const std::os::raw::c_char =
+        needlbar_bridge::needlbar_claude_preflight_quota_snapshot_json;
     let codex: unsafe extern "C" fn() -> *const std::os::raw::c_char =
         needlbar_bridge::needlbar_codex_quota_snapshot_json;
     let diagnostics: unsafe extern "C" fn() -> *const std::os::raw::c_char =
         needlbar_bridge::needlbar_diagnostics_json;
     let analytics: unsafe extern "C" fn() -> *const std::os::raw::c_char =
         needlbar_bridge::needlbar_analytics_snapshot_json;
-    let _ = (usage, quota, claude, codex, diagnostics, analytics);
+    let _ = (usage, quota, claude, claude_preflight, codex, diagnostics, analytics);
 }
 
 #[test]

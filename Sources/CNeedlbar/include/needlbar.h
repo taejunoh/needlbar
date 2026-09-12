@@ -9,6 +9,9 @@ extern "C" {
 // exactly once with needlbar_free_string. Callers must not mutate the bytes.
 const char *needlbar_usage_snapshot_json(void);
 const char *needlbar_quota_snapshot_json(void);
+// Performs only Claude connection preflight without allowing Keychain UI.
+// Ownership matches needlbar_quota_snapshot_json.
+const char *needlbar_claude_preflight_quota_snapshot_json(void);
 // Performs only Claude quota verification after an explicit user action.
 // Ownership matches needlbar_quota_snapshot_json.
 const char *needlbar_claude_user_initiated_quota_snapshot_json(void);

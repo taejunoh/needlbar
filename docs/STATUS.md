@@ -9,9 +9,67 @@ is partial: one corrected default-light fixture viewport is compositor-verified,
 while broader visual and interaction coverage remains open. The Homebrew Cask
 update and canonical production installation are complete and independently
 verified.
-**Next action:** Make the existing cancellation-test admission timing
-deterministic, then continue separately scoped native visual and interaction
-acceptance work. Automated and installation checks do not close native QA gaps.
+**Next action:** Prepare and publish v0.3.2 through the protected two-run release
+workflow following the user's release authorization. Existing-login native
+acceptance is confirmed; other authentication branches remain synthetic-only.
+The unrelated cancellation-test admission timing fix and native visual/interaction
+acceptance remain separate follow-ups. Automated checks do not close native QA gaps.
+
+## Claude Connection Preflight — 2026-09-12 (implemented and locally installed)
+
+User acceptance: the user confirmed that an existing valid Claude login skipped
+browser login on the installed build. The user then explicitly requested a new
+public release. v0.3.2 (build 5) preparation is in progress under
+`docs/superpowers/plans/2026-09-12-v0.3.2-release.md`; v0.3.1 remains the current
+public release until v0.3.2 publication and artifact verification succeed.
+
+v0.3.2 release candidate preparation: host/widget metadata is 0.3.2/build 5;
+release notes and historical/current contract fixtures are independently reviewed.
+Fresh `make test` passed, including Swift 473 tests / 19 suites and Rust/vendor/
+shell contracts. The reviewed candidate is ready for commit/push and protected
+tagless validation; no v0.3.2 tag or public artifact exists yet.
+
+The user approved reducing redundant Claude browser login after observing the
+macOS `Claude Code-credentials` permission prompt. The approved implementation
+plan is `docs/superpowers/plans/2026-09-12-claude-connection-preflight.md`.
+An explicit connection click now first checks Claude quota without Keychain UI:
+fresh quota connects directly; missing/expired authentication runs the existing
+provider CLI; a permission-only failure uses explicit interactive verification
+without rerunning login. Other errors must not trigger login. Background access
+stays non-interactive and no credentials are copied into Needlbar storage.
+
+Implementation and synthetic verification are complete in the isolated worktree.
+Independent review found no Critical/Important code issues; two minor copy/doc
+inaccuracies were corrected. Final `make test` exited 0, including Swift 473 tests
+in 19 suites, Rust workspace/vendor/bridge contracts, widget/package/notarization
+shell contracts. `git diff --check` passed. An earlier run reproduced the known
+unrelated Analytics cancellation admission timing flake; its test was not changed.
+Existing collector/linker warnings remain outside this scope.
+
+Verification covers fresh/no-CLI, missing/expired-auth login, permission-only
+verification/no-CLI, current failure over cached quota, duplicate/malformed errors,
+serialized requests, and stop/generation safety. The test-only Settings Studio
+login fixture now explicitly supplies its simulated authentication-required result.
+Report and captured final log are retained under
+`.superpowers/sdd/2026-09-12-claude-connection-preflight/`.
+
+Local installation completed after the user's follow-up approval. A fresh
+`make package` with `/Users/taejunoh/.cargo/bin` on PATH rebuilt Rust and relinked
+Swift; host and widget were signed with the existing Developer ID team
+`3BMF4LM6TM`, matching installed designated requirements and App Group, with
+hardened runtime. Deep/strict verification and fixture exclusion passed.
+The first packaging attempt's reused-archive artifact was rejected and not installed.
+
+Canonical runtime: `/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app`.
+Verified host SHA-256:
+`4e67b88ecfc24592af064ddf7fe959a9a7c126e39c5521b59e48cb4e4c76f19c`.
+The new canonical process was verified alive as PID `54617`; old canonical PID
+`19828` was terminated only after exact-path verification. Separate development
+PID `45288` was preserved. The previous public app is recoverable at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-claude-preflight.50QyoD/Needlbar.app`.
+This is a locally signed build, still version/build 0.3.1/4, not a new notarized
+release. No push, release, provider login, or live credential acceptance check was
+performed. The first macOS permission grant remains controlled by the OS.
 
 Release preparation evidence (2026-09-10): existing implementation through
 `3199665` is fast-forwarded into local main. The pinned vendor commit

@@ -78,6 +78,31 @@ pub async fn collect_claude_user_initiated() -> QuotaCollection {
     }
 }
 
+/// Runs a Claude-only connection preflight without allowing Keychain UI. This
+/// remains separate from the post-login verifier so an explicit connection
+/// click cannot accidentally prompt before the coordinator classifies the
+/// existing authentication state.
+pub async fn collect_claude_preflight() -> QuotaCollection {
+    #[cfg(feature = "bridge-test-runtime")]
+    if let Some(source) = crate::test_runtime::claude_user_initiated_source() {
+        return collect_claude_preflight_with_source(source).await;
+    }
+    #[cfg(feature = "bridge-test-runtime")]
+    return test_runtime_unavailable_collection();
+    #[cfg(not(feature = "bridge-test-runtime"))]
+    {
+        collect_claude_preflight_with_source(Arc::new(ClaudeQuotaProvider::new())).await
+    }
+}
+
+pub async fn collect_claude_preflight_with_source(
+    source: Arc<dyn ClaudeUserInitiatedQuotaSource>,
+) -> QuotaCollection {
+    collection_from_results([source
+        .fetch_with_credential_access(ClaudeCredentialAccess::BackgroundNoUI)
+        .await])
+}
+
 pub async fn collect_claude_user_initiated_with_source(
     source: Arc<dyn ClaudeUserInitiatedQuotaSource>,
 ) -> QuotaCollection {

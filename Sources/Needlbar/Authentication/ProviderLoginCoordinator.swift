@@ -714,6 +714,7 @@ public final class ProviderLoginCoordinator: ObservableObject {
     private let resolver: any ProviderLoginCommandResolving
     private let runner: any ProviderLoginProcessRunning
     private let refreshQuota: @Sendable (ProviderID) async -> Bool
+    private let preflightClaudeLogin: @Sendable () async -> ClaudeLoginPreflightOutcome
     private let beforeProcessStart: @Sendable (ProviderID) async -> Void
     private let stateObserver: @Sendable (ProviderID, ProviderLoginState) async -> Void
     private let runFinished: @Sendable (ProviderID) async -> Void
@@ -729,6 +730,7 @@ public final class ProviderLoginCoordinator: ObservableObject {
         resolver: any ProviderLoginCommandResolving = ProviderLoginCommandResolver(),
         runner: any ProviderLoginProcessRunning = ProviderLoginProcessRunner(),
         refreshQuota: @escaping @Sendable (ProviderID) async -> Bool,
+        preflightClaudeLogin: @escaping @Sendable () async -> ClaudeLoginPreflightOutcome = { .verificationFailed },
         stateObserver: @escaping @Sendable (ProviderID, ProviderLoginState) async -> Void = { _, _ in },
         beforeProcessStart: @escaping @Sendable (ProviderID) async -> Void = { _ in },
         runFinished: @escaping @Sendable (ProviderID) async -> Void = { _ in }
@@ -736,6 +738,7 @@ public final class ProviderLoginCoordinator: ObservableObject {
         self.resolver = resolver
         self.runner = runner
         self.refreshQuota = refreshQuota
+        self.preflightClaudeLogin = preflightClaudeLogin
         self.stateObserver = stateObserver
         self.beforeProcessStart = beforeProcessStart
         self.runFinished = runFinished
@@ -746,6 +749,15 @@ public final class ProviderLoginCoordinator: ObservableObject {
         guard case .open = terminationAdmission else { return false }
         guard tasks[provider] == nil else { return false }
         updateState(.launching, for: provider)
+
+        if provider == .claude {
+            let generation = nextGeneration(for: provider)
+            tasks[provider] = Task { [weak self] in
+                await self?.runClaudePreflight(generation: generation)
+            }
+            taskGenerations[provider] = generation
+            return true
+        }
 
         let command: ProviderLoginCommand
         do {
@@ -764,6 +776,59 @@ public final class ProviderLoginCoordinator: ObservableObject {
         }
         taskGenerations[provider] = generation
         return true
+    }
+
+    private func runClaudePreflight(generation: UInt64) async {
+        let outcome = await preflightClaudeLogin()
+        guard isCurrent(generation, for: .claude), !Task.isCancelled else {
+            finishAdmission(for: .claude, generation: generation)
+            await notifyRunFinished(for: .claude)
+            return
+        }
+
+        switch outcome {
+        case .verified:
+            updateState(.connected, for: .claude)
+            finishAdmission(for: .claude, generation: generation)
+            await notifyRunFinished(for: .claude)
+        case .requiresAuthentication:
+            await resolveAndRunClaude(generation: generation)
+        case .keychainPermissionRequired:
+            updateState(.refreshingQuota, for: .claude)
+            let verified = await refreshQuota(.claude)
+            if isCurrent(generation, for: .claude), !Task.isCancelled {
+                updateState(verified ? .connected : .failed(.verificationFailed), for: .claude)
+            }
+            finishAdmission(for: .claude, generation: generation)
+            await notifyRunFinished(for: .claude)
+        case .verificationFailed:
+            updateState(.failed(.verificationFailed), for: .claude)
+            finishAdmission(for: .claude, generation: generation)
+            await notifyRunFinished(for: .claude)
+        }
+    }
+
+    private func resolveAndRunClaude(generation: UInt64) async {
+        let command: ProviderLoginCommand
+        do {
+            command = try resolver.command(for: .claude)
+        } catch let error as ProviderLoginCommandResolutionError {
+            updateState(error == .unsupportedProvider ? .failed(.unsupportedProvider) : .failed(.cliNotInstalled), for: .claude)
+            finishAdmission(for: .claude, generation: generation)
+            await notifyRunFinished(for: .claude)
+            return
+        } catch {
+            updateState(.failed(.cliNotInstalled), for: .claude)
+            finishAdmission(for: .claude, generation: generation)
+            await notifyRunFinished(for: .claude)
+            return
+        }
+        guard isCurrent(generation, for: .claude), !Task.isCancelled else {
+            finishAdmission(for: .claude, generation: generation)
+            await notifyRunFinished(for: .claude)
+            return
+        }
+        await run(command, provider: .claude, generation: generation)
     }
 
     public func state(for provider: ProviderID) -> ProviderLoginState {
@@ -812,8 +877,7 @@ public final class ProviderLoginCoordinator: ObservableObject {
 
     private func run(_ command: ProviderLoginCommand, provider: ProviderID, generation: UInt64) async {
         defer {
-            let observer = runFinished
-            Task { await observer(provider) }
+            Task { await self.notifyRunFinished(for: provider) }
         }
         await beforeProcessStart(provider)
         guard isCurrent(generation, for: provider), !Task.isCancelled else {
@@ -843,6 +907,11 @@ public final class ProviderLoginCoordinator: ObservableObject {
         }
         if outcome == .launchFailed { await runner.waitForReaping(for: provider) }
         finishAdmission(for: provider, generation: generation, didReap: outcome == .launchFailed)
+    }
+
+    private func notifyRunFinished(for provider: ProviderID) async {
+        let observer = runFinished
+        await observer(provider)
     }
 
     private func nextGeneration(for provider: ProviderID) -> UInt64 {

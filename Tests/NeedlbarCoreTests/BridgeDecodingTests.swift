@@ -202,6 +202,26 @@ import Testing
     #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
 }
 
+@Test func claudePreflightQuotaRefreshUsesOnlyTheSilentClaudeBridgeCallAndFreesOnce() throws {
+    let calls = CallRecorder()
+    let frees = FreeRecorder()
+    let returnedPointer = try CStringPointer(quotaCString(provider: "claude"))
+    let bridge = RustBridge(
+        quotaCall: { calls.record("background"); return quotaCString(provider: "claude") },
+        claudePreflightQuotaCall: { calls.record("preflight"); return returnedPointer.pointer },
+        claudeUserInitiatedQuotaCall: { calls.record("claude"); return quotaCString(provider: "claude") },
+        codexQuotaCall: { calls.record("codex"); return quotaCString(provider: "codex") },
+        free: { frees.release($0) }
+    )
+
+    let result = try RustQuotaRepository(bridge: bridge).refresh(intent: .claudePreflight)
+
+    #expect(calls.values == ["preflight"])
+    #expect(Set(result.snapshots.keys) == [.claude])
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
 @Test func codexUserInitiatedQuotaRefreshUsesOnlyCodexBridgeCallAndFreesOnce() throws {
     let calls = CallRecorder()
     let frees = FreeRecorder()
@@ -276,6 +296,19 @@ import Testing
         _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
     }
     #expect(frees.count == 1)
+}
+
+@Test func claudePreflightRejectsMultipleCurrentErrorsInsteadOfSelectingOne() throws {
+    let payload = """
+    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-09-12T12:00:00Z","data":{"providers":[]},"errors":[{"provider":"claude","code":"requiresAuthentication","message":"sign in"},{"provider":"claude","code":"permissionDenied","message":"denied"}]}
+    """
+    let bridge = RustBridge(
+        claudePreflightQuotaCall: { makeCString(Array(payload.utf8).map(CChar.init) + [0]) }
+    )
+
+    #expect(throws: BridgeFailure.self) {
+        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .claudePreflight)
+    }
 }
 
 @Test func dedicatedQuotaRefreshRejectsAnEmptySuccessfulEnvelopeAndFreesThatExactPointer() throws {
