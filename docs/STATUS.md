@@ -1,16 +1,17 @@
 # Needlbar Development Status
 
-**Updated:** 2026-09-10
+**Updated:** 2026-09-12
 **Branch:** `codex/analytics-summary-first`, isolated from `2977c2a`.
-**Current phase:** v0.3.1 release preparation is authorized and in progress in
-the shared isolated worktree. Host and widget release metadata is prepared at
-version 0.3.1 (build 4), with the v0.3.0 public download retained until fresh
-v0.3.1 public verification completes. Native acceptance is partial: one
-corrected default-light fixture viewport is compositor-verified, while broader
-visual and interaction coverage remains open. No v0.3.1 merge, tag, public
-publication, or production installation is claimed here.
-**Next action:** Parent agent should curate and merge the authorized release
-candidate, then run the protected validation and public-verification gates.
+**Current phase:** v0.3.1 is publicly released and independently verified from
+candidate `80484319137e704446c4fac1435c4d3c77d26d77`. The public arm64 ZIP and
+checksum sidecar are available from the v0.3.1 GitHub Release. Native acceptance
+is partial: one corrected default-light fixture viewport is compositor-verified,
+while broader visual and interaction coverage remains open. The Homebrew Cask
+update and canonical production installation are complete and independently
+verified.
+**Next action:** Make the existing cancellation-test admission timing
+deterministic, then continue separately scoped native visual and interaction
+acceptance work. Automated and installation checks do not close native QA gaps.
 
 Release preparation evidence (2026-09-10): existing implementation through
 `3199665` is fast-forwarded into local main. The pinned vendor commit
@@ -18,19 +19,53 @@ Release preparation evidence (2026-09-10): existing implementation through
 `taejunoh/tokscale-core` branch `codex/needlbar-v031-time-bounds`. Fresh local
 `make test` passed (Swift 464 tests / 19 suites, Rust and shell contracts), and
 `make package` plus `make smoke` passed. Final release-contract review and
-protected remote validation precede tagging, publication, and reinstall.
+protected remote validation then preceded tagging, publication, and reinstall.
+
+## v0.3.1 Public Release Record — 2026-09-12
+
+Tag: `v0.3.1`
+Candidate commit: `80484319137e704446c4fac1435c4d3c77d26d77`
+Public release URL: `https://github.com/taejunoh/needlbar/releases/tag/v0.3.1`
+Public ZIP verification: passed
+Public checksum sidecar verification: passed
+
+Tagless validation `34543014465` and tag-run publication `34691288922`
+succeeded at the candidate above. A fresh ZIP and checksum sidecar matched
+SHA-256
+`7e77884da7542cb05cdc15104a4f31e278f0ec8d771a21eca2fc4866d3e6203d`.
+Artifact verification confirmed arm64 host/widget version 0.3.1 and build 4,
+Developer ID team `3BMF4LM6TM`, hardened runtime with deep signature
+verification, valid stapling, and Gatekeeper acceptance. The Homebrew Cask
+update was checked, online-audited, and pushed as
+commit `01c158ed087eecb3aabae578c51d73fd3ed14cbd` on `taejunoh/homebrew-tap`.
+
+Canonical installation verification (2026-09-12): the verified public artifact
+was installed at `/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app`.
+The host process PID was `19828`; version/build was 0.3.1/4, and the executable
+SHA-256 `565cf8fc2120cdaec3053101953bc50d0d381d898457d46ee2ad792aca2d7f79`
+matched the public artifact. Deep strict signature verification, stapling,
+Gatekeeper acceptance, public smoke, and fixture exclusion passed. The exact
+recoverable pre-v0.3.1 backup is
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-v031.KyEBC0/Needlbar.app`;
+separate development process PID `45288` was preserved.
+
+A post-release full `make test` rerun on 2026-09-12 exited 2 at the unrelated
+`cancelledWaiterDoesNotCancelSharedAnalyticsTask` timing assertion (line 73).
+The prior candidate's full local gates and protected CI validation passed; this
+follow-up test-harness timing result does not change the verified release
+artifact or installation evidence above.
 
 Remote release validation `34539844781` at candidate `c3ea7e0` failed before
 packaging/signing: macOS 14.8.9 / Swift 6.0.3 reported one expanded Analytics
 fixture bottom-scroll failure among 464 Swift tests. The fixture measured its
 document before deferred layout completed and scrolled only once. Local macOS
 26.6.2 / Swift 6.3.3 did not reproduce that failure. A test-only bounded
-layout/scroll convergence correction and deferred-height regression are under
-verification; product code and release security gates remain unchanged. No tag
+layout/scroll convergence correction and deferred-height regression were
+verified; product code and release security gates remained unchanged. No tag
 or public artifact was created from the failed candidate. The corrected tree
 passed fresh `make test` (465 Swift tests / 19 suites), `make package`, and
 `make smoke`; independent review approved the fixture-only change. A new
-protected remote validation remains required before any release claim.
+protected remote validation subsequently passed as recorded above.
 Native visual/accessibility acceptance remains explicitly partial, and the
 unresolved menu-bar visibility and attribution/timing issues remain separate
 from this presentation work.

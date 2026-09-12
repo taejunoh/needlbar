@@ -6,11 +6,11 @@ Needlbar is local-first: it has no Needlbar account, backend, hosted sync, cloud
 
 ## Availability and download
 
-Needlbar v0.3.0 is publicly available for macOS 14 or later on Apple Silicon.
+Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.
 
-[Download Needlbar v0.3.0 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip)
+[Download Needlbar v0.3.1 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip)
 
-[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip.sha256)
+[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip.sha256)
 
 The `Needlbar-macos-arm64.zip.sha256` file is the SHA-256 checksum sidecar for the ZIP. Verify both downloaded files from the same directory:
 
@@ -20,9 +20,9 @@ shasum -a 256 -c Needlbar-macos-arm64.zip.sha256
 
 The public artifact is Developer ID-signed and notarized.
 
-To install the public v0.3.0 release:
+To install the public v0.3.1 release:
 
-1. Download the ZIP and checksum sidecar from the v0.3.0 GitHub Release.
+1. Download the ZIP and checksum sidecar from the v0.3.1 GitHub Release.
 2. Run the checksum command from the directory containing both files.
 3. Open the verified ZIP and drag `Needlbar.app` into `/Applications`.
 4. Launch Needlbar from `/Applications`; it appears in the macOS menu bar.
@@ -143,7 +143,7 @@ The released app includes one medium Overview widget backed by a sanitized local
 
 ## Native macOS 14 acceptance (maintainer-only)
 
-The public v0.3.0 ZIP is the production Gallery and entitlement evidence. The
+The public v0.3.1 ZIP is the production Gallery and entitlement evidence. The
 separately signed fixture-driven artifact is acceptance-only and is not a
 release or notarization substitute. It uses no provider account, credential,
 network, Rust/C ABI, Keychain, or export data: sanitized fixtures are supplied
@@ -177,12 +177,11 @@ Observed active AI-session time is derived from local session timestamps. It is 
 
 Analytics is manual and local-only: there is no startup scan, timer, watcher, background refresh, remote Git/forge request, provider authentication, network request, backend, database, or analytics history. Analytics does not change the v0.2.0 export schema or v0.2.1 widget/notification behavior.
 
-### Compact Analytics readability (v0.3.1 prepared for public release)
+### Compact Analytics readability (v0.3.1)
 
-Needlbar v0.3.1 is prepared for public release for macOS 14 or later on Apple Silicon. It is not publicly available yet; the existing public v0.3.0 download
-and Homebrew Cask remain the supported distribution until fresh v0.3.1 public
-verification completes. The refinement keeps the existing data semantics while
-adding:
+Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.
+The public v0.3.1 download is verified and is now the supported distribution.
+The refinement keeps the existing data semantics while adding:
 
 - colored summary cards;
 - full-width, aligned repository rows for name, estimated cost, and tokens;

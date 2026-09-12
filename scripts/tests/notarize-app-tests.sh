@@ -1247,6 +1247,8 @@ test_v031_release_source_contract() {
   local readme_file="$ROOT/README.md"
   local status_file="$ROOT/docs/STATUS.md"
   local release_notes_file="$ROOT/.github/release-notes/v0.3.1.md"
+  local prepared_readme="$temp_root/v031-prepared-readme.md"
+  local prepared_status="$temp_root/v031-prepared-status.md"
   local public_readme="$temp_root/v031-public-readme.md"
   local public_status="$temp_root/v031-public-status.md"
   local prepared_with_public_claim="$temp_root/v031-prepared-with-public-claim.md"
@@ -1258,46 +1260,85 @@ test_v031_release_source_contract() {
   v031_release_source_contract_is_valid "$readme_file" "$status_file" "$release_notes_file" ||
     fail 'live v0.3.1 release-source contract is invalid'
 
-  ruby - "$readme_file" "$status_file" "$public_readme" "$public_status" <<'RUBY'
-readme_path, status_path, public_readme_path, public_status_path = ARGV
-readme = File.read(readme_path)
-status = File.read(status_path)
+  ruby - "$readme_file" "$status_file" "$prepared_readme" "$prepared_status" "$public_readme" "$public_status" <<'RUBY'
+readme_path, status_path, prepared_readme_path, prepared_status_path, public_readme_path, public_status_path = ARGV
+source_readme = File.read(readme_path)
+source_status = File.read(status_path)
 prepared = 'Needlbar v0.3.1 is prepared for public release for macOS 14 or later on Apple Silicon.'
 public = 'Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.'
-abort 'fixture setup: v0.3.1 prepared availability statement missing' unless readme.sub!(prepared, public)
-readme.sub!('[Download Needlbar v0.3.0 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip)', '[Download Needlbar v0.3.1 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip)')
-readme.sub!('[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip.sha256)', '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip.sha256)')
-readme.sub!('Needlbar v0.3.0 is publicly available for macOS 14 or later on Apple Silicon.', public)
-readme.sub!('To install the public v0.3.0 release:', 'To install the public v0.3.1 release:')
-readme.sub!('from the v0.3.0 GitHub Release.', 'from the v0.3.1 GitHub Release.')
-readme.sub!('It is not publicly available yet; the existing public v0.3.0 download and Homebrew Cask remain the supported distribution until fresh v0.3.1 public verification completes.', 'The public v0.3.1 download is verified and is now the supported distribution.')
-readme.sub!('### Compact Analytics readability (v0.3.1 prepared for public release)', '### Compact Analytics readability (v0.3.1)')
-status << <<~MARKDOWN
+def replace_all(document, from, to, label)
+  abort "fixture setup: #{label} missing" unless document.include?(from)
+  document.gsub(from, to)
+end
 
-  ## v0.3.1 Public Release Record — 2026-09-10
+def replace_first(document, from, to, label)
+  abort "fixture setup: #{label} missing" unless document.sub!(from, to)
+  document
+end
 
-  Tag: `v0.3.1`
-  Candidate commit: `32f6258f8b13db3d950c9bb74370a1b3da7c7290`
-  Public release URL: `https://github.com/taejunoh/needlbar/releases/tag/v0.3.1`
-  Public ZIP verification: passed
-  Public checksum sidecar verification: passed
-MARKDOWN
-File.write(public_readme_path, readme)
-File.write(public_status_path, status)
+prepared_readme = source_readme.dup
+if prepared_readme.include?(public)
+  prepared_readme = replace_first(prepared_readme, public, 'Needlbar v0.3.0 is publicly available for macOS 14 or later on Apple Silicon.', 'public top availability statement')
+  prepared_readme = replace_all(prepared_readme, public, prepared, 'public analytics availability statement')
+  prepared_readme = replace_all(prepared_readme, '[Download Needlbar v0.3.1 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip)', '[Download Needlbar v0.3.0 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip)', 'v0.3.1 ZIP link')
+  prepared_readme = replace_all(prepared_readme, '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip.sha256)', '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip.sha256)', 'v0.3.1 checksum link')
+  prepared_readme = replace_all(prepared_readme, 'To install the public v0.3.1 release:', 'To install the public v0.3.0 release:', 'v0.3.1 install heading')
+  prepared_readme = replace_all(prepared_readme, 'from the v0.3.1 GitHub Release.', 'from the v0.3.0 GitHub Release.', 'v0.3.1 install source')
+  prepared_readme = replace_all(prepared_readme, 'The public v0.3.1 download is verified and is now the supported distribution.', 'It is not publicly available yet; the existing public v0.3.0 download and Homebrew Cask remain the supported distribution until fresh v0.3.1 public verification completes.', 'public distribution statement')
+  prepared_readme = replace_all(prepared_readme, '### Compact Analytics readability (v0.3.1)', '### Compact Analytics readability (v0.3.1 prepared for public release)', 'public analytics heading')
+elsif !prepared_readme.include?(prepared)
+  abort 'fixture setup: v0.3.1 prepared/public availability statement missing'
+end
+
+public_readme = prepared_readme.dup
+public_readme = replace_all(public_readme, prepared, public, 'prepared availability statement')
+public_readme = replace_all(public_readme, '[Download Needlbar v0.3.0 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip)', '[Download Needlbar v0.3.1 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip)', 'v0.3.0 ZIP link')
+public_readme = replace_all(public_readme, '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.0/Needlbar-macos-arm64.zip.sha256)', '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip.sha256)', 'v0.3.0 checksum link')
+public_readme = replace_all(public_readme, 'Needlbar v0.3.0 is publicly available for macOS 14 or later on Apple Silicon.', public, 'v0.3.0 availability statement')
+public_readme = replace_all(public_readme, 'To install the public v0.3.0 release:', 'To install the public v0.3.1 release:', 'v0.3.0 install heading')
+public_readme = replace_all(public_readme, 'from the v0.3.0 GitHub Release.', 'from the v0.3.1 GitHub Release.', 'v0.3.0 install source')
+public_readme = replace_all(public_readme, 'It is not publicly available yet; the existing public v0.3.0 download and Homebrew Cask remain the supported distribution until fresh v0.3.1 public verification completes.', 'The public v0.3.1 download is verified and is now the supported distribution.', 'prepared distribution statement')
+public_readme = replace_all(public_readme, '### Compact Analytics readability (v0.3.1 prepared for public release)', '### Compact Analytics readability (v0.3.1)', 'prepared analytics heading')
+
+record_pattern = /^## v0\.3\.1 Public Release Record — \d{4}-\d{2}-\d{2}\n.*?(?=^## |\z)/m
+prepared_status = source_status.dup
+public_status = source_status.dup
+if source_status.match?(record_pattern)
+  prepared_status = public_status.sub(record_pattern, '')
+else
+  public_status << <<~MARKDOWN
+
+    ## v0.3.1 Public Release Record — 2026-09-10
+
+    Tag: `v0.3.1`
+    Candidate commit: `32f6258f8b13db3d950c9bb74370a1b3da7c7290`
+    Public release URL: `https://github.com/taejunoh/needlbar/releases/tag/v0.3.1`
+    Public ZIP verification: passed
+    Public checksum sidecar verification: passed
+  MARKDOWN
+end
+File.write(prepared_readme_path, prepared_readme)
+File.write(prepared_status_path, prepared_status)
+File.write(public_readme_path, public_readme)
+File.write(public_status_path, public_status)
 RUBY
+
+  v031_release_source_contract_is_valid "$prepared_readme" "$prepared_status" "$release_notes_file" ||
+    fail 'prepared v0.3.1 fixture is unexpectedly invalid'
   v031_release_source_contract_is_valid "$public_readme" "$public_status" "$release_notes_file" ||
     fail 'public v0.3.1 fixture is unexpectedly invalid'
 
-  ruby - "$readme_file" "$prepared_with_public_claim" <<'RUBY'
+  ruby - "$prepared_readme" "$prepared_with_public_claim" <<'RUBY'
 source, destination = ARGV
 document = File.read(source)
 prepared = 'Needlbar v0.3.1 is prepared for public release for macOS 14 or later on Apple Silicon.'
 public = 'Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.'
-abort 'fixture setup: v0.3.1 prepared availability statement missing' unless document.sub!(prepared, public)
+abort 'fixture setup: v0.3.1 prepared availability statement missing' unless document.include?(prepared)
+document = document.gsub(prepared, public)
 File.write(destination, document)
 RUBY
   set +e
-  decoy_output="$(v031_release_source_contract_is_valid "$prepared_with_public_claim" "$status_file" "$release_notes_file" 2>&1)"
+  decoy_output="$(v031_release_source_contract_is_valid "$prepared_with_public_claim" "$prepared_status" "$release_notes_file" 2>&1)"
   decoy_status=$?
   set -e
   [[ "$decoy_status" -ne 0 ]] || fail 'prepared v0.3.1 public-claim decoy was accepted'
@@ -1308,7 +1349,8 @@ source, destination = ARGV
 document = File.read(source)
 public = 'Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.'
 prepared = 'Needlbar v0.3.1 is prepared for public release for macOS 14 or later on Apple Silicon.'
-abort 'fixture setup: v0.3.1 public availability statement missing' unless document.sub!(public, prepared)
+abort 'fixture setup: v0.3.1 public availability statement missing' unless document.include?(public)
+document = document.gsub(public, prepared)
 File.write(destination, document)
 RUBY
   set +e
