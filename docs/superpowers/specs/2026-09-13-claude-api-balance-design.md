@@ -1,6 +1,6 @@
 # Claude API Balance — Isolated Console Session
 
-**Status:** Direction and persistent session approved; written specification awaiting review.
+**Status:** Written specification approved by the user on 2026-09-13; implementation planning in progress.
 **Date:** 2026-09-13
 
 ## Outcome and evidence
@@ -136,5 +136,5 @@ removal, not a claim of provider-side token revocation.
 
 ## Next gate
 
-Review this written specification, then prepare the implementation plan. The
-first implementation milestone is native feasibility, not a public release.
+The user approved this written specification. Prepare the implementation plan;
+the first implementation milestone is native feasibility, not a public release.

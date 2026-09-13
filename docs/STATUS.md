@@ -5,8 +5,12 @@
 The user requested in-popover API prepaid balance and approved keeping a
 Claude API login session in a Needlbar-owned persistent store, cleared on
 disconnect. The written specification is
-`docs/superpowers/specs/2026-09-13-claude-api-balance-design.md` and awaits written
-review before implementation planning. Read-only authenticated browser
+`docs/superpowers/specs/2026-09-13-claude-api-balance-design.md` and was approved
+by the user on 2026-09-13. The initial native feasibility plan is
+`docs/superpowers/plans/2026-09-13-claude-api-balance.md`; execution has not
+started. It creates an isolated review executable and stops at native login,
+session reuse, DOM-presence, and deletion acceptance before a production
+integration plan can be written. Read-only authenticated browser
 inspection verified a distinct Credit balance / Remaining balance section.
 Native WKWebView login, organization identification, persistence, and balance
 refresh are not verified. No implementation or installation changed in this
