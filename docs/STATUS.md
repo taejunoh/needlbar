@@ -7,14 +7,29 @@ Claude API login session in a Needlbar-owned persistent store, cleared on
 disconnect. The written specification is
 `docs/superpowers/specs/2026-09-13-claude-api-balance-design.md` and was approved
 by the user on 2026-09-13. The initial native feasibility plan is
-`docs/superpowers/plans/2026-09-13-claude-api-balance.md`; execution has not
-started. It creates an isolated review executable and stops at native login,
+`docs/superpowers/plans/2026-09-13-claude-api-balance.md`; execution is underway
+in `.worktrees/claude-api-balance` on `codex/claude-api-balance`. Task 1's isolated
+launch/origin boundary is implemented at `a5d8989`, with full `make test` passing
+(Swift 482 tests) and task review approved. Initial missing-symbol RED was
+supplemented with a truthful post-implementation behavioral mutation check;
+restored focused tests passed. Task 2's native host is uncommitted WIP and is
+blocked: persistent-store removal and identifier enumeration crash inside
+WebKit before completion on macOS 26.6.2 / Xcode 26.6. Mode-gated lifecycle and
+a separate bundle-path experiment did not resolve it; actual Bundle.main
+identity was not verified, so identity-related causes are not conclusively
+excluded. No live login was started. Final regression `make test` passed
+(Swift 482 tests / 19 suites, Rust/vendor/shell contracts); this does not prove
+native functionality. Detailed evidence is retained at
+`.superpowers/sdd/2026-09-13-claude-api-balance/task-2-report.md` in the worktree.
+Next step: discuss a narrowly scoped WebKit runtime investigation before more
+experiments or a different session architecture. The plan
+creates an isolated review executable and stops at native login,
 session reuse, DOM-presence, and deletion acceptance before a production
 integration plan can be written. Read-only authenticated browser
 inspection verified a distinct Credit balance / Remaining balance section.
 Native WKWebView login, organization identification, persistence, and balance
-refresh are not verified. No implementation or installation changed in this
-follow-up. The initial scope is Claude-only, explicit connect/refresh, isolated
+refresh are not verified. No production implementation or installation changed
+in this follow-up. The initial scope is Claude-only, explicit connect/refresh, isolated
 WebKit storage, and no background polling or external credential import.
 The release and installation records below describe the preceding completed
 billing-link work, not this unimplemented balance extension.
