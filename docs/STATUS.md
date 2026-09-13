@@ -21,6 +21,19 @@ Claude behavior is user-confirmed; other authentication branches remain
 synthetic-only. The unrelated cancellation-test admission timing fix and native
 visual/interaction acceptance remain separate follow-ups.
 
+## Scoped design — API billing links — 2026-09-13
+
+Written specification: `docs/superpowers/specs/2026-09-13-api-billing-links-design.md`.
+This is a review-gated design only; no implementation or test run occurred.
+The proposed scope is two opt-in, per-provider external billing links—Claude
+API and OpenAI API—kept separate from subscription quota, local usage, and
+estimated cost. The links use fixed official HTTPS destinations, open only on
+an explicit click in the default browser, perform no account/balance lookup,
+and preserve current provider visibility and authentication behavior. Cursor,
+automatic balance retrieval, admin keys, manual budgets, and cost reports are
+out of scope. The Anthropic URL was verified against the official Console
+Billing page on 2026-09-13.
+
 ## v0.3.2 Public Release Record — 2026-09-12
 
 Tag: `v0.3.2`
