@@ -25,7 +25,7 @@
 - Modify: Sources/NeedlbarCore/Configuration/ModuleConfiguration.swift:57-115,145-162
 - Test: Tests/NeedlbarCoreTests/ModuleConfigurationTests.swift
 
-- [ ] **Step 1: Write the failing persistence test.**
+- [x] **Step 1: Write the failing persistence test.**
 
 ~~~swift
 @Test func apiBillingPreferencesAreStrictAndIndependent() {
@@ -50,13 +50,13 @@
 }
 ~~~
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
 Run: make swift-test SWIFT_TEST_FILTER='apiBillingPreferencesAreStrictAndIndependent'
 
 Expected: FAIL because the field and setter do not exist.
 
-- [ ] **Step 3: Implement the narrow Core contract.**
+- [x] **Step 3: Implement the narrow Core contract.**
 
 Add apiBillingLinkVisible: Bool = false to AIProviderDisplayPreference and its initializer/Codable implementation. Decode it with `(try? container.decode(Bool.self, forKey: .apiBillingLinkVisible)) ?? false`, so missing and malformed Codable data are false. In ModuleConfiguration.systemMonitor, read strictBool for needlbar.systemMonitor.ai.<provider>.apiBillingLink.visible only for Claude/Codex; Cursor is always false. Persist only those provider fields in setSystemMonitor(_:). Add:
 
@@ -71,7 +71,7 @@ public func setAPIBillingLinkVisible(_ visible: Bool, for provider: ProviderID) 
 
 Reads do not write defaults, migrate keys, or refresh data.
 
-- [ ] **Step 4: Run GREEN and commit.**
+- [x] **Step 4: Run GREEN and commit.**
 
 Run: make swift-test SWIFT_TEST_FILTER='ModuleConfiguration\|apiBilling'
 
@@ -88,7 +88,7 @@ git commit -m "feat: persist API billing link preferences"
 - Create: Sources/Needlbar/Provider/APIBillingAction.swift
 - Test: Tests/NeedlbarTests/APIBillingActionTests.swift
 
-- [ ] **Step 1: Write the failing router contract.**
+- [x] **Step 1: Write the failing router contract.**
 
 ~~~swift
 @Test func apiBillingActionsUseExactLabelsURLsAndOneInjectedOpen() throws {
@@ -105,13 +105,13 @@ git commit -m "feat: persist API billing link preferences"
 }
 ~~~
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
 Run: make swift-test SWIFT_TEST_FILTER='apiBillingActionsUseExactLabelsURLsAndOneInjectedOpen'
 
 Expected: FAIL because the action/router is absent.
 
-- [ ] **Step 3: Implement the closed mapping.**
+- [x] **Step 3: Implement the closed mapping.**
 
 ~~~swift
 enum ProviderAPIBillingAction: Equatable, Sendable {
@@ -133,7 +133,7 @@ enum ProviderAPIBillingAction: Equatable, Sendable {
 
 Import AppKit and NeedlbarCore only. No URL input, network, task, account, or credential access.
 
-- [ ] **Step 4: Run GREEN and commit.**
+- [x] **Step 4: Run GREEN and commit.**
 
 Run: make swift-test SWIFT_TEST_FILTER='APIBillingAction'
 
@@ -151,7 +151,7 @@ git commit -m "feat: add fixed API billing browser actions"
 - Modify: Sources/Needlbar/Settings/SettingsView.swift:105-132
 - Test: Tests/NeedlbarTests/SettingsStudioTests.swift
 
-- [ ] **Step 1: Write the failing Settings-model test.**
+- [x] **Step 1: Write the failing Settings-model test.**
 
 ~~~swift
 @Test func apiBillingSettingsToggleDoesNotMakeProviderVisible() throws {
@@ -178,13 +178,13 @@ git commit -m "feat: add fixed API billing browser actions"
 }
 ~~~
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
 Run: make swift-test SWIFT_TEST_FILTER='apiBillingSettingsToggleDoesNotMakeProviderVisible'
 
 Expected: FAIL because the setter is absent.
 
-- [ ] **Step 3: Implement the control-only pane.**
+- [x] **Step 3: Implement the control-only pane.**
 
 ~~~swift
 public func setAPIBillingLinkVisible(_ visible: Bool, for provider: ProviderID) {
@@ -208,7 +208,7 @@ SettingsStudioSection(title: "API Billing") {
 
 Cursor gets no section. Do not add a Button/router call or alter login, visibility, metric, or ordering.
 
-- [ ] **Step 4: Run GREEN and commit.**
+- [x] **Step 4: Run GREEN and commit.**
 
 Run: make swift-test SWIFT_TEST_FILTER='SettingsStudio\|apiBillingSettingsToggle'
 
@@ -228,7 +228,7 @@ git commit -m "feat: add API billing link settings"
 - Modify: Sources/Needlbar/MenuBar/MenuBarController.swift:430-506,671-710,794-815
 - Test: Tests/NeedlbarTests/SystemDashboardPopoverTests.swift; Tests/NeedlbarTests/MenuBarControllerTests.swift
 
-- [ ] **Step 1: Write failing dashboard and route tests.**
+- [x] **Step 1: Write failing dashboard and route tests.**
 
 ~~~swift
 @Test @MainActor func dashboardBillingLinkIsVisibleOnlyWhenOptedInAndMeasured() throws {
@@ -270,13 +270,13 @@ Add this MenuBarController test, and extend its existing makeMenuBarController h
 }
 ~~~
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
 Run: make swift-test SWIFT_TEST_FILTER='dashboardBillingLinkIsVisibleOnlyWhenOptedInAndMeasured\|billingFailureClearsOnlyAfterSuccess\|apiBilling'
 
 Expected: FAIL because action projection/state/measurement/controller route are absent.
 
-- [ ] **Step 3: Implement the minimal dashboard contract.**
+- [x] **Step 3: Implement the minimal dashboard contract.**
 
 Add apiBillingAction: ProviderAPIBillingAction? to AIProvider; calculate preference.apiBillingLinkVisible ? ProviderAPIBillingAction(provider: provider) : nil, separate from existing authentication action. Add view-local state:
 
@@ -305,7 +305,7 @@ For each action, render providerLabel, borderless Check balance with accessibili
 
 Inject openAPIBilling: (ProviderAPIBillingAction) -> Bool = { ProviderAPIBillingActionRouter.open($0) } into both current and retained Legacy MenuBarController initializers; forward it only to the dashboard and implement `func performAPIBillingAction(_ action: ProviderAPIBillingAction) -> Bool { openAPIBilling(action) }`. Never dismiss the panel or invoke login, retry/refresh, Cursor Spending, repository, widget, Analytics, Rust/C ABI, network, or auth flow.
 
-- [ ] **Step 4: Run GREEN and commit.**
+- [x] **Step 4: Run GREEN and commit.**
 
 Run: make swift-test SWIFT_TEST_FILTER='SystemDashboardPopover\|dashboardBilling\|MenuBarController\|apiBilling\|authenticationActionsRouteClaudeAndCodex\|cursorSpendingAction'
 
@@ -322,13 +322,13 @@ git commit -m "feat: show opt-in API billing links on dashboard"
 - Verify: Task 1-4 files
 - Modify after success: docs/STATUS.md
 
-- [ ] **Step 1: Run focused regressions.**
+- [x] **Step 1: Run focused regressions.**
 
 Run: make swift-test SWIFT_TEST_FILTER='ModuleConfiguration\|APIBilling\|SettingsStudio\|SystemDashboardPopover\|MenuBarController\|ProviderLoginCoordinator\|RefreshCoordinator\|AnalyticsPresentation\|WidgetProjection\|MenuBarDashboardRenderer'
 
 Expected: PASS; subscription quota/sign-in, Cursor Spending, usage/cost, refresh, menu-bar text, widget, and Analytics behavior remain unchanged.
 
-- [ ] **Step 2: Run the implementation gate.**
+- [x] **Step 2: Run the implementation gate.**
 
 ~~~bash
 make test
@@ -338,7 +338,7 @@ git status --short
 
 Expected: make test and git diff --check exit 0; no Rust, C ABI, quota, usage, widget, Analytics, or auth/network source change belongs to this increment.
 
-- [ ] **Step 3: Record verified facts and commit.**
+- [x] **Step 3: Record verified facts and commit.**
 
 After the commands pass, append beneath the existing API Billing Links section in docs/STATUS.md:
 

@@ -1,6 +1,8 @@
 # Needlbar API Billing Links Design
 
-**Status:** User approved on 2026-09-13; implementation plan written
+**Status:** User approved on 2026-09-13; implementation verified on
+2026-09-13 in synthetic/test-only validation; branch remains unmerged,
+unpushed, and not installed
 **Date:** 2026-09-13
 **Scope:** Add opt-in links to the Claude API and OpenAI API billing dashboards.
 
@@ -82,5 +84,6 @@ Implementation must add focused tests for:
    refresh behavior.
 
 Run focused Settings/action tests during implementation, then `make test` as
-the implementation gate. No implementation or test run is part of this design
-write-up.
+the implementation gate. Focused Swift coverage and `make test` passed on
+2026-09-13. Native visual and interaction acceptance is not claimed by this
+design record.
