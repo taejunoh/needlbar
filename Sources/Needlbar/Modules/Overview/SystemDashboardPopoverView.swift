@@ -6,6 +6,30 @@ enum ProviderTitleRowVerticalRule: Equatable {
     case center
 }
 
+public struct DashboardAPIBillingLinkState: Equatable {
+    private var failed: Set<ProviderID> = []
+
+    static let failureMessage = "Couldn't open billing page. Try again."
+
+    public init() {}
+
+    public mutating func recordOpenResult(_ opened: Bool, for provider: ProviderID) {
+        if opened {
+            failed.remove(provider)
+        } else {
+            failed.insert(provider)
+        }
+    }
+
+    public func showsFailure(for provider: ProviderID) -> Bool {
+        failed.contains(provider)
+    }
+
+    public var failureMessage: String {
+        Self.failureMessage
+    }
+}
+
 @MainActor
 enum ProviderTitleRowAlignmentPolicy {
     static let verticalRule: ProviderTitleRowVerticalRule = .center
@@ -23,24 +47,32 @@ enum ProviderTitleRowAlignmentPolicy {
 public struct SystemDashboardPopoverView: View {
     @ObservedObject private var model: SystemDashboardModel
     @ObservedObject private var layout: SystemDashboardPopoverLayout
+    @State private var billingState: DashboardAPIBillingLinkState
     private let isMeasuring: Bool
     private let onShowSettings: () -> Void
     private let onShowAnalytics: () -> Void
     private let onProviderAction: (ProviderID) -> Void
+    private let onAPIBillingAction: (ProviderAPIBillingAction) -> Bool
+    private let onAPIBillingStateChanged: (DashboardAPIBillingLinkState) -> Void
 
     public init(
         model: SystemDashboardModel,
         height: CGFloat = SystemDashboardPanelSizing.fallbackHeight,
         onShowSettings: @escaping () -> Void = {},
         onShowAnalytics: @escaping () -> Void = {},
-        onProviderAction: @escaping (ProviderID) -> Void = { _ in }
+        onProviderAction: @escaping (ProviderID) -> Void = { _ in },
+        onAPIBillingAction: @escaping (ProviderAPIBillingAction) -> Bool = { _ in false },
+        onAPIBillingStateChanged: @escaping (DashboardAPIBillingLinkState) -> Void = { _ in }
     ) {
         _model = ObservedObject(wrappedValue: model)
         _layout = ObservedObject(wrappedValue: SystemDashboardPopoverLayout(height: height))
+        _billingState = State(initialValue: .init())
         isMeasuring = false
         self.onShowSettings = onShowSettings
         self.onShowAnalytics = onShowAnalytics
         self.onProviderAction = onProviderAction
+        self.onAPIBillingAction = onAPIBillingAction
+        self.onAPIBillingStateChanged = onAPIBillingStateChanged
     }
 
     init(
@@ -48,23 +80,31 @@ public struct SystemDashboardPopoverView: View {
         layout: SystemDashboardPopoverLayout,
         onShowSettings: @escaping () -> Void = {},
         onShowAnalytics: @escaping () -> Void = {},
-        onProviderAction: @escaping (ProviderID) -> Void = { _ in }
+        onProviderAction: @escaping (ProviderID) -> Void = { _ in },
+        onAPIBillingAction: @escaping (ProviderAPIBillingAction) -> Bool = { _ in false },
+        onAPIBillingStateChanged: @escaping (DashboardAPIBillingLinkState) -> Void = { _ in }
     ) {
         _model = ObservedObject(wrappedValue: model)
         _layout = ObservedObject(wrappedValue: layout)
+        _billingState = State(initialValue: .init())
         isMeasuring = false
         self.onShowSettings = onShowSettings
         self.onShowAnalytics = onShowAnalytics
         self.onProviderAction = onProviderAction
+        self.onAPIBillingAction = onAPIBillingAction
+        self.onAPIBillingStateChanged = onAPIBillingStateChanged
     }
 
-    init(measuring model: SystemDashboardModel) {
+    init(measuring model: SystemDashboardModel, billingState: DashboardAPIBillingLinkState = .init()) {
         _model = ObservedObject(wrappedValue: model)
         _layout = ObservedObject(wrappedValue: SystemDashboardPopoverLayout(height: SystemDashboardPanelSizing.fallbackHeight))
+        _billingState = State(initialValue: billingState)
         isMeasuring = true
         onShowSettings = {}
         onShowAnalytics = {}
         onProviderAction = { _ in }
+        onAPIBillingAction = { _ in false }
+        onAPIBillingStateChanged = { _ in }
     }
 
     // Retain the previously public construction path for existing presenters.
@@ -269,6 +309,27 @@ public struct SystemDashboardPopoverView: View {
                 }
             }
             .font(.caption2)
+            if let action = provider.apiBillingAction {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(action.providerLabel)
+                    Spacer(minLength: 8)
+                    Button("Check balance") { performAPIBillingAction(action) }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .accessibilityLabel("Check balance in \(action.providerLabel)")
+                }
+                .font(.caption)
+                if billingState.showsFailure(for: action.provider) {
+                    Text(billingState.failureMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel(billingState.failureMessage)
+                    Button("Retry") { performAPIBillingAction(action) }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .accessibilityLabel("Retry opening \(action.providerLabel) billing page")
+                }
+            }
             if let fable = provider.fable {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("Fable weekly")
@@ -289,6 +350,11 @@ public struct SystemDashboardPopoverView: View {
             }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private func performAPIBillingAction(_ action: ProviderAPIBillingAction) {
+        billingState.recordOpenResult(onAPIBillingAction(action), for: action.provider)
+        onAPIBillingStateChanged(billingState)
     }
 
     private func fableStatus(_ freshness: PresentationFreshness) -> String? {

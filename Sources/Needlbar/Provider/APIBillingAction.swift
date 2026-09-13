@@ -1,10 +1,10 @@
 import AppKit
 import NeedlbarCore
 
-enum ProviderAPIBillingAction: Equatable, Sendable {
+public enum ProviderAPIBillingAction: Equatable, Sendable {
     case claude, codex
 
-    init?(provider: ProviderID) {
+    public init?(provider: ProviderID) {
         switch provider {
         case .claude:
             self = .claude
@@ -15,7 +15,7 @@ enum ProviderAPIBillingAction: Equatable, Sendable {
         }
     }
 
-    var provider: ProviderID {
+    public var provider: ProviderID {
         switch self {
         case .claude:
             .claude
@@ -24,7 +24,7 @@ enum ProviderAPIBillingAction: Equatable, Sendable {
         }
     }
 
-    var providerLabel: String {
+    public var providerLabel: String {
         switch self {
         case .claude:
             "Claude API"
@@ -33,7 +33,7 @@ enum ProviderAPIBillingAction: Equatable, Sendable {
         }
     }
 
-    var destination: URL {
+    public var destination: URL {
         switch self {
         case .claude:
             URL(string: "https://platform.claude.com/settings/billing")!
@@ -44,9 +44,9 @@ enum ProviderAPIBillingAction: Equatable, Sendable {
 }
 
 @MainActor
-enum ProviderAPIBillingActionRouter {
+public enum ProviderAPIBillingActionRouter {
     @discardableResult
-    static func open(
+    public static func open(
         _ action: ProviderAPIBillingAction,
         using opener: (URL) -> Bool = NSWorkspace.shared.open
     ) -> Bool {

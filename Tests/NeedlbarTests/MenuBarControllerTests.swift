@@ -451,6 +451,60 @@ import Testing
 }
 
 @MainActor
+@Test func apiBillingActionKeepsPanelOpenWithoutLoginOrRefresh() {
+    let presenter = FakeMenuPanelPresenter()
+    var opened: [URL] = []
+    var logins = 0
+    let controller = makeMenuBarController(
+        configuration: ModuleConfiguration(defaults: freshMenuBarDefaults()),
+        snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
+        panelPresenter: presenter,
+        onProviderLoginRequested: { _ in logins += 1 },
+        openAPIBilling: { action in
+            opened.append(action.destination)
+            return true
+        }
+    )
+
+    presenter.markShownForTesting()
+    #expect(controller.performAPIBillingAction(.claude))
+    #expect(presenter.isShown)
+    #expect(logins == 0)
+    #expect(opened == [URL(string: "https://platform.claude.com/settings/billing")!])
+}
+
+@MainActor
+@Test func dashboardBillingFailureAndRecoveryResizeThePresentedPanel() throws {
+    let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+    var monitor = configuration.systemMonitor
+    monitor.ai[.claude]?.apiBillingLinkVisible = true
+    configuration.setSystemMonitor(monitor)
+    let presenter = FakeMenuPanelPresenter()
+    let controller = makeMenuBarController(
+        configuration: configuration,
+        snapshotStore: ProviderSnapshotStore(),
+        loginCoordinator: testLoginCoordinator(),
+        panelPresenter: presenter
+    )
+
+    controller.openOverview()
+    let initialHeight = try #require(presenter.presentedContentSizes.first?.height)
+    var failedState = DashboardAPIBillingLinkState()
+    failedState.recordOpenResult(false, for: .claude)
+    controller.displayedAPIBillingStateDidChange(failedState)
+    let failureHeight = try #require(presenter.resizedSizes.last?.height)
+
+    var recoveredState = failedState
+    recoveredState.recordOpenResult(true, for: .claude)
+    controller.displayedAPIBillingStateDidChange(recoveredState)
+    let recoveredHeight = try #require(presenter.resizedSizes.last?.height)
+
+    #expect(failureHeight > initialHeight)
+    #expect(recoveredHeight == initialHeight)
+}
+
+@MainActor
 @Test func cursorSpendingActionOpensFixedDashboardWithoutLoginOrSettings() {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     var requestedProviders: [ProviderID] = []
@@ -911,7 +965,8 @@ private func makeMenuBarController(
     onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
     onSettingsRequested: @escaping @MainActor () -> Void = {},
     onAnalyticsRequested: @escaping @MainActor () -> Void = {},
-    openCursorSpending: @escaping @MainActor () -> Void = {}
+    openCursorSpending: @escaping @MainActor () -> Void = {},
+    openAPIBilling: @escaping @MainActor (ProviderAPIBillingAction) -> Bool = { _ in false }
 ) -> MenuBarController {
     let notificationPreferences = QuotaNotificationPreferences(defaults: freshMenuBarDefaults())
     let notificationService = QuotaNotificationService(
@@ -939,7 +994,8 @@ private func makeMenuBarController(
         onProviderLoginRequested: onProviderLoginRequested,
         onSettingsRequested: onSettingsRequested,
         onAnalyticsRequested: onAnalyticsRequested,
-        openCursorSpending: openCursorSpending
+        openCursorSpending: openCursorSpending,
+        openAPIBilling: openAPIBilling
     )
 }
 

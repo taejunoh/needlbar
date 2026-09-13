@@ -18,6 +18,46 @@ import Testing
     #expect(presentation.memory.used == "7.5 GiB")
 }
 
+@Test @MainActor func dashboardBillingLinkIsVisibleOnlyWhenOptedInAndMeasured() throws {
+    var configuration = SystemMonitorConfiguration()
+    configuration.ai[.claude]?.apiBillingLinkVisible = true
+    let model = SystemDashboardModel(snapshot: dashboardFixtureSnapshot(), configuration: configuration)
+
+    #expect(model.presentation.ai.first { $0.provider == .claude }?.apiBillingAction == .claude)
+    #expect(SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(), configuration: .init()
+    ).ai.first { $0.provider == .claude }?.apiBillingAction == nil)
+
+    let normalHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: model))
+    var failedBillingState = DashboardAPIBillingLinkState()
+    failedBillingState.recordOpenResult(false, for: .claude)
+    let failureHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(
+        for: model, billingState: failedBillingState
+    ))
+    #expect(failureHeight > normalHeight)
+
+    configuration.ai[.claude]?.apiBillingLinkVisible = false
+    #expect(SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(), configuration: configuration
+    ).ai.first { $0.provider == .claude }?.apiBillingAction == nil)
+
+    configuration.ai[.claude]?.dashboardVisible = false
+    #expect(SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(), configuration: configuration
+    ).ai.contains { $0.provider == .claude } == false)
+}
+
+@Test func billingFailureClearsOnlyAfterSuccess() {
+    var state = DashboardAPIBillingLinkState()
+    state.recordOpenResult(false, for: .claude)
+
+    #expect(state.showsFailure(for: .claude))
+    #expect(state.failureMessage == "Couldn't open billing page. Try again.")
+
+    state.recordOpenResult(true, for: .claude)
+    #expect(!state.showsFailure(for: .claude))
+}
+
 @Test func dashboardPresentationFiltersConfiguredOrderByVisibleModules() {
     var configuration = SystemMonitorConfiguration()
     configuration.order = [.ai, .network, .cpu, .battery, .memory, .disk]

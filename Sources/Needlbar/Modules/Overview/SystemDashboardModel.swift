@@ -134,6 +134,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let usageStatus: PresentationFreshness
         public let quotaStatus: PresentationFreshness
         public let action: ProviderAuthenticationAction?
+        public let apiBillingAction: ProviderAPIBillingAction?
         public let fable: FableQuotaDetail?
     }
 
@@ -213,6 +214,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                 usageStatus: PresentationFreshness(providerSnapshot?.usageStatus ?? .unavailable),
                 quotaStatus: PresentationFreshness(providerSnapshot?.quotaStatus ?? .unavailable),
                 action: popover.authenticationAction,
+                apiBillingAction: preference.apiBillingLinkVisible ? ProviderAPIBillingAction(provider: provider) : nil,
                 fable: Self.fableDetail(provider: provider, metric: preference.metric, snapshot: providerSnapshot)
             )
         }

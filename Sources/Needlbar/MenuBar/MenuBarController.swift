@@ -96,6 +96,7 @@ private final class LegacyMenuBarController: NSObject {
     private let onSettingsRequested: @MainActor () -> Void
     private let onAnalyticsRequested: @MainActor () -> Void
     private let openCursorSpending: @MainActor () -> Void
+    private let openAPIBilling: @MainActor (ProviderAPIBillingAction) -> Bool
     private let settingsWindowController: SettingsWindowController
     private let panelPresenter: any MenuPanelPresenting
     private let globalMouseDownMonitor: any GlobalMouseDownMonitoring
@@ -124,7 +125,8 @@ private final class LegacyMenuBarController: NSObject {
         onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
         onSettingsRequested: @escaping @MainActor () -> Void = {},
         onAnalyticsRequested: @escaping @MainActor () -> Void = {},
-        openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() }
+        openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() },
+        openAPIBilling: @escaping @MainActor (ProviderAPIBillingAction) -> Bool = { ProviderAPIBillingActionRouter.open($0) }
     ) {
         self.configuration = configuration
         self.snapshotStore = snapshotStore
@@ -135,6 +137,7 @@ private final class LegacyMenuBarController: NSObject {
         self.onSettingsRequested = onSettingsRequested
         self.onAnalyticsRequested = onAnalyticsRequested
         self.openCursorSpending = openCursorSpending
+        self.openAPIBilling = openAPIBilling
         self.panelPresenter = panelPresenter
         self.globalMouseDownMonitor = globalMouseDownMonitor
         self.settingsWindowController = SettingsWindowController(
@@ -440,6 +443,7 @@ public final class MenuBarController: NSObject {
     private let onSettingsRequested: @MainActor () -> Void
     private let onAnalyticsRequested: @MainActor () -> Void
     private let openCursorSpending: @MainActor () -> Void
+    private let openAPIBilling: @MainActor (ProviderAPIBillingAction) -> Bool
     private let settingsWindowController: SettingsWindowController
     private var statusItem: (any StatusItemHandle)?
     private var deepLinkStatusItem: (any StatusItemHandle)?
@@ -455,6 +459,7 @@ public final class MenuBarController: NSObject {
     private var dashboardModel: SystemDashboardModel?
     private var displayedDashboardLayout: SystemDashboardPopoverLayout?
     private var displayedDashboardAnchor: StatusItemPresentationAnchor?
+    private var displayedBillingState = DashboardAPIBillingLinkState()
 
     var settingsPreviewResult: MenuBarDashboardRenderResult { settingsWindowController.previewResult }
 
@@ -474,7 +479,8 @@ public final class MenuBarController: NSObject {
         onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
         onSettingsRequested: @escaping @MainActor () -> Void = {},
         onAnalyticsRequested: @escaping @MainActor () -> Void = {},
-        openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() }
+        openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() },
+        openAPIBilling: @escaping @MainActor (ProviderAPIBillingAction) -> Bool = { ProviderAPIBillingActionRouter.open($0) }
     ) {
         self.configuration = configuration
         self.snapshotStore = snapshotStore
@@ -489,6 +495,7 @@ public final class MenuBarController: NSObject {
         self.onSettingsRequested = onSettingsRequested
         self.onAnalyticsRequested = onAnalyticsRequested
         self.openCursorSpending = openCursorSpending
+        self.openAPIBilling = openAPIBilling
         self.settingsWindowController = SettingsWindowController(
             configuration: configuration,
             actions: actions,
@@ -522,7 +529,8 @@ public final class MenuBarController: NSObject {
         onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
         onSettingsRequested: @escaping @MainActor () -> Void = {},
         onAnalyticsRequested: @escaping @MainActor () -> Void = {},
-        openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() }
+        openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() },
+        openAPIBilling: @escaping @MainActor (ProviderAPIBillingAction) -> Bool = { ProviderAPIBillingActionRouter.open($0) }
     ) {
         self.init(
             configuration: configuration,
@@ -543,7 +551,8 @@ public final class MenuBarController: NSObject {
             onProviderLoginRequested: onProviderLoginRequested,
             onSettingsRequested: onSettingsRequested,
             onAnalyticsRequested: onAnalyticsRequested,
-            openCursorSpending: openCursorSpending
+            openCursorSpending: openCursorSpending,
+            openAPIBilling: openAPIBilling
         )
     }
 
@@ -693,7 +702,10 @@ public final class MenuBarController: NSObject {
             model = SystemDashboardModel(snapshot: snapshot, configuration: monitorConfiguration)
             dashboardModel = model
         }
-        let naturalHeight = SystemDashboardPopoverMeasurement.naturalHeight(for: model)
+        displayedBillingState = .init()
+        let naturalHeight = SystemDashboardPopoverMeasurement.naturalHeight(
+            for: model, billingState: displayedBillingState
+        )
         let panelHeight = SystemDashboardPanelSizing.height(
             naturalContentHeight: naturalHeight,
             visibleScreenHeight: anchor.visibleFrameInScreen.height
@@ -706,6 +718,12 @@ public final class MenuBarController: NSObject {
             onShowAnalytics: { [weak self] in self?.performAnalyticsAction() },
             onProviderAction: { [weak self] provider in
                 self?.performAuthenticationAction(for: provider)
+            },
+            onAPIBillingAction: { [weak self] action in
+                self?.performAPIBillingAction(action) ?? false
+            },
+            onAPIBillingStateChanged: { [weak self] state in
+                self?.displayedAPIBillingStateDidChange(state)
             }
         ))
         cancelGlobalMouseDownMonitoring()
@@ -740,6 +758,7 @@ public final class MenuBarController: NSObject {
         activeMenuModule = nil
         displayedDashboardLayout = nil
         displayedDashboardAnchor = nil
+        displayedBillingState = .init()
         if let temporary = deepLinkStatusItem {
             statusItemFactory.removeStatusItem(temporary)
             deepLinkStatusItem = nil
@@ -762,7 +781,9 @@ public final class MenuBarController: NSObject {
               let anchor = displayedDashboardAnchor
         else { return }
 
-        let naturalHeight = SystemDashboardPopoverMeasurement.naturalHeight(for: model)
+        let naturalHeight = SystemDashboardPopoverMeasurement.naturalHeight(
+            for: model, billingState: displayedBillingState
+        )
         let proposedHeight = SystemDashboardPanelSizing.height(
             naturalContentHeight: naturalHeight,
             visibleScreenHeight: anchor.visibleFrameInScreen.height
@@ -779,6 +800,15 @@ public final class MenuBarController: NSObject {
 
     func performRetryAction() {
         onRetryRequested()
+    }
+
+    func performAPIBillingAction(_ action: ProviderAPIBillingAction) -> Bool {
+        openAPIBilling(action)
+    }
+
+    func displayedAPIBillingStateDidChange(_ state: DashboardAPIBillingLinkState) {
+        displayedBillingState = state
+        resizeDisplayedDashboardIfNeeded()
     }
 
     func performSettingsAction() {
