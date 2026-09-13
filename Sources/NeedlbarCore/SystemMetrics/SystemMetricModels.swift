@@ -42,6 +42,7 @@ public struct AIProviderDisplayPreference: Codable, Equatable, Sendable {
     public var menuBarVisible: Bool
     public var dashboardVisible: Bool
     public var metric: AIProviderDisplayMetric
+    public var apiBillingLinkVisible: Bool
 
     /// Compatibility for callers that explicitly configure both surfaces together.
     public var isVisible: Bool {
@@ -55,15 +56,17 @@ public struct AIProviderDisplayPreference: Codable, Equatable, Sendable {
     public init(
         isVisible: Bool = true,
         metric: AIProviderDisplayMetric = .remaining,
-        dashboardVisible: Bool? = nil
+        dashboardVisible: Bool? = nil,
+        apiBillingLinkVisible: Bool = false
     ) {
         menuBarVisible = isVisible
         self.dashboardVisible = dashboardVisible ?? isVisible
         self.metric = metric
+        self.apiBillingLinkVisible = apiBillingLinkVisible
     }
 
     private enum CodingKeys: String, CodingKey {
-        case menuBarVisible, dashboardVisible, isVisible, metric
+        case menuBarVisible, dashboardVisible, isVisible, metric, apiBillingLinkVisible
     }
 
     public init(from decoder: Decoder) throws {
@@ -72,6 +75,7 @@ public struct AIProviderDisplayPreference: Codable, Equatable, Sendable {
         menuBarVisible = try container.decodeIfPresent(Bool.self, forKey: .menuBarVisible) ?? shared
         dashboardVisible = try container.decodeIfPresent(Bool.self, forKey: .dashboardVisible) ?? shared
         metric = try container.decodeIfPresent(AIProviderDisplayMetric.self, forKey: .metric) ?? .remaining
+        apiBillingLinkVisible = (try? container.decode(Bool.self, forKey: .apiBillingLinkVisible)) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -79,6 +83,7 @@ public struct AIProviderDisplayPreference: Codable, Equatable, Sendable {
         try container.encode(menuBarVisible, forKey: .menuBarVisible)
         try container.encode(dashboardVisible, forKey: .dashboardVisible)
         try container.encode(metric, forKey: .metric)
+        try container.encode(apiBillingLinkVisible, forKey: .apiBillingLinkVisible)
     }
 }
 

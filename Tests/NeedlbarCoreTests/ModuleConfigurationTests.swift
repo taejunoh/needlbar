@@ -64,6 +64,27 @@ import Testing
     ))
 }
 
+@Test func apiBillingPreferencesAreStrictAndIndependent() {
+    let defaults = freshMonitorConfigurationDefaults()
+    let configuration = ModuleConfiguration(defaults: defaults)
+    #expect(configuration.systemMonitor.ai[.claude]?.apiBillingLinkVisible == false)
+    #expect(configuration.systemMonitor.ai[.codex]?.apiBillingLinkVisible == false)
+    defaults.set("true", forKey: "needlbar.systemMonitor.ai.claude.apiBillingLink.visible")
+    defaults.set(1, forKey: "needlbar.systemMonitor.ai.codex.apiBillingLink.visible")
+    #expect(configuration.systemMonitor.ai[.claude]?.apiBillingLinkVisible == false)
+    #expect(configuration.systemMonitor.ai[.codex]?.apiBillingLinkVisible == false)
+    configuration.setAPIBillingLinkVisible(true, for: .claude)
+    configuration.setAPIBillingLinkVisible(true, for: .codex)
+    #expect(ModuleConfiguration(defaults: defaults).systemMonitor.ai[.claude]?.apiBillingLinkVisible == true)
+    #expect(ModuleConfiguration(defaults: defaults).systemMonitor.ai[.codex]?.apiBillingLinkVisible == true)
+    configuration.setAPIBillingLinkVisible(false, for: .claude)
+    #expect(ModuleConfiguration(defaults: defaults).systemMonitor.ai[.claude]?.apiBillingLinkVisible == false)
+    #expect(configuration.systemMonitor.ai[.cursor]?.apiBillingLinkVisible == false)
+    let malformed = try! JSONDecoder().decode(
+        AIProviderDisplayPreference.self, from: Data(#"{"apiBillingLinkVisible":"true"}"#.utf8))
+    #expect(malformed.apiBillingLinkVisible == false)
+}
+
 @Test func invalidSavedAIMetricFallsBackToRemaining() {
     let defaults = freshMonitorConfigurationDefaults()
     defaults.set("not-a-metric", forKey: "needlbar.systemMonitor.ai.claude.metric")

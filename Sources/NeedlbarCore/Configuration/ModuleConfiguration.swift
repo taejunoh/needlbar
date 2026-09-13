@@ -74,11 +74,18 @@ public final class ModuleConfiguration {
         let aiOrder = validAIOrder(from: defaults.stringArray(forKey: "needlbar.systemMonitor.ai.order"))
         let ai = Dictionary(uniqueKeysWithValues: ProviderID.allCases.map { provider in
             let metricKey = "needlbar.systemMonitor.ai.\(provider.rawValue).metric"
+            let apiBillingLinkVisible = switch provider {
+            case .claude, .codex:
+                strictBool("needlbar.systemMonitor.ai.\(provider.rawValue).apiBillingLink.visible") ?? false
+            case .cursor:
+                false
+            }
             let preference = AIProviderDisplayPreference(
                 isVisible: providerVisible(provider, surface: .menuBar),
                 metric: defaults.string(forKey: metricKey)
                     .flatMap(AIProviderDisplayMetric.init(rawValue:)) ?? .remaining,
-                dashboardVisible: providerVisible(provider, surface: .dashboard)
+                dashboardVisible: providerVisible(provider, surface: .dashboard),
+                apiBillingLinkVisible: apiBillingLinkVisible
             )
             return (provider, preference)
         })
@@ -110,7 +117,21 @@ public final class ModuleConfiguration {
             defaults.set(preference.dashboardVisible,
                          forKey: "needlbar.systemMonitor.ai.\(provider.rawValue).dashboard.visible")
             defaults.set(preference.metric.rawValue, forKey: "needlbar.systemMonitor.ai.\(provider.rawValue).metric")
+            if provider == .claude || provider == .codex {
+                let apiBillingLinkKey = "needlbar.systemMonitor.ai.\(provider.rawValue).apiBillingLink.visible"
+                defaults.removeObject(forKey: apiBillingLinkKey)
+                defaults.set(preference.apiBillingLinkVisible, forKey: apiBillingLinkKey)
+            }
         }
+        NotificationCenter.default.post(name: Self.systemMonitorDidChangeNotification, object: self)
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
+    }
+
+    public func setAPIBillingLinkVisible(_ visible: Bool, for provider: ProviderID) {
+        guard provider == .claude || provider == .codex else { return }
+        let key = "needlbar.systemMonitor.ai.\(provider.rawValue).apiBillingLink.visible"
+        defaults.removeObject(forKey: key)
+        defaults.set(visible, forKey: key)
         NotificationCenter.default.post(name: Self.systemMonitorDidChangeNotification, object: self)
         NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
     }
