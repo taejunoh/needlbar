@@ -7,32 +7,40 @@ Claude API login session in a Needlbar-owned persistent store, cleared on
 disconnect. The written specification is
 `docs/superpowers/specs/2026-09-13-claude-api-balance-design.md` and was approved
 by the user on 2026-09-13. The initial native feasibility plan is
-`docs/superpowers/plans/2026-09-13-claude-api-balance.md`; execution is underway
-in `.worktrees/claude-api-balance` on `codex/claude-api-balance`. Task 1's isolated
-launch/origin boundary is implemented at `a5d8989`, with full `make test` passing
-(Swift 482 tests) and task review approved. Initial missing-symbol RED was
-supplemented with a truthful post-implementation behavioral mutation check;
-restored focused tests passed. Task 2's native host is uncommitted WIP and is
-blocked: persistent-store removal and identifier enumeration crash inside
-WebKit before completion on macOS 26.6.2 / Xcode 26.6. Mode-gated lifecycle and
-a separate bundle-path experiment did not resolve it; actual Bundle.main
-identity was not verified, so identity-related causes are not conclusively
-excluded. No live login was started. Final regression `make test` passed
-(Swift 482 tests / 19 suites, Rust/vendor/shell contracts); this does not prove
-native functionality. Detailed evidence is retained at
-`.superpowers/sdd/2026-09-13-claude-api-balance/task-2-report.md` in the worktree.
-Next step: discuss a narrowly scoped WebKit runtime investigation before more
-experiments or a different session architecture. The plan
-creates an isolated review executable and stops at native login,
-session reuse, DOM-presence, and deletion acceptance before a production
-integration plan can be written. Read-only authenticated browser
-inspection verified a distinct Credit balance / Remaining balance section.
-Native WKWebView login, organization identification, persistence, and balance
-refresh are not verified. No production implementation or installation changed
-in this follow-up. The initial scope is Claude-only, explicit connect/refresh, isolated
-WebKit storage, and no background polling or external credential import.
-The release and installation records below describe the preceding completed
-billing-link work, not this unimplemented balance extension.
+`docs/superpowers/plans/2026-09-13-claude-api-balance.md`; execution is in
+`.worktrees/claude-api-balance` on `codex/claude-api-balance`.
+
+Task 1's isolated launch/origin boundary is implemented at `a5d8989`, with
+review approved. Task 2's isolated native review host is implemented and
+reviewed with no Critical or Important findings; it remains uncommitted WIP.
+The native clear path now constructs and discards the fixed feasibility
+`WKWebsiteDataStore` before removing that same identifier. Its opt-in bounded
+regression reached the removal completion and emitted only
+`storeDelete=succeeded`; it does not construct the default store, enumerate
+identifiers, run a provider URL, or access credentials. Full `make test`
+passed: vendor `tokscale_core` 1,379 passed / 0 failed / 1 ignored, Swift 482
+tests in 19 suites, and the public-bridge, provider-brand, widget-extension,
+package-app, and notarization contracts.
+
+The retained WebKit diagnosis explains the narrow ordering correction: direct
+static persistent-store calls previously crashed before their callbacks on
+this macOS/Xcode host, while constructing the same dedicated store first made
+the isolated callbacks complete. That differential excludes the tested
+bundle/main-thread/lifecycle alternatives but does not assert an installed
+WebKit private root cause. Detailed evidence remains in
+`.superpowers/sdd/2026-09-13-claude-api-balance/task-2-report.md` and
+`.superpowers/sdd/2026-09-13-claude-api-balance/webkit-isolation-report.md`.
+
+Task 3 is pending mandatory user-driven native acceptance: clear the harness,
+complete any login/MFA/organization selection in its visible window, inspect
+only the approved route/count evidence, prove restart reuse, and clear the
+harness store. No native run/login, organization identification, session
+reuse, or balance-refresh feasibility has yet been claimed. No production
+implementation, installation, package, release, or external credential import
+changed in this follow-up. The initial scope remains Claude-only, explicit
+connect/refresh, isolated WebKit storage, and no background polling. The
+release and installation records below describe the preceding completed
+billing-link work, not this balance extension.
 
 **Updated:** 2026-09-13
 **Branch:** `main` at commit `b5b957c`, pushed and verified via `ls-remote`.
