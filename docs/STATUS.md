@@ -19,7 +19,7 @@ The Homebrew Cask update was committed and pushed to the tap as
 canonical local installation is the locally signed v0.3.2/build 5 app at
 `/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app` (PID
 `94416`), not the public v0.3.2 artifact. It uses Developer ID team
-`3BMF4LM6TM`, the App Group, hardened runtime, and the runtime environment;
+`3BMF4LM6TM`, the matching App Group, designated requirement, and hardened runtime;
 deep/strict codesign verification passed, as did `make package` and the smoke
 check. Its backup is at
 `/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-api-billing.ZKrDtR/Needlbar.app`.
@@ -33,9 +33,13 @@ visual/interaction acceptance remain separate follow-ups.
 Written specification: `docs/superpowers/specs/2026-09-13-api-billing-links-design.md`.
 The user approved this specification on 2026-09-13. The implementation plan is
 `docs/superpowers/plans/2026-09-13-api-billing-links.md`. Implementation and
-Task 5 verification are complete on local `main` at `e1969e2`; the merge is not
-pushed, and the feature is not installed. Native visual and interaction
-acceptance is not claimed; validation is synthetic/test-only. Fresh `make test`
+Task 5 verification are complete at `e1969e2`; the verified code is pushed on
+`main` as `b5b957c`, and a locally signed v0.3.2/build 5 app is installed at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app`. Its host
+executable SHA-256 is
+`73cbee25396968ccbfd53d4a3bab1bf9f194a72bc4b8ff593096aa6ff3f22a7b`.
+Native visual and interaction acceptance is not claimed; validation is
+synthetic/test-only. Fresh `make test`
 passed with Rust/vendor 1,537 passed, 0 failed, 1 ignored and Swift 480 tests
 in 19 suites, followed by the bridge, provider-brand-assets, widget-extension,
 package-app, and notarize-app shell contracts.
