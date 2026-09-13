@@ -105,7 +105,10 @@ public struct SettingsView: View {
         case .layout, .module, .provider:
             if let surface = selectedTab.surface {
                 SettingsStudioConfigurationPane(model: systemMonitorModel, page: selectedPage, surface: surface)
-                if case let .provider(provider) = selectedPage { connectionPane(provider) }
+                if case let .provider(provider) = selectedPage {
+                    connectionPane(provider)
+                    apiBillingPane(provider)
+                }
             } else if case .module = selectedPage {
                 Text("System threshold alerts are not available yet.").foregroundStyle(.secondary)
             } else if case .provider = selectedPage {
@@ -127,6 +130,21 @@ public struct SettingsView: View {
                     Spacer()
                     Button("Open Cursor Spending", action: openCursorSpending)
                 }.padding(.vertical, 12)
+            }
+        }
+    }
+
+    @ViewBuilder private func apiBillingPane(_ provider: ProviderID) -> some View {
+        if let action = ProviderAPIBillingAction(provider: provider) {
+            SettingsStudioSection(title: "API Billing") {
+                SettingsStudioToggle(title: "Show API billing link", value: Binding(
+                    get: { systemMonitorModel.value.ai[provider]?.apiBillingLinkVisible ?? false },
+                    set: { systemMonitorModel.setAPIBillingLinkVisible($0, for: provider) }))
+                Divider()
+                Text("\(action.providerLabel) · \(action.destination.absoluteString)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 12)
             }
         }
     }

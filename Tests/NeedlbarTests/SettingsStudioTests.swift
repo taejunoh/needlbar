@@ -8,6 +8,29 @@ import Testing
 @Suite("SettingsStudio", .serialized)
 @MainActor
 struct SettingsStudioTests {
+    @Test func apiBillingSettingsToggleDoesNotMakeProviderVisible() throws {
+        let name = "SettingsStudio.api.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = ModuleConfiguration(defaults: defaults)
+        var value = store.systemMonitor
+        value.ai[.claude] = AIProviderDisplayPreference(isVisible: false, metric: .usage, dashboardVisible: false)
+        store.setSystemMonitor(value)
+        let model = SystemMonitorSettingsModel(configuration: store)
+        model.setAPIBillingLinkVisible(true, for: .claude)
+        #expect(store.systemMonitor.ai[.claude]?.apiBillingLinkVisible == true)
+        #expect(!model.isVisible(.claude, surface: .menuBar))
+        #expect(!model.isVisible(.claude, surface: .dashboard))
+        #expect(store.systemMonitor.ai[.claude]?.metric == .usage)
+        model.setAPIBillingLinkVisible(false, for: .claude)
+        #expect(store.systemMonitor.ai[.claude]?.apiBillingLinkVisible == false)
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("Sources/Needlbar/Settings/SettingsView.swift"), encoding: .utf8)
+        #expect(source.contains("SettingsStudioSection(title: \"API Billing\")"))
+        #expect(source.contains("Show API billing link"))
+        #expect(!source.contains("ProviderAPIBillingActionRouter.open"))
+    }
+
     @Test func compactMenuResetPreservesDashboardAndProviderChoices() throws {
         let name = "SettingsStudio.menu-reset.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: name))

@@ -99,6 +99,11 @@ public final class SystemMonitorSettingsModel: ObservableObject {
         commit(next)
     }
 
+    public func setAPIBillingLinkVisible(_ visible: Bool, for provider: ProviderID) {
+        configuration.setAPIBillingLinkVisible(visible, for: provider)
+        value = configuration.systemMonitor
+    }
+
     public func moveAIProvider(_ provider: ProviderID, before target: ProviderID) {
         guard provider != target, value.aiOrder.contains(provider), value.aiOrder.contains(target) else { return }
         var next = value
