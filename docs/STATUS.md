@@ -1,18 +1,18 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-13
-**Branch:** `codex/api-billing-links`, isolated from `9ff0d96`.
+**Branch:** `main` at local merge commit `e1969e2`, ahead of `origin/main`.
 **Current phase:** The historical v0.3.2 release remains publicly released and
 independently verified from candidate
 `787865d1f22e1ec4a70daed5264f10740a38726a`. The API Billing Links
-implementation is verified on this branch but remains unmerged, unpushed, and
-not installed. The public arm64 ZIP and checksum sidecar are available from the
-v0.3.2 GitHub Release. Public artifact verification passed checksum, archive
-integrity, host/widget metadata, arm64, macOS 14 minimum target, App Group,
-Developer ID/hardened-runtime signing, deep/strict verification, stapling,
-Gatekeeper, and fixture/review-host exclusion. Native visual and interaction
-acceptance remains partial and is not claimed by this feature verification or
-the historical release record.
+implementation is merged locally and freshly verified on `main`; it remains
+unpushed and not installed. The public arm64 ZIP and checksum sidecar are
+available from the v0.3.2 GitHub Release. Public artifact verification passed
+checksum, archive integrity, host/widget metadata, arm64, macOS 14 minimum
+target, App Group, Developer ID/hardened-runtime signing, deep/strict
+verification, stapling, Gatekeeper, and fixture/review-host exclusion. Native
+visual and interaction acceptance remains partial and is not claimed by this
+feature verification or the historical release record.
 **Next action:** Continue separately scoped native authentication and visual
 acceptance, or replace the local evaluation build with the public artifact when
 requested. No release or Homebrew publication step remains.
@@ -29,9 +29,12 @@ visual/interaction acceptance remain separate follow-ups.
 Written specification: `docs/superpowers/specs/2026-09-13-api-billing-links-design.md`.
 The user approved this specification on 2026-09-13. The implementation plan is
 `docs/superpowers/plans/2026-09-13-api-billing-links.md`. Implementation and
-Task 5 verification are complete on `codex/api-billing-links`; this branch is
-not merged or pushed, and the feature is not installed. Native visual and
-interaction acceptance is not claimed; validation is synthetic/test-only.
+Task 5 verification are complete on local `main` at `e1969e2`; the merge is not
+pushed, and the feature is not installed. Native visual and interaction
+acceptance is not claimed; validation is synthetic/test-only. Fresh `make test`
+passed with Rust/vendor 1,537 passed, 0 failed, 1 ignored and Swift 480 tests
+in 19 suites, followed by the bridge, provider-brand-assets, widget-extension,
+package-app, and notarize-app shell contracts.
 The implemented scope is two opt-in, per-provider external billing
 links—Claude API and OpenAI API—kept separate from subscription quota, local
 usage, and estimated cost. The links use fixed official HTTPS destinations,
