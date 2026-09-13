@@ -1,25 +1,29 @@
 # Needlbar Development Status
 
 **Updated:** 2026-09-13
-**Branch:** `main` at local merge commit `e1969e2`, ahead of `origin/main`.
+**Branch:** `main` at commit `b5b957c`, pushed and verified via `ls-remote`.
 **Current phase:** The historical v0.3.2 release remains publicly released and
 independently verified from candidate
 `787865d1f22e1ec4a70daed5264f10740a38726a`. The API Billing Links
-implementation is merged locally and freshly verified on `main`; it remains
-unpushed and not installed. The public arm64 ZIP and checksum sidecar are
-available from the v0.3.2 GitHub Release. Public artifact verification passed
-checksum, archive integrity, host/widget metadata, arm64, macOS 14 minimum
-target, App Group, Developer ID/hardened-runtime signing, deep/strict
-verification, stapling, Gatekeeper, and fixture/review-host exclusion. Native
-visual and interaction acceptance remains partial and is not claimed by this
-feature verification or the historical release record.
+implementation is pushed on `main` at `b5b957c` and freshly verified via
+`ls-remote`. A locally signed v0.3.2/build 5 app is installed at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app` and is
+running as PID `94416`. The public v0.3.2 release remains unchanged; this
+local build is not a new notarized release. The public arm64 ZIP and checksum
+sidecar remain available from the v0.3.2 GitHub Release. Native visual and
+button acceptance is not claimed, and Settings remain untouched.
 **Next action:** Continue separately scoped native authentication and visual
-acceptance, or replace the local evaluation build with the public artifact when
-requested. No release or Homebrew publication step remains.
+acceptance when requested. No release or Homebrew publication step remains.
 The Homebrew Cask update was committed and pushed to the tap as
 `6531e116833591d091b0bbda5409d899115b711b`. The
-canonical local installation remains the previously installed locally signed
-v0.3.1/build 4 app (PID `54617`), not the public v0.3.2 artifact. Existing-login
+canonical local installation is the locally signed v0.3.2/build 5 app at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app` (PID
+`94416`), not the public v0.3.2 artifact. It uses Developer ID team
+`3BMF4LM6TM`, the App Group, hardened runtime, and the runtime environment;
+deep/strict codesign verification passed, as did `make package` and the smoke
+check. Its backup is at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-api-billing.ZKrDtR/Needlbar.app`.
+Existing-login
 Claude behavior is user-confirmed; other authentication branches remain
 synthetic-only. The unrelated cancellation-test admission timing fix and native
 visual/interaction acceptance remain separate follow-ups.
