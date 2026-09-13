@@ -1,6 +1,6 @@
 # Claude API Feasibility Harness — Feedback Contract
 
-**Status:** Draft for written user review; not an implementation authorization.
+**Status:** Approved for implementation.
 **Date:** 2026-09-13
 
 ## Purpose and boundary
