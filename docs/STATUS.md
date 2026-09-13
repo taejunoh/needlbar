@@ -11,8 +11,8 @@ by the user on 2026-09-13. The initial native feasibility plan is
 `.worktrees/claude-api-balance` on `codex/claude-api-balance`.
 
 Task 1's isolated launch/origin boundary is implemented at `a5d8989`, with
-review approved. Task 2's isolated native review host is implemented and
-reviewed with no Critical or Important findings; it remains uncommitted WIP.
+review approved. Task 2's isolated native review host is committed at
+`b0d7859` and reviewed with no Critical or Important findings.
 The native clear path now constructs and discards the fixed feasibility
 `WKWebsiteDataStore` before removing that same identifier. Its opt-in bounded
 regression reached the removal completion and emitted only
@@ -31,16 +31,48 @@ WebKit private root cause. Detailed evidence remains in
 `.superpowers/sdd/2026-09-13-claude-api-balance/task-2-report.md` and
 `.superpowers/sdd/2026-09-13-claude-api-balance/webkit-isolation-report.md`.
 
-Task 3 is pending mandatory user-driven native acceptance: clear the harness,
-complete any login/MFA/organization selection in its visible window, inspect
-only the approved route/count evidence, prove restart reuse, and clear the
-harness store. No native run/login, organization identification, session
-reuse, or balance-refresh feasibility has yet been claimed. No production
-implementation, installation, package, release, or external credential import
-changed in this follow-up. The initial scope remains Claude-only, explicit
-connect/refresh, isolated WebKit storage, and no background polling. The
-release and installation records below describe the preceding completed
-billing-link work, not this balance extension.
+The initial Task 3 trial was stopped at its required navigation-origin gate. After the user
+gracefully closed the visible harness window, its sanitized output recorded
+`mainFrameOrigin=https://platform.claude.com:443`,
+`billingRouteLoaded=true`, and four occurrences of
+`blockedMainFrameOrigin=https://accounts.google.com`. The Google origin was
+not an approved/reviewed main-frame origin, so the harness cancelled it as
+designed. This is not a finding that provider or embedded authentication is
+unsupported, nor evidence that a Google credential flow completed. The loaded
+route alone also does not establish billing contents. No approved DOM-count
+output, visible selected-organization identification, session-reuse result,
+or balance-refresh/extraction feasibility was obtained. The separately run
+clear command exited 0 and emitted `storeDelete=succeeded`: only the
+harness-owned fixed store was removed. Existing app state and credentials were
+not accessed or changed. The existing external billing link remains the
+fallback.
+
+No production implementation, installation, package, release, or external
+credential import changed in this follow-up. The initial scope remains
+Claude-only, explicit connect/refresh, isolated WebKit storage, and no
+background polling.
+
+The later user-directed, email-only attempt reused that same fixed isolated
+store and reached the exact billing route. Seven user-triggered probes each
+reported `creditBalanceSectionCount=1` and `remainingBalanceLabelCount=1`; the
+user could recognize their own account, but the selected organization was not
+confirmed. Those counts establish only the reviewed page shape, not native
+authentication, organization qualification, session persistence, amount
+extraction, or refresh feasibility. The user-authorized reuse attempt then
+allowed the platform origin but failed its provisional navigation with
+`NSURLErrorDomain` code `-1009`, leaving a blank window with no billing-route or
+DOM-count evidence. Session reuse is therefore inconclusive and the harness
+store was not cleared. A later unauthenticated public `HEAD` receiving `200`
+establishes only public shell-route reachability; it does not explain or solve
+the native `-1009` result.
+
+The narrow feedback specification
+`docs/superpowers/specs/2026-09-13-claude-api-feasibility-feedback-design.md`
+is drafted for written user review. It proposes only review-harness loading,
+page-loaded, inspection, and sanitized failure feedback; it adds no production
+code, retry, polling, origin, credential, session, installation, package,
+release, or external-credential-import change. The historical initial trial is
+retained above as such. The external billing link remains the fallback.
 
 **Updated:** 2026-09-13
 **Branch:** `main` at commit `b5b957c`, pushed and verified via `ls-remote`.
