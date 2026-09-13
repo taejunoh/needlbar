@@ -1,5 +1,20 @@
 # Needlbar Development Status
 
+## Active design follow-up — Claude API balance — 2026-09-13
+
+The user requested in-popover API prepaid balance and approved keeping a
+Claude API login session in a Needlbar-owned persistent store, cleared on
+disconnect. The written specification is
+`docs/superpowers/specs/2026-09-13-claude-api-balance-design.md` and awaits written
+review before implementation planning. Read-only authenticated browser
+inspection verified a distinct Credit balance / Remaining balance section.
+Native WKWebView login, organization identification, persistence, and balance
+refresh are not verified. No implementation or installation changed in this
+follow-up. The initial scope is Claude-only, explicit connect/refresh, isolated
+WebKit storage, and no background polling or external credential import.
+The release and installation records below describe the preceding completed
+billing-link work, not this unimplemented balance extension.
+
 **Updated:** 2026-09-13
 **Branch:** `main` at commit `b5b957c`, pushed and verified via `ls-remote`.
 **Current phase:** The historical v0.3.2 release remains publicly released and
