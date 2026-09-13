@@ -21,6 +21,15 @@ public struct DashboardAPIBillingLinkState: Equatable {
         }
     }
 
+    mutating func performAPIBillingAction(
+        _ action: ProviderAPIBillingAction,
+        using opener: (ProviderAPIBillingAction) -> Bool,
+        onStateChanged: (Self) -> Void
+    ) {
+        recordOpenResult(opener(action), for: action.provider)
+        onStateChanged(self)
+    }
+
     public func showsFailure(for provider: ProviderID) -> Bool {
         failed.contains(provider)
     }
@@ -353,8 +362,11 @@ public struct SystemDashboardPopoverView: View {
     }
 
     private func performAPIBillingAction(_ action: ProviderAPIBillingAction) {
-        billingState.recordOpenResult(onAPIBillingAction(action), for: action.provider)
-        onAPIBillingStateChanged(billingState)
+        billingState.performAPIBillingAction(
+            action,
+            using: onAPIBillingAction,
+            onStateChanged: onAPIBillingStateChanged
+        )
     }
 
     private func fableStatus(_ freshness: PresentationFreshness) -> String? {

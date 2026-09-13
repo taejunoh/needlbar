@@ -481,27 +481,35 @@ import Testing
     monitor.ai[.claude]?.apiBillingLinkVisible = true
     configuration.setSystemMonitor(monitor)
     let presenter = FakeMenuPanelPresenter()
+    var outcomes = [false, true]
     let controller = makeMenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
         loginCoordinator: testLoginCoordinator(),
-        panelPresenter: presenter
+        panelPresenter: presenter,
+        openAPIBilling: { _ in outcomes.removeFirst() }
     )
 
     controller.openOverview()
     let initialHeight = try #require(presenter.presentedContentSizes.first?.height)
-    var failedState = DashboardAPIBillingLinkState()
-    failedState.recordOpenResult(false, for: .claude)
-    controller.displayedAPIBillingStateDidChange(failedState)
+    var billingState = DashboardAPIBillingLinkState()
+    billingState.performAPIBillingAction(
+        .claude,
+        using: { controller.performAPIBillingAction($0) },
+        onStateChanged: { controller.displayedAPIBillingStateDidChange($0) }
+    )
     let failureHeight = try #require(presenter.resizedSizes.last?.height)
 
-    var recoveredState = failedState
-    recoveredState.recordOpenResult(true, for: .claude)
-    controller.displayedAPIBillingStateDidChange(recoveredState)
+    billingState.performAPIBillingAction(
+        .claude,
+        using: { controller.performAPIBillingAction($0) },
+        onStateChanged: { controller.displayedAPIBillingStateDidChange($0) }
+    )
     let recoveredHeight = try #require(presenter.resizedSizes.last?.height)
 
     #expect(failureHeight > initialHeight)
     #expect(recoveredHeight == initialHeight)
+    #expect(outcomes.isEmpty)
 }
 
 @MainActor
