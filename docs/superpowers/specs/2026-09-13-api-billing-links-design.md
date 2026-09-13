@@ -1,6 +1,6 @@
 # Needlbar API Billing Links Design
 
-**Status:** Written specification; user review required before implementation
+**Status:** User approved on 2026-09-13; implementation plan written
 **Date:** 2026-09-13
 **Scope:** Add opt-in links to the Claude API and OpenAI API billing dashboards.
 

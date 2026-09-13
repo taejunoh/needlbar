@@ -24,7 +24,9 @@ visual/interaction acceptance remain separate follow-ups.
 ## Scoped design — API billing links — 2026-09-13
 
 Written specification: `docs/superpowers/specs/2026-09-13-api-billing-links-design.md`.
-This is a review-gated design only; no implementation or test run occurred.
+The user approved this specification on 2026-09-13. The implementation plan is
+`docs/superpowers/plans/2026-09-13-api-billing-links.md`; execution is the next
+step. No application implementation or test run occurred.
 The proposed scope is two opt-in, per-provider external billing links—Claude
 API and OpenAI API—kept separate from subscription quota, local usage, and
 estimated cost. The links use fixed official HTTPS destinations, open only on
