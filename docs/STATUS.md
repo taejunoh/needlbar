@@ -75,8 +75,8 @@ code, retry, polling, origin, credential, session, installation, package,
 release, or external-credential-import change. The historical initial trial is
 retained above as such. The external billing link remains the fallback.
 
-The approved feedback host integration is now recorded at
-`.superpowers/sdd/2026-09-13-claude-api-feasibility-feedback/task-2-report.md`.
+The approved feedback host integration is recorded in commits `7e098b2`
+and `e610708`, with documentation corrections through `370f837`.
 It binds loading, exact-route completion, inspection, and sanitized provisional
 failure output to the current `WKNavigation` and feedback callback while
 preserving the fixed store UUID and unchanged origin policy. A window close
@@ -93,6 +93,14 @@ authentication, session reuse, page contents, network diagnosis, the cause or
 resolution of `NSURLErrorDomain (-1009)`, amount parsing, balance refresh, or
 native visual acceptance. No harness, live URL, login, or store-clear action
 was run for this integration.
+
+On 2026-09-14, the user-approved local integration fast-forwarded `main`
+through `e729338`, including the README explanation of the billing link and
+review-only harness. A fresh merged-tree `make test` exited 0 (Swift 485 tests
+in 19 suites; vendor 1,379 passed, 1 ignored; Rust and shell contracts passed).
+No push, installation, release, live login, or store clearing was performed.
+The feature worktree is retained because the earlier native-feasibility
+milestone still holds local review evidence and unresolved session-reuse work.
 
 **Updated:** 2026-09-13
 **Branch:** `main` at commit `b5b957c`, pushed and verified via `ls-remote`.
