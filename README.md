@@ -69,6 +69,28 @@ Background refresh stays non-interactive and Needlbar does not store provider
 credentials. The existing valid-login path was user-confirmed to skip browser
 login; this does not claim every authentication branch was manually accepted.
 
+### Claude API billing link and feasibility harness
+
+The optional Claude API billing action opens the official Anthropic Console
+Billing page in the default browser. It is only a link: it does not retrieve,
+parse, or display an API credit balance automatically.
+
+Maintainers can review the separate, isolated native feasibility harness with
+`make claude-api-balance-feasibility`. It uses a fixed harness-owned WebKit
+store and the approved `https://platform.claude.com:443` main-frame origin.
+Inline feedback distinguishes loading, an exact-route page load, counts-only
+inspection, and a provisional failure using only a sanitized domain and
+numeric code. Each `CLAUDE_API_BALANCE_FEASIBILITY` event is flushed
+immediately; raw URLs, page content, credentials, and error descriptions are
+not logged. Use `make claude-api-balance-feasibility-clear` only to remove that
+harness store.
+
+This review tool does not establish native authentication, session reuse, or a
+resolution for the observed `NSURLErrorDomain` `-1009` result. It also does not
+prove organization-qualified balance parsing or amount extraction. The
+external billing link remains the supported fallback, and the harness is not
+part of the public app artifact.
+
 ### System monitor (v0.3.0)
 
 The main dashboard combines enabled CPU, RAM, disk, network, battery, and AI usage in a compact, content-sized popover. It grows to fit enabled rows when screen space permits, scrolls only when needed, uses aligned high-contrast values, hides normal freshness noise, and keeps stale or failed states visible without changing the underlying metrics or provider actions.
