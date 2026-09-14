@@ -387,14 +387,14 @@ make test
 
 Expected: both exit 0. Do not run the feasibility executable, clear the fixed UUID store, authenticate, retry, poll, add origins, or infer a cause/fix for `-1009`.
 
-- [ ] **Step 4: Keep only the approved spec-status change and commit.**
+- [ ] **Step 4: Commit the host integration and status evidence.**
 
-```markdown
-**Status:** Approved for implementation.
-```
+The feedback specification was already approved for implementation at task
+start, so its status is a no-op in this task. Record the focused and full
+verification evidence in `docs/STATUS.md` instead.
 
 ```bash
-git add Sources/NeedlbarClaudeAPIBalanceFeasibility/main.swift docs/superpowers/specs/2026-09-13-claude-api-feasibility-feedback-design.md
+git add Sources/NeedlbarClaudeAPIBalanceFeasibility/main.swift docs/STATUS.md
 git commit -m "feat: surface Claude feasibility feedback"
 ```
 
