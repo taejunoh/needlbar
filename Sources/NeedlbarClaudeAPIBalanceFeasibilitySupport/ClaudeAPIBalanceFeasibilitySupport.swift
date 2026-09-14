@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 public enum ClaudeAPIBalanceFeasibilityMode: Equatable, Sendable {
     case run
@@ -67,5 +68,107 @@ public enum ClaudeAPIBalanceFeasibilityNavigationPolicy {
         let host = url.host?.lowercased() ?? "invalid"
         let port = url.port.map { ":\($0)" } ?? ""
         return "\(scheme)://\(host)\(port)"
+    }
+}
+
+public struct ClaudeAPIBalanceFeasibilityCallback: Equatable, Sendable {
+    public let generation: UInt64
+    public let navigationID: UInt64
+}
+
+public struct ClaudeAPIBalanceFeasibilityFailure: Equatable, Sendable {
+    public let domain: String
+    public let code: Int
+
+    public init(domain: String, code: Int) {
+        let allowed = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-".unicodeScalars)
+        self.domain = !domain.isEmpty && domain.unicodeScalars.count <= 128 &&
+            domain.unicodeScalars.allSatisfy(allowed.contains) ? domain : "invalid"
+        self.code = code
+    }
+}
+
+public enum ClaudeAPIBalanceFeasibilityFeedbackStatus: Equatable, Sendable {
+    case loading, billingRouteLoaded, inspectionUnavailable, inspectionRequiresBillingRoute
+    case inspectionCounts(sections: Int, labels: Int), unavailable(ClaudeAPIBalanceFeasibilityFailure)
+
+    public var displayText: String {
+        switch self {
+        case .loading: "Loading approved billing page"
+        case .billingRouteLoaded: "Page loaded — authentication unproven"
+        case let .inspectionCounts(sections, labels): "Inspection counts: sections \(sections), labels \(labels) — success unproven"
+        case .inspectionUnavailable: "Inspection unavailable"
+        case .inspectionRequiresBillingRoute: "Inspect the approved billing page first"
+        case let .unavailable(failure): "Unavailable: \(failure.domain) (\(failure.code))"
+        }
+    }
+}
+
+public struct ClaudeAPIBalanceFeasibilityFeedbackEmission: Equatable, Sendable {
+    public let status: ClaudeAPIBalanceFeasibilityFeedbackStatus
+    public let eventLine: String
+}
+
+public struct ClaudeAPIBalanceFeasibilityFeedback: Sendable {
+    private var generation: UInt64 = 0
+    private var current: ClaudeAPIBalanceFeasibilityCallback?
+
+    public init() {}
+
+    public mutating func beginNavigation(navigationID: UInt64, approvedOrigin: Bool, approvedBillingRoute: Bool) -> (callback: ClaudeAPIBalanceFeasibilityCallback, emission: ClaudeAPIBalanceFeasibilityFeedbackEmission) {
+        generation &+= 1
+        let callback = ClaudeAPIBalanceFeasibilityCallback(generation: generation, navigationID: navigationID)
+        current = callback
+        return (callback, emit(.loading, "navigationStarted approvedOrigin=\(approvedOrigin) approvedBillingRoute=\(approvedBillingRoute)"))
+    }
+
+    public func isCurrent(_ callback: ClaudeAPIBalanceFeasibilityCallback) -> Bool { current == callback }
+    public mutating func invalidate() { generation &+= 1; current = nil }
+
+    public func routeLoaded(for callback: ClaudeAPIBalanceFeasibilityCallback, isExactBillingRoute: Bool) -> ClaudeAPIBalanceFeasibilityFeedbackEmission? {
+        guard isCurrent(callback), isExactBillingRoute else { return nil }
+        return emit(.billingRouteLoaded, "billingRouteLoaded=true authenticationProven=false")
+    }
+
+    public func inspectionCounts(for callback: ClaudeAPIBalanceFeasibilityCallback, isExactBillingRoute: Bool, sections: Int, labels: Int) -> ClaudeAPIBalanceFeasibilityFeedbackEmission? {
+        guard isCurrent(callback), isExactBillingRoute else { return nil }
+        return emit(.inspectionCounts(sections: sections, labels: labels), "creditBalanceSectionCount=\(sections) remainingBalanceLabelCount=\(labels) successProven=false")
+    }
+
+    public func inspectionUnavailable(for callback: ClaudeAPIBalanceFeasibilityCallback, isExactBillingRoute: Bool) -> ClaudeAPIBalanceFeasibilityFeedbackEmission? {
+        guard isCurrent(callback), isExactBillingRoute else { return nil }
+        return emit(.inspectionUnavailable, "domProbe=unavailable")
+    }
+
+    public func inspectionRequiresBillingRoute() -> ClaudeAPIBalanceFeasibilityFeedbackEmission {
+        emit(.inspectionRequiresBillingRoute, "domProbe=notOnApprovedBillingRoute")
+    }
+
+    public func provisionalFailure(for callback: ClaudeAPIBalanceFeasibilityCallback, isAllowedOrigin: Bool, failure: ClaudeAPIBalanceFeasibilityFailure) -> ClaudeAPIBalanceFeasibilityFeedbackEmission? {
+        guard isCurrent(callback), isAllowedOrigin else { return nil }
+        return emit(.unavailable(failure), "provisionalLoad=failed domain=\(failure.domain) code=\(failure.code)")
+    }
+
+    private func emit(_ status: ClaudeAPIBalanceFeasibilityFeedbackStatus, _ payload: String) -> ClaudeAPIBalanceFeasibilityFeedbackEmission {
+        .init(status: status, eventLine: "CLAUDE_API_BALANCE_FEASIBILITY \(payload)")
+    }
+}
+
+public struct ClaudeAPIBalanceFeasibilityEventWriter: Sendable {
+    public let fileDescriptor: Int32
+
+    public init(fileDescriptor: Int32) { self.fileDescriptor = fileDescriptor }
+
+    public func write(_ line: String) {
+        let bytes = Array((line + "\n").utf8)
+        bytes.withUnsafeBytes { buffer in
+            guard let base = buffer.baseAddress else { return }
+            var offset = 0
+            while offset < buffer.count {
+                let count = Darwin.write(fileDescriptor, base.advanced(by: offset), buffer.count - offset)
+                guard count > 0 else { return }
+                offset += Int(count)
+            }
+        }
     }
 }
