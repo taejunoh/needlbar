@@ -74,6 +74,25 @@ code, retry, polling, origin, credential, session, installation, package,
 release, or external-credential-import change. The historical initial trial is
 retained above as such. The external billing link remains the fallback.
 
+The approved feedback host integration is now recorded at
+`.superpowers/sdd/2026-09-13-claude-api-feasibility-feedback/task-2-report.md`.
+It binds loading, exact-route completion, inspection, and sanitized provisional
+failure output to the current `WKNavigation` and feedback callback while
+preserving the fixed store UUID and unchanged origin policy. A window close
+invalidates pending callbacks; the JavaScript completion retains and rechecks
+its original navigation plus the current exact route. The provisional-failure
+path intentionally does not require a URL. Focused support verification passed
+5 tests. Root's session-backed
+`PATH=/Users/taejunoh/.cargo/bin:$PATH make test` exited 0: the Rust workspace
+had no test failures, vendor `tokscale-core` had 1,379 passed / 0 failed / 1
+ignored, Swift had 485 tests in 19 suites, and the provider-brand-assets,
+widget-extension, package-app, and notarize-app shell contracts passed. This
+is synthetic/compile verification only; it does not establish native
+authentication, session reuse, page contents, network diagnosis, the cause or
+resolution of `NSURLErrorDomain (-1009)`, amount parsing, balance refresh, or
+native visual acceptance. No harness, live URL, login, or store-clear action
+was run for this integration.
+
 **Updated:** 2026-09-13
 **Branch:** `main` at commit `b5b957c`, pushed and verified via `ls-remote`.
 **Current phase:** The historical v0.3.2 release remains publicly released and

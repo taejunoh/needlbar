@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 import WebKit
 import NeedlbarClaudeAPIBalanceFeasibilitySupport
@@ -18,7 +19,12 @@ final class FeasibilityHost: NSObject, NSApplicationDelegate, NSWindowDelegate, 
     var window: NSWindow?
     var webView: WKWebView?
     var exitStatus: Int32 = 0
-    private var navigationGeneration = 0
+    private let eventWriter = ClaudeAPIBalanceFeasibilityEventWriter(fileDescriptor: STDOUT_FILENO)
+    private var feedback = ClaudeAPIBalanceFeasibilityFeedback()
+    private var currentNavigation: WKNavigation?
+    private var currentCallback: ClaudeAPIBalanceFeasibilityCallback?
+    private var nextNavigationID: UInt64 = 0
+    private var statusLabel: NSTextField?
 
     init(mode: ClaudeAPIBalanceFeasibilityMode) {
         self.mode = mode
@@ -38,7 +44,9 @@ final class FeasibilityHost: NSObject, NSApplicationDelegate, NSWindowDelegate, 
     }
 
     func windowWillClose(_ notification: Notification) {
-        navigationGeneration &+= 1
+        feedback.invalidate()
+        currentNavigation = nil
+        currentCallback = nil
         webView?.stopLoading()
         webView?.navigationDelegate = nil
         webView?.uiDelegate = nil
@@ -55,9 +63,16 @@ final class FeasibilityHost: NSObject, NSApplicationDelegate, NSWindowDelegate, 
         view.uiDelegate = self
 
         let inspect = NSButton(title: "Inspect approved billing DOM", target: self, action: #selector(inspectBillingDOM))
-        let stack = NSStackView(views: [view, inspect])
+        let status = NSTextField(labelWithString: ClaudeAPIBalanceFeasibilityFeedbackStatus.loading.displayText)
+        status.textColor = .secondaryLabelColor
+        let controls = NSStackView(views: [inspect, status])
+        controls.orientation = .horizontal
+        controls.alignment = .centerY
+        controls.spacing = 8
+        let stack = NSStackView(views: [view, controls])
         stack.orientation = .vertical
         stack.alignment = .leading
+        statusLabel = status
         view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             view.widthAnchor.constraint(equalTo: stack.widthAnchor),
@@ -87,43 +102,51 @@ final class FeasibilityHost: NSObject, NSApplicationDelegate, NSWindowDelegate, 
         WKWebsiteDataStore.remove(forIdentifier: ClaudeAPIBalanceFeasibilityStore.identifier) { [weak self] error in
             if let error {
                 let error = error as NSError
-                print("CLAUDE_API_BALANCE_FEASIBILITY storeDelete=failed domain=\(error.domain) code=\(error.code)")
+                let failure = ClaudeAPIBalanceFeasibilityFailure(domain: error.domain, code: error.code)
+                self?.eventWriter.write("CLAUDE_API_BALANCE_FEASIBILITY storeDelete=failed domain=\(failure.domain) code=\(failure.code)")
                 self?.finish(1)
             } else {
-                print("CLAUDE_API_BALANCE_FEASIBILITY storeDelete=succeeded")
+                self?.eventWriter.write("CLAUDE_API_BALANCE_FEASIBILITY storeDelete=succeeded")
                 self?.finish(0)
             }
         }
     }
 
+    private func apply(_ emission: ClaudeAPIBalanceFeasibilityFeedbackEmission) {
+        statusLabel?.stringValue = emission.status.displayText
+        eventWriter.write(emission.eventLine)
+    }
+
+    private func isCurrent(_ view: WKWebView, navigation: WKNavigation, callback: ClaudeAPIBalanceFeasibilityCallback) -> Bool {
+        guard webView === view, let currentNavigation else { return false }
+        return currentNavigation === navigation && feedback.isCurrent(callback)
+    }
+
     @objc
     func inspectBillingDOM() {
-        guard let view = webView,
+        guard let view = webView, let navigation = currentNavigation, let callback = currentCallback,
+              isCurrent(view, navigation: navigation, callback: callback),
               let url = view.url,
               ClaudeAPIBalanceFeasibilityNavigationPolicy.isBillingRoute(url)
         else {
-            print("CLAUDE_API_BALANCE_FEASIBILITY domProbe=notOnApprovedBillingRoute")
+            apply(feedback.inspectionRequiresBillingRoute())
             return
         }
 
-        let generation = navigationGeneration
-        view.evaluateJavaScript(probe) { [weak self, weak view] value, error in
-            guard let self,
-                  let view,
-                  self.webView === view,
-                  self.navigationGeneration == generation,
-                  let currentURL = view.url,
-                  ClaudeAPIBalanceFeasibilityNavigationPolicy.isBillingRoute(currentURL),
-                  error == nil,
-                  let result = value as? [String: Any],
+        view.evaluateJavaScript(probe) { [weak self, weak view, navigation] value, error in
+            guard let self, let view,
+                  self.isCurrent(view, navigation: navigation, callback: callback),
+                  let url = view.url, ClaudeAPIBalanceFeasibilityNavigationPolicy.isBillingRoute(url)
+            else { return }
+            guard error == nil, let result = value as? [String: Any],
                   let sections = result["creditBalanceSectionCount"] as? Int,
-                  let labels = result["remainingBalanceLabelCount"] as? Int
+                  let labels = result["remainingBalanceLabelCount"] as? Int,
+                  let emission = self.feedback.inspectionCounts(for: callback, isExactBillingRoute: true, sections: sections, labels: labels)
             else {
-                print("CLAUDE_API_BALANCE_FEASIBILITY domProbe=unavailable")
+                if let emission = self.feedback.inspectionUnavailable(for: callback, isExactBillingRoute: true) { self.apply(emission) }
                 return
             }
-
-            print("CLAUDE_API_BALANCE_FEASIBILITY creditBalanceSectionCount=\(sections) remainingBalanceLabelCount=\(labels)")
+            self.apply(emission)
         }
     }
 
@@ -137,10 +160,10 @@ final class FeasibilityHost: NSObject, NSApplicationDelegate, NSWindowDelegate, 
 
         switch ClaudeAPIBalanceFeasibilityNavigationPolicy.event(for: url) {
         case .allowedPlatformOrigin:
-            print("CLAUDE_API_BALANCE_FEASIBILITY mainFrameOrigin=https://platform.claude.com:443")
+            eventWriter.write("CLAUDE_API_BALANCE_FEASIBILITY mainFrameOrigin=https://platform.claude.com:443")
             decisionHandler(.allow)
         case let .blockedOrigin(origin):
-            print("CLAUDE_API_BALANCE_FEASIBILITY blockedMainFrameOrigin=\(origin)")
+            eventWriter.write("CLAUDE_API_BALANCE_FEASIBILITY blockedMainFrameOrigin=\(origin)")
             decisionHandler(.cancel)
         }
     }
@@ -156,26 +179,41 @@ final class FeasibilityHost: NSObject, NSApplicationDelegate, NSWindowDelegate, 
         case .allowedPlatformOrigin:
             view.load(URLRequest(url: url))
         case let .blockedOrigin(origin):
-            print("CLAUDE_API_BALANCE_FEASIBILITY blockedMainFrameOrigin=\(origin)")
+            eventWriter.write("CLAUDE_API_BALANCE_FEASIBILITY blockedMainFrameOrigin=\(origin)")
         }
         return nil
     }
 
     func webView(_ view: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        navigationGeneration &+= 1
+        guard webView === view, let navigation else { return }
+        nextNavigationID &+= 1
+        let url = view.url
+        let start = feedback.beginNavigation(
+            navigationID: nextNavigationID,
+            approvedOrigin: url.map(ClaudeAPIBalanceFeasibilityNavigationPolicy.allows) ?? false,
+            approvedBillingRoute: url.map(ClaudeAPIBalanceFeasibilityNavigationPolicy.isBillingRoute) ?? false
+        )
+        currentNavigation = navigation
+        currentCallback = start.callback
+        apply(start.emission)
     }
 
     func webView(_ view: WKWebView, didFinish navigation: WKNavigation!) {
-        if let url = view.url,
-           ClaudeAPIBalanceFeasibilityNavigationPolicy.isBillingRoute(url)
-        {
-            print("CLAUDE_API_BALANCE_FEASIBILITY billingRouteLoaded=true")
-        }
+        guard let navigation, let callback = currentCallback,
+              isCurrent(view, navigation: navigation, callback: callback),
+              let url = view.url,
+              ClaudeAPIBalanceFeasibilityNavigationPolicy.isBillingRoute(url),
+              let emission = feedback.routeLoaded(for: callback, isExactBillingRoute: true)
+        else { return }
+        apply(emission)
     }
 
     func webView(_ view: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        let error = error as NSError
-        print("CLAUDE_API_BALANCE_FEASIBILITY provisionalLoad=failed domain=\(error.domain) code=\(error.code)")
+        guard let navigation, let callback = currentCallback,
+              isCurrent(view, navigation: navigation, callback: callback)
+        else { return }
+        let failure = ClaudeAPIBalanceFeasibilityFailure(domain: (error as NSError).domain, code: (error as NSError).code)
+        if let emission = feedback.provisionalFailure(for: callback, isAllowedOrigin: true, failure: failure) { apply(emission) }
     }
 
     func finish(_ status: Int32) {
@@ -202,7 +240,7 @@ let mode: ClaudeAPIBalanceFeasibilityMode
 do {
     mode = try ClaudeAPIBalanceFeasibilityLaunch.parse(arguments: CommandLine.arguments)
 } catch {
-    print("NeedlbarClaudeAPIBalanceFeasibility requires --claude-api-balance-feasibility or --clear-claude-api-balance-feasibility-store")
+    ClaudeAPIBalanceFeasibilityEventWriter(fileDescriptor: STDOUT_FILENO).write("NeedlbarClaudeAPIBalanceFeasibility requires --claude-api-balance-feasibility or --clear-claude-api-balance-feasibility-store")
     exit(64)
 }
 
