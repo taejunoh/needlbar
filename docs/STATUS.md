@@ -68,7 +68,8 @@ the native `-1009` result.
 
 The narrow feedback specification
 `docs/superpowers/specs/2026-09-13-claude-api-feasibility-feedback-design.md`
-is drafted for written user review. It proposes only review-harness loading,
+was approved for implementation before the host integration. It confines the
+work to review-harness loading,
 page-loaded, inspection, and sanitized failure feedback; it adds no production
 code, retry, polling, origin, credential, session, installation, package,
 release, or external-credential-import change. The historical initial trial is
