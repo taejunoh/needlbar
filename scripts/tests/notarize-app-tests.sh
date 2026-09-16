@@ -1144,7 +1144,7 @@ test_v031_release_metadata_contract() {
 
   cp "$host_plist" "$valid_host"
   cp "$widget_plist" "$valid_widget"
-  sed 's#\.github/release-notes/v0\.3\.2\.md#\.github/release-notes/v0.3.1.md#' "$release_workflow" > "$valid_workflow"
+  sed 's#\.github/release-notes/v0\.3\.3\.md#\.github/release-notes/v0.3.1.md#' "$release_workflow" > "$valid_workflow"
   /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.3.1' "$valid_host"
   /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 4' "$valid_host"
   /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.3.1' "$valid_widget"
@@ -1234,15 +1234,9 @@ test_v032_release_metadata_contract() {
   local missing_note="$temp_root/v032-missing-note.md"
   local decoy_output decoy_status
 
-  set +e
-  decoy_output="$(v032_release_metadata_contract_is_valid "$host_plist" "$widget_plist" "$release_workflow" "$release_notes" 2>&1)"
-  decoy_status=$?
-  set -e
-  [[ "$decoy_status" -eq 0 ]] || fail "live v0.3.2 release metadata contract is invalid: $decoy_output"
-
   cp "$host_plist" "$valid_host"
   cp "$widget_plist" "$valid_widget"
-  cp "$release_workflow" "$valid_workflow"
+  sed 's#\.github/release-notes/v0\.3\.3\.md#\.github/release-notes/v0.3.2.md#' "$release_workflow" > "$valid_workflow"
   cp "$release_notes" "$valid_notes"
   /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.3.2' "$valid_host"
   /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 5' "$valid_host"
@@ -1287,6 +1281,114 @@ test_v032_release_metadata_contract() {
 }
 
 test_v032_release_metadata_contract
+
+v033_release_metadata_contract_is_valid() {
+  local host_plist="$1"
+  local widget_plist="$2"
+  local release_workflow="$3"
+  local release_notes="$4"
+
+  assert_plist_value "$host_plist" CFBundleShortVersionString 0.3.3
+  assert_plist_value "$host_plist" CFBundleVersion 6
+  assert_plist_value "$widget_plist" CFBundleShortVersionString 0.3.3
+  assert_plist_value "$widget_plist" CFBundleVersion 6
+
+  grep -Fx '          body_path: .github/release-notes/v0.3.3.md' "$release_workflow" >/dev/null ||
+    fail 'v0.3.3 release workflow body_path must select v0.3.3 notes'
+  [[ -f "$release_notes" ]] || fail 'v0.3.3 release notes file is missing'
+
+  ruby - "$release_notes" <<'RUBY'
+notes = File.read(ARGV.fetch(0))
+[
+  'last-known quota',
+  'actual successful observation time',
+  'typed, allowlisted safe reasons',
+  'View Claude usage',
+  'https://claude.ai/settings/usage',
+  'automatic authentication renewal',
+  'Claude API and OpenAI API billing links',
+  'isolated Claude API balance feasibility tooling',
+  'not production balance integration',
+  'No live authentication or installed-app acceptance was performed for the passive quota fallback change'
+].each do |fact|
+  abort "v0.3.3 release notes are missing #{fact.inspect}" unless notes.include?(fact)
+end
+[
+  'automatic authentication renewal is supported',
+  'automatically renews Claude authentication',
+  'production balance integration is available',
+  'live authentication was performed'
+].each do |claim|
+  abort "v0.3.3 release notes contain forbidden claim #{claim.inspect}" if notes.include?(claim)
+end
+RUBY
+}
+
+test_v033_release_metadata_contract() {
+  local host_plist="$ROOT/Resources/Info.plist"
+  local widget_plist="$ROOT/WidgetExtension/NeedlbarWidgetExtension-Info.plist"
+  local release_workflow="$ROOT/.github/workflows/release.yml"
+  local release_notes="$ROOT/.github/release-notes/v0.3.3.md"
+  local valid_host="$temp_root/v033-valid-host.plist"
+  local valid_widget="$temp_root/v033-valid-widget.plist"
+  local valid_workflow="$temp_root/v033-valid-release.yml"
+  local valid_notes="$temp_root/v033-valid-notes.md"
+  local wrong_host_version="$temp_root/v033-wrong-host-version.plist"
+  local wrong_widget_build="$temp_root/v033-wrong-widget-build.plist"
+  local wrong_notes_path="$temp_root/v033-wrong-notes-path.yml"
+  local missing_note="$temp_root/v033-missing-note.md"
+  local decoy_output decoy_status
+
+  set +e
+  decoy_output="$(v033_release_metadata_contract_is_valid "$host_plist" "$widget_plist" "$release_workflow" "$release_notes" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -eq 0 ]] ||
+    fail "current v0.3.3 release metadata contract is invalid: $decoy_output"
+
+  cp "$host_plist" "$valid_host"
+  cp "$widget_plist" "$valid_widget"
+  cp "$release_workflow" "$valid_workflow"
+  cp "$release_notes" "$valid_notes"
+  v033_release_metadata_contract_is_valid "$valid_host" "$valid_widget" "$valid_workflow" "$valid_notes" ||
+    fail 'valid v0.3.3 release metadata fixture was rejected'
+
+  cp "$valid_host" "$wrong_host_version"
+  /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.3.2' "$wrong_host_version"
+  set +e
+  decoy_output="$(v033_release_metadata_contract_is_valid "$wrong_host_version" "$valid_widget" "$valid_workflow" "$valid_notes" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'wrong v0.3.3 host version decoy was accepted'
+  [[ "$decoy_output" == *'CFBundleShortVersionString must be 0.3.3'* ]] || fail 'wrong v0.3.3 host version decoy failed unexpectedly'
+
+  cp "$valid_widget" "$wrong_widget_build"
+  /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 5' "$wrong_widget_build"
+  set +e
+  decoy_output="$(v033_release_metadata_contract_is_valid "$valid_host" "$wrong_widget_build" "$valid_workflow" "$valid_notes" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'wrong v0.3.3 widget build decoy was accepted'
+  [[ "$decoy_output" == *'CFBundleVersion must be 6'* ]] || fail 'wrong v0.3.3 widget build decoy failed unexpectedly'
+
+  sed 's#\.github/release-notes/v0\.3\.3\.md#\.github/release-notes/v0.3.2.md#' "$valid_workflow" > "$wrong_notes_path"
+  set +e
+  decoy_output="$(v033_release_metadata_contract_is_valid "$valid_host" "$valid_widget" "$wrong_notes_path" "$valid_notes" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'wrong v0.3.3 release-notes body_path decoy was accepted'
+  [[ "$decoy_output" == *'body_path must select v0.3.3 notes'* ]] || fail 'wrong v0.3.3 release-notes body_path decoy failed unexpectedly'
+
+  sed '/typed, allowlisted safe reasons/d' "$valid_notes" > "$missing_note"
+  set +e
+  decoy_output="$(v033_release_metadata_contract_is_valid "$valid_host" "$valid_widget" "$valid_workflow" "$missing_note" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'incomplete v0.3.3 release-notes decoy was accepted'
+  [[ "$decoy_output" == *'typed, allowlisted safe reasons'* ]] || fail 'incomplete v0.3.3 release-notes decoy failed unexpectedly'
+}
+
+test_v033_release_metadata_contract
 
 v031_release_source_contract_is_valid() {
   local readme_file="$1"
@@ -1764,7 +1866,7 @@ release_index = publish_steps.index(release_actions.first)
 assert_contract(download_index < release_index, 'publish artifact download must precede release')
 release_with = mapping(release_actions.first['with'], 'release action settings')
 exact_artifact_paths(release_with['files'], 'release action files')
-assert_contract(release_with['body_path'] == '.github/release-notes/v0.3.2.md', 'release action body_path is wrong')
+assert_contract(release_with['body_path'] == '.github/release-notes/v0.3.3.md', 'release action body_path is wrong')
 assert_contract(release_with['generate_release_notes'] == false, 'release action generate_release_notes must be false')
 
 all_runs = all_steps.map { |_, _, step| step['run'].to_s }
@@ -1808,7 +1910,7 @@ upload_paths = "          path: |\n            dist/Needlbar-macos-arm64.zip\n  
 unless document.sub!(/          path: (?:dist\/Needlbar-macos-arm64\.zip\n|\|\n            dist\/Needlbar-macos-arm64\.zip\n            dist\/Needlbar-macos-arm64\.zip\.sha256\n)/, upload_paths)
   abort 'fixture setup: could not normalize artifact upload path'
 end
-release_fields = "          files: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n          body_path: .github/release-notes/v0.3.2.md\n          generate_release_notes: false\n"
+release_fields = "          files: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n          body_path: .github/release-notes/v0.3.3.md\n          generate_release_notes: false\n"
 unless document.sub!(/          files: dist\/Needlbar-macos-arm64\.zip\n|          files: \|\n            dist\/Needlbar-macos-arm64\.zip\n            dist\/Needlbar-macos-arm64\.zip\.sha256\n          body_path: [^\n]+\n          generate_release_notes: (?:true|false)\n/, release_fields)
   abort 'fixture setup: could not normalize release action settings'
 end
@@ -1889,7 +1991,7 @@ RUBY
   ruby - "$valid_workflow" "$decoy_missing_body_path" <<'RUBY'
 source, destination = ARGV
 document = File.read(source)
-abort 'fixture setup: valid body_path was not found' unless document.sub!("          body_path: .github/release-notes/v0.3.2.md\n", '')
+  abort 'fixture setup: valid body_path was not found' unless document.sub!("          body_path: .github/release-notes/v0.3.3.md\n", '')
 File.write(destination, document)
 RUBY
   set +e
@@ -1948,7 +2050,7 @@ source, destination = ARGV
 document = File.read(source)
 checkout = "      - name: Checkout release notes\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          persist-credentials: false\n\n"
 download = "      - name: Download validated release artifact\n        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093\n        with:\n          name: Needlbar-macos-arm64-notarized\n          path: dist\n\n"
-release = "      - name: Publish notarized GitHub Release\n        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65\n        with:\n          files: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n          body_path: .github/release-notes/v0.3.2.md\n          generate_release_notes: false\n"
+release = "      - name: Publish notarized GitHub Release\n        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65\n        with:\n          files: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n          body_path: .github/release-notes/v0.3.3.md\n          generate_release_notes: false\n"
 abort 'fixture setup: publish step order was not found' unless document.sub!(checkout + download + release, checkout + release + download)
 File.write(destination, document)
 RUBY
