@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-15
 
-**Status:** Product direction approved; written specification awaiting review.
+**Status:** Written specification approved on 2026-09-15.
 
 **Scope:** Reduce repeated user intervention for Claude quota failures.
 
