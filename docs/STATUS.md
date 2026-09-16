@@ -6,7 +6,9 @@ User authorized PR #4 merge and release, including the previously unpushed
 Claude feasibility work. Version 0.3.3/build 6 metadata and release notes are
 prepared and independently reviewed. Local full `make test` exited 0 on the
 release metadata candidate (`/tmp/needlbar-v033-candidate-tests.log`).
-PR CI must pass before merge. Tagless protected Release validation, tagging
+PR #4 CI run `35083289053` passed; PR #4 merged as `a732e0a`.
+Release metadata was rebased onto that merge with an identical tested tree.
+Tagless protected Release validation, tagging
 the exact validated candidate, and public artifact verification remain pending.
 No v0.3.3 tag, public release, installation, or Homebrew update exists yet.
 Main checkout's pre-existing document edits and logs are preserved separately.
