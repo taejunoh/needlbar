@@ -151,9 +151,6 @@ public struct ProviderPopoverView: View {
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .accessibilityLabel("Couldn't open Claude usage. Try again.")
-                    Button("Retry") {
-                        claudeUsageOpenFailed = !onAuthenticationAction(authenticationAction)
-                    }
                 }
             } else if presentation.requiresProviderSignIn {
                 Button("Retry", action: onRetry)

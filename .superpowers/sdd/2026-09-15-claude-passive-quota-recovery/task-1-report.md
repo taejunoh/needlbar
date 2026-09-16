@@ -27,6 +27,12 @@
   authentication guards; its focused run passed.
 - Final full gate: `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` passed; log:
   `/tmp/needlbar-passive-full-gate-final.log`.
+- Review follow-up RED: after adding the Settings row test, `PATH=/Users/taejunoh/.cargo/bin:$PATH
+  swift test --filter SettingsStudioTests` exited 1 with `cannot find
+  'SettingsClaudeUsageRowState' in scope` (`/tmp/needlbar-passive-review-red-settings.log`).
+  After the bridge test-runtime build and implementation, focused Settings (11), Popover (12),
+  and Dashboard (33) suites passed. The post-review full gate passed with exit 0; log:
+  `/tmp/needlbar-passive-review-full-final.log`.
 - `git diff --check` passed before the full gate.
 
 ## CONCERNS

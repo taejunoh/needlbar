@@ -3,6 +3,14 @@ import Foundation
 import NeedlbarCore
 import SwiftUI
 
+struct SettingsClaudeUsageRowState {
+    private(set) var showsFailure = false
+
+    mutating func openUsage(_ opener: () -> Bool) {
+        showsFailure = !opener()
+    }
+}
+
 @MainActor
 public struct SettingsView: View {
     private let configuration: ModuleConfiguration
@@ -14,7 +22,7 @@ public struct SettingsView: View {
     private let notificationService: QuotaNotificationService
     @State private var selectedPage: SettingsStudioPage = .layout
     @State private var selectedTab: SettingsStudioTab = .menuBar
-    @State private var claudeUsageOpenFailed = false
+    @State private var claudeUsageState = SettingsClaudeUsageRowState()
     @ObservedObject private var preview: SettingsPreviewModel
 
     public init(
@@ -148,7 +156,7 @@ public struct SettingsView: View {
                 Text("Quota uses your existing Claude sign-in. Browser authentication remains provider-owned.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if claudeUsageOpenFailed {
+                if claudeUsageState.showsFailure {
                     Text("Couldn't open Claude usage. Try again.")
                         .font(.caption)
                         .foregroundStyle(.orange)
@@ -156,7 +164,7 @@ public struct SettingsView: View {
                 }
             }
             Spacer()
-            Button("View Claude usage") { claudeUsageOpenFailed = !openClaudeUsage() }
+            Button("View Claude usage") { claudeUsageState.openUsage(openClaudeUsage) }
         }
         .frame(minHeight: 54)
     }

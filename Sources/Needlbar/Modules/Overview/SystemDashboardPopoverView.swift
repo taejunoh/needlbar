@@ -386,10 +386,6 @@ public struct SystemDashboardPopoverView: View {
                     .font(.caption2)
                     .foregroundStyle(.orange)
                     .accessibilityLabel(claudeUsageState.failureMessage)
-                Button("Retry", action: performClaudeUsageAction)
-                    .buttonStyle(.borderless)
-                    .font(.caption)
-                    .accessibilityLabel("Retry opening Claude usage")
             }
             if let action = provider.apiBillingAction {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
