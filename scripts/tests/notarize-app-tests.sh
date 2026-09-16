@@ -1540,7 +1540,7 @@ abort 'v0.3.2 README is missing exact checksum download link' unless readme.incl
 abort 'v0.3.2 README is missing install heading' unless readme.include?('To install the public v0.3.2 release:')
 abort 'v0.3.2 README is missing install source wording' unless readme.include?('from the v0.3.2 GitHub Release.')
 abort 'v0.3.2 README retains v0.3.1 public availability claim' if readme.include?('Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.')
-abort 'v0.3.2 README is missing user-confirmed login limitation' unless readme_text.include?('The existing valid-login path was user-confirmed to skip browser login; this does not claim every authentication branch was manually accepted.')
+abort 'README is missing Claude passive recovery limitation' unless readme_text.include?('Needlbar does not launch routine Claude login from this recovery flow.')
 
 public_record = status.match(/^## v0\.3\.2 Public Release Record — \d{4}-\d{2}-\d{2}\n(.*?)(?=^## |\z)/m)
 abort 'v0.3.2 STATUS is missing public release record' unless public_record

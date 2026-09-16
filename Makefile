@@ -97,6 +97,17 @@ run: rust
 settings-native-review: rust
 	swift run NeedlbarSettingsStudioReview --settings-studio-review
 
+.PHONY: claude-api-balance-feasibility claude-api-balance-feasibility-clear claude-api-balance-feasibility-clear-test
+
+claude-api-balance-feasibility:
+	swift run NeedlbarClaudeAPIBalanceFeasibility --claude-api-balance-feasibility
+
+claude-api-balance-feasibility-clear:
+	swift run NeedlbarClaudeAPIBalanceFeasibility --clear-claude-api-balance-feasibility-store
+
+claude-api-balance-feasibility-clear-test:
+	sh ./scripts/tests/claude-api-balance-feasibility-clear-tests.sh
+
 package:
 	./scripts/package-app.sh
 

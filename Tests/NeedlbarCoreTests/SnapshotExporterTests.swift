@@ -120,6 +120,30 @@ func invalidCaptureFailsBeforeWriting(_ capture: ExportCapture) {
     #expect(!json.contains("provider response body /Users/example/private"))
 }
 
+@Test func claudeRecoveryMetadataAndRawFailureDetailsStayOutOfSnapshotExport() async throws {
+    let successfulAt = try date("2026-09-15T10:00:00.000Z")
+    let attemptedAt = try date("2026-09-15T11:00:00.000Z")
+    let store = ProviderSnapshotStore(now: { attemptedAt })
+    let quota = QuotaSnapshot(windows: [
+        try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 42, resetsAt: nil)
+    ])
+    await store.applyQuota(quota, for: .claude, at: successfulAt)
+    await store.markQuotaFailure(
+        for: .claude,
+        status: .error(message: "raw bridge response must not escape", lastSuccessfulAt: nil),
+        claudeFailureReason: .couldNotUpdateQuota,
+        at: attemptedAt
+    )
+
+    let bytes = try SnapshotExporter().encode(await store.captureForExport(exportedAt: attemptedAt))
+    let json = try #require(String(data: bytes, encoding: .utf8))
+
+    #expect(json.contains("\"lastSuccessfulAt\":\"2026-09-15T10:00:00.000Z\""))
+    #expect(!json.contains("raw bridge response must not escape"))
+    #expect(!json.contains("couldNotUpdateQuota"))
+    #expect(!json.contains("Could not update quota"))
+}
+
 private let completeHandWrittenV1GoldenJSONWithFinalNewline = """
 {"exportedAt":"2026-08-29T12:34:56.000Z","providers":[{"provider":"claude","quota":{"data":{"windows":[{"id":"claude.session","resetsAt":"2026-08-29T14:00:00.000Z","usedPercent":42.5}]},"status":{"errorCode":null,"lastSuccessfulAt":"2026-08-29T11:00:00.000Z","state":"fresh"}},"updatedAt":"2026-08-29T11:00:00.000Z","usage":{"data":{"allTime":{"cacheReadTokens":"3","cacheWriteTokens":"4","estimatedCostUSD":"12.34","inputTokens":"10","outputTokens":"20","totalTokens":"37"},"last30Days":{"cacheReadTokens":"0","cacheWriteTokens":"0","estimatedCostUSD":"0","inputTokens":"1","outputTokens":"2","totalTokens":"3"},"last7Days":{"cacheReadTokens":"1","cacheWriteTokens":"0","estimatedCostUSD":"1.2","inputTokens":"3","outputTokens":"4","totalTokens":"8"},"last7DaysDaily":[{"date":"2026-08-28","totalTokens":"0"},{"date":"2026-08-29","totalTokens":"8"}],"today":{"cacheReadTokens":"0","cacheWriteTokens":"1","estimatedCostUSD":"0.01","inputTokens":"2","outputTokens":"3","totalTokens":"6"}},"status":{"errorCode":null,"lastSuccessfulAt":"2026-08-29T10:00:00.000Z","state":"fresh"}}},{"provider":"codex","quota":{"data":{"windows":[{"id":"codex.primary","resetsAt":null,"usedPercent":25}]},"status":{"errorCode":"refreshFailed","lastSuccessfulAt":"2026-08-29T09:00:00.000Z","state":"error"}},"updatedAt":"2026-08-29T10:00:00.000Z","usage":{"data":{"allTime":{"cacheReadTokens":"0","cacheWriteTokens":"0","estimatedCostUSD":"0","inputTokens":"5","outputTokens":"6","totalTokens":"11"},"last30Days":{"cacheReadTokens":"0","cacheWriteTokens":"0","estimatedCostUSD":"0","inputTokens":"1","outputTokens":"2","totalTokens":"3"},"last7Days":{"cacheReadTokens":"0","cacheWriteTokens":"0","estimatedCostUSD":"0","inputTokens":"2","outputTokens":"3","totalTokens":"5"},"last7DaysDaily":[],"today":{"cacheReadTokens":"0","cacheWriteTokens":"0","estimatedCostUSD":"0","inputTokens":"1","outputTokens":"1","totalTokens":"2"}},"status":{"errorCode":null,"lastSuccessfulAt":"2026-08-29T10:00:00.000Z","state":"stale"}}},{"provider":"cursor","quota":{"data":null,"status":{"errorCode":null,"lastSuccessfulAt":null,"state":"unavailable"}},"updatedAt":null,"usage":{"data":null,"status":{"errorCode":null,"lastSuccessfulAt":null,"state":"unavailable"}}}],"schemaVersion":1}
 

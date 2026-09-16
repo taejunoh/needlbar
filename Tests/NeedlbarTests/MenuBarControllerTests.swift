@@ -434,20 +434,29 @@ import Testing
 }
 
 @MainActor
-@Test func authenticationActionsRouteClaudeAndCodexToTheLoginCallbackExactlyOnce() {
+@Test func ClaudeUsageAndCodexLoginActionsRemainSeparated() {
     let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
     var requestedProviders: [ProviderID] = []
+    var openedURLs: [URL] = []
     let controller = makeMenuBarController(
         configuration: configuration,
         snapshotStore: ProviderSnapshotStore(),
         loginCoordinator: testLoginCoordinator(),
-        onProviderLoginRequested: { requestedProviders.append($0) }
+        onProviderLoginRequested: { requestedProviders.append($0) },
+        openClaudeUsage: {
+            _ = ClaudeUsageAction.open { url in
+                openedURLs.append(url)
+                return true
+            }
+            return true
+        }
     )
 
     controller.performAuthenticationAction(for: .claude)
     controller.performAuthenticationAction(for: .codex)
 
-    #expect(requestedProviders == [.claude, .codex])
+    #expect(requestedProviders == [.codex])
+    #expect(openedURLs == [URL(string: "https://claude.ai/settings/usage")!])
 }
 
 @MainActor
@@ -877,7 +886,7 @@ struct MenuBarControllerTests {
         #expect(cursorRequests == 0)
     }
 
-    @Test func presentedProviderAuthenticationActionsDismissBeforeTheirCallbacks() {
+    @Test func claudeUsageActionKeepsThePopoverVisibleAndNeverCallsTheLoginCallback() {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
         let eventLog = FakeEventLog()
         let presenter = FakeMenuPanelPresenter(eventLog: eventLog)
@@ -887,11 +896,15 @@ struct MenuBarControllerTests {
             loginCoordinator: testLoginCoordinator(),
             panelPresenter: presenter,
             onProviderLoginRequested: { provider in eventLog.events.append("login-\(provider.rawValue)") },
-            openCursorSpending: { eventLog.events.append("cursor") }
+            openCursorSpending: { eventLog.events.append("cursor") },
+            openClaudeUsage: {
+                eventLog.events.append("claude-usage")
+                return false
+            }
         )
 
         for (provider, action) in [
-            (ProviderID.claude, ProviderAuthenticationAction.browserLogin(title: "Sign in with Claude")),
+            (ProviderID.claude, ProviderAuthenticationAction.openClaudeUsage(title: "View Claude usage")),
             (.codex, .browserLogin(title: "Sign in with ChatGPT")),
             (.cursor, .openCursorSpending(title: "Open Cursor Spending")),
         ] {
@@ -900,7 +913,7 @@ struct MenuBarControllerTests {
         }
 
         #expect(eventLog.events == [
-            "dismiss", "login-claude",
+            "claude-usage",
             "dismiss", "login-codex",
             "dismiss", "cursor",
         ])
@@ -974,6 +987,7 @@ private func makeMenuBarController(
     onSettingsRequested: @escaping @MainActor () -> Void = {},
     onAnalyticsRequested: @escaping @MainActor () -> Void = {},
     openCursorSpending: @escaping @MainActor () -> Void = {},
+    openClaudeUsage: @escaping @MainActor () -> Bool = { false },
     openAPIBilling: @escaping @MainActor (ProviderAPIBillingAction) -> Bool = { _ in false }
 ) -> MenuBarController {
     let notificationPreferences = QuotaNotificationPreferences(defaults: freshMenuBarDefaults())
@@ -1003,6 +1017,7 @@ private func makeMenuBarController(
         onSettingsRequested: onSettingsRequested,
         onAnalyticsRequested: onAnalyticsRequested,
         openCursorSpending: openCursorSpending,
+        openClaudeUsage: openClaudeUsage,
         openAPIBilling: openAPIBilling
     )
 }

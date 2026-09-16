@@ -8,6 +8,47 @@ import Testing
 @Suite("SettingsStudio", .serialized)
 @MainActor
 struct SettingsStudioTests {
+    @Test func claudeSettingsUsageActionKeepsFeedbackLocalAndClearsAfterSuccess() {
+        var openedURL: URL?
+        var openerCalls = 0
+        var state = SettingsClaudeUsageRowState()
+        let settingsActions = SettingsActions()
+
+        state.openUsage {
+            openerCalls += 1
+            return ClaudeUsageAction.open { url in
+                openedURL = url
+                return openerCalls == 2
+            }
+        }
+        #expect(state.showsFailure)
+        #expect(openedURL?.absoluteString == "https://claude.ai/settings/usage")
+        #expect(settingsActions.loginState(for: .claude) == .idle)
+
+        state.openUsage {
+            openerCalls += 1
+            return ClaudeUsageAction.open { url in
+                openedURL = url
+                return openerCalls == 2
+            }
+        }
+        #expect(!state.showsFailure)
+        #expect(openerCalls == 2)
+        #expect(settingsActions.loginState(for: .claude) == .idle)
+    }
+
+    @Test func claudeUsageActionHasOnlyTheApprovedDestination() {
+        var openedURL: URL?
+
+        let opened = ClaudeUsageAction.open { url in
+            openedURL = url
+            return false
+        }
+
+        #expect(!opened)
+        #expect(openedURL?.absoluteString == "https://claude.ai/settings/usage")
+    }
+
     @Test func apiBillingSettingsToggleDoesNotMakeProviderVisible() throws {
         let name = "SettingsStudio.api.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: name))

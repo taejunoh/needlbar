@@ -36,14 +36,15 @@ import Testing
     #expect(presentation.cacheWriteTokens == "0")
 }
 
-@Test func authenticationRequiredQuotaSelectsTheProviderOwnedAction() {
+@Test func ClaudeQuotaFallbackUsesTheOfficialUsageActionWhileOtherProviderActionsRemainUnchanged() {
     #expect(ProviderPopoverPresentation(snapshot: snapshot(
         provider: .claude,
         usage: nil,
         quota: nil,
         usageStatus: .unavailable,
-        quotaStatus: .requiresAuthentication
-    )).authenticationAction == .browserLogin(title: "Sign in with Claude"))
+        quotaStatus: .requiresAuthentication,
+        claudeQuotaFailureReason: .quotaAccessUnavailable
+    )).authenticationAction == .openClaudeUsage(title: "View Claude usage"))
 
     #expect(ProviderPopoverPresentation(snapshot: snapshot(
         provider: .codex,
@@ -60,6 +61,65 @@ import Testing
         usageStatus: .fresh,
         quotaStatus: .unavailable
     )).authenticationAction == .openCursorSpending(title: "Open Cursor Spending"))
+}
+
+@Test func everySafeClaudeQuotaReasonRendersItsExactAllowlistedText() {
+    let cases: [(ClaudeQuotaFailureReason, String)] = [
+        (.quotaAccessUnavailable, "Quota access unavailable"),
+        (.credentialAccessUnavailable, "Credential access unavailable"),
+        (.connectionUnavailable, "Connection unavailable"),
+        (.temporarilyLimited, "Temporarily limited"),
+        (.couldNotUpdateQuota, "Could not update quota"),
+    ]
+
+    for (reason, expectedText) in cases {
+        let presentation = ProviderPopoverPresentation(snapshot: snapshot(
+            provider: .claude,
+            usage: nil,
+            quota: nil,
+            usageStatus: .unavailable,
+            quotaStatus: .error(message: "untrusted raw detail", lastSuccessfulAt: nil),
+            claudeQuotaFailureReason: reason
+        ))
+        #expect(presentation.quotaFailureReasonText == expectedText)
+    }
+}
+
+@Test func ClaudeQuotaFallbackUsesOnlyLastSuccessfulObservationAndOneSafeReason() throws {
+    let successfulAt = try #require(BridgeDecoder.date("2026-09-15T10:00:00Z"))
+    let attemptedAt = try #require(BridgeDecoder.date("2026-09-15T11:00:00Z"))
+    let presentation = ProviderPopoverPresentation(snapshot: snapshot(
+        provider: .claude,
+        usage: nil,
+        quota: quota(usedPercent: 35),
+        usageStatus: .unavailable,
+        quotaStatus: .error(message: "untrusted raw detail", lastSuccessfulAt: successfulAt),
+        updatedAt: attemptedAt,
+        claudeQuotaFailureReason: .connectionUnavailable,
+        quotaLastSuccessfulAt: successfulAt
+    ))
+
+    #expect(presentation.quotaIsLastKnown)
+    #expect(presentation.quotaFailureReasonText == "Connection unavailable")
+    #expect(presentation.quotaLastCheckedText != nil)
+    #expect(presentation.quotaLastCheckedText != MetricFormatter.reset(attemptedAt))
+    #expect(presentation.authenticationAction == .openClaudeUsage(title: "View Claude usage"))
+}
+
+@Test func initialClaudeQuotaFallbackIsUnavailableWithoutTimeOrReset() {
+    let presentation = ProviderPopoverPresentation(snapshot: snapshot(
+        provider: .claude,
+        usage: nil,
+        quota: nil,
+        usageStatus: .unavailable,
+        quotaStatus: .error(message: "untrusted raw detail", lastSuccessfulAt: nil),
+        claudeQuotaFailureReason: .couldNotUpdateQuota
+    ))
+
+    #expect(presentation.quotaWindows.isEmpty)
+    #expect(presentation.quotaUnavailable)
+    #expect(presentation.quotaLastCheckedText == nil)
+    #expect(presentation.quotaFailureReasonText == "Could not update quota")
 }
 
 @Test func nonAuthenticationQuotaStatesDoNotInventAuthenticationActions() {
@@ -159,7 +219,10 @@ private func snapshot(
     usage: UsageSnapshot?,
     quota: QuotaSnapshot?,
     usageStatus: DataStatus,
-    quotaStatus: DataStatus
+    quotaStatus: DataStatus,
+    updatedAt: Date = .now,
+    claudeQuotaFailureReason: ClaudeQuotaFailureReason? = nil,
+    quotaLastSuccessfulAt: Date? = nil
 ) -> ProviderSnapshot {
     ProviderSnapshot(
         provider: provider,
@@ -167,7 +230,9 @@ private func snapshot(
         quota: quota,
         usageStatus: usageStatus,
         quotaStatus: quotaStatus,
-        updatedAt: .now
+        updatedAt: updatedAt,
+        claudeQuotaFailureReason: claudeQuotaFailureReason,
+        quotaLastSuccessfulAt: quotaLastSuccessfulAt
     )
 }
 

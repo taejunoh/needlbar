@@ -96,6 +96,7 @@ private final class LegacyMenuBarController: NSObject {
     private let onSettingsRequested: @MainActor () -> Void
     private let onAnalyticsRequested: @MainActor () -> Void
     private let openCursorSpending: @MainActor () -> Void
+    private let openClaudeUsage: @MainActor () -> Bool
     private let openAPIBilling: @MainActor (ProviderAPIBillingAction) -> Bool
     private let settingsWindowController: SettingsWindowController
     private let panelPresenter: any MenuPanelPresenting
@@ -126,6 +127,7 @@ private final class LegacyMenuBarController: NSObject {
         onSettingsRequested: @escaping @MainActor () -> Void = {},
         onAnalyticsRequested: @escaping @MainActor () -> Void = {},
         openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() },
+        openClaudeUsage: @escaping @MainActor () -> Bool = { ClaudeUsageAction.open() },
         openAPIBilling: @escaping @MainActor (ProviderAPIBillingAction) -> Bool = { ProviderAPIBillingActionRouter.open($0) }
     ) {
         self.configuration = configuration
@@ -137,6 +139,7 @@ private final class LegacyMenuBarController: NSObject {
         self.onSettingsRequested = onSettingsRequested
         self.onAnalyticsRequested = onAnalyticsRequested
         self.openCursorSpending = openCursorSpending
+        self.openClaudeUsage = openClaudeUsage
         self.openAPIBilling = openAPIBilling
         self.panelPresenter = panelPresenter
         self.globalMouseDownMonitor = globalMouseDownMonitor
@@ -145,7 +148,8 @@ private final class LegacyMenuBarController: NSObject {
             actions: actions,
             notificationPreferences: notificationPreferences,
             notificationService: notificationService,
-            openCursorSpending: openCursorSpending
+            openCursorSpending: openCursorSpending,
+            openClaudeUsage: openClaudeUsage
         )
         super.init()
         panelPresenter.onDismiss = { [weak self] in
@@ -331,7 +335,7 @@ private final class LegacyMenuBarController: NSObject {
                 snapshot: snapshot,
                 onRetry: { [weak self] in self?.performRetryAction() },
                 onAuthenticationAction: { [weak self] action in
-                    self?.performPresentedAuthenticationAction(action, for: provider)
+                    self?.performPresentedAuthenticationAction(action, for: provider) ?? false
                 }
             ))
         }
@@ -399,7 +403,7 @@ private final class LegacyMenuBarController: NSObject {
         let action: ProviderAuthenticationAction
         switch provider {
         case .claude:
-            action = .browserLogin(title: "Sign in with Claude")
+            action = .openClaudeUsage(title: "View Claude usage")
         case .codex:
             action = .browserLogin(title: "Sign in with ChatGPT")
         case .cursor:
@@ -408,17 +412,25 @@ private final class LegacyMenuBarController: NSObject {
         performPresentedAuthenticationAction(action, for: provider)
     }
 
-    func performPresentedAuthenticationAction(_ action: ProviderAuthenticationAction, for provider: ProviderID) {
+    @discardableResult
+    func performPresentedAuthenticationAction(_ action: ProviderAuthenticationAction, for provider: ProviderID) -> Bool {
+        if case .openClaudeUsage = action {
+            return performAuthenticationAction(action, for: provider)
+        }
         panelPresenter.dismiss()
-        performAuthenticationAction(action, for: provider)
+        return performAuthenticationAction(action, for: provider)
     }
 
-    private func performAuthenticationAction(_ action: ProviderAuthenticationAction, for provider: ProviderID) {
+    private func performAuthenticationAction(_ action: ProviderAuthenticationAction, for provider: ProviderID) -> Bool {
         switch action {
         case .browserLogin:
             onProviderLoginRequested(provider)
+            return true
         case .openCursorSpending:
-            _ = openCursorSpending()
+            openCursorSpending()
+            return true
+        case .openClaudeUsage:
+            return openClaudeUsage()
         }
     }
 
@@ -443,6 +455,7 @@ public final class MenuBarController: NSObject {
     private let onSettingsRequested: @MainActor () -> Void
     private let onAnalyticsRequested: @MainActor () -> Void
     private let openCursorSpending: @MainActor () -> Void
+    private let openClaudeUsage: @MainActor () -> Bool
     private let openAPIBilling: @MainActor (ProviderAPIBillingAction) -> Bool
     private let settingsWindowController: SettingsWindowController
     private var statusItem: (any StatusItemHandle)?
@@ -460,6 +473,7 @@ public final class MenuBarController: NSObject {
     private var displayedDashboardLayout: SystemDashboardPopoverLayout?
     private var displayedDashboardAnchor: StatusItemPresentationAnchor?
     private var displayedBillingState = DashboardAPIBillingLinkState()
+    private var displayedClaudeUsageState = DashboardClaudeUsageLinkState()
 
     var settingsPreviewResult: MenuBarDashboardRenderResult { settingsWindowController.previewResult }
 
@@ -480,6 +494,7 @@ public final class MenuBarController: NSObject {
         onSettingsRequested: @escaping @MainActor () -> Void = {},
         onAnalyticsRequested: @escaping @MainActor () -> Void = {},
         openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() },
+        openClaudeUsage: @escaping @MainActor () -> Bool = { ClaudeUsageAction.open() },
         openAPIBilling: @escaping @MainActor (ProviderAPIBillingAction) -> Bool = { ProviderAPIBillingActionRouter.open($0) }
     ) {
         self.configuration = configuration
@@ -495,13 +510,15 @@ public final class MenuBarController: NSObject {
         self.onSettingsRequested = onSettingsRequested
         self.onAnalyticsRequested = onAnalyticsRequested
         self.openCursorSpending = openCursorSpending
+        self.openClaudeUsage = openClaudeUsage
         self.openAPIBilling = openAPIBilling
         self.settingsWindowController = SettingsWindowController(
             configuration: configuration,
             actions: actions,
             notificationPreferences: notificationPreferences,
             notificationService: notificationService,
-            openCursorSpending: openCursorSpending
+            openCursorSpending: openCursorSpending,
+            openClaudeUsage: openClaudeUsage
         )
         self.cachedCombinedSnapshot = CombinedUsageSnapshot(
             system: nil, providers: [], capturedAt: .distantPast, systemAvailability: [:]
@@ -530,6 +547,7 @@ public final class MenuBarController: NSObject {
         onSettingsRequested: @escaping @MainActor () -> Void = {},
         onAnalyticsRequested: @escaping @MainActor () -> Void = {},
         openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() },
+        openClaudeUsage: @escaping @MainActor () -> Bool = { ClaudeUsageAction.open() },
         openAPIBilling: @escaping @MainActor (ProviderAPIBillingAction) -> Bool = { ProviderAPIBillingActionRouter.open($0) }
     ) {
         self.init(
@@ -552,6 +570,7 @@ public final class MenuBarController: NSObject {
             onSettingsRequested: onSettingsRequested,
             onAnalyticsRequested: onAnalyticsRequested,
             openCursorSpending: openCursorSpending,
+            openClaudeUsage: openClaudeUsage,
             openAPIBilling: openAPIBilling
         )
     }
@@ -703,8 +722,11 @@ public final class MenuBarController: NSObject {
             dashboardModel = model
         }
         displayedBillingState = .init()
+        displayedClaudeUsageState = .init()
         let naturalHeight = SystemDashboardPopoverMeasurement.naturalHeight(
-            for: model, billingState: displayedBillingState
+            for: model,
+            billingState: displayedBillingState,
+            claudeUsageState: displayedClaudeUsageState
         )
         let panelHeight = SystemDashboardPanelSizing.height(
             naturalContentHeight: naturalHeight,
@@ -724,6 +746,12 @@ public final class MenuBarController: NSObject {
             },
             onAPIBillingStateChanged: { [weak self] state in
                 self?.displayedAPIBillingStateDidChange(state)
+            },
+            onClaudeUsageAction: { [weak self] in
+                self?.openClaudeUsage() ?? false
+            },
+            onClaudeUsageStateChanged: { [weak self] state in
+                self?.displayedClaudeUsageStateDidChange(state)
             }
         ))
         cancelGlobalMouseDownMonitoring()
@@ -759,6 +787,7 @@ public final class MenuBarController: NSObject {
         displayedDashboardLayout = nil
         displayedDashboardAnchor = nil
         displayedBillingState = .init()
+        displayedClaudeUsageState = .init()
         if let temporary = deepLinkStatusItem {
             statusItemFactory.removeStatusItem(temporary)
             deepLinkStatusItem = nil
@@ -782,7 +811,9 @@ public final class MenuBarController: NSObject {
         else { return }
 
         let naturalHeight = SystemDashboardPopoverMeasurement.naturalHeight(
-            for: model, billingState: displayedBillingState
+            for: model,
+            billingState: displayedBillingState,
+            claudeUsageState: displayedClaudeUsageState
         )
         let proposedHeight = SystemDashboardPanelSizing.height(
             naturalContentHeight: naturalHeight,
@@ -811,6 +842,11 @@ public final class MenuBarController: NSObject {
         resizeDisplayedDashboardIfNeeded()
     }
 
+    func displayedClaudeUsageStateDidChange(_ state: DashboardClaudeUsageLinkState) {
+        displayedClaudeUsageState = state
+        resizeDisplayedDashboardIfNeeded()
+    }
+
     func performSettingsAction() {
         panelPresenter.dismiss()
         showSettings()
@@ -825,7 +861,7 @@ public final class MenuBarController: NSObject {
         let action: ProviderAuthenticationAction
         switch provider {
         case .claude:
-            action = .browserLogin(title: "Sign in with Claude")
+            action = .openClaudeUsage(title: "View Claude usage")
         case .codex:
             action = .browserLogin(title: "Sign in with ChatGPT")
         case .cursor:
@@ -834,13 +870,21 @@ public final class MenuBarController: NSObject {
         performPresentedAuthenticationAction(action, for: provider)
     }
 
-    func performPresentedAuthenticationAction(_ action: ProviderAuthenticationAction, for provider: ProviderID) {
+    @discardableResult
+    func performPresentedAuthenticationAction(_ action: ProviderAuthenticationAction, for provider: ProviderID) -> Bool {
+        if case .openClaudeUsage = action {
+            return openClaudeUsage()
+        }
         panelPresenter.dismiss()
         switch action {
         case .browserLogin:
             onProviderLoginRequested(provider)
+            return true
         case .openCursorSpending:
             _ = openCursorSpending()
+            return true
+        case .openClaudeUsage:
+            return openClaudeUsage()
         }
     }
 

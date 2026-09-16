@@ -1,5 +1,132 @@
 # Needlbar Development Status
 
+## Claude passive quota recovery — 2026-09-15
+
+The user approved `docs/superpowers/specs/2026-09-15-claude-passive-quota-recovery-design.md`.
+Implementation is in `.worktrees/claude-passive-quota-recovery` on
+`codex/claude-passive-quota-recovery`, following the same-named implementation
+plan. The clean baseline `make test` passed before production edits.
+
+Scope: remove routine Claude re-login CTAs, retain explicitly last-known quota
+and the actual successful observation timestamp, present only typed safe reasons,
+and offer an explicit fixed official usage-page link. Existing refresh cadence,
+credential ownership, Codex/Cursor, and API billing remain unchanged. This does
+not add authentication renewal or resolve the unbounded Keychain-call boundary.
+Implementation is complete through `c764206`, with task and whole-branch review
+findings resolved and scoped re-reviews passing. The final exact-commit
+`make test` exited 0: 497 Swift tests plus Rust/vendor and packaging contracts
+passed. `git diff --check` passed. Verification log:
+`/tmp/needlbar-passive-final-c764206.log`.
+
+Claude surfaces now show last-known quota, actual successful check time, and a
+safe reason instead of routine re-login controls. Fable preserves last-known
+reset context without repeating the parent failure. README/provider docs and
+regression coverage are updated. Next: user chooses local merge, push/PR, or
+keeping this branch. No installed app, live authentication, credential, push,
+merge, or release has changed in this follow-up; live runtime UI was not tested.
+
+## Active design follow-up — Claude API balance — 2026-09-13
+
+The user requested in-popover API prepaid balance and approved keeping a
+Claude API login session in a Needlbar-owned persistent store, cleared on
+disconnect. The written specification is
+`docs/superpowers/specs/2026-09-13-claude-api-balance-design.md` and was approved
+by the user on 2026-09-13. The initial native feasibility plan is
+`docs/superpowers/plans/2026-09-13-claude-api-balance.md`; execution is in
+`.worktrees/claude-api-balance` on `codex/claude-api-balance`.
+
+Task 1's isolated launch/origin boundary is implemented at `a5d8989`, with
+review approved. Task 2's isolated native review host is committed at
+`b0d7859` and reviewed with no Critical or Important findings.
+The native clear path now constructs and discards the fixed feasibility
+`WKWebsiteDataStore` before removing that same identifier. Its opt-in bounded
+regression reached the removal completion and emitted only
+`storeDelete=succeeded`; it does not construct the default store, enumerate
+identifiers, run a provider URL, or access credentials. Full `make test`
+passed: vendor `tokscale_core` 1,379 passed / 0 failed / 1 ignored, Swift 482
+tests in 19 suites, and the public-bridge, provider-brand, widget-extension,
+package-app, and notarization contracts.
+
+The retained WebKit diagnosis explains the narrow ordering correction: direct
+static persistent-store calls previously crashed before their callbacks on
+this macOS/Xcode host, while constructing the same dedicated store first made
+the isolated callbacks complete. That differential excludes the tested
+bundle/main-thread/lifecycle alternatives but does not assert an installed
+WebKit private root cause. Detailed evidence remains in
+`.superpowers/sdd/2026-09-13-claude-api-balance/task-2-report.md` and
+`.superpowers/sdd/2026-09-13-claude-api-balance/webkit-isolation-report.md`.
+
+The initial Task 3 trial was stopped at its required navigation-origin gate. After the user
+gracefully closed the visible harness window, its sanitized output recorded
+`mainFrameOrigin=https://platform.claude.com:443`,
+`billingRouteLoaded=true`, and four occurrences of
+`blockedMainFrameOrigin=https://accounts.google.com`. The Google origin was
+not an approved/reviewed main-frame origin, so the harness cancelled it as
+designed. This is not a finding that provider or embedded authentication is
+unsupported, nor evidence that a Google credential flow completed. The loaded
+route alone also does not establish billing contents. No approved DOM-count
+output, visible selected-organization identification, session-reuse result,
+or balance-refresh/extraction feasibility was obtained. The separately run
+clear command exited 0 and emitted `storeDelete=succeeded`: only the
+harness-owned fixed store was removed. Existing app state and credentials were
+not accessed or changed. The existing external billing link remains the
+fallback.
+
+No production implementation, installation, package, release, or external
+credential import changed in this follow-up. The initial scope remains
+Claude-only, explicit connect/refresh, isolated WebKit storage, and no
+background polling.
+
+The later user-directed, email-only attempt reused that same fixed isolated
+store and reached the exact billing route. Seven user-triggered probes each
+reported `creditBalanceSectionCount=1` and `remainingBalanceLabelCount=1`; the
+user could recognize their own account, but the selected organization was not
+confirmed. Those counts establish only the reviewed page shape, not native
+authentication, organization qualification, session persistence, amount
+extraction, or refresh feasibility. The user-authorized reuse attempt then
+allowed the platform origin but failed its provisional navigation with
+`NSURLErrorDomain` code `-1009`, leaving a blank window with no billing-route or
+DOM-count evidence. Session reuse is therefore inconclusive and the harness
+store was not cleared. A later unauthenticated public `HEAD` receiving `200`
+establishes only public shell-route reachability; it does not explain or solve
+the native `-1009` result.
+
+The narrow feedback specification
+`docs/superpowers/specs/2026-09-13-claude-api-feasibility-feedback-design.md`
+was approved for implementation before the host integration. It confines the
+work to review-harness loading,
+page-loaded, inspection, and sanitized failure feedback; it adds no production
+code, retry, polling, origin, credential, session, installation, package,
+release, or external-credential-import change. The historical initial trial is
+retained above as such. The external billing link remains the fallback.
+
+The approved feedback host integration is recorded in commits `7e098b2`
+and `e610708`, with documentation corrections through `370f837`.
+It binds loading, exact-route completion, inspection, and sanitized provisional
+failure output to the current `WKNavigation` and feedback callback while
+preserving the fixed store UUID and unchanged origin policy. A window close
+invalidates pending callbacks; the JavaScript completion retains and rechecks
+its original navigation plus the current exact route. The provisional-failure
+path intentionally does not require a URL. Focused support verification passed
+5 tests. Root's session-backed
+`PATH=/Users/taejunoh/.cargo/bin:$PATH make test` exited 0: the Rust workspace
+had no test failures, vendor `tokscale-core` had 1,379 passed / 0 failed / 1
+ignored, Swift had 485 tests in 19 suites, and the provider-brand-assets,
+widget-extension, package-app, and notarize-app shell contracts passed. This
+is synthetic/compile verification only; it does not establish native
+authentication, session reuse, page contents, network diagnosis, the cause or
+resolution of `NSURLErrorDomain (-1009)`, amount parsing, balance refresh, or
+native visual acceptance. No harness, live URL, login, or store-clear action
+was run for this integration.
+
+On 2026-09-14, the user-approved local integration fast-forwarded `main`
+through `e729338`, including the README explanation of the billing link and
+review-only harness. A fresh merged-tree `make test` exited 0 (Swift 485 tests
+in 19 suites; vendor 1,379 passed, 1 ignored; Rust and shell contracts passed).
+No push, installation, release, live login, or store clearing was performed.
+The feature worktree is retained because the earlier native-feasibility
+milestone still holds local review evidence and unresolved session-reuse work.
+
 **Updated:** 2026-09-13
 **Branch:** `main` at commit `b5b957c`, pushed and verified via `ls-remote`.
 **Current phase:** The historical v0.3.2 release remains publicly released and

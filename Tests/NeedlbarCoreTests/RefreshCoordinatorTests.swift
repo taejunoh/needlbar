@@ -72,7 +72,7 @@ struct RefreshCoordinatorTests {
     await coordinator.stop()
 }
 
-@Test func cursorProviderUnavailableQuotaIsUnavailableWhileClaudeRemainsAnError() async throws {
+    @Test func cursorProviderUnavailableQuotaIsUnavailableWhileClaudeRemainsAnError() async throws {
     let now = try #require(BridgeDecoder.date("2026-08-26T12:00:00Z"))
     let quota = QuotaRefreshSpy(result: .init(
         snapshots: [:],
@@ -95,8 +95,84 @@ struct RefreshCoordinatorTests {
 
     #expect(await store.snapshot(for: .cursor).quotaStatus == .unavailable)
     #expect(await store.snapshot(for: .claude).quotaStatus == .error(message: "Claude unavailable", lastSuccessfulAt: nil))
-    await coordinator.stop()
-}
+        await coordinator.stop()
+    }
+
+    @Test func returnedClaudeQuotaErrorsMapOnlyAllowlistedCodesToSafeReasons() async throws {
+        let cases: [(String, ClaudeQuotaFailureReason)] = [
+            ("requiresAuthentication", .quotaAccessUnavailable),
+            ("authenticationExpired", .quotaAccessUnavailable),
+            ("permissionDenied", .credentialAccessUnavailable),
+            ("networkUnavailable", .connectionUnavailable),
+            ("rateLimited", .temporarilyLimited),
+            ("notInstalled", .couldNotUpdateQuota),
+            ("providerUnavailable", .couldNotUpdateQuota),
+            ("schemaChanged", .couldNotUpdateQuota),
+            ("internalError", .couldNotUpdateQuota),
+            ("", .couldNotUpdateQuota),
+            ("unknown-code", .couldNotUpdateQuota),
+        ]
+
+        for (code, expectedReason) in cases {
+            let now = try #require(BridgeDecoder.date("2026-09-15T12:00:00Z"))
+            let store = ProviderSnapshotStore()
+            let quota = QuotaRefreshSpy(result: .init(
+                snapshots: [:],
+                errors: [.claude: .init(provider: "claude", code: code, message: "untrusted raw detail", action: nil)]
+            ))
+            let coordinator = RefreshCoordinator(
+                usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+                quotaRepository: quota,
+                store: store,
+                clock: ManualClock(now: now)
+            )
+
+            await coordinator.popoverOpened()
+            await quota.waitUntilCallCount(1)
+            await eventuallyAsync { await store.snapshot(for: .claude).claudeQuotaFailureReason == expectedReason }
+            #expect(await store.snapshot(for: .claude).claudeQuotaFailureReason == expectedReason)
+            await coordinator.stop()
+        }
+    }
+
+    @Test func bridgeFailuresAndUntypedQuotaFailuresUseSafeClaudeReasons() async throws {
+        let quota = BlockingIntentQuotaRepository()
+        let store = ProviderSnapshotStore()
+        let coordinator = makeRunningCoordinator(quota: quota, store: store)
+        await coordinator.start()
+        await quota.waitUntilCallCount(1)
+        try quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+
+        let cases: [(String, ClaudeQuotaFailureReason)] = [
+            ("requiresAuthentication", .quotaAccessUnavailable),
+            ("authenticationExpired", .quotaAccessUnavailable),
+            ("permissionDenied", .credentialAccessUnavailable),
+            ("networkUnavailable", .connectionUnavailable),
+            ("rateLimited", .temporarilyLimited),
+            ("notInstalled", .couldNotUpdateQuota),
+            ("providerUnavailable", .couldNotUpdateQuota),
+            ("schemaChanged", .couldNotUpdateQuota),
+            ("internalError", .couldNotUpdateQuota),
+            ("", .couldNotUpdateQuota),
+            ("unknown-code", .couldNotUpdateQuota),
+        ]
+        for (index, entry) in cases.enumerated() {
+            let bridgeRefresh = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+            await quota.waitUntilCallCount(index + 2)
+            try quota.releaseNext(throwing: BridgeFailure.bridgeFailed([
+                .init(provider: "claude", code: entry.0, message: "untrusted raw detail", action: nil)
+            ]))
+            #expect(!(await bridgeRefresh.value))
+            await eventuallyAsync { await store.snapshot(for: .claude).claudeQuotaFailureReason == entry.1 }
+        }
+
+        let untypedRefresh = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
+        await quota.waitUntilCallCount(cases.count + 2)
+        try quota.releaseNext(throwing: BlockingQuotaRepositoryError.missingOutcome)
+        #expect(!(await untypedRefresh.value))
+        await eventuallyAsync { await store.snapshot(for: .claude).claudeQuotaFailureReason == .couldNotUpdateQuota }
+        await coordinator.stop()
+    }
 
 @Test func manualRefreshQueuesOneNormalUsageFollowUpDuringAnInflightCycle() async throws {
     let now = try #require(BridgeDecoder.date("2026-08-14T10:00:00Z"))

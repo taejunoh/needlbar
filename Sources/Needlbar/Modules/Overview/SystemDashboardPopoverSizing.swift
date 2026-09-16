@@ -50,10 +50,15 @@ final class SystemDashboardPopoverLayout: ObservableObject {
 enum SystemDashboardPopoverMeasurement {
     static func naturalHeight(
         for model: SystemDashboardModel,
-        billingState: DashboardAPIBillingLinkState = .init()
+        billingState: DashboardAPIBillingLinkState = .init(),
+        claudeUsageState: DashboardClaudeUsageLinkState = .init()
     ) -> CGFloat? {
         let controller = NSHostingController(
-            rootView: SystemDashboardPopoverView(measuring: model, billingState: billingState)
+            rootView: SystemDashboardPopoverView(
+                measuring: model,
+                billingState: billingState,
+                claudeUsageState: claudeUsageState
+            )
         )
         controller.view.layoutSubtreeIfNeeded()
         let measured = controller.view.fittingSize.height

@@ -14,7 +14,8 @@ public final class SettingsWindowController: NSWindowController {
         actions: SettingsActions,
         notificationPreferences: QuotaNotificationPreferences,
         notificationService: QuotaNotificationService,
-        openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() }
+        openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() },
+        openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() }
     ) {
         let preview = SettingsPreviewModel()
         self.preview = preview
@@ -31,6 +32,7 @@ public final class SettingsWindowController: NSWindowController {
             notificationPreferences: notificationPreferences,
             notificationService: notificationService,
             openCursorSpending: openCursorSpending,
+            openClaudeUsage: openClaudeUsage,
             preview: preview
         ))
         // AppKit owns the screen-safe limits; intrinsic SwiftUI sizing must not
@@ -57,7 +59,8 @@ public final class SettingsWindowController: NSWindowController {
         snapshotExportController: SnapshotExportController,
         notificationPreferences: QuotaNotificationPreferences,
         notificationService: QuotaNotificationService,
-        openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() }
+        openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() },
+        openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() }
     ) {
         self.init(
             configuration: configuration,
@@ -67,7 +70,8 @@ public final class SettingsWindowController: NSWindowController {
             ),
             notificationPreferences: notificationPreferences,
             notificationService: notificationService,
-            openCursorSpending: openCursorSpending
+            openCursorSpending: openCursorSpending,
+            openClaudeUsage: openClaudeUsage
         )
     }
 

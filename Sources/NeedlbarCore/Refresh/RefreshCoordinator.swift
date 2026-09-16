@@ -484,7 +484,12 @@ public actor RefreshCoordinator {
             }
             for (provider, error) in refresh.errors {
                 guard generation == runGeneration, applyResult else { return }
-                await store.markQuotaFailure(for: provider, status: quotaStatus(for: error), at: refreshedAt)
+                await store.markQuotaFailure(
+                    for: provider,
+                    status: quotaStatus(for: error),
+                    claudeFailureReason: provider == .claude ? claudeQuotaFailureReason(for: error) : nil,
+                    at: refreshedAt
+                )
             }
             if case .userInitiated(let provider) = intent {
                 verificationSucceeded = refresh.snapshots[provider] != nil
@@ -509,7 +514,12 @@ public actor RefreshCoordinator {
                 if !matchingErrors.isEmpty {
                     for error in matchingErrors {
                         guard let provider = error.providerID, generation == runGeneration, applyResult else { return }
-                        await store.markQuotaFailure(for: provider, status: quotaStatus(for: error), at: clock.now)
+                        await store.markQuotaFailure(
+                            for: provider,
+                            status: quotaStatus(for: error),
+                            claudeFailureReason: provider == .claude ? claudeQuotaFailureReason(for: error) : nil,
+                            at: clock.now
+                        )
                     }
                     break
                 }
@@ -523,7 +533,12 @@ public actor RefreshCoordinator {
             }
             for provider in providers {
                 guard generation == runGeneration, applyResult else { return }
-                await store.markQuotaFailure(for: provider, status: status, at: clock.now)
+                await store.markQuotaFailure(
+                    for: provider,
+                    status: status,
+                    claudeFailureReason: provider == .claude ? .couldNotUpdateQuota : nil,
+                    at: clock.now
+                )
             }
         }
     }
@@ -668,5 +683,15 @@ public actor RefreshCoordinator {
             return .unavailable
         }
         return status(for: error)
+    }
+
+    private func claudeQuotaFailureReason(for error: BridgeError) -> ClaudeQuotaFailureReason {
+        switch error.code {
+        case "requiresAuthentication", "authenticationExpired": .quotaAccessUnavailable
+        case "permissionDenied": .credentialAccessUnavailable
+        case "networkUnavailable": .connectionUnavailable
+        case "rateLimited": .temporarilyLimited
+        default: .couldNotUpdateQuota
+        }
     }
 }
