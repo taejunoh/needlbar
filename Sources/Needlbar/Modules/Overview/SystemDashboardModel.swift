@@ -78,6 +78,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let remaining: String
         public let resetCaption: String
         public let freshness: PresentationFreshness
+        public let isLastKnown: Bool
     }
 
     public struct CPU: Equatable, Sendable {
@@ -136,6 +137,10 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let action: ProviderAuthenticationAction?
         public let apiBillingAction: ProviderAPIBillingAction?
         public let fable: FableQuotaDetail?
+        public let quotaIsLastKnown: Bool
+        public let quotaUnavailable: Bool
+        public let quotaFailureReasonText: String?
+        public let quotaLastCheckedText: String?
     }
 
     public let moduleIDs: [MonitorModuleID]
@@ -215,7 +220,11 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                 quotaStatus: PresentationFreshness(providerSnapshot?.quotaStatus ?? .unavailable),
                 action: popover.authenticationAction,
                 apiBillingAction: preference.apiBillingLinkVisible ? ProviderAPIBillingAction(provider: provider) : nil,
-                fable: Self.fableDetail(provider: provider, metric: preference.metric, snapshot: providerSnapshot)
+                fable: Self.fableDetail(provider: provider, metric: preference.metric, snapshot: providerSnapshot),
+                quotaIsLastKnown: popover.quotaIsLastKnown,
+                quotaUnavailable: popover.quotaUnavailable,
+                quotaFailureReasonText: popover.quotaFailureReasonText,
+                quotaLastCheckedText: popover.quotaLastCheckedText
             )
         }
 
@@ -268,14 +277,17 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
             return FableQuotaDetail(
                 remaining: "—",
                 resetCaption: String(localized: "Reset unavailable"),
-                freshness: .unavailable
+                freshness: .unavailable,
+                isLastKnown: false
             )
         }
         return FableQuotaDetail(
             remaining: MetricFormatter.quotaRemaining(window.remainingPercent),
             resetCaption: MetricFormatter.reset(window.resetsAt).map { String(localized: "Resets \($0)") }
                 ?? String(localized: "Reset unavailable"),
-            freshness: PresentationFreshness(snapshot?.quotaStatus ?? .unavailable)
+            freshness: PresentationFreshness(snapshot?.quotaStatus ?? .unavailable),
+            isLastKnown: snapshot?.provider == .claude
+                && (snapshot?.claudeQuotaFailureReason != nil || snapshot?.quotaStatus != .fresh)
         )
     }
 

@@ -55,19 +55,17 @@ The Cask has no `zap` stanza; uninstalling it does not remove Needlbar settings 
 
 Needlbar presents locally aggregated token usage and estimated cost together with provider quota windows and reset times. Overview combines today’s tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status, and Settings. Provider views show today’s usage/cost, input/output/cache token detail, quota/reset information, freshness, and safe recovery states. Usage and quota are independent refresh streams; a failure in one does not replace a previously valid value with zero.
 
-Settings is a native Module Studio for module and provider visibility, ordering, display metrics, and existing actions. Claude and Codex expose provider-owned browser sign-in actions (`claude auth login --claudeai` and `codex login`); Needlbar does not implement a second OAuth flow. Cursor has no Needlbar credential or connection workflow.
+Settings is a native Module Studio for module and provider visibility, ordering, display metrics, and existing actions. Claude exposes an explicit **View Claude usage** link to its provider-owned usage page; Codex retains its provider-owned browser sign-in action (`codex login`). Needlbar does not implement a second OAuth flow. Cursor has no Needlbar credential or connection workflow.
 
-### Claude connection preflight (v0.3.2)
+### Claude passive quota recovery
 
-The v0.3.2 release reduces redundant Claude browser login. On an explicit
-connection click, Needlbar first checks current Claude quota without opening
-Keychain UI; a fresh quota connects directly, while missing or expired
-authentication uses the provider-owned `claude auth login --claudeai` flow. A
-permission-only Keychain failure can use explicit interactive verification
-without rerunning login, while other errors remain visible as errors.
-Background refresh stays non-interactive and Needlbar does not store provider
-credentials. The existing valid-login path was user-confirmed to skip browser
-login; this does not claim every authentication branch was manually accepted.
+Claude quota failures retain a prior successful value as **Last known**, with
+its actual local **Last checked** time and one allowlisted safe reason. An
+initial failure shows **Quota unavailable** without an invented value or reset.
+**View Claude usage** opens only `https://claude.ai/settings/usage` after an
+explicit click; Needlbar does not launch routine Claude login from this
+recovery flow. Background refresh stays non-interactive and Needlbar does not
+store provider credentials.
 
 ### Claude API billing link and feasibility harness
 
@@ -160,8 +158,8 @@ The Layout page shows a passive, read-only preview of the current two-line
 menu-bar composition. It derives from the current snapshot and configuration;
 it does not refresh providers, collect system metrics, make network requests,
 start a timer, or persist separate preview state. Network retains the existing
-local/public IP controls; Claude and Codex retain their provider-owned sign-in
-actions; Cursor retains its Spending action; Data & Privacy retains snapshot
+local/public IP controls; Claude retains its provider-owned usage link, Codex
+retains its provider-owned sign-in action; Cursor retains its Spending action; Data & Privacy retains snapshot
 export; and Notifications retains the existing global quota-alert preference.
 
 *The existing Settings image files predate Module Studio's sidebar layout and
@@ -239,7 +237,7 @@ The fixed provider set is Claude Code, Codex, and Cursor.
 
 | Provider | Local usage source | Quota and recovery boundary |
 | --- | --- | --- |
-| Claude Code | `~/.claude/projects` and `~/.claude/transcripts` | Quota is available after provider-native sign-in and the approved explicit Keychain verification path. |
+| Claude Code | `~/.claude/projects` and `~/.claude/transcripts` | Quota uses existing provider authentication. Failed refreshes retain a last-known result when available; **View Claude usage** opens the provider-owned usage page only on explicit click. |
 | Codex | `~/.codex/sessions` and available archived sessions | Quota uses existing provider authentication and its read-only fallback. |
 | Cursor | Existing compatible local cache at `~/.config/tokscale/cursor-cache/usage.csv`; Needlbar does not create or refresh this cache. | Cursor quota is unavailable in Needlbar. **Open Cursor Spending** opens the provider-owned dashboard at `https://cursor.com/dashboard/spending`. |
 

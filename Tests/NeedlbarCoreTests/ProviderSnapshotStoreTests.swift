@@ -123,7 +123,7 @@ struct ProviderSnapshotStoreTests {
     #expect(snapshot.quotaStatus == .fresh)
 }
 
-@Test func quotaRefreshReplacesFableWindowWhileFailuresRetainItsLastKnownGoodValue() async throws {
+    @Test func quotaRefreshReplacesFableWindowWhileFailuresRetainItsLastKnownGoodValue() async throws {
     let now = Date(timeIntervalSince1970: 20_000)
     let store = ProviderSnapshotStore(now: { now })
     let base = try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil)
@@ -145,8 +145,51 @@ struct ProviderSnapshotStoreTests {
     snapshot = await store.snapshot(for: .claude)
     #expect(snapshot.quota?.windows == [base])
     #expect(snapshot.quotaStatus == .fresh)
-    #expect(snapshot.usageStatus == .unavailable)
-}
+        #expect(snapshot.usageStatus == .unavailable)
+    }
+
+    @Test func claudeQuotaFailureRetainsOnlyTheSuccessfulTimestampAndSafeReason() async throws {
+        let successfulAt = try #require(BridgeDecoder.date("2026-09-15T10:00:00Z"))
+        let failedAt = try #require(BridgeDecoder.date("2026-09-15T11:00:00Z"))
+        let store = ProviderSnapshotStore(now: { successfulAt })
+        let quota = try alertQuota(id: "claude.session", usedPercent: 60)
+
+        await store.applyQuota(quota, for: .claude, at: successfulAt)
+        await store.markQuotaFailure(
+            for: .claude,
+            status: .error(message: "raw provider detail", lastSuccessfulAt: nil),
+            claudeFailureReason: .connectionUnavailable,
+            at: failedAt
+        )
+
+        var snapshot = await store.snapshot(for: .claude)
+        #expect(snapshot.quota == quota)
+        #expect(snapshot.quotaLastSuccessfulAt == successfulAt)
+        #expect(snapshot.quotaLastSuccessfulAt != failedAt)
+        #expect(snapshot.claudeQuotaFailureReason == .connectionUnavailable)
+
+        await store.applyQuota(quota, for: .claude, at: failedAt)
+        snapshot = await store.snapshot(for: .claude)
+        #expect(snapshot.quotaLastSuccessfulAt == failedAt)
+        #expect(snapshot.claudeQuotaFailureReason == nil)
+    }
+
+    @Test func initialClaudeQuotaFailureDoesNotInventQuotaOrSuccessfulTimestamp() async throws {
+        let failedAt = try #require(BridgeDecoder.date("2026-09-15T11:00:00Z"))
+        let store = ProviderSnapshotStore(now: { failedAt })
+
+        await store.markQuotaFailure(
+            for: .claude,
+            status: .error(message: "raw provider detail", lastSuccessfulAt: nil),
+            claudeFailureReason: .quotaAccessUnavailable,
+            at: failedAt
+        )
+
+        let snapshot = await store.snapshot(for: .claude)
+        #expect(snapshot.quota == nil)
+        #expect(snapshot.quotaLastSuccessfulAt == nil)
+        #expect(snapshot.claudeQuotaFailureReason == .quotaAccessUnavailable)
+    }
 }
 
 private func makeUsage(totalTokens: UInt64) -> UsageSnapshot {

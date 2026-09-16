@@ -39,6 +39,21 @@ public struct DashboardAPIBillingLinkState: Equatable {
     }
 }
 
+public struct DashboardClaudeUsageLinkState: Equatable {
+    private var openFailed = false
+
+    static let failureMessage = "Couldn't open Claude usage. Try again."
+
+    public init() {}
+
+    public mutating func recordOpenResult(_ opened: Bool) {
+        openFailed = !opened
+    }
+
+    public var showsFailure: Bool { openFailed }
+    public var failureMessage: String { Self.failureMessage }
+}
+
 @MainActor
 enum ProviderTitleRowAlignmentPolicy {
     static let verticalRule: ProviderTitleRowVerticalRule = .center
@@ -57,12 +72,15 @@ public struct SystemDashboardPopoverView: View {
     @ObservedObject private var model: SystemDashboardModel
     @ObservedObject private var layout: SystemDashboardPopoverLayout
     @State private var billingState: DashboardAPIBillingLinkState
+    @State private var claudeUsageState: DashboardClaudeUsageLinkState
     private let isMeasuring: Bool
     private let onShowSettings: () -> Void
     private let onShowAnalytics: () -> Void
     private let onProviderAction: (ProviderID) -> Void
     private let onAPIBillingAction: (ProviderAPIBillingAction) -> Bool
     private let onAPIBillingStateChanged: (DashboardAPIBillingLinkState) -> Void
+    private let onClaudeUsageAction: () -> Bool
+    private let onClaudeUsageStateChanged: (DashboardClaudeUsageLinkState) -> Void
 
     public init(
         model: SystemDashboardModel,
@@ -71,17 +89,22 @@ public struct SystemDashboardPopoverView: View {
         onShowAnalytics: @escaping () -> Void = {},
         onProviderAction: @escaping (ProviderID) -> Void = { _ in },
         onAPIBillingAction: @escaping (ProviderAPIBillingAction) -> Bool = { _ in false },
-        onAPIBillingStateChanged: @escaping (DashboardAPIBillingLinkState) -> Void = { _ in }
+        onAPIBillingStateChanged: @escaping (DashboardAPIBillingLinkState) -> Void = { _ in },
+        onClaudeUsageAction: @escaping () -> Bool = { false },
+        onClaudeUsageStateChanged: @escaping (DashboardClaudeUsageLinkState) -> Void = { _ in }
     ) {
         _model = ObservedObject(wrappedValue: model)
         _layout = ObservedObject(wrappedValue: SystemDashboardPopoverLayout(height: height))
         _billingState = State(initialValue: .init())
+        _claudeUsageState = State(initialValue: .init())
         isMeasuring = false
         self.onShowSettings = onShowSettings
         self.onShowAnalytics = onShowAnalytics
         self.onProviderAction = onProviderAction
         self.onAPIBillingAction = onAPIBillingAction
         self.onAPIBillingStateChanged = onAPIBillingStateChanged
+        self.onClaudeUsageAction = onClaudeUsageAction
+        self.onClaudeUsageStateChanged = onClaudeUsageStateChanged
     }
 
     init(
@@ -91,29 +114,41 @@ public struct SystemDashboardPopoverView: View {
         onShowAnalytics: @escaping () -> Void = {},
         onProviderAction: @escaping (ProviderID) -> Void = { _ in },
         onAPIBillingAction: @escaping (ProviderAPIBillingAction) -> Bool = { _ in false },
-        onAPIBillingStateChanged: @escaping (DashboardAPIBillingLinkState) -> Void = { _ in }
+        onAPIBillingStateChanged: @escaping (DashboardAPIBillingLinkState) -> Void = { _ in },
+        onClaudeUsageAction: @escaping () -> Bool = { false },
+        onClaudeUsageStateChanged: @escaping (DashboardClaudeUsageLinkState) -> Void = { _ in }
     ) {
         _model = ObservedObject(wrappedValue: model)
         _layout = ObservedObject(wrappedValue: layout)
         _billingState = State(initialValue: .init())
+        _claudeUsageState = State(initialValue: .init())
         isMeasuring = false
         self.onShowSettings = onShowSettings
         self.onShowAnalytics = onShowAnalytics
         self.onProviderAction = onProviderAction
         self.onAPIBillingAction = onAPIBillingAction
         self.onAPIBillingStateChanged = onAPIBillingStateChanged
+        self.onClaudeUsageAction = onClaudeUsageAction
+        self.onClaudeUsageStateChanged = onClaudeUsageStateChanged
     }
 
-    init(measuring model: SystemDashboardModel, billingState: DashboardAPIBillingLinkState = .init()) {
+    init(
+        measuring model: SystemDashboardModel,
+        billingState: DashboardAPIBillingLinkState = .init(),
+        claudeUsageState: DashboardClaudeUsageLinkState = .init()
+    ) {
         _model = ObservedObject(wrappedValue: model)
         _layout = ObservedObject(wrappedValue: SystemDashboardPopoverLayout(height: SystemDashboardPanelSizing.fallbackHeight))
         _billingState = State(initialValue: billingState)
+        _claudeUsageState = State(initialValue: claudeUsageState)
         isMeasuring = true
         onShowSettings = {}
         onShowAnalytics = {}
         onProviderAction = { _ in }
         onAPIBillingAction = { _ in false }
         onAPIBillingStateChanged = { _ in }
+        onClaudeUsageAction = { false }
+        onClaudeUsageStateChanged = { _ in }
     }
 
     // Retain the previously public construction path for existing presenters.
@@ -302,7 +337,13 @@ public struct SystemDashboardPopoverView: View {
                 if let action = provider.action {
                     let visibleTitle = Self.visibleActionTitle(for: action)
                     let identityTitle = Self.accessibilityActionTitle(for: action)
-                    Button(visibleTitle) { onProviderAction(provider.provider) }
+                    Button(visibleTitle) {
+                        if case .openClaudeUsage = action {
+                            performClaudeUsageAction()
+                        } else {
+                            onProviderAction(provider.provider)
+                        }
+                    }
                         .buttonStyle(.borderless)
                         .font(.caption)
                         .help(identityTitle)
@@ -318,6 +359,38 @@ public struct SystemDashboardPopoverView: View {
                 }
             }
             .font(.caption2)
+            if provider.quotaIsLastKnown {
+                Text("Last known")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if provider.quotaUnavailable {
+                Text("Quota unavailable")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if let reason = provider.quotaFailureReasonText {
+                Text(reason)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if let lastChecked = provider.quotaLastCheckedText {
+                Text("Last checked \(lastChecked)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if let action = provider.action,
+               case .openClaudeUsage = action,
+               claudeUsageState.showsFailure {
+                Text(claudeUsageState.failureMessage)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel(claudeUsageState.failureMessage)
+                Button("Retry", action: performClaudeUsageAction)
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .accessibilityLabel("Retry opening Claude usage")
+            }
             if let action = provider.apiBillingAction {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(action.providerLabel)
@@ -348,11 +421,11 @@ public struct SystemDashboardPopoverView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 if let status = fableStatus(fable.freshness) {
-                    Text("\(fable.resetCaption) · \(status)")
+                    Text("\(fable.isLastKnown ? "Last known · " : "")\(fable.resetCaption) · \(status)")
                         .font(.caption2)
                         .foregroundStyle(.orange)
                 } else {
-                    Text(fable.resetCaption)
+                    Text("\(fable.isLastKnown ? "Last known · " : "")\(fable.resetCaption)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -367,6 +440,11 @@ public struct SystemDashboardPopoverView: View {
             using: onAPIBillingAction,
             onStateChanged: onAPIBillingStateChanged
         )
+    }
+
+    private func performClaudeUsageAction() {
+        claudeUsageState.recordOpenResult(onClaudeUsageAction())
+        onClaudeUsageStateChanged(claudeUsageState)
     }
 
     private func fableStatus(_ freshness: PresentationFreshness) -> String? {
@@ -416,14 +494,14 @@ public struct SystemDashboardPopoverView: View {
         switch action {
         case .browserLogin:
             return "Sign in"
-        case let .openCursorSpending(title):
+        case let .openCursorSpending(title), let .openClaudeUsage(title):
             return title
         }
     }
 
     nonisolated internal static func accessibilityActionTitle(for action: ProviderAuthenticationAction) -> String {
         switch action {
-        case let .browserLogin(title), let .openCursorSpending(title): title
+        case let .browserLogin(title), let .openCursorSpending(title), let .openClaudeUsage(title): title
         }
     }
 

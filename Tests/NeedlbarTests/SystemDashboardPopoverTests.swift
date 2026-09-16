@@ -58,6 +58,26 @@ import Testing
     #expect(!state.showsFailure(for: .claude))
 }
 
+@Test @MainActor func claudeUsageFailureClearsOnlyAfterSuccessAndResizesTheDashboard() throws {
+    let model = SystemDashboardModel(snapshot: dashboardFixtureSnapshot(
+        claudeQuotaStatus: .error(message: "untrusted", lastSuccessfulAt: .distantPast),
+        claudeQuotaFailureReason: .temporarilyLimited
+    ), configuration: .init())
+    let normalHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: model))
+    var state = DashboardClaudeUsageLinkState()
+    state.recordOpenResult(false)
+
+    #expect(state.showsFailure)
+    #expect(state.failureMessage == "Couldn't open Claude usage. Try again.")
+    let failureHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(
+        for: model, claudeUsageState: state
+    ))
+    #expect(failureHeight > normalHeight)
+
+    state.recordOpenResult(true)
+    #expect(!state.showsFailure)
+}
+
 @Test func dashboardPresentationFiltersConfiguredOrderByVisibleModules() {
     var configuration = SystemMonitorConfiguration()
     configuration.order = [.ai, .network, .cpu, .battery, .memory, .disk]
@@ -176,35 +196,36 @@ import Testing
     #expect(presentation.ai.first(where: { $0.provider == .claude })?.value == "1.68B")
 }
 
-@Test func dashboardPresentationOffersOnlyExistingProviderAuthenticationActions() {
+@Test func dashboardPresentationOffersSafeClaudeUsageActionWithoutChangingOtherProviders() {
     let presentation = SystemDashboardPresentation(
         snapshot: dashboardFixtureSnapshot(
             claudeQuotaStatus: .requiresAuthentication,
+            claudeQuotaFailureReason: .quotaAccessUnavailable,
             cursorQuotaStatus: .stale(lastSuccessfulAt: Date(timeIntervalSince1970: 9_999)),
             cursorHasQuota: false
         ),
         configuration: SystemMonitorConfiguration()
     )
 
-    #expect(presentation.ai.first(where: { $0.provider == .claude })?.action == .browserLogin(title: "Sign in with Claude"))
+    #expect(presentation.ai.first(where: { $0.provider == .claude })?.action == .openClaudeUsage(title: "View Claude usage"))
     #expect(presentation.ai.first(where: { $0.provider == .cursor })?.action == .openCursorSpending(title: "Open Cursor Spending"))
     #expect(presentation.ai.first(where: { $0.provider == .codex })?.action == nil)
 }
 
-@Test func dashboardBrowserLoginControlUsesShortVisibleTextAndFullProviderIdentity() {
+@Test func dashboardProviderActionsUseTheFixedClaudeUsageTitleAndCodexIdentity() {
     let actions: [ProviderAuthenticationAction] = [
-        .browserLogin(title: "Sign in with Claude"),
+        .openClaudeUsage(title: "View Claude usage"),
         .browserLogin(title: "Sign in with ChatGPT"),
         .openCursorSpending(title: "Open Cursor Spending"),
     ]
 
     #expect(actions.map(SystemDashboardPopoverView.visibleActionTitle) == [
-        "Sign in",
+        "View Claude usage",
         "Sign in",
         "Open Cursor Spending",
     ])
     #expect(actions.map(SystemDashboardPopoverView.accessibilityActionTitle) == [
-        "Sign in with Claude",
+        "View Claude usage",
         "Sign in with ChatGPT",
         "Open Cursor Spending",
     ])
@@ -565,6 +586,7 @@ private func dashboardFixtureSnapshot(
     networkAvailability: MetricAvailability? = nil,
     diskAvailability: MetricAvailability? = nil,
     claudeQuotaStatus: DataStatus? = nil,
+    claudeQuotaFailureReason: ClaudeQuotaFailureReason? = nil,
     claudeHasQuota: Bool = true,
     claudeQuotaWindows: [QuotaWindow]? = nil,
     cursorQuotaStatus: DataStatus? = nil,
@@ -623,7 +645,9 @@ private func dashboardFixtureSnapshot(
             quota: quota,
             usageStatus: .fresh,
             quotaStatus: provider == .claude ? (claudeQuotaStatus ?? .fresh) : provider == .cursor ? (cursorQuotaStatus ?? .fresh) : .fresh,
-            updatedAt: providerUpdatedAt ?? date
+            updatedAt: providerUpdatedAt ?? date,
+            claudeQuotaFailureReason: provider == .claude ? claudeQuotaFailureReason : nil,
+            quotaLastSuccessfulAt: provider == .claude && claudeQuotaFailureReason != nil ? date : nil
         )
     }
     return CombinedUsageSnapshot(

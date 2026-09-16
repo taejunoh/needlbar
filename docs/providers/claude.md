@@ -25,34 +25,29 @@ The raw credential stays in the Rust quota adapter. It is never placed in Swift 
 state, diagnostics, logs, or bridge error messages. Needlbar does not trigger an unsolicited
 Keychain prompt or crawl browser profiles.
 
-Needlbar does not enumerate the Keychain. When the user explicitly clicks **Sign in with
-Claude**, Needlbar first runs a Claude-only no-UI check of the existing sign-in. A fresh result
-connects without launching the CLI. Missing or expired authentication starts the provider-owned
-CLI flow; a Keychain permission result performs exactly one user-initiated verification of the
-same exact item, which may show a macOS prompt, without launching the CLI. Other failures stop
-safely. After a successful CLI flow, Needlbar may likewise request that exact item once for
-Claude-only quota verification. The raw credential remains ephemeral Rust-internal data, held in
-a zeroizing secret wrapper and never persisted by Needlbar, sent through Swift, or included in
-the C ABI, diagnostics, logs, or errors.
+Needlbar does not enumerate the Keychain or run a routine Claude login from its recovery UI.
+The raw credential remains ephemeral Rust-internal data, held in a zeroizing secret wrapper and
+never persisted by Needlbar, sent through Swift, or included in the C ABI, diagnostics, logs, or
+errors.
 
 ## Quota and fallback
 
 Quota is requested directly from Anthropic's OAuth usage endpoint over bounded HTTPS. A valid existing OAuth credential is used when available; known expired evidence is reported as `authenticationExpired`. Missing or unusable evidence is reported as `requiresAuthentication`.
 
-When that no-UI check finds missing or expired authentication, the Settings **Sign in with
-Claude** button launches the installed provider command `claude auth login --claudeai`.
-Claude Code owns the browser flow, OAuth callback, refresh, and credential storage. There is no
-browser-cookie fallback and no interactive login in the v0.1 background refresh path. Usage can
-remain visible when quota authentication fails because the two streams are independent.
+When a refresh cannot produce quota, Needlbar keeps a previous successful reading as **Last
+known**, labels it with the local **Last checked** time, and shows one safe reason. An initial
+failure instead shows **Quota unavailable** without a made-up value, reset, or timestamp. The
+optional **View Claude usage** action opens only `https://claude.ai/settings/usage` after an
+explicit click; it does not start a CLI login or an application-owned OAuth flow. Claude Code
+continues to own any browser authentication, OAuth callback, refresh, and credential storage.
+There is no browser-cookie fallback or interactive login in the background refresh path. Usage
+can remain visible when quota authentication fails because the two streams are independent.
 
 ## Recovery and disconnect
 
-If the Claude CLI is missing, install or repair the provider-supported Claude Code CLI and
-retry. Otherwise click **Sign in with Claude**, complete the provider-owned browser flow,
-and allow the exact macOS Keychain item only if you want immediate quota verification.
-If Keychain access is denied or cancelled, retry after adjusting macOS permission or
-complete provider re-authentication. If a custom `CLAUDE_CONFIG_DIR` is used, make sure it
-points to the provider's intended configuration before retrying. Usage remains independently
-available while quota recovers.
+If Claude quota remains unavailable, use **View Claude usage** to inspect the provider-owned
+subscription page if desired. Needlbar does not instruct, launch, or retry provider login from
+this recovery surface. A later scheduled quota refresh can replace the last-known reading when
+it succeeds. Usage remains independently available while quota recovers.
 
 Needlbar does not own Claude credentials and therefore does not provide a Claude Disconnect button. Sign out or revoke the provider session through Claude's supported controls; Needlbar will then show the safe authentication-required state on the next refresh.

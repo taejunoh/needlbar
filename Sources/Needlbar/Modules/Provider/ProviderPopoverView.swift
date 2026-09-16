@@ -4,6 +4,7 @@ import NeedlbarCore
 public enum ProviderAuthenticationAction: Equatable, Sendable {
     case browserLogin(title: String)
     case openCursorSpending(title: String)
+    case openClaudeUsage(title: String)
 }
 
 public struct ProviderPopoverPresentation: Equatable, Sendable {
@@ -18,6 +19,10 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
     public let headlineQuotaRemaining: String?
     public let usageFreshness: PresentationFreshness
     public let quotaFreshness: PresentationFreshness
+    public let quotaIsLastKnown: Bool
+    public let quotaUnavailable: Bool
+    public let quotaFailureReasonText: String?
+    public let quotaLastCheckedText: String?
 
     public init(snapshot: ProviderSnapshot) {
         provider = snapshot.provider
@@ -32,13 +37,24 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
         headlineQuotaRemaining = HeadlineQuotaSelector.mostConstrained([snapshot]).map { MetricFormatter.quotaRemaining($0.remainingPercent) }
         usageFreshness = PresentationFreshness(snapshot.usageStatus)
         quotaFreshness = PresentationFreshness(snapshot.quotaStatus)
+        let claudeFallback = snapshot.provider == .claude
+            && (snapshot.claudeQuotaFailureReason != nil || snapshot.quotaStatus != .fresh)
+        quotaIsLastKnown = claudeFallback && snapshot.quota != nil
+        quotaUnavailable = claudeFallback && snapshot.quota == nil
+        quotaFailureReasonText = snapshot.claudeQuotaFailureReason?.displayText
+        quotaLastCheckedText = quotaIsLastKnown
+            ? snapshot.quotaLastSuccessfulAt.map(Self.localizedDateTime)
+            : nil
     }
 
     public var requiresProviderSignIn: Bool {
-        quotaFreshness == .requiresAuthentication
+        provider != .claude && quotaFreshness == .requiresAuthentication
     }
 
     public var authenticationAction: ProviderAuthenticationAction? {
+        if provider == .claude, quotaFailureReasonText != nil {
+            return .openClaudeUsage(title: "View Claude usage")
+        }
         if provider == .cursor, quotaWindows.isEmpty, quotaFreshness != .fresh {
             return .openCursorSpending(title: "Open Cursor Spending")
         }
@@ -46,24 +62,29 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
         guard requiresProviderSignIn else { return nil }
         switch provider {
         case .claude:
-            return .browserLogin(title: "Sign in with Claude")
+            return nil
         case .codex:
             return .browserLogin(title: "Sign in with ChatGPT")
         case .cursor:
             return nil
         }
     }
+
+    private static func localizedDateTime(_ date: Date) -> String {
+        DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
+    }
 }
 
 public struct ProviderPopoverView: View {
     private let presentation: ProviderPopoverPresentation
     private let onRetry: () -> Void
-    private let onAuthenticationAction: (ProviderAuthenticationAction) -> Void
+    private let onAuthenticationAction: (ProviderAuthenticationAction) -> Bool
+    @State private var claudeUsageOpenFailed = false
 
     public init(
         snapshot: ProviderSnapshot,
         onRetry: @escaping () -> Void = {},
-        onAuthenticationAction: @escaping (ProviderAuthenticationAction) -> Void = { _ in }
+        onAuthenticationAction: @escaping (ProviderAuthenticationAction) -> Bool = { _ in false }
     ) {
         presentation = ProviderPopoverPresentation(snapshot: snapshot)
         self.onRetry = onRetry
@@ -98,17 +119,41 @@ public struct ProviderPopoverView: View {
 
             Divider()
             Text("Quota").font(.subheadline.weight(.medium))
-            if presentation.quotaWindows.isEmpty {
+            if presentation.quotaUnavailable {
+                Text("Quota unavailable").foregroundStyle(.secondary)
+            } else if presentation.quotaWindows.isEmpty {
                 Text(presentation.quotaFreshness.label).foregroundStyle(.secondary)
             } else {
-                ForEach(presentation.quotaWindows) { window in
-                    QuotaWindowRow(window: window)
+                if presentation.quotaIsLastKnown {
+                    Text("Last known").font(.caption).foregroundStyle(.secondary)
                 }
+                ForEach(presentation.quotaWindows) { window in
+                    QuotaWindowRow(window: window, isLastKnown: presentation.quotaIsLastKnown)
+                }
+            }
+            if let reason = presentation.quotaFailureReasonText {
+                Text(reason).font(.caption).foregroundStyle(.secondary)
+            }
+            if let lastChecked = presentation.quotaLastCheckedText {
+                Text("Last checked \(lastChecked)").font(.caption).foregroundStyle(.secondary)
             }
 
             if let authenticationAction = presentation.authenticationAction {
                 Button(authenticationAction.title) {
-                    onAuthenticationAction(authenticationAction)
+                    if case .openClaudeUsage = authenticationAction {
+                        claudeUsageOpenFailed = !onAuthenticationAction(authenticationAction)
+                    } else {
+                        _ = onAuthenticationAction(authenticationAction)
+                    }
+                }
+                if claudeUsageOpenFailed {
+                    Text("Couldn't open Claude usage. Try again.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel("Couldn't open Claude usage. Try again.")
+                    Button("Retry") {
+                        claudeUsageOpenFailed = !onAuthenticationAction(authenticationAction)
+                    }
                 }
             } else if presentation.requiresProviderSignIn {
                 Button("Retry", action: onRetry)
@@ -138,7 +183,7 @@ public struct ProviderPopoverView: View {
 private extension ProviderAuthenticationAction {
     var title: String {
         switch self {
-        case let .browserLogin(title), let .openCursorSpending(title): title
+        case let .browserLogin(title), let .openCursorSpending(title), let .openClaudeUsage(title): title
         }
     }
 }

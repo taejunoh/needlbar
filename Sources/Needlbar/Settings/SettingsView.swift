@@ -7,12 +7,14 @@ import SwiftUI
 public struct SettingsView: View {
     private let configuration: ModuleConfiguration
     private let openCursorSpending: () -> Void
+    private let openClaudeUsage: () -> Bool
     @StateObject private var systemMonitorModel: SystemMonitorSettingsModel
     @ObservedObject private var actions: SettingsActions
     @ObservedObject private var notificationPreferences: QuotaNotificationPreferences
     private let notificationService: QuotaNotificationService
     @State private var selectedPage: SettingsStudioPage = .layout
     @State private var selectedTab: SettingsStudioTab = .menuBar
+    @State private var claudeUsageOpenFailed = false
     @ObservedObject private var preview: SettingsPreviewModel
 
     public init(
@@ -21,10 +23,12 @@ public struct SettingsView: View {
         notificationPreferences: QuotaNotificationPreferences,
         notificationService: QuotaNotificationService,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() },
+        openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() },
         preview: SettingsPreviewModel? = nil
     ) {
         self.configuration = configuration
         self.openCursorSpending = openCursorSpending
+        self.openClaudeUsage = openClaudeUsage
         _preview = ObservedObject(wrappedValue: preview ?? SettingsPreviewModel())
         _systemMonitorModel = StateObject(wrappedValue: SystemMonitorSettingsModel(configuration: configuration))
         _actions = ObservedObject(wrappedValue: actions)
@@ -39,6 +43,7 @@ public struct SettingsView: View {
         notificationPreferences: QuotaNotificationPreferences,
         notificationService: QuotaNotificationService,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() },
+        openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() },
         preview: SettingsPreviewModel? = nil
     ) {
         self.init(
@@ -50,6 +55,7 @@ public struct SettingsView: View {
             notificationPreferences: notificationPreferences,
             notificationService: notificationService,
             openCursorSpending: openCursorSpending,
+            openClaudeUsage: openClaudeUsage,
             preview: preview
         )
     }
@@ -121,7 +127,7 @@ public struct SettingsView: View {
     @ViewBuilder private func connectionPane(_ provider: ProviderID) -> some View {
         SettingsStudioSection(title: "Connection") {
             switch provider {
-            case .claude: providerLoginRow(provider: .claude, title: "Claude", actionTitle: "Sign in with Claude")
+            case .claude: claudeUsageRow
             case .codex: providerLoginRow(provider: .codex, title: "Codex", actionTitle: "Sign in with ChatGPT")
             case .cursor:
                 HStack(alignment: .top, spacing: 8) {
@@ -132,6 +138,27 @@ public struct SettingsView: View {
                 }.padding(.vertical, 12)
             }
         }
+    }
+
+    private var claudeUsageRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            ProviderBrandIcon(provider: .claude, accessibility: .decorative)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Claude")
+                Text("Quota uses your existing Claude sign-in. Browser authentication remains provider-owned.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if claudeUsageOpenFailed {
+                    Text("Couldn't open Claude usage. Try again.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel("Couldn't open Claude usage. Try again.")
+                }
+            }
+            Spacer()
+            Button("View Claude usage") { claudeUsageOpenFailed = !openClaudeUsage() }
+        }
+        .frame(minHeight: 54)
     }
 
     @ViewBuilder private func apiBillingPane(_ provider: ProviderID) -> some View {

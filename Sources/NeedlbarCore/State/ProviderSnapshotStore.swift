@@ -33,6 +33,7 @@ public actor ProviderSnapshotStore {
     private struct State: Sendable {
         var usage = StreamState<UsageSnapshot>()
         var quota = StreamState<QuotaSnapshot>()
+        var claudeQuotaFailureReason: ClaudeQuotaFailureReason?
         var quotaRevision: UInt64 = 0
         var everUpdated = false
         var updatedAt: Date
@@ -71,6 +72,7 @@ public actor ProviderSnapshotStore {
         state.quota.value = quota
         state.quota.lastSuccessfulAt = timestamp
         state.quota.latestFailure = nil
+        state.claudeQuotaFailureReason = nil
         state.quotaRevision &+= 1
         state.everUpdated = true
         state.updatedAt = timestamp
@@ -89,10 +91,18 @@ public actor ProviderSnapshotStore {
         publishUpdates()
     }
 
-    public func markQuotaFailure(for provider: ProviderID, status: DataStatus, at date: Date? = nil) {
+    public func markQuotaFailure(
+        for provider: ProviderID,
+        status: DataStatus,
+        claudeFailureReason: ClaudeQuotaFailureReason? = nil,
+        at date: Date? = nil
+    ) {
         let timestamp = date ?? now()
         var state = state(for: provider, timestamp: timestamp)
         state.quota.latestFailure = normalizedFailure(status, lastSuccessfulAt: state.quota.lastSuccessfulAt)
+        if provider == .claude, let claudeFailureReason {
+            state.claudeQuotaFailureReason = claudeFailureReason
+        }
         state.everUpdated = true
         state.updatedAt = timestamp
         states[provider] = state
@@ -107,7 +117,9 @@ public actor ProviderSnapshotStore {
             quota: state.quota.value,
             usageStatus: status(for: state.usage),
             quotaStatus: status(for: state.quota),
-            updatedAt: state.updatedAt
+            updatedAt: state.updatedAt,
+            claudeQuotaFailureReason: state.claudeQuotaFailureReason,
+            quotaLastSuccessfulAt: state.quota.lastSuccessfulAt
         )
     }
 

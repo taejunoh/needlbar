@@ -8,6 +8,18 @@ import Testing
 @Suite("SettingsStudio", .serialized)
 @MainActor
 struct SettingsStudioTests {
+    @Test func claudeUsageActionHasOnlyTheApprovedDestination() {
+        var openedURL: URL?
+
+        let opened = ClaudeUsageAction.open { url in
+            openedURL = url
+            return false
+        }
+
+        #expect(!opened)
+        #expect(openedURL?.absoluteString == "https://claude.ai/settings/usage")
+    }
+
     @Test func apiBillingSettingsToggleDoesNotMakeProviderVisible() throws {
         let name = "SettingsStudio.api.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: name))

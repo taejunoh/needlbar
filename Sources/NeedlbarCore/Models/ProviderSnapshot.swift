@@ -7,6 +7,8 @@ public struct ProviderSnapshot: Sendable, Equatable {
     public let usageStatus: DataStatus
     public let quotaStatus: DataStatus
     public let updatedAt: Date
+    public let claudeQuotaFailureReason: ClaudeQuotaFailureReason?
+    public let quotaLastSuccessfulAt: Date?
 
     public init(
         provider: ProviderID,
@@ -14,7 +16,9 @@ public struct ProviderSnapshot: Sendable, Equatable {
         quota: QuotaSnapshot?,
         usageStatus: DataStatus,
         quotaStatus: DataStatus,
-        updatedAt: Date
+        updatedAt: Date,
+        claudeQuotaFailureReason: ClaudeQuotaFailureReason? = nil,
+        quotaLastSuccessfulAt: Date? = nil
     ) {
         self.provider = provider
         self.usage = usage
@@ -22,5 +26,7 @@ public struct ProviderSnapshot: Sendable, Equatable {
         self.usageStatus = usageStatus
         self.quotaStatus = quotaStatus
         self.updatedAt = updatedAt
+        self.claudeQuotaFailureReason = claudeQuotaFailureReason
+        self.quotaLastSuccessfulAt = quotaLastSuccessfulAt
     }
 }
