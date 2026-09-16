@@ -6,11 +6,11 @@ Needlbar is local-first: it has no Needlbar account, backend, hosted sync, cloud
 
 ## Availability and download
 
-Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.
+Needlbar v0.3.3 is publicly available for macOS 14 or later on Apple Silicon.
 
-[Download Needlbar v0.3.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip)
+[Download Needlbar v0.3.3 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip)
 
-[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip.sha256)
+[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip.sha256)
 
 The `Needlbar-macos-arm64.zip.sha256` file is the SHA-256 checksum sidecar for the ZIP. Verify both downloaded files from the same directory:
 
@@ -20,9 +20,9 @@ shasum -a 256 -c Needlbar-macos-arm64.zip.sha256
 
 The public artifact is Developer ID-signed and notarized.
 
-To install the public v0.3.2 release:
+To install the public v0.3.3 release:
 
-1. Download the ZIP and checksum sidecar from the v0.3.2 GitHub Release.
+1. Download the ZIP and checksum sidecar from the v0.3.3 GitHub Release.
 2. Run the checksum command from the directory containing both files.
 3. Open the verified ZIP and drag `Needlbar.app` into `/Applications`.
 4. Launch Needlbar from `/Applications`; it appears in the macOS menu bar.
@@ -175,7 +175,7 @@ The released app includes one medium Overview widget backed by a sanitized local
 
 ## Native macOS 14 acceptance (maintainer-only)
 
-The public v0.3.2 ZIP is the production artifact for Gallery and entitlement
+The public v0.3.3 ZIP is the production artifact for Gallery and entitlement
 acceptance checks. The
 separately signed fixture-driven artifact is acceptance-only and is not a
 release or notarization substitute. It uses no provider account, credential,

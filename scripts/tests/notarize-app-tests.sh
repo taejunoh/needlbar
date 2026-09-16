@@ -1472,12 +1472,12 @@ test_v031_release_source_contract() {
 source, destination = ARGV
 document = File.read(source)
 replacements = {
-  'Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.',
-  '[Download Needlbar v0.3.2 for Apple Silicon]' => '[Download Needlbar v0.3.1 for Apple Silicon]',
-  'https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip',
-  'https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip.sha256' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip.sha256',
-  'To install the public v0.3.2 release:' => 'To install the public v0.3.1 release:',
-  'from the v0.3.2 GitHub Release.' => 'from the v0.3.1 GitHub Release.'
+  'Needlbar v0.3.3 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.3 for Apple Silicon]' => '[Download Needlbar v0.3.1 for Apple Silicon]',
+  'https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip',
+  'https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip.sha256' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip.sha256',
+  'To install the public v0.3.3 release:' => 'To install the public v0.3.1 release:',
+  'from the v0.3.3 GitHub Release.' => 'from the v0.3.1 GitHub Release.'
 }
 replacements.each { |from, to| abort "fixture setup: missing #{from.inspect}" unless document.sub!(from, to) }
 anchor = 'The v0.3.1 refinement remains the historical compact-readability release'
@@ -1665,14 +1665,36 @@ test_v032_release_source_contract() {
   local readme_file="$ROOT/README.md"
   local status_file="$ROOT/docs/STATUS.md"
   local release_notes_file="$ROOT/.github/release-notes/v0.3.2.md"
+  local historical_readme="$temp_root/v032-historical-public-readme.md"
   local stale_public_readme="$temp_root/v032-stale-v031-public-readme.md"
   local prepared_readme="$temp_root/v032-prepared-readme.md"
+  local validation_readme="$readme_file"
   local decoy_output decoy_status
 
-  v032_release_source_contract_is_valid "$readme_file" "$status_file" "$release_notes_file" ||
+  if ! grep -F 'Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.' "$readme_file" >/dev/null; then
+    ruby - "$readme_file" "$historical_readme" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+replacements = {
+  'Needlbar v0.3.3 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.3 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip)' => '[Download Needlbar v0.3.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip)',
+  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip.sha256)' => '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip.sha256)',
+  'To install the public v0.3.3 release:' => 'To install the public v0.3.2 release:',
+  'from the v0.3.3 GitHub Release.' => 'from the v0.3.2 GitHub Release.'
+}
+replacements.each do |from, to|
+  abort "fixture setup: missing #{from.inspect}" unless document.include?(from)
+  document = document.gsub(from, to)
+end
+File.write(destination, document)
+RUBY
+    validation_readme="$historical_readme"
+  fi
+
+  v032_release_source_contract_is_valid "$validation_readme" "$status_file" "$release_notes_file" ||
     fail 'live v0.3.2 release-source contract is invalid'
 
-  ruby - "$readme_file" "$stale_public_readme" <<'RUBY'
+  ruby - "$validation_readme" "$stale_public_readme" <<'RUBY'
 source, destination = ARGV
 document = File.read(source)
 document << "\nNeedlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.\n"
@@ -1685,7 +1707,7 @@ RUBY
   [[ "$decoy_status" -ne 0 ]] || fail 'v0.3.2 stale v0.3.1 public-claim decoy was accepted'
   [[ "$decoy_output" == *'retains v0.3.1 public availability claim'* ]] || fail 'v0.3.2 stale v0.3.1 public-claim decoy failed unexpectedly'
 
-  ruby - "$readme_file" "$prepared_readme" <<'RUBY'
+  ruby - "$validation_readme" "$prepared_readme" <<'RUBY'
 source, destination = ARGV
 document = File.read(source)
 public = 'Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.'
@@ -1702,6 +1724,73 @@ RUBY
 }
 
 test_v032_release_source_contract
+
+v033_release_source_contract_is_valid() {
+  local readme_file="$1"
+  local status_file="$2"
+  local release_notes_file="$3"
+
+  ruby - "$readme_file" "$status_file" "$release_notes_file" <<'RUBY'
+readme_path, status_path, notes_path = ARGV
+abort 'v0.3.3 release notes are missing' unless File.file?(notes_path)
+
+readme = File.read(readme_path)
+status = File.read(status_path)
+notes = File.read(notes_path)
+
+v033_zip = '[Download Needlbar v0.3.3 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip)'
+v033_sidecar = '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip.sha256)'
+readme_text = readme.gsub(/\s+/, ' ')
+
+abort 'v0.3.3 README contains preparation wording' if readme.include?('v0.3.3 is prepared for public release')
+abort 'v0.3.3 README is missing public availability statement' unless readme.include?('Needlbar v0.3.3 is publicly available for macOS 14 or later on Apple Silicon.')
+abort 'v0.3.3 README is missing exact ZIP download link' unless readme.include?(v033_zip)
+abort 'v0.3.3 README is missing exact checksum download link' unless readme.include?(v033_sidecar)
+abort 'v0.3.3 README is missing install heading' unless readme.include?('To install the public v0.3.3 release:')
+abort 'v0.3.3 README is missing install source wording' unless readme.include?('from the v0.3.3 GitHub Release.')
+abort 'v0.3.3 README retains v0.3.2 public availability claim' if readme.include?('Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.')
+abort 'README is missing Claude passive recovery limitation' unless readme_text.include?('Needlbar does not launch routine Claude login from this recovery flow.')
+
+[
+  'last-known quota',
+  'actual successful observation time',
+  'typed, allowlisted safe reasons',
+  'View Claude usage',
+  'automatic authentication renewal',
+  'Claude API and OpenAI API billing links',
+  'isolated Claude API balance feasibility tooling',
+  'not production balance integration'
+].each do |fact|
+  abort "v0.3.3 release notes are missing #{fact.inspect}" unless notes.include?(fact)
+end
+
+public_record = status.match(/^## v0\.3\.3 Public Release Record — \d{4}-\d{2}-\d{2}\n(.*?)(?=^## |\z)/m)
+abort 'v0.3.3 STATUS is missing public release record' unless public_record
+evidence = public_record[1]
+evidence_text = evidence.gsub(/\s+/, ' ')
+{
+  'Tag' => /^Tag: `v0\.3\.3`$/,
+  'Candidate commit' => /^Candidate commit: `[0-9a-f]{40}`$/,
+  'Public release URL' => /^Public release URL: <https:\/\/github\.com\/taejunoh\/needlbar\/releases\/tag\/v0\.3\.3>$/,
+  'Public ZIP SHA-256' => /^Public ZIP SHA-256: `[0-9a-f]{64}`$/,
+  'tagless/publication evidence' => /Protected tagless validation .* and tag-triggered publication .* succeeded at the exact candidate above\./
+}.each do |field, pattern|
+  value = field == 'tagless/publication evidence' ? evidence_text : evidence
+  abort "v0.3.3 public release record is missing #{field} evidence" unless value.match?(pattern)
+end
+RUBY
+}
+
+test_v033_release_source_contract() {
+  local readme_file="$ROOT/README.md"
+  local status_file="$ROOT/docs/STATUS.md"
+  local release_notes_file="$ROOT/.github/release-notes/v0.3.3.md"
+
+  v033_release_source_contract_is_valid "$readme_file" "$status_file" "$release_notes_file" ||
+    fail 'live v0.3.3 release-source contract is invalid'
+}
+
+test_v033_release_source_contract
 
 release_workflow_contract_is_valid() {
   local release_workflow="$1"

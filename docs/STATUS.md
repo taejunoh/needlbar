@@ -1,6 +1,14 @@
 # Needlbar Development Status
 
-## v0.3.3 release preparation — 2026-09-16
+## v0.3.3 Public Release Record — 2026-09-16
+
+Tag: `v0.3.3`
+Candidate commit: `2d9b79623f82c990e5e17ed676a307ffc9546a3a`
+Public release URL: <https://github.com/taejunoh/needlbar/releases/tag/v0.3.3>
+Public ZIP SHA-256: `79ac52b74972e51eac9c603f62cc6dc8b695a11b333ea92ecbe43e17a7ff7f0f`
+
+Protected tagless validation `35084971102` and tag-triggered publication
+`35086637114` succeeded at the exact candidate above.
 
 User authorized PR #4 merge and release, including the previously unpushed
 Claude feasibility work. Version 0.3.3/build 6 metadata and release notes are
@@ -8,9 +16,18 @@ prepared and independently reviewed. Local full `make test` exited 0 on the
 release metadata candidate (`/tmp/needlbar-v033-candidate-tests.log`).
 PR #4 CI run `35083289053` passed; PR #4 merged as `a732e0a`.
 Release metadata was rebased onto that merge with an identical tested tree.
-Tagless protected Release validation, tagging
-the exact validated candidate, and public artifact verification remain pending.
-No v0.3.3 tag, public release, installation, or Homebrew update exists yet.
+Tagless protected validation `35084971102` and tag publication `35086637114`
+both succeeded for candidate `2d9b79623f82c990e5e17ed676a307ffc9546a3a`.
+Public release: https://github.com/taejunoh/needlbar/releases/tag/v0.3.3.
+Downloaded public ZIP SHA-256:
+`79ac52b74972e51eac9c603f62cc6dc8b695a11b333ea92ecbe43e17a7ff7f0f`.
+Host/widget 0.3.3/6, arm64, macOS 14.0, Developer ID team `3BMF4LM6TM`,
+hardened runtime, strict signatures, stapled ticket and Gatekeeper acceptance
+were verified. Public evidence is retained in `/tmp/needlbar-v033-public.5Xs9CD`.
+No local app installation or launch was performed. Homebrew tap update
+`60aaa30` was pushed with the measured public checksum. Ruby syntax and brew
+style passed; online cask audit was blocked before analysis because the local
+Command Line Tools does not support macOS 27. No system tooling was changed.
 Main checkout's pre-existing document edits and logs are preserved separately.
 
 ## Claude passive quota recovery — 2026-09-15
@@ -34,9 +51,9 @@ passed. `git diff --check` passed. Verification log:
 Claude surfaces now show last-known quota, actual successful check time, and a
 safe reason instead of routine re-login controls. Fable preserves last-known
 reset context without repeating the parent failure. README/provider docs and
-regression coverage are updated. Next: user chooses local merge, push/PR, or
-keeping this branch. No installed app, live authentication, credential, push,
-merge, or release has changed in this follow-up; live runtime UI was not tested.
+regression coverage are updated. This work was subsequently merged through PR #4
+and publicly released in v0.3.3 as recorded above. No local installation or live
+authentication was performed; live runtime UI was not tested.
 
 ## Active design follow-up — Claude API balance — 2026-09-13
 
