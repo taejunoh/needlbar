@@ -1,5 +1,30 @@
 # Needlbar Development Status
 
+## Claude passive quota recovery — 2026-09-15
+
+The user approved `docs/superpowers/specs/2026-09-15-claude-passive-quota-recovery-design.md`.
+Implementation is in `.worktrees/claude-passive-quota-recovery` on
+`codex/claude-passive-quota-recovery`, following the same-named implementation
+plan. The clean baseline `make test` passed before production edits.
+
+Scope: remove routine Claude re-login CTAs, retain explicitly last-known quota
+and the actual successful observation timestamp, present only typed safe reasons,
+and offer an explicit fixed official usage-page link. Existing refresh cadence,
+credential ownership, Codex/Cursor, and API billing remain unchanged. This does
+not add authentication renewal or resolve the unbounded Keychain-call boundary.
+Implementation is complete through `c764206`, with task and whole-branch review
+findings resolved and scoped re-reviews passing. The final exact-commit
+`make test` exited 0: 497 Swift tests plus Rust/vendor and packaging contracts
+passed. `git diff --check` passed. Verification log:
+`/tmp/needlbar-passive-final-c764206.log`.
+
+Claude surfaces now show last-known quota, actual successful check time, and a
+safe reason instead of routine re-login controls. Fable preserves last-known
+reset context without repeating the parent failure. README/provider docs and
+regression coverage are updated. Next: user chooses local merge, push/PR, or
+keeping this branch. No installed app, live authentication, credential, push,
+merge, or release has changed in this follow-up; live runtime UI was not tested.
+
 ## Active design follow-up — Claude API balance — 2026-09-13
 
 The user requested in-popover API prepaid balance and approved keeping a
