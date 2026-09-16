@@ -33,6 +33,14 @@
   After the bridge test-runtime build and implementation, focused Settings (11), Popover (12),
   and Dashboard (33) suites passed. The post-review full gate passed with exit 0; log:
   `/tmp/needlbar-passive-review-full-final.log`.
+- Final-review RED: `PATH=/Users/taejunoh/.cargo/bin:$PATH swift test --filter
+  SystemDashboardPopoverTests` exited 1 because `FableQuotaDetail` had no `statusText`
+  presentation seam (`/tmp/needlbar-passive-finalreview-red-dashboard-meaningful.log`).
+  The model now owns that text and suppresses the secondary Fable `Error` or `Authentication
+  required` status whenever the parent Claude snapshot has an approved safe fallback reason,
+  while retaining Fable freshness, `Last known`, and reset text. The focused Dashboard suite
+  passed 34 tests (`/tmp/needlbar-passive-finalreview-green-dashboard.log`). Per final-review
+  task assignment, the root agent owns the post-commit whole-suite gate.
 - `git diff --check` passed before the full gate.
 
 ## CONCERNS

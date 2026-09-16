@@ -416,7 +416,7 @@ public struct SystemDashboardPopoverView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                if let status = fableStatus(fable.freshness) {
+                if let status = fable.statusText {
                     Text("\(fable.isLastKnown ? "Last known · " : "")\(fable.resetCaption) · \(status)")
                         .font(.caption2)
                         .foregroundStyle(.orange)
@@ -441,15 +441,6 @@ public struct SystemDashboardPopoverView: View {
     private func performClaudeUsageAction() {
         claudeUsageState.recordOpenResult(onClaudeUsageAction())
         onClaudeUsageStateChanged(claudeUsageState)
-    }
-
-    private func fableStatus(_ freshness: PresentationFreshness) -> String? {
-        switch freshness {
-        case .fresh, .unavailable: return nil
-        case .stale: return "Stale"
-        case .requiresAuthentication: return "Authentication required"
-        case .error: return "Error"
-        }
     }
 
     private var header: some View {

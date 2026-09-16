@@ -79,6 +79,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let resetCaption: String
         public let freshness: PresentationFreshness
         public let isLastKnown: Bool
+        public let statusText: String?
     }
 
     public struct CPU: Equatable, Sendable {
@@ -278,17 +279,31 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                 remaining: "—",
                 resetCaption: String(localized: "Reset unavailable"),
                 freshness: .unavailable,
-                isLastKnown: false
+                isLastKnown: false,
+                statusText: nil
             )
         }
+        let freshness = PresentationFreshness(snapshot?.quotaStatus ?? .unavailable)
+        let hasSafeClaudeFallbackReason = snapshot?.provider == .claude
+            && snapshot?.claudeQuotaFailureReason != nil
         return FableQuotaDetail(
             remaining: MetricFormatter.quotaRemaining(window.remainingPercent),
             resetCaption: MetricFormatter.reset(window.resetsAt).map { String(localized: "Resets \($0)") }
                 ?? String(localized: "Reset unavailable"),
-            freshness: PresentationFreshness(snapshot?.quotaStatus ?? .unavailable),
+            freshness: freshness,
             isLastKnown: snapshot?.provider == .claude
-                && (snapshot?.claudeQuotaFailureReason != nil || snapshot?.quotaStatus != .fresh)
+                && (hasSafeClaudeFallbackReason || snapshot?.quotaStatus != .fresh),
+            statusText: hasSafeClaudeFallbackReason ? nil : Self.fableStatus(freshness)
         )
+    }
+
+    private static func fableStatus(_ freshness: PresentationFreshness) -> String? {
+        switch freshness {
+        case .fresh, .unavailable: return nil
+        case .stale: return String(localized: "Stale")
+        case .requiresAuthentication: return String(localized: "Authentication required")
+        case .error: return String(localized: "Error")
+        }
     }
 
     private static func dashboardTokens(_ value: UInt64) -> String {

@@ -262,6 +262,35 @@ import Testing
     #expect(stale.ai.first { $0.provider == .claude }?.fable?.freshness == .stale)
 }
 
+@Test func dashboardFableSuppressesItsSecondaryFailureForSafeClaudeFallbacks() throws {
+    let reset = Date(timeIntervalSince1970: 20_000)
+    let windows = [
+        try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil),
+        try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", usedPercent: 100, resetsAt: reset),
+    ]
+    let cases: [(DataStatus, ClaudeQuotaFailureReason, PresentationFreshness)] = [
+        (.error(message: "untrusted", lastSuccessfulAt: .distantPast), .couldNotUpdateQuota, .error),
+        (.requiresAuthentication, .quotaAccessUnavailable, .requiresAuthentication),
+    ]
+
+    for (status, reason, expectedFreshness) in cases {
+        let presentation = SystemDashboardPresentation(
+            snapshot: dashboardFixtureSnapshot(
+                claudeQuotaStatus: status,
+                claudeQuotaFailureReason: reason,
+                claudeQuotaWindows: windows
+            ),
+            configuration: SystemMonitorConfiguration()
+        )
+        let fable = try #require(presentation.ai.first { $0.provider == .claude }?.fable)
+
+        #expect(fable.freshness == expectedFreshness)
+        #expect(fable.isLastKnown)
+        #expect(fable.resetCaption.hasPrefix("Resets "))
+        #expect(fable.statusText == nil)
+    }
+}
+
 @Test func dashboardFableDetailHandlesMissingAndResetlessWindowsWithoutActions() throws {
     let defaultPresentation = SystemDashboardPresentation(
         snapshot: dashboardFixtureSnapshot(), configuration: SystemMonitorConfiguration()
