@@ -1,5 +1,35 @@
 # Needlbar Development Status
 
+## v0.3.4 Public Release Record — 2026-09-22/23
+
+PR #5 passed CI run `35801922708` and merged as
+`49b53a697f2e4390462fddc2a045fd8f024f544a`. Protected tagless Release
+validation `35802972250` and tag-triggered Release/publish `35804287520`
+both succeeded at that exact commit. Annotated tag `v0.3.4` dereferences to
+the same SHA; the public release is
+<https://github.com/taejunoh/needlbar/releases/tag/v0.3.4>.
+
+The downloaded public ZIP and its checksum sidecar agree on SHA-256
+`1d5846bde7c256fb7f5673aec194ba6f29dfea63fb5cb5018a3f4027e49ddf29`.
+ZIP integrity passed. The extracted host and widget report version/build
+0.3.4/7. The host is arm64 with macOS 14.0 minimum, Developer ID team
+`3BMF4LM6TM`, hardened runtime, valid strict/deep signatures, stapled
+notarization ticket, and Gatekeeper acceptance. Public verification evidence
+was collected under
+`/var/folders/9d/mc7wd6fd443cxj3ypgtz4x1m0000gn/T/needlbar-v034-public.XXXXXX.NyV4VpvIyX`.
+The Homebrew Cask was pushed at tap commit `585cb01` with the measured public
+ZIP hash. Ruby syntax and `brew style` passed. No local app reinstall or new
+native UI acceptance was performed for the public artifact.
+
+The next continuation is documentation integration (README and this status
+record), then optional user-requested public-app installation/visual check.
+Documentation PR #6 first CI run `35806230674` exposed a scheduling-dependent
+Swift test: its quota-error assertion polled 100 yields after repository call
+start, without waiting for store application. The test now waits for the
+existing post-application completion callback before asserting. The focused
+test and full `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` now pass
+locally; PR CI re-verification remains required.
+
 ## v0.3.4 release candidate — 2026-09-22
 
 The Claude quota display recovery and status-consistency changes are prepared

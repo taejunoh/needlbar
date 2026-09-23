@@ -116,6 +116,7 @@ struct RefreshCoordinatorTests {
         for (code, expectedReason) in cases {
             let now = try #require(BridgeDecoder.date("2026-09-15T12:00:00Z"))
             let store = ProviderSnapshotStore()
+            let completionGate = QuotaApplicationGate()
             let quota = QuotaRefreshSpy(result: .init(
                 snapshots: [:],
                 errors: [.claude: .init(provider: "claude", code: code, message: "untrusted raw detail", action: nil)]
@@ -124,13 +125,19 @@ struct RefreshCoordinatorTests {
                 usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
                 quotaRepository: quota,
                 store: store,
-                clock: ManualClock(now: now)
+                clock: ManualClock(now: now),
+                claudeQuotaOperationCompleted: { await completionGate.pause() }
             )
 
             await coordinator.popoverOpened()
             await quota.waitUntilCallCount(1)
-            await eventuallyAsync { await store.snapshot(for: .claude).claudeQuotaFailureReason == expectedReason }
-            #expect(await store.snapshot(for: .claude).claudeQuotaFailureReason == expectedReason)
+            await completionGate.waitUntilEntered()
+            let actualReason = await store.snapshot(for: .claude).claudeQuotaFailureReason
+            #expect(
+                actualReason == expectedReason,
+                "Claude quota error code '\(code)' mapped to \(String(describing: actualReason)); expected \(expectedReason)"
+            )
+            await completionGate.resume()
             await coordinator.stop()
         }
     }
