@@ -23,6 +23,12 @@ native UI acceptance was performed for the public artifact.
 
 The next continuation is documentation integration (README and this status
 record), then optional user-requested public-app installation/visual check.
+Documentation PR #6 first CI run `35806230674` exposed a scheduling-dependent
+Swift test: its quota-error assertion polled 100 yields after repository call
+start, without waiting for store application. The test now waits for the
+existing post-application completion callback before asserting. The focused
+test and full `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` now pass
+locally; PR CI re-verification remains required.
 
 ## v0.3.4 release candidate — 2026-09-22
 
