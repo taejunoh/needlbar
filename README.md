@@ -6,11 +6,11 @@ Needlbar is local-first: it has no Needlbar account, backend, hosted sync, cloud
 
 ## Availability and download
 
-Needlbar v0.3.3 is publicly available for macOS 14 or later on Apple Silicon.
+Needlbar v0.3.4 is publicly available for macOS 14 or later on Apple Silicon.
 
-[Download Needlbar v0.3.3 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip)
+[Download Needlbar v0.3.4 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.4/Needlbar-macos-arm64.zip)
 
-[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip.sha256)
+[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.4/Needlbar-macos-arm64.zip.sha256)
 
 The `Needlbar-macos-arm64.zip.sha256` file is the SHA-256 checksum sidecar for the ZIP. Verify both downloaded files from the same directory:
 
@@ -20,9 +20,9 @@ shasum -a 256 -c Needlbar-macos-arm64.zip.sha256
 
 The public artifact is Developer ID-signed and notarized.
 
-To install the public v0.3.3 release:
+To install the public v0.3.4 release:
 
-1. Download the ZIP and checksum sidecar from the v0.3.3 GitHub Release.
+1. Download the ZIP and checksum sidecar from the v0.3.4 GitHub Release.
 2. Run the checksum command from the directory containing both files.
 3. Open the verified ZIP and drag `Needlbar.app` into `/Applications`.
 4. Launch Needlbar from `/Applications`; it appears in the macOS menu bar.
@@ -66,6 +66,11 @@ initial failure shows **Quota unavailable** without an invented value or reset.
 explicit click; Needlbar does not launch routine Claude login from this
 recovery flow. Background refresh stays non-interactive and Needlbar does not
 store provider credentials.
+
+v0.3.4 keeps the same Claude quota status and safe failure reason consistent
+between the popover and Settings. It also corrects decoding of the quota
+source in diagnostics; it does not add a new login flow or guarantee that
+future provider refreshes will always succeed.
 
 ### Claude API billing link and feasibility harness
 
@@ -175,7 +180,7 @@ The released app includes one medium Overview widget backed by a sanitized local
 
 ## Native macOS 14 acceptance (maintainer-only)
 
-The public v0.3.3 ZIP is the production artifact for Gallery and entitlement
+The public v0.3.4 ZIP is the production artifact for Gallery and entitlement
 acceptance checks. The
 separately signed fixture-driven artifact is acceptance-only and is not a
 release or notarization substitute. It uses no provider account, credential,
@@ -214,7 +219,7 @@ Analytics is manual and local-only: there is no startup scan, timer, watcher, ba
 
 The v0.3.1 refinement remains the historical compact-readability release
 record for macOS 14 or later on Apple Silicon. The current supported public
-distribution is v0.3.2 above. The refinement keeps the existing data semantics while adding:
+distribution is v0.3.4 above. The refinement keeps the existing data semantics while adding:
 
 - colored summary cards;
 - full-width, aligned repository rows for name, estimated cost, and tokens;
