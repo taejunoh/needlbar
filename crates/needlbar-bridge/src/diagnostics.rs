@@ -360,10 +360,10 @@ fn stream_observation(
     }
 }
 
-fn quota_outcome<'a>(
-    envelope: &'a Envelope<QuotaPayload>,
+fn quota_outcome(
+    envelope: &Envelope<QuotaPayload>,
     provider: DiagnosticProvider,
-) -> (bool, Option<&'a crate::envelope::BridgeError>) {
+) -> (bool, Option<&crate::envelope::BridgeError>) {
     let name = provider.name();
     let present = envelope.data.as_ref().is_some_and(|payload| {
         payload

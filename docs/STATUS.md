@@ -15,6 +15,11 @@ Version/build metadata is 0.3.4/7 for the host and widget. Release notes and
 release workflow point to `docs/releases/v0.3.4.md`. The final candidate tree
 passed `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` twice; the most recent
 run exited 0 after the release-note correction. `git diff --check` passed.
+PR #5 CI first passed the Rust workspace and vendored tests, then failed at
+Clippy on one needless explicit lifetime in the diagnostics helper. The
+lifetime was elided without changing behavior; local
+`cargo clippy --workspace --all-targets --all-features -- -D warnings` now
+exits 0. PR CI must rerun on the correction before merge.
 No v0.3.4 public artifact, tag, Homebrew update, or public reinstall exists
 yet. The next continuation is PR/CI, merge, protected release validation,
 tag-triggered publishing, and public artifact verification before updating
