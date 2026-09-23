@@ -1,5 +1,6 @@
 use std::sync::{LazyLock, Mutex};
 
+use needlbar_quota::ClaudeQuotaFailureOrigin;
 use serde::Serialize;
 
 use crate::{envelope::Envelope, quota::QuotaPayload, usage::UsagePayload};
@@ -54,6 +55,7 @@ pub enum UsageSource {
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum QuotaSource {
+    #[serde(rename = "oauth")]
     OAuth,
     Unavailable,
 }
@@ -115,6 +117,10 @@ pub struct ProviderDiagnostic {
     usage_error_code: Option<SafeErrorCode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     quota_error_code: Option<SafeErrorCode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_attempt_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    claude_quota_failure_origin: Option<ClaudeQuotaFailureOrigin>,
 }
 
 impl ProviderDiagnostic {
@@ -140,6 +146,8 @@ impl ProviderDiagnostic {
             last_quota_at: last_quota_at.map(ToOwned::to_owned),
             usage_error_code: usage_error_code.as_deref().and_then(SafeErrorCode::parse),
             quota_error_code: quota_error_code.as_deref().and_then(SafeErrorCode::parse),
+            last_attempt_at: None,
+            claude_quota_failure_origin: None,
         }
     }
 }
@@ -186,6 +194,12 @@ impl DiagnosticsSnapshot {
                         last_quota_at: quota.and_then(|entry| entry.observed_at.clone()),
                         usage_error_code: usage.and_then(|entry| entry.error_code),
                         quota_error_code: quota.and_then(|entry| entry.error_code),
+                        last_attempt_at: quota.and_then(|entry| entry.last_attempt_at.clone()),
+                        claude_quota_failure_origin: if provider == DiagnosticProvider::Claude {
+                            quota.and_then(|entry| entry.claude_failure_origin)
+                        } else {
+                            None
+                        },
                     }
                 })
                 .collect(),
@@ -239,6 +253,8 @@ struct StreamObservation {
     status: SubsystemStatus,
     observed_at: Option<String>,
     error_code: Option<SafeErrorCode>,
+    last_attempt_at: Option<String>,
+    claude_failure_origin: Option<ClaudeQuotaFailureOrigin>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -275,37 +291,7 @@ pub fn record_usage(envelope: &Envelope<UsagePayload>) {
         .usage = Some(entries);
 }
 
-pub fn record_quota(envelope: &Envelope<QuotaPayload>) {
-    let entries = DiagnosticProvider::ALL
-        .into_iter()
-        .map(|provider| {
-            let name = provider.name();
-            let present = envelope.data.as_ref().is_some_and(|payload| {
-                payload
-                    .providers
-                    .iter()
-                    .any(|entry| provider_name(entry.provider) == name)
-            });
-            let error = envelope
-                .errors
-                .iter()
-                .find(|error| error.provider.as_deref() == Some(name));
-            StreamObservation {
-                status: quota_status(provider, present, error.map(|error| error.code.as_str())),
-                observed_at: present.then(|| envelope.generated_at.to_owned()),
-                error_code: error.and_then(|error| SafeErrorCode::parse(&error.code)),
-            }
-        })
-        .collect();
-    RECORDED_OUTCOMES
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .quota = Some(entries);
-}
-
-/// Records only the provider outcomes represented by a provider-specific quota
-/// envelope, preserving last-known outcomes for omitted providers.
-pub fn record_partial_quota(envelope: &Envelope<QuotaPayload>) {
+pub fn record_quota(envelope: &Envelope<QuotaPayload>, attempted_at: Option<&str>) {
     let mut outcomes = RECORDED_OUTCOMES
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -316,23 +302,46 @@ pub fn record_partial_quota(envelope: &Envelope<QuotaPayload>) {
             .collect()
     });
     for (index, provider) in DiagnosticProvider::ALL.into_iter().enumerate() {
-        let name = provider.name();
-        let present = envelope.data.as_ref().is_some_and(|payload| {
-            payload
-                .providers
-                .iter()
-                .any(|entry| provider_name(entry.provider) == name)
-        });
-        let error = envelope
-            .errors
-            .iter()
-            .find(|error| error.provider.as_deref() == Some(name));
-        if present || error.is_some() {
-            entries[index] = StreamObservation {
-                status: quota_status(provider, present, error.map(|error| error.code.as_str())),
-                observed_at: present.then(|| envelope.generated_at.to_owned()),
-                error_code: error.and_then(|error| SafeErrorCode::parse(&error.code)),
-            };
+        let (present, error) = quota_outcome(envelope, provider);
+        entries[index] = quota_observation(
+            entries[index].clone(),
+            provider,
+            present,
+            error.map(|error| error.code.as_str()),
+            claude_attempt_at(envelope, provider, attempted_at),
+            claude_origin(envelope, provider),
+            envelope.generated_at.as_str(),
+        );
+    }
+}
+
+/// Records only the provider outcomes represented by a provider-specific quota
+/// envelope, preserving last-known outcomes for omitted providers.
+pub fn record_partial_quota(envelope: &Envelope<QuotaPayload>, attempted_at: Option<&str>) {
+    let mut outcomes = RECORDED_OUTCOMES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let entries = outcomes.quota.get_or_insert_with(|| {
+        DiagnosticProvider::ALL
+            .into_iter()
+            .map(|_| stream_observation(false, envelope.generated_at.as_str(), None))
+            .collect()
+    });
+    for (index, provider) in DiagnosticProvider::ALL.into_iter().enumerate() {
+        let (present, error) = quota_outcome(envelope, provider);
+        if present
+            || error.is_some()
+            || claude_attempt_at(envelope, provider, attempted_at).is_some()
+        {
+            entries[index] = quota_observation(
+                entries[index].clone(),
+                provider,
+                present,
+                error.map(|error| error.code.as_str()),
+                claude_attempt_at(envelope, provider, attempted_at),
+                claude_origin(envelope, provider),
+                envelope.generated_at.as_str(),
+            );
         }
     }
 }
@@ -346,6 +355,94 @@ fn stream_observation(
         status: status(present, error_code),
         observed_at: present.then(|| generated_at.to_owned()),
         error_code: error_code.and_then(SafeErrorCode::parse),
+        last_attempt_at: None,
+        claude_failure_origin: None,
+    }
+}
+
+fn quota_outcome(
+    envelope: &Envelope<QuotaPayload>,
+    provider: DiagnosticProvider,
+) -> (bool, Option<&crate::envelope::BridgeError>) {
+    let name = provider.name();
+    let present = envelope.data.as_ref().is_some_and(|payload| {
+        payload
+            .providers
+            .iter()
+            .any(|entry| provider_name(entry.provider) == name)
+    });
+    let error = envelope
+        .errors
+        .iter()
+        .find(|error| error.provider.as_deref() == Some(name));
+    (present, error)
+}
+
+fn claude_attempt_at<'a>(
+    envelope: &QuotaEnvelope,
+    provider: DiagnosticProvider,
+    attempted_at: Option<&'a str>,
+) -> Option<&'a str> {
+    (provider == DiagnosticProvider::Claude
+        && (envelope.data.is_none()
+            || envelope
+                .data
+                .as_ref()
+                .is_some_and(|payload| payload.claude_attempted)))
+    .then_some(attempted_at)
+    .flatten()
+}
+
+type QuotaEnvelope = Envelope<QuotaPayload>;
+
+fn claude_origin(
+    envelope: &QuotaEnvelope,
+    provider: DiagnosticProvider,
+) -> Option<ClaudeQuotaFailureOrigin> {
+    (provider == DiagnosticProvider::Claude)
+        .then(|| {
+            envelope
+                .data
+                .as_ref()
+                .and_then(|payload| payload.claude_failure_origin)
+        })
+        .flatten()
+}
+
+fn quota_observation(
+    prior: StreamObservation,
+    provider: DiagnosticProvider,
+    present: bool,
+    error_code: Option<&str>,
+    attempted_at: Option<&str>,
+    origin: Option<ClaudeQuotaFailureOrigin>,
+    generated_at: &str,
+) -> StreamObservation {
+    if present {
+        return StreamObservation {
+            status: SubsystemStatus::Available,
+            observed_at: Some(generated_at.to_owned()),
+            error_code: None,
+            last_attempt_at: attempted_at
+                .map(ToOwned::to_owned)
+                .or(prior.last_attempt_at),
+            claude_failure_origin: None,
+        };
+    }
+    StreamObservation {
+        status: quota_status(provider, false, error_code),
+        observed_at: prior.observed_at,
+        error_code: error_code.and_then(SafeErrorCode::parse),
+        last_attempt_at: attempted_at
+            .map(ToOwned::to_owned)
+            .or(prior.last_attempt_at),
+        claude_failure_origin: if provider == DiagnosticProvider::Claude {
+            attempted_at
+                .map(|_| origin.unwrap_or(ClaudeQuotaFailureOrigin::OtherFailure))
+                .or(prior.claude_failure_origin)
+        } else {
+            None
+        },
     }
 }
 
@@ -379,4 +476,14 @@ fn quota_status(
         return SubsystemStatus::Unavailable;
     }
     status(present, error_code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::QuotaSource;
+
+    #[test]
+    fn oauth_quota_source_uses_stable_lowercase_spelling() {
+        assert_eq!(serde_json::to_value(QuotaSource::OAuth).unwrap(), "oauth");
+    }
 }

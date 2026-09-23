@@ -49,6 +49,52 @@ struct SettingsStudioTests {
         #expect(openedURL?.absoluteString == "https://claude.ai/settings/usage")
     }
 
+    @Test func settingsControllerSharesClaudeFallbackStateAndClearsItAfterSuccess() throws {
+        let name = "SettingsStudio.claude-runtime.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let preferences = QuotaNotificationPreferences(defaults: defaults)
+        let controller = SettingsWindowController(
+            configuration: ModuleConfiguration(defaults: defaults),
+            actions: SettingsActions(),
+            notificationPreferences: preferences,
+            notificationService: QuotaNotificationService(store: ProviderSnapshotStore(), preferences: preferences),
+            openCursorSpending: {}
+        )
+        let lastSuccess = Date(timeIntervalSince1970: 10_000)
+        let failedAttempt = Date(timeIntervalSince1970: 20_000)
+        let quota = QuotaSnapshot(windows: [
+            try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil),
+        ])
+
+        controller.update(snapshot: Self.claudeQuotaSnapshot(
+            quota: quota,
+            quotaStatus: .error(message: "untrusted", lastSuccessfulAt: lastSuccess),
+            reason: .couldNotUpdateQuota,
+            quotaLastSuccessfulAt: lastSuccess,
+            updatedAt: failedAttempt
+        ), configuration: .init())
+
+        #expect(controller.claudeQuotaState.quotaIsLastKnown)
+        #expect(controller.claudeQuotaState.headlineQuotaRemaining == "32%")
+        #expect(controller.claudeQuotaState.quotaFailureReasonText == "Could not update quota")
+        #expect(controller.claudeQuotaState.quotaLastCheckedText != nil)
+        #expect(controller.claudeQuotaState.quotaLastCheckedText != MetricFormatter.reset(failedAttempt))
+
+        controller.update(snapshot: Self.claudeQuotaSnapshot(
+            quota: quota,
+            quotaStatus: .fresh,
+            reason: nil,
+            quotaLastSuccessfulAt: lastSuccess,
+            updatedAt: failedAttempt.addingTimeInterval(1)
+        ), configuration: .init())
+
+        #expect(!controller.claudeQuotaState.quotaIsLastKnown)
+        #expect(!controller.claudeQuotaState.quotaUnavailable)
+        #expect(controller.claudeQuotaState.quotaFailureReasonText == nil)
+        #expect(controller.claudeQuotaState.quotaLastCheckedText == nil)
+    }
+
     @Test func apiBillingSettingsToggleDoesNotMakeProviderVisible() throws {
         let name = "SettingsStudio.api.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: name))
@@ -154,6 +200,30 @@ struct SettingsStudioTests {
 
     static var emptySnapshot: CombinedUsageSnapshot {
         .init(system: nil, providers: [], capturedAt: .distantPast, systemAvailability: [:])
+    }
+
+    static func claudeQuotaSnapshot(
+        quota: QuotaSnapshot?,
+        quotaStatus: DataStatus,
+        reason: ClaudeQuotaFailureReason?,
+        quotaLastSuccessfulAt: Date?,
+        updatedAt: Date
+    ) -> CombinedUsageSnapshot {
+        .init(
+            system: nil,
+            providers: [ProviderSnapshot(
+                provider: .claude,
+                usage: nil,
+                quota: quota,
+                usageStatus: .unavailable,
+                quotaStatus: quotaStatus,
+                updatedAt: updatedAt,
+                claudeQuotaFailureReason: reason,
+                quotaLastSuccessfulAt: quotaLastSuccessfulAt
+            )],
+            capturedAt: updatedAt,
+            systemAvailability: [:]
+        )
     }
 
     @Test func editorDoesNotCrossSurfaces() {

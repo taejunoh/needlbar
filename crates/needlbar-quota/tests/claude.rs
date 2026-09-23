@@ -6,8 +6,8 @@ use std::{
 use chrono::{TimeZone, Utc};
 use needlbar_quota::{
     normalize_percent, ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver,
-    ClaudeOAuthSecret, ClaudeQuotaProvider, FileClaudeCredentialResolver, ProviderId,
-    QuotaErrorCode, QuotaProvider, QuotaWindow, RedactingHttpClient,
+    ClaudeOAuthSecret, ClaudeQuotaFailureOrigin, ClaudeQuotaProvider, FileClaudeCredentialResolver,
+    ProviderId, QuotaErrorCode, QuotaProvider, QuotaWindow, RedactingHttpClient,
 };
 use tempfile::TempDir;
 
@@ -91,30 +91,61 @@ async fn credential_failures_map_to_safe_quota_errors() {
         (
             ClaudeCredentialError::NotFound,
             QuotaErrorCode::RequiresAuthentication,
+            ClaudeQuotaFailureOrigin::CredentialMissing,
         ),
         (
             ClaudeCredentialError::InteractionNotAllowed,
             QuotaErrorCode::PermissionDenied,
+            ClaudeQuotaFailureOrigin::CredentialAccessDenied,
         ),
         (
             ClaudeCredentialError::PermissionDenied,
             QuotaErrorCode::PermissionDenied,
+            ClaudeQuotaFailureOrigin::CredentialAccessDenied,
         ),
         (
             ClaudeCredentialError::Cancelled,
             QuotaErrorCode::PermissionDenied,
+            ClaudeQuotaFailureOrigin::CredentialAccessDenied,
+        ),
+        (
+            ClaudeCredentialError::KeychainExpired,
+            QuotaErrorCode::AuthenticationExpired,
+            ClaudeQuotaFailureOrigin::KeychainCredentialExpired,
+        ),
+        (
+            ClaudeCredentialError::FileExpired,
+            QuotaErrorCode::AuthenticationExpired,
+            ClaudeQuotaFailureOrigin::FileCredentialExpired,
+        ),
+        (
+            ClaudeCredentialError::FileMalformed,
+            QuotaErrorCode::RequiresAuthentication,
+            ClaudeQuotaFailureOrigin::OtherFailure,
+        ),
+        (
+            ClaudeCredentialError::FileReadFailed,
+            QuotaErrorCode::RequiresAuthentication,
+            ClaudeQuotaFailureOrigin::OtherFailure,
+        ),
+        (
+            ClaudeCredentialError::FilePermissionDenied,
+            QuotaErrorCode::RequiresAuthentication,
+            ClaudeQuotaFailureOrigin::CredentialAccessDenied,
         ),
         (
             ClaudeCredentialError::Expired,
             QuotaErrorCode::AuthenticationExpired,
+            ClaudeQuotaFailureOrigin::OtherFailure,
         ),
         (
             ClaudeCredentialError::Malformed,
             QuotaErrorCode::SchemaChanged,
+            ClaudeQuotaFailureOrigin::OtherFailure,
         ),
     ];
 
-    for (credential_error, expected_code) in cases {
+    for (credential_error, expected_code, expected_origin) in cases {
         let provider = provider_with_resolver(Arc::new(RecordingResolver::failing(
             Arc::new(Mutex::new(Vec::new())),
             credential_error,
@@ -122,6 +153,7 @@ async fn credential_failures_map_to_safe_quota_errors() {
         let error = provider.fetch().await.unwrap_err();
 
         assert_eq!(error.code, expected_code);
+        assert_eq!(error.claude_failure_origin(), Some(expected_origin));
     }
 }
 
@@ -345,6 +377,10 @@ fn rejects_malformed_or_out_of_range_claude_payloads() {
     let error = ClaudeQuotaProvider::parse_usage_payload(MALFORMED_FIXTURE).unwrap_err();
 
     assert_eq!(error.code, QuotaErrorCode::SchemaChanged);
+    assert_eq!(
+        error.claude_failure_origin(),
+        Some(ClaudeQuotaFailureOrigin::OtherFailure)
+    );
 }
 
 #[test]
@@ -385,6 +421,57 @@ async fn missing_file_oauth_requires_authentication_without_prompting() {
     let error = provider.fetch().await.unwrap_err();
 
     assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
+    assert_eq!(
+        error.claude_failure_origin(),
+        Some(ClaudeQuotaFailureOrigin::CredentialMissing)
+    );
+}
+
+#[tokio::test]
+async fn malformed_file_oauth_keeps_legacy_safe_code_but_has_other_failure_origin() {
+    let temp = TempDir::new().unwrap();
+    let config_dir = temp.path().join("claude-config");
+    fs::create_dir_all(&config_dir).unwrap();
+    fs::write(
+        config_dir.join(".credentials.json"),
+        "not valid credential JSON",
+    )
+    .unwrap();
+    let provider = ClaudeQuotaProvider::from_paths(
+        Some(config_dir),
+        temp.path().to_path_buf(),
+        RedactingHttpClient::new(),
+    );
+
+    let error = provider.fetch().await.unwrap_err();
+
+    assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
+    assert_eq!(
+        error.claude_failure_origin(),
+        Some(ClaudeQuotaFailureOrigin::OtherFailure)
+    );
+}
+
+#[tokio::test]
+async fn directory_at_credentials_path_is_not_reported_as_missing_credentials() {
+    let temp = TempDir::new().unwrap();
+    let config_dir = temp.path().join("claude-config");
+    fs::create_dir_all(&config_dir).unwrap();
+    fs::create_dir(config_dir.join(".credentials.json")).unwrap();
+    let provider = ClaudeQuotaProvider::from_paths(
+        Some(config_dir),
+        temp.path().to_path_buf(),
+        RedactingHttpClient::new(),
+    );
+
+    let error = provider.fetch().await.unwrap_err();
+
+    assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
+    assert_eq!(error.message, "Claude authentication was not available.");
+    assert_eq!(
+        error.claude_failure_origin(),
+        Some(ClaudeQuotaFailureOrigin::OtherFailure)
+    );
 }
 
 #[tokio::test]
@@ -406,6 +493,10 @@ async fn known_expired_file_oauth_is_reported_as_expired() {
     let error = provider.fetch().await.unwrap_err();
 
     assert_eq!(error.code, QuotaErrorCode::AuthenticationExpired);
+    assert_eq!(
+        error.claude_failure_origin(),
+        Some(ClaudeQuotaFailureOrigin::FileCredentialExpired)
+    );
 }
 
 #[tokio::test]

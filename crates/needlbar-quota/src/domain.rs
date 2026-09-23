@@ -73,6 +73,25 @@ pub enum QuotaErrorCode {
     SchemaChanged,
 }
 
+/// Closed, non-secret stage labels for a failed Claude quota operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ClaudeQuotaFailureOrigin {
+    CredentialMissing,
+    KeychainCredentialExpired,
+    FileCredentialExpired,
+    CredentialAccessDenied,
+    UsageEndpointUnauthorized,
+    UsageEndpointForbidden,
+    OtherFailure,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClaudeUsageEndpointStatus {
+    Unauthorized,
+    Forbidden,
+}
+
 /// A deliberately provider-safe error. It never stores a source error, URL,
 /// response body, local path, account identity, or credential.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -83,10 +102,14 @@ pub struct QuotaError {
     pub message: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_after: Option<Duration>,
+    #[serde(skip)]
+    claude_failure_origin: Option<ClaudeQuotaFailureOrigin>,
+    #[serde(skip)]
+    usage_endpoint_status: Option<ClaudeUsageEndpointStatus>,
 }
 
 impl QuotaError {
-    pub(crate) const fn new(
+    pub const fn new(
         provider: Option<ProviderId>,
         code: QuotaErrorCode,
         message: &'static str,
@@ -96,6 +119,8 @@ impl QuotaError {
             code,
             message,
             retry_after: None,
+            claude_failure_origin: None,
+            usage_endpoint_status: None,
         }
     }
 
@@ -107,6 +132,30 @@ impl QuotaError {
     pub(crate) const fn for_provider(mut self, provider: ProviderId) -> Self {
         self.provider = Some(provider);
         self
+    }
+
+    pub(crate) const fn with_claude_failure_origin(
+        mut self,
+        origin: ClaudeQuotaFailureOrigin,
+    ) -> Self {
+        self.claude_failure_origin = Some(origin);
+        self
+    }
+
+    pub(crate) const fn with_usage_endpoint_status(
+        mut self,
+        status: ClaudeUsageEndpointStatus,
+    ) -> Self {
+        self.usage_endpoint_status = Some(status);
+        self
+    }
+
+    pub fn claude_failure_origin(&self) -> Option<ClaudeQuotaFailureOrigin> {
+        self.claude_failure_origin
+    }
+
+    pub(crate) const fn usage_endpoint_status(&self) -> Option<ClaudeUsageEndpointStatus> {
+        self.usage_endpoint_status
     }
 }
 

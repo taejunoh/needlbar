@@ -14,10 +14,13 @@ public struct ProviderDiagnostics: Decodable, Sendable, Equatable {
     public let lastQuotaAt: Date?
     public let usageErrorCode: DiagnosticsErrorCode?
     public let quotaErrorCode: DiagnosticsErrorCode?
+    public let lastAttemptAt: Date?
+    public let claudeQuotaFailureOrigin: ClaudeQuotaFailureOrigin?
 
     private enum CodingKeys: String, CodingKey {
         case provider, usageStatus, quotaStatus, usageSource, quotaSource
         case lastUsageAt, lastQuotaAt, usageErrorCode, quotaErrorCode
+        case lastAttemptAt, claudeQuotaFailureOrigin
     }
 
     public init(from decoder: Decoder) throws {
@@ -39,6 +42,11 @@ public struct ProviderDiagnostics: Decodable, Sendable, Equatable {
         lastQuotaAt = try container.decodeIfPresent(Date.self, forKey: .lastQuotaAt)
         usageErrorCode = try container.decodeIfPresent(DiagnosticsErrorCode.self, forKey: .usageErrorCode)
         quotaErrorCode = try container.decodeIfPresent(DiagnosticsErrorCode.self, forKey: .quotaErrorCode)
+        lastAttemptAt = try container.decodeIfPresent(Date.self, forKey: .lastAttemptAt)
+        claudeQuotaFailureOrigin = try container.decodeIfPresent(
+            ClaudeQuotaFailureOrigin.self,
+            forKey: .claudeQuotaFailureOrigin
+        )
     }
 }
 
@@ -56,6 +64,20 @@ public enum UsageDiagnosticsSource: String, Decodable, Sendable, Equatable {
 public enum QuotaDiagnosticsSource: String, Decodable, Sendable, Equatable {
     case oauth
     case unavailable
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        switch value {
+        case Self.oauth.rawValue, "oAuth": self = .oauth
+        case Self.unavailable.rawValue: self = .unavailable
+        default:
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Expected a known quota diagnostics source."
+            )
+        }
+    }
 }
 
 public enum DiagnosticsErrorCode: String, Decodable, Sendable, Equatable {
@@ -73,6 +95,16 @@ public enum DiagnosticsErrorCode: String, Decodable, Sendable, Equatable {
     case invalidUsageDate
     case invalidUsageData
     case internalError
+}
+
+public enum ClaudeQuotaFailureOrigin: String, Decodable, Sendable, Equatable {
+    case credentialMissing
+    case keychainCredentialExpired
+    case fileCredentialExpired
+    case credentialAccessDenied
+    case usageEndpointUnauthorized
+    case usageEndpointForbidden
+    case otherFailure
 }
 
 public extension BridgeDecoder {

@@ -1,4 +1,4 @@
-use std::{env, fs, path::PathBuf, sync::Arc};
+use std::{env, fs, io, path::PathBuf, sync::Arc};
 
 use chrono::{DateTime, TimeZone, Utc};
 use reqwest::header::HeaderValue;
@@ -42,6 +42,11 @@ pub enum ClaudeCredentialError {
     InteractionNotAllowed,
     PermissionDenied,
     Cancelled,
+    KeychainExpired,
+    FileExpired,
+    FileMalformed,
+    FileReadFailed,
+    FilePermissionDenied,
     Expired,
     Malformed,
 }
@@ -81,15 +86,23 @@ impl ClaudeCredentialResolver for FileClaudeCredentialResolver {
         &self,
         _access: ClaudeCredentialAccess,
     ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
-        let contents = Zeroizing::new(
-            fs::read(self.credentials_path()).map_err(|_| ClaudeCredentialError::NotFound)?,
-        );
+        let contents =
+            Zeroizing::new(fs::read(self.credentials_path()).map_err(map_file_read_error)?);
         parse_credential_payload(&contents).map_err(|error| match error {
-            // Preserve the legacy file behavior: malformed local file evidence
-            // is indistinguishable from unavailable credentials.
-            ClaudeCredentialError::Malformed => ClaudeCredentialError::NotFound,
+            // Preserve the legacy safe public code while retaining the source
+            // distinction needed by diagnostics.
+            ClaudeCredentialError::Malformed => ClaudeCredentialError::FileMalformed,
+            ClaudeCredentialError::Expired => ClaudeCredentialError::FileExpired,
             other => other,
         })
+    }
+}
+
+fn map_file_read_error(error: io::Error) -> ClaudeCredentialError {
+    match error.kind() {
+        io::ErrorKind::NotFound => ClaudeCredentialError::NotFound,
+        io::ErrorKind::PermissionDenied => ClaudeCredentialError::FilePermissionDenied,
+        _ => ClaudeCredentialError::FileReadFailed,
     }
 }
 
@@ -239,7 +252,10 @@ fn resolve_keychain(
     }
 
     let payload = single_keychain_data(result)?;
-    parse_credential_payload(&payload)
+    parse_credential_payload(&payload).map_err(|error| match error {
+        ClaudeCredentialError::Expired => ClaudeCredentialError::KeychainExpired,
+        other => other,
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -398,8 +414,26 @@ fn map_security_error(error: security_framework::base::Error) -> ClaudeCredentia
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_credential_payload, ClaudeCredentialError};
+    use std::io;
+
+    use super::{map_file_read_error, parse_credential_payload, ClaudeCredentialError};
     use crate::RedactingHttpClient;
+
+    #[test]
+    fn file_read_errors_keep_missing_and_permission_denied_distinct() {
+        assert_eq!(
+            map_file_read_error(io::Error::from(io::ErrorKind::NotFound)),
+            ClaudeCredentialError::NotFound
+        );
+        assert_eq!(
+            map_file_read_error(io::Error::from(io::ErrorKind::PermissionDenied)),
+            ClaudeCredentialError::FilePermissionDenied
+        );
+        assert_eq!(
+            map_file_read_error(io::Error::from(io::ErrorKind::IsADirectory)),
+            ClaudeCredentialError::FileReadFailed
+        );
+    }
 
     #[test]
     fn parser_keeps_refresh_tokens_out_of_the_typed_projection() {

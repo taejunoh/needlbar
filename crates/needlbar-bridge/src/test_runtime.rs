@@ -257,12 +257,11 @@ pub fn fixture_snapshot(
 }
 
 pub fn fixture_permission_denied(canary: &str) -> QuotaError {
-    QuotaError {
-        provider: Some(ProviderId::Claude),
-        code: QuotaErrorCode::PermissionDenied,
-        message: Box::leak(format!("credential {canary}").into_boxed_str()),
-        retry_after: None,
-    }
+    QuotaError::new(
+        Some(ProviderId::Claude),
+        QuotaErrorCode::PermissionDenied,
+        Box::leak(format!("credential {canary}").into_boxed_str()),
+    )
 }
 
 pub fn install_provider_verification_fixture(
@@ -709,12 +708,11 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
                 )),
                 Arc::new(ProviderVerificationQuotaProvider::new(
                     ProviderId::Cursor,
-                    Err(QuotaError {
-                        provider: Some(ProviderId::Cursor),
-                        code: QuotaErrorCode::ProviderUnavailable,
-                        message: "Cursor personal quota is available in Cursor Spending.",
-                        retry_after: None,
-                    }),
+                    Err(QuotaError::new(
+                        Some(ProviderId::Cursor),
+                        QuotaErrorCode::ProviderUnavailable,
+                        "Cursor personal quota is available in Cursor Spending.",
+                    )),
                     fixture,
                 )),
             )
@@ -732,12 +730,11 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
             )),
             Arc::new(ProviderVerificationQuotaProvider::new(
                 ProviderId::Cursor,
-                Err(QuotaError {
-                    provider: Some(ProviderId::Cursor),
-                    code: QuotaErrorCode::ProviderUnavailable,
-                    message: "Cursor personal quota is available in Cursor Spending.",
-                    retry_after: None,
-                }),
+                Err(QuotaError::new(
+                    Some(ProviderId::Cursor),
+                    QuotaErrorCode::ProviderUnavailable,
+                    "Cursor personal quota is available in Cursor Spending.",
+                )),
                 blocking.fixture,
             )),
         ),
@@ -829,12 +826,11 @@ impl FixtureClaudeUserInitiatedSource {
 
     fn failure(code: QuotaErrorCode, source_detail: String) -> Self {
         Self {
-            result: Err(QuotaError {
-                provider: Some(ProviderId::Claude),
+            result: Err(QuotaError::new(
+                Some(ProviderId::Claude),
                 code,
-                message: Box::leak(source_detail.into_boxed_str()),
-                retry_after: None,
-            }),
+                Box::leak(source_detail.into_boxed_str()),
+            )),
         }
     }
 }
@@ -972,14 +968,13 @@ impl FixtureQuotaProvider {
 
     fn failure(provider: ProviderId, code: QuotaErrorCode, source_detail: String) -> Self {
         Self {
-            result: Err(QuotaError {
-                provider: Some(provider),
+            result: Err(QuotaError::new(
+                Some(provider),
                 code,
                 // QuotaError deliberately models static messages in production.
                 // This feature-only fake emulates an unsafe upstream transport.
-                message: Box::leak(source_detail.into_boxed_str()),
-                retry_after: None,
-            }),
+                Box::leak(source_detail.into_boxed_str()),
+            )),
         }
     }
 }

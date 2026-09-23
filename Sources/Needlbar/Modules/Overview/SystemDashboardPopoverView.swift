@@ -353,7 +353,7 @@ public struct SystemDashboardPopoverView: View {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(provider.caption)
                     .foregroundStyle(.secondary)
-                if let status = DashboardReadabilityPolicy.providerStatus(usage: provider.usageStatus, quota: provider.quotaStatus) {
+                if let status = provider.statusText {
                     Text("· \(status)")
                         .foregroundStyle(.orange)
                 }

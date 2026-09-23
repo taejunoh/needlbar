@@ -3,6 +3,31 @@ import Foundation
 import NeedlbarCore
 import SwiftUI
 
+@MainActor
+public final class SettingsClaudeQuotaPresentation: ObservableObject {
+    @Published private(set) var value: ProviderPopoverPresentation
+
+    init(snapshot: CombinedUsageSnapshot? = nil) {
+        value = Self.presentation(for: snapshot)
+    }
+
+    func update(snapshot: CombinedUsageSnapshot) {
+        value = Self.presentation(for: snapshot)
+    }
+
+    private static func presentation(for snapshot: CombinedUsageSnapshot?) -> ProviderPopoverPresentation {
+        ProviderPopoverPresentation(snapshot: snapshot?.providers.first { $0.provider == .claude }
+            ?? ProviderSnapshot(
+                provider: .claude,
+                usage: nil,
+                quota: nil,
+                usageStatus: .unavailable,
+                quotaStatus: .unavailable,
+                updatedAt: .distantPast
+            ))
+    }
+}
+
 struct SettingsClaudeUsageRowState {
     private(set) var showsFailure = false
 
@@ -24,6 +49,7 @@ public struct SettingsView: View {
     @State private var selectedTab: SettingsStudioTab = .menuBar
     @State private var claudeUsageState = SettingsClaudeUsageRowState()
     @ObservedObject private var preview: SettingsPreviewModel
+    @ObservedObject private var claudeQuotaPresentation: SettingsClaudeQuotaPresentation
 
     public init(
         configuration: ModuleConfiguration,
@@ -32,12 +58,14 @@ public struct SettingsView: View {
         notificationService: QuotaNotificationService,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() },
         openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() },
-        preview: SettingsPreviewModel? = nil
+        preview: SettingsPreviewModel? = nil,
+        claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil
     ) {
         self.configuration = configuration
         self.openCursorSpending = openCursorSpending
         self.openClaudeUsage = openClaudeUsage
         _preview = ObservedObject(wrappedValue: preview ?? SettingsPreviewModel())
+        _claudeQuotaPresentation = ObservedObject(wrappedValue: claudeQuotaPresentation ?? SettingsClaudeQuotaPresentation())
         _systemMonitorModel = StateObject(wrappedValue: SystemMonitorSettingsModel(configuration: configuration))
         _actions = ObservedObject(wrappedValue: actions)
         _notificationPreferences = ObservedObject(wrappedValue: notificationPreferences)
@@ -52,7 +80,8 @@ public struct SettingsView: View {
         notificationService: QuotaNotificationService,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() },
         openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() },
-        preview: SettingsPreviewModel? = nil
+        preview: SettingsPreviewModel? = nil,
+        claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil
     ) {
         self.init(
             configuration: configuration,
@@ -64,7 +93,8 @@ public struct SettingsView: View {
             notificationService: notificationService,
             openCursorSpending: openCursorSpending,
             openClaudeUsage: openClaudeUsage,
-            preview: preview
+            preview: preview,
+            claudeQuotaPresentation: claudeQuotaPresentation
         )
     }
 
@@ -156,6 +186,31 @@ public struct SettingsView: View {
                 Text("Quota uses your existing Claude sign-in. Browser authentication remains provider-owned.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let remaining = claudeQuotaPresentation.value.headlineQuotaRemaining {
+                    Text("Quota \(remaining)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if claudeQuotaPresentation.value.quotaIsLastKnown {
+                    Text("Last known")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if claudeQuotaPresentation.value.quotaUnavailable {
+                    Text("Quota unavailable")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let reason = claudeQuotaPresentation.value.quotaFailureReasonText {
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let lastChecked = claudeQuotaPresentation.value.quotaLastCheckedText {
+                    Text("Last checked \(lastChecked)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if claudeUsageState.showsFailure {
                     Text("Couldn't open Claude usage. Try again.")
                         .font(.caption)

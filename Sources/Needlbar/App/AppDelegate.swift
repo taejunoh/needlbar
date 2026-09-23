@@ -147,11 +147,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         case .production:
             let systemMetricsService = SystemMetricsService(collector: MacSystemMetricsCollector())
             let usageFileWatcher = UsageFileWatcher()
+            let bridge = RustBridge()
+            let claudeFailureDiagnosticsReporter = ClaudeQuotaFailureDiagnosticsReporter(bridge: bridge)
             let refreshCoordinator = RefreshCoordinator(
-                usageRepository: RustUsageRepository(),
-                quotaRepository: RustQuotaRepository(),
+                usageRepository: RustUsageRepository(bridge: bridge),
+                quotaRepository: RustQuotaRepository(bridge: bridge),
                 store: snapshotStore,
-                usageFileWatcher: usageFileWatcher
+                usageFileWatcher: usageFileWatcher,
+                claudeQuotaOperationCompleted: {
+                    claudeFailureDiagnosticsReporter.reportLatestClaudeQuotaFailure()
+                }
             )
             let loginCoordinator = ProviderLoginCoordinator(
                 refreshQuota: { provider in

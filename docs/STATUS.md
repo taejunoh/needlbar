@@ -1,5 +1,150 @@
 # Needlbar Development Status
 
+## v0.3.4 release candidate — 2026-09-22
+
+The Claude quota display recovery and status-consistency changes are prepared
+for an official v0.3.4 release. The local diagnostic app demonstrated a fresh
+backend success and a user-provided popover screenshot showed the quota values;
+this is one observed startup, not a guarantee of future refreshes. The release
+source removes temporary lifecycle notices, retains only allowlisted failure
+origin/timestamp diagnostics, and includes the `oauth`/legacy `oAuth` bridge
+compatibility fix. Rust test-state isolation and credential-file error
+classification were corrected during release verification.
+
+Version/build metadata is 0.3.4/7 for the host and widget. Release notes and
+release workflow point to `docs/releases/v0.3.4.md`. The final candidate tree
+passed `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` twice; the most recent
+run exited 0 after the release-note correction. `git diff --check` passed.
+PR #5 CI first passed the Rust workspace and vendored tests, then failed at
+Clippy on one needless explicit lifetime in the diagnostics helper. The
+lifetime was elided without changing behavior; local
+`cargo clippy --workspace --all-targets --all-features -- -D warnings` now
+exits 0. PR CI must rerun on the correction before merge.
+No v0.3.4 public artifact, tag, Homebrew update, or public reinstall exists
+yet. The next continuation is PR/CI, merge, protected release validation,
+tag-triggered publishing, and public artifact verification before updating
+Homebrew. The currently installed local app remains a diagnostic 0.3.3 build.
+
+## Claude quota startup observation — 2026-09-22
+
+The installed diagnostic app's ordinary startup quota request completed
+successfully in Rust. The exact PID 69037 recorded, in order,
+`reporterReady`, `quotaOperationStarted`, `quotaOperationReturned`,
+`observerInvoked`, `diagnosticsReadStarted`, and `resultSuccess` under the
+`ClaudeQuotaFailureDiagnostic` OSLog category. There was no failure-origin
+event. This establishes fresh backend quota success on this startup; it does
+not by itself prove that Swift rendered the values in the popover. A code
+comparison found no deterministic mismatch in the regular quota envelope.
+The user-provided post-install dark-mode popover screenshot confirms that the
+UI now renders Claude quota remaining as `0%`, Fable weekly as `38% remaining`,
+and its reset as September 24, 2026 at 6:00 AM. The prior `Quota unavailable`
+and `Quota access unavailable` placeholders are absent. This confirms the
+backend-to-popover path on the installed local build. The `0%` headline is a
+reported quota value, not a rendering failure; continued availability across
+future refreshes is not yet established.
+
+The previous silent diagnostic path was caused by Rust serializing the OAuth
+quota source as `oAuth` while Swift accepted only `oauth`. Rust now emits
+`oauth`; Swift accepts both spellings. A regression with the actual Rust
+spelling failed before the correction and passed after it. A second bounded
+lifecycle diagnostic pass logs only fixed phase names and allowlisted origin
+and timestamp values, so start, return, callback, and read can be distinguished
+without logging credentials or responses. The project-wide `make test` passed
+after each change; the final pass included 513 Swift tests plus Rust/vendor
+and packaging contracts. Focused reporter and coordinator suites passed (7
+and 35 tests); independent code review found no blocker.
+
+The current signed local app is
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app`.
+Its installed host SHA-256 is
+`c2fc910edfa3add8ff0066e00b90ace1e9fa590515cb9c6df3c10bdfb72f8205`,
+and strict signature verification passed. It runs as one canonical PID 69037
+at verification. The prior installation is recoverable at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/claude-quota-boundary.jFBYrz/Needlbar.app`.
+No login, manual refresh, credential change, push, or release was performed.
+
+## Claude failure-origin diagnosis — 2026-09-16
+
+The user approved adding non-secret failure-stage diagnostics to the ordinary
+quota refresh and installing a diagnostic build to establish the actual cause.
+Written design: `docs/superpowers/specs/2026-09-16-claude-quota-failure-origin-design.md`
+(commit `8373c79`). Written-spec review is approved. Implementation is locally verified
+using `docs/superpowers/plans/2026-09-16-claude-quota-failure-origin.md`.
+Fresh pre-implementation `make test` passed (`/tmp/needlbar-origin-baseline.log`).
+Final full `make test` passed (`/tmp/needlbar-origin-verified.log`), after correcting
+stale-origin carryover, panic diagnostic association, malformed-file classification,
+and adding the required resolver/HTTP, timestamp transition, C-string ownership,
+single-flight observer, and safe reporter tests. Spec and code quality reviews
+passed. Local diagnostic installation is complete at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app`.
+Strict signature verification passed and built/installed host SHA-256 matches
+`96f2cd256c785731e3e3993d33e3acd7a6af64ed0574e01ec790faa01b1e9ae2`.
+The canonical process remains running (PID 7516 at verification). Previous app:
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/claude-quota-origin.YsYpF9/Needlbar.app`.
+No failure diagnostic event was observed in the initial scoped log check. Success
+also emits no failure event, so this does not establish either recovery or an
+unexecuted refresh. Native UI inspection found no open accessibility window;
+next step is to inspect the user's opened popover and correlate ordinary-refresh
+diagnostics. No actual runtime origin or restored quota has yet been claimed.
+Existing CLI status reports logged in; the default Keychain item exists and no
+custom configuration directory is active. Expired fallback-file metadata alone
+does not explain the current error. Preserve the preceding uncommitted UI fixes.
+
+## Claude quota status consistency correction — 2026-09-16
+
+After the user-requested local installation of v0.3.3/build 6, screenshots
+showed `Sign-in required` alongside the typed Claude quota failure reason,
+while Settings displayed only static connection copy. The installed executable
+matches the public artifact (SHA-256
+`1ca8d03ed30c92f66e20164065a5592b1e6b5ca3493159b7631804325cd3314b`).
+This is a presentation regression, not evidence of browser logout.
+
+Correction is implemented and locally verified on `codex/claude-quota-status-consistency`, based on
+`cc8b2a6`. The existing approved passive-recovery contract remains authoritative:
+use one safe quota reason across dashboard, provider popover and Settings;
+preserve independent local-usage state and never initiate login automatically.
+Fresh baseline `make test` exited 0 (`/tmp/needlbar-consistency-baseline.log`).
+
+Dashboard and provider popover now suppress the legacy generic quota label only
+when a typed Claude reason is displayed, retaining independent usage errors and
+other providers' authentication labels. Settings observes controller snapshots
+and shows the same quota state, safe reason, and last successful check time.
+Fresh quota recovery clears the fallback across these surfaces.
+
+Verification: a semantic RED reproduced `Sign-in required` where no duplicate
+quota label was expected, then passed after the correction. Focused presentation
+and Settings snapshot/recovery tests passed. Final `make test` exited 0 with
+`/Users/taejunoh/.cargo/bin` on PATH (`/tmp/needlbar-consistency-final.log`);
+the initial bare invocation could not find cargo. Independent read-only review
+found no Critical/Important/Minor issues. Changes are not yet pushed or released.
+
+User-requested screenshot build is now installed at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app`, retaining
+version 0.3.3/build 6 and Developer ID team `3BMF4LM6TM`. Local strict signature
+verification passed, and built/installed executable SHA-256 matches
+`07a82d31bc99d5955e680ba72bed6ae7d42dbc0ab3840bc2ebf8ecbf0eba5234`.
+This is a locally signed, not newly notarized public release. LaunchServices
+launch was independently verified as a single canonical-path process (PID
+38367); a prior direct-executable launch did not remain running. Previous app
+is recoverable at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-claude-consistency.GVrfJg/Needlbar.app`.
+User settings and authentication data were preserved.
+
+Read-only source tracing also confirmed that credential absence, local expiry,
+and endpoint 401/403 collapse into the same safe quota-access reason. No current
+runtime sub-cause is established, and UI consistency must not be reported as
+restored quota fetching. No live credential read or authentication change is
+part of this correction. A possible official Claude Code statusline data source
+is separate, unapproved integration work with missing Fable coverage.
+
+Follow-up diagnosis: existing bridge diagnostics retain only the normalized
+quota error and success time in process memory, with no Swift diagnostic
+consumer or quota OSLog path. The current failure cannot therefore be split
+into missing credentials, local expiry, or HTTP 401/403 from existing safe
+logs. Next diagnostic work should preserve a closed, non-secret failure-origin
+enum and last-attempt time through the existing refresh, without extra requests,
+credential output, or authentication renewal. This is not implemented yet.
+
 ## v0.3.3 Public Release Record — 2026-09-16
 
 Tag: `v0.3.3`

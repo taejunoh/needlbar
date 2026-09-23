@@ -12,6 +12,7 @@ public struct RustBridge: Sendable {
     private let claudePreflightQuotaCall: BridgeJSONCall
     private let claudeUserInitiatedQuotaCall: BridgeJSONCall
     private let codexQuotaCall: BridgeJSONCall
+    private let diagnosticsCall: BridgeJSONCall
     private let free: BridgeStringFree
     private let decoder: BridgeDecoder
 
@@ -22,6 +23,7 @@ public struct RustBridge: Sendable {
         claudePreflightQuotaCall: @escaping BridgeJSONCall = { needlbar_claude_preflight_quota_snapshot_json() },
         claudeUserInitiatedQuotaCall: @escaping BridgeJSONCall = { needlbar_claude_user_initiated_quota_snapshot_json() },
         codexQuotaCall: @escaping BridgeJSONCall = { needlbar_codex_quota_snapshot_json() },
+        diagnosticsCall: @escaping BridgeJSONCall = { needlbar_diagnostics_json() },
         free: @escaping BridgeStringFree = { pointer in needlbar_free_string(pointer) },
         decoder: BridgeDecoder = BridgeDecoder()
     ) {
@@ -31,6 +33,7 @@ public struct RustBridge: Sendable {
         self.claudePreflightQuotaCall = claudePreflightQuotaCall
         self.claudeUserInitiatedQuotaCall = claudeUserInitiatedQuotaCall
         self.codexQuotaCall = codexQuotaCall
+        self.diagnosticsCall = diagnosticsCall
         self.free = free
         self.decoder = decoder
     }
@@ -57,6 +60,10 @@ public struct RustBridge: Sendable {
 
     public func analyticsEnvelope() throws -> AnalyticsSnapshot {
         try decodeCString(analyticsCall, decode: AnalyticsBridgeDecoder().decodeSnapshot)
+    }
+
+    public func diagnosticsEnvelope() throws -> BridgeEnvelope<DiagnosticsSnapshot> {
+        try decodeCString(diagnosticsCall, decode: decoder.decodeDiagnosticsEnvelope)
     }
 
     private func decodeCString<Result: Sendable>(

@@ -610,12 +610,34 @@ import Testing
     ) == "Sign-in required")
 }
 
+@Test func dashboardClaudeFallbackSuppressesOnlyTheLegacyQuotaStatus() throws {
+    let fallbackCases: [(DataStatus, ClaudeQuotaFailureReason, String)] = [
+        (.requiresAuthentication, .quotaAccessUnavailable, "Quota access unavailable"),
+        (.error(message: "untrusted", lastSuccessfulAt: .distantPast), .couldNotUpdateQuota, "Could not update quota"),
+    ]
+
+    for (status, reason, text) in fallbackCases {
+        let presentation = SystemDashboardPresentation(snapshot: dashboardFixtureSnapshot(
+            claudeQuotaStatus: status,
+            claudeQuotaFailureReason: reason,
+            codexQuotaStatus: .requiresAuthentication
+        ), configuration: .init())
+        let claude = try #require(presentation.ai.first { $0.provider == .claude })
+        let codex = try #require(presentation.ai.first { $0.provider == .codex })
+
+        #expect(claude.quotaFailureReasonText == text)
+        #expect(claude.statusText == nil)
+        #expect(codex.statusText == "Sign-in required")
+    }
+}
+
 private func dashboardFixtureSnapshot(
     capturedAt date: Date = Date(timeIntervalSince1970: 10_000),
     networkAvailability: MetricAvailability? = nil,
     diskAvailability: MetricAvailability? = nil,
     claudeQuotaStatus: DataStatus? = nil,
     claudeQuotaFailureReason: ClaudeQuotaFailureReason? = nil,
+    codexQuotaStatus: DataStatus? = nil,
     claudeHasQuota: Bool = true,
     claudeQuotaWindows: [QuotaWindow]? = nil,
     cursorQuotaStatus: DataStatus? = nil,
@@ -673,7 +695,13 @@ private func dashboardFixtureSnapshot(
             ),
             quota: quota,
             usageStatus: .fresh,
-            quotaStatus: provider == .claude ? (claudeQuotaStatus ?? .fresh) : provider == .cursor ? (cursorQuotaStatus ?? .fresh) : .fresh,
+            quotaStatus: provider == .claude
+                ? (claudeQuotaStatus ?? .fresh)
+                : provider == .codex
+                    ? (codexQuotaStatus ?? .fresh)
+                    : provider == .cursor
+                        ? (cursorQuotaStatus ?? .fresh)
+                        : .fresh,
             updatedAt: providerUpdatedAt ?? date,
             claudeQuotaFailureReason: provider == .claude ? claudeQuotaFailureReason : nil,
             quotaLastSuccessfulAt: provider == .claude && claudeQuotaFailureReason != nil ? date : nil

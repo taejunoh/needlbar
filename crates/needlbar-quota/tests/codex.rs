@@ -109,21 +109,19 @@ fn successful_snapshot() -> ProviderQuotaSnapshot {
 }
 
 fn auth_error() -> QuotaError {
-    QuotaError {
-        provider: Some(ProviderId::Codex),
-        code: QuotaErrorCode::RequiresAuthentication,
-        message: "Codex authentication was not available.",
-        retry_after: None,
-    }
+    QuotaError::new(
+        Some(ProviderId::Codex),
+        QuotaErrorCode::RequiresAuthentication,
+        "Codex authentication was not available.",
+    )
 }
 
 fn rate_limited_error() -> QuotaError {
-    QuotaError {
-        provider: Some(ProviderId::Codex),
-        code: QuotaErrorCode::RateLimited,
-        message: "The quota service asked us to retry later.",
-        retry_after: None,
-    }
+    QuotaError::new(
+        Some(ProviderId::Codex),
+        QuotaErrorCode::RateLimited,
+        "The quota service asked us to retry later.",
+    )
 }
 
 #[derive(Clone)]

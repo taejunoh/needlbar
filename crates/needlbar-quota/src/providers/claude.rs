@@ -10,8 +10,8 @@ use super::claude_credentials::{
     FileClaudeCredentialResolver,
 };
 use crate::{
-    ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaProvider, QuotaWindow,
-    RedactingHttpClient,
+    domain::ClaudeUsageEndpointStatus, ClaudeQuotaFailureOrigin, ProviderId, ProviderQuotaSnapshot,
+    QuotaError, QuotaErrorCode, QuotaProvider, QuotaWindow, RedactingHttpClient,
 };
 
 const USAGE_ENDPOINT: &str = "https://api.anthropic.com/api/oauth/usage";
@@ -100,17 +100,13 @@ impl ClaudeQuotaProvider {
                 credentials.access_token(),
                 &[("anthropic-beta", OAUTH_BETA_HEADER)],
             )
-            .map_err(|error| error.for_provider(ProviderId::Claude))?;
-        let response = self
-            .http
-            .send(request)
-            .await
-            .map_err(|error| error.for_provider(ProviderId::Claude))?;
+            .map_err(claude_other_error)?;
+        let response = self.http.send(request).await.map_err(claude_http_error)?;
         let bytes = self
             .http
             .read_limited_body(response)
             .await
-            .map_err(|error| error.for_provider(ProviderId::Claude))?;
+            .map_err(claude_other_error)?;
         let payload = String::from_utf8(bytes).map_err(|_| schema_error())?;
 
         Self::parse_usage_payload(&payload)
@@ -222,21 +218,77 @@ fn credential_error_to_quota_error(error: ClaudeCredentialError) -> QuotaError {
             Some(ProviderId::Claude),
             QuotaErrorCode::RequiresAuthentication,
             "Claude authentication was not available.",
-        ),
+        )
+        .with_claude_failure_origin(ClaudeQuotaFailureOrigin::CredentialMissing),
         ClaudeCredentialError::InteractionNotAllowed
         | ClaudeCredentialError::PermissionDenied
         | ClaudeCredentialError::Cancelled => QuotaError::new(
             Some(ProviderId::Claude),
             QuotaErrorCode::PermissionDenied,
             "Claude credential access was denied.",
-        ),
+        )
+        .with_claude_failure_origin(ClaudeQuotaFailureOrigin::CredentialAccessDenied),
+        ClaudeCredentialError::KeychainExpired => QuotaError::new(
+            Some(ProviderId::Claude),
+            QuotaErrorCode::AuthenticationExpired,
+            "Claude authentication has expired.",
+        )
+        .with_claude_failure_origin(ClaudeQuotaFailureOrigin::KeychainCredentialExpired),
+        ClaudeCredentialError::FileExpired => QuotaError::new(
+            Some(ProviderId::Claude),
+            QuotaErrorCode::AuthenticationExpired,
+            "Claude authentication has expired.",
+        )
+        .with_claude_failure_origin(ClaudeQuotaFailureOrigin::FileCredentialExpired),
+        ClaudeCredentialError::FileMalformed => QuotaError::new(
+            Some(ProviderId::Claude),
+            QuotaErrorCode::RequiresAuthentication,
+            "Claude authentication was not available.",
+        )
+        .with_claude_failure_origin(ClaudeQuotaFailureOrigin::OtherFailure),
+        ClaudeCredentialError::FileReadFailed => QuotaError::new(
+            Some(ProviderId::Claude),
+            QuotaErrorCode::RequiresAuthentication,
+            "Claude authentication was not available.",
+        )
+        .with_claude_failure_origin(ClaudeQuotaFailureOrigin::OtherFailure),
+        ClaudeCredentialError::FilePermissionDenied => QuotaError::new(
+            Some(ProviderId::Claude),
+            QuotaErrorCode::RequiresAuthentication,
+            "Claude authentication was not available.",
+        )
+        .with_claude_failure_origin(ClaudeQuotaFailureOrigin::CredentialAccessDenied),
         ClaudeCredentialError::Expired => QuotaError::new(
             Some(ProviderId::Claude),
             QuotaErrorCode::AuthenticationExpired,
             "Claude authentication has expired.",
-        ),
-        ClaudeCredentialError::Malformed => schema_error(),
+        )
+        .with_claude_failure_origin(ClaudeQuotaFailureOrigin::OtherFailure),
+        ClaudeCredentialError::Malformed => {
+            schema_error().with_claude_failure_origin(ClaudeQuotaFailureOrigin::OtherFailure)
+        }
     }
+}
+
+fn claude_http_error(error: QuotaError) -> QuotaError {
+    let origin = match error.usage_endpoint_status() {
+        Some(ClaudeUsageEndpointStatus::Unauthorized) => {
+            ClaudeQuotaFailureOrigin::UsageEndpointUnauthorized
+        }
+        Some(ClaudeUsageEndpointStatus::Forbidden) => {
+            ClaudeQuotaFailureOrigin::UsageEndpointForbidden
+        }
+        None => ClaudeQuotaFailureOrigin::OtherFailure,
+    };
+    error
+        .for_provider(ProviderId::Claude)
+        .with_claude_failure_origin(origin)
+}
+
+fn claude_other_error(error: QuotaError) -> QuotaError {
+    error
+        .for_provider(ProviderId::Claude)
+        .with_claude_failure_origin(ClaudeQuotaFailureOrigin::OtherFailure)
 }
 
 fn schema_error() -> QuotaError {
@@ -245,6 +297,7 @@ fn schema_error() -> QuotaError {
         QuotaErrorCode::SchemaChanged,
         "Claude quota data was not in the expected format.",
     )
+    .with_claude_failure_origin(ClaudeQuotaFailureOrigin::OtherFailure)
 }
 
 #[cfg(test)]
@@ -337,11 +390,69 @@ mod tests {
         assert!(!format!("{error:?}").contains(canary));
         assert!(!serde_json::to_string(&error).unwrap().contains(canary));
         assert_eq!(
+            error.claude_failure_origin(),
+            Some(ClaudeQuotaFailureOrigin::OtherFailure)
+        );
+        assert_eq!(
             accesses.lock().unwrap().as_slice(),
             [
                 ClaudeCredentialAccess::UserInitiatedAllowUI,
                 ClaudeCredentialAccess::UserInitiatedAllowUI,
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn loopback_unauthorized_and_forbidden_retain_distinct_endpoint_origins() {
+        for (status, origin) in [
+            (
+                "401 Unauthorized",
+                ClaudeQuotaFailureOrigin::UsageEndpointUnauthorized,
+            ),
+            (
+                "403 Forbidden",
+                ClaudeQuotaFailureOrigin::UsageEndpointForbidden,
+            ),
+        ] {
+            let response =
+                format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    .into_bytes();
+            let (endpoint, server) = capturing_local_server(response);
+            let provider = ClaudeQuotaProvider::with_resolver_and_test_endpoint_for_test(
+                Arc::new(CanaryResolver {
+                    accesses: Arc::new(Mutex::new(Vec::new())),
+                }),
+                &endpoint,
+            )
+            .expect("loopback provider");
+
+            let error = provider.fetch().await.expect_err("endpoint failure");
+            let _ = server.join().expect("loopback server");
+
+            assert_eq!(error.code, QuotaErrorCode::AuthenticationExpired);
+            assert_eq!(error.claude_failure_origin(), Some(origin));
+        }
+    }
+
+    #[tokio::test]
+    async fn loopback_network_failure_has_no_inferred_endpoint_origin() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("loopback listener");
+        let endpoint = format!("http://{}/usage", listener.local_addr().expect("address"));
+        drop(listener);
+        let provider = ClaudeQuotaProvider::with_resolver_and_test_endpoint_for_test(
+            Arc::new(CanaryResolver {
+                accesses: Arc::new(Mutex::new(Vec::new())),
+            }),
+            &endpoint,
+        )
+        .expect("loopback provider");
+
+        let error = provider.fetch().await.expect_err("network failure");
+
+        assert_eq!(error.code, QuotaErrorCode::NetworkUnavailable);
+        assert_eq!(
+            error.claude_failure_origin(),
+            Some(ClaudeQuotaFailureOrigin::OtherFailure)
         );
     }
 

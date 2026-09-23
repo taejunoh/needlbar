@@ -328,11 +328,8 @@ pub unsafe extern "C" fn needlbar_usage_snapshot_json() -> *const c_char {
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_quota_snapshot_json() -> *const c_char {
     cursor_credential_cleanup::schedule_obsolete_cursor_session_cleanup();
-    ffi_envelope(|| {
-        let envelope = ffi_quota_envelope();
-        diagnostics::record_quota(&envelope);
-        envelope
-    })
+    let attempted_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    ffi_envelope(|| quota_operation_envelope(ffi_quota_envelope, &attempted_at, false))
 }
 
 /// # Safety
@@ -343,10 +340,9 @@ pub unsafe extern "C" fn needlbar_quota_snapshot_json() -> *const c_char {
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_claude_preflight_quota_snapshot_json() -> *const c_char {
     cursor_credential_cleanup::schedule_obsolete_cursor_session_cleanup();
+    let attempted_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     ffi_envelope(|| {
-        let envelope = ffi_claude_preflight_quota_envelope();
-        diagnostics::record_partial_quota(&envelope);
-        envelope
+        quota_operation_envelope(ffi_claude_preflight_quota_envelope, &attempted_at, true)
     })
 }
 
@@ -357,10 +353,13 @@ pub unsafe extern "C" fn needlbar_claude_preflight_quota_snapshot_json() -> *con
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_claude_user_initiated_quota_snapshot_json() -> *const c_char {
     cursor_credential_cleanup::schedule_obsolete_cursor_session_cleanup();
+    let attempted_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     ffi_envelope(|| {
-        let envelope = ffi_claude_user_initiated_quota_envelope();
-        diagnostics::record_partial_quota(&envelope);
-        envelope
+        quota_operation_envelope(
+            ffi_claude_user_initiated_quota_envelope,
+            &attempted_at,
+            true,
+        )
     })
 }
 
@@ -373,7 +372,7 @@ pub unsafe extern "C" fn needlbar_codex_quota_snapshot_json() -> *const c_char {
     cursor_credential_cleanup::schedule_obsolete_cursor_session_cleanup();
     ffi_envelope(|| {
         let envelope = ffi_codex_quota_envelope();
-        diagnostics::record_partial_quota(&envelope);
+        diagnostics::record_partial_quota(&envelope, None);
         envelope
     })
 }
@@ -400,6 +399,24 @@ fn ffi_claude_preflight_quota_envelope() -> Envelope<quota::QuotaPayload> {
 
 fn ffi_codex_quota_envelope() -> Envelope<quota::QuotaPayload> {
     codex_quota_envelope()
+}
+
+/// Records every Claude attempt even when the operation panics before it can
+/// build a normal quota envelope. The C ABI still receives the same bounded
+/// internal-error envelope; diagnostics receive only current safe evidence.
+fn quota_operation_envelope(
+    operation: impl FnOnce() -> Envelope<quota::QuotaPayload> + UnwindSafe,
+    attempted_at: &str,
+    partial: bool,
+) -> Envelope<quota::QuotaPayload> {
+    let envelope =
+        catch_unwind(operation).unwrap_or_else(|_| Envelope::failure(bridge_internal_error()));
+    if partial {
+        diagnostics::record_partial_quota(&envelope, Some(attempted_at));
+    } else {
+        diagnostics::record_quota(&envelope, Some(attempted_at));
+    }
+    envelope
 }
 
 /// # Safety
@@ -555,9 +572,11 @@ fn bridge_internal_error() -> BridgeError {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::CStr;
+    use std::{ffi::CStr, sync::Mutex};
 
     use super::*;
+
+    static DIAGNOSTICS_STATE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn ffi_json_contains_panics_in_an_error_envelope() {
@@ -660,6 +679,9 @@ mod tests {
 
     #[test]
     fn diagnostics_envelope_maps_bounded_outcomes_without_serializing_raw_errors() {
+        let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let usage = Envelope::success(usage::UsagePayload {
             providers: vec![usage::UsageProviderSnapshot {
                 provider: "claude".to_owned(),
@@ -676,6 +698,8 @@ mod tests {
             generated_at: "2026-08-14T12:00:00Z".to_owned(),
             data: Some(quota::QuotaPayload {
                 providers: Vec::new(),
+                claude_failure_origin: None,
+                claude_attempted: false,
             }),
             errors: vec![
                 BridgeError {
@@ -692,7 +716,7 @@ mod tests {
         };
 
         diagnostics::record_usage(&usage);
-        diagnostics::record_quota(&quota);
+        diagnostics::record_quota(&quota, None);
         let envelope =
             Envelope::success(diagnostics::DiagnosticsSnapshot::from_recorded_outcomes());
         let json = serde_json::to_string(&envelope).expect("diagnostics JSON");
@@ -711,5 +735,274 @@ mod tests {
         assert!(!json.contains("CODEX-CANARY-SECRET"));
         assert!(!json.contains("CURSOR-CANARY-SECRET"));
         assert!(!json.contains("/Users/private/auth.json"));
+    }
+
+    #[test]
+    fn diagnostics_records_a_safe_claude_failure_origin_without_raw_error_detail() {
+        let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let quota = Envelope {
+            schema_version: SCHEMA_VERSION,
+            ok: true,
+            generated_at: "2026-09-16T12:00:00Z".to_owned(),
+            data: Some(quota::QuotaPayload {
+                providers: Vec::new(),
+                claude_failure_origin: Some(needlbar_quota::ClaudeQuotaFailureOrigin::OtherFailure),
+                claude_attempted: true,
+            }),
+            errors: vec![BridgeError {
+                provider: Some("claude".to_owned()),
+                code: "requiresAuthentication".to_owned(),
+                message: "CLAUDE-RAW-ERROR-CANARY".to_owned(),
+            }],
+        };
+
+        diagnostics::record_quota(&quota, Some("2026-09-16T11:59:59Z"));
+        let snapshot =
+            Envelope::success(diagnostics::DiagnosticsSnapshot::from_recorded_outcomes());
+        let json = serde_json::to_value(snapshot).expect("diagnostics JSON");
+
+        assert_eq!(
+            json["data"]["providers"][0]["claudeQuotaFailureOrigin"],
+            "otherFailure"
+        );
+        assert!(!json.to_string().contains("CLAUDE-RAW-ERROR-CANARY"));
+    }
+
+    #[test]
+    fn unclassified_claude_failure_replaces_a_previous_endpoint_origin() {
+        let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let endpoint_failure = Envelope {
+            schema_version: SCHEMA_VERSION,
+            ok: true,
+            generated_at: "2026-09-16T12:00:00Z".to_owned(),
+            data: Some(quota::QuotaPayload {
+                providers: Vec::new(),
+                claude_failure_origin: Some(
+                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageEndpointUnauthorized,
+                ),
+                claude_attempted: true,
+            }),
+            errors: vec![BridgeError {
+                provider: Some("claude".to_owned()),
+                code: "authenticationExpired".to_owned(),
+                message: "safe".to_owned(),
+            }],
+        };
+        let unclassified_failure = Envelope {
+            schema_version: SCHEMA_VERSION,
+            ok: true,
+            generated_at: "2026-09-16T12:01:00Z".to_owned(),
+            data: Some(quota::QuotaPayload {
+                providers: Vec::new(),
+                claude_failure_origin: None,
+                claude_attempted: true,
+            }),
+            errors: vec![BridgeError {
+                provider: Some("claude".to_owned()),
+                code: "authenticationExpired".to_owned(),
+                message: "safe".to_owned(),
+            }],
+        };
+
+        diagnostics::record_quota(&endpoint_failure, Some("2026-09-16T11:59:00Z"));
+        diagnostics::record_quota(&unclassified_failure, Some("2026-09-16T12:00:30Z"));
+        let json = serde_json::to_value(Envelope::success(
+            diagnostics::DiagnosticsSnapshot::from_recorded_outcomes(),
+        ))
+        .expect("diagnostics JSON");
+
+        assert_eq!(
+            json["data"]["providers"][0]["claudeQuotaFailureOrigin"],
+            "otherFailure"
+        );
+        assert_eq!(
+            json["data"]["providers"][0]["lastAttemptAt"],
+            "2026-09-16T12:00:30Z"
+        );
+    }
+
+    #[test]
+    fn panicking_claude_operation_records_current_safe_fallback_evidence() {
+        let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let prior_endpoint_failure = Envelope {
+            schema_version: SCHEMA_VERSION,
+            ok: true,
+            generated_at: "2026-09-16T12:00:00Z".to_owned(),
+            data: Some(quota::QuotaPayload {
+                providers: Vec::new(),
+                claude_failure_origin: Some(
+                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageEndpointForbidden,
+                ),
+                claude_attempted: true,
+            }),
+            errors: vec![BridgeError {
+                provider: Some("claude".to_owned()),
+                code: "authenticationExpired".to_owned(),
+                message: "safe".to_owned(),
+            }],
+        };
+        diagnostics::record_quota(&prior_endpoint_failure, Some("2026-09-16T11:59:00Z"));
+
+        let envelope = quota_operation_envelope(
+            || panic!("test-only quota operation panic"),
+            "2026-09-16T12:00:30Z",
+            false,
+        );
+        assert!(!envelope.ok);
+
+        let json = serde_json::to_value(Envelope::success(
+            diagnostics::DiagnosticsSnapshot::from_recorded_outcomes(),
+        ))
+        .expect("diagnostics JSON");
+        assert_eq!(
+            json["data"]["providers"][0]["claudeQuotaFailureOrigin"],
+            "otherFailure"
+        );
+        assert_eq!(
+            json["data"]["providers"][0]["lastAttemptAt"],
+            "2026-09-16T12:00:30Z"
+        );
+    }
+
+    #[test]
+    fn failed_claude_refresh_preserves_last_successful_quota_time() {
+        let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let success = Envelope::success(quota::QuotaPayload {
+            providers: vec![needlbar_quota::ProviderQuotaSnapshot {
+                provider: needlbar_quota::ProviderId::Claude,
+                windows: Vec::new(),
+            }],
+            claude_failure_origin: None,
+            claude_attempted: false,
+        });
+        diagnostics::record_quota(&success, None);
+
+        let failure = Envelope {
+            schema_version: SCHEMA_VERSION,
+            ok: true,
+            generated_at: "2026-09-16T12:01:00Z".to_owned(),
+            data: Some(quota::QuotaPayload {
+                providers: Vec::new(),
+                claude_failure_origin: Some(
+                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageEndpointForbidden,
+                ),
+                claude_attempted: true,
+            }),
+            errors: vec![BridgeError {
+                provider: Some("claude".to_owned()),
+                code: "authenticationExpired".to_owned(),
+                message: "safe".to_owned(),
+            }],
+        };
+        diagnostics::record_quota(&failure, Some("2026-09-16T12:00:59Z"));
+
+        let json = serde_json::to_value(Envelope::success(
+            diagnostics::DiagnosticsSnapshot::from_recorded_outcomes(),
+        ))
+        .expect("diagnostics JSON");
+        let claude = &json["data"]["providers"][0];
+        assert_eq!(claude["quotaStatus"], "requiresAuthentication");
+        assert_eq!(claude["lastQuotaAt"], success.generated_at);
+        assert_eq!(claude["lastAttemptAt"], "2026-09-16T12:00:59Z");
+    }
+
+    #[test]
+    fn successful_claude_refresh_clears_previous_failure_origin() {
+        let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let failure = Envelope {
+            schema_version: SCHEMA_VERSION,
+            ok: true,
+            generated_at: "2026-09-16T12:00:00Z".to_owned(),
+            data: Some(quota::QuotaPayload {
+                providers: Vec::new(),
+                claude_failure_origin: Some(
+                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageEndpointForbidden,
+                ),
+                claude_attempted: true,
+            }),
+            errors: vec![BridgeError {
+                provider: Some("claude".to_owned()),
+                code: "authenticationExpired".to_owned(),
+                message: "safe".to_owned(),
+            }],
+        };
+        diagnostics::record_quota(&failure, Some("2026-09-16T11:59:59Z"));
+
+        let success = Envelope::success(quota::QuotaPayload {
+            providers: vec![needlbar_quota::ProviderQuotaSnapshot {
+                provider: needlbar_quota::ProviderId::Claude,
+                windows: Vec::new(),
+            }],
+            claude_failure_origin: None,
+            claude_attempted: false,
+        });
+        diagnostics::record_quota(&success, None);
+
+        let json = serde_json::to_value(Envelope::success(
+            diagnostics::DiagnosticsSnapshot::from_recorded_outcomes(),
+        ))
+        .expect("diagnostics JSON");
+        let claude = &json["data"]["providers"][0];
+        assert_eq!(claude["quotaStatus"], "available");
+        assert_eq!(claude["lastQuotaAt"], success.generated_at);
+        assert!(claude.get("claudeQuotaFailureOrigin").is_none());
+    }
+
+    #[test]
+    fn codex_only_quota_refresh_preserves_claude_failure_diagnostics() {
+        let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let claude_failure = Envelope {
+            schema_version: SCHEMA_VERSION,
+            ok: true,
+            generated_at: "2026-09-16T12:00:00Z".to_owned(),
+            data: Some(quota::QuotaPayload {
+                providers: Vec::new(),
+                claude_failure_origin: Some(
+                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageEndpointForbidden,
+                ),
+                claude_attempted: true,
+            }),
+            errors: vec![BridgeError {
+                provider: Some("claude".to_owned()),
+                code: "authenticationExpired".to_owned(),
+                message: "safe".to_owned(),
+            }],
+        };
+        diagnostics::record_quota(&claude_failure, Some("2026-09-16T11:59:59Z"));
+
+        let codex_success = Envelope::success(quota::QuotaPayload {
+            providers: vec![needlbar_quota::ProviderQuotaSnapshot {
+                provider: needlbar_quota::ProviderId::Codex,
+                windows: Vec::new(),
+            }],
+            claude_failure_origin: None,
+            claude_attempted: false,
+        });
+        diagnostics::record_partial_quota(&codex_success, None);
+
+        let json = serde_json::to_value(Envelope::success(
+            diagnostics::DiagnosticsSnapshot::from_recorded_outcomes(),
+        ))
+        .expect("diagnostics JSON");
+        let providers = &json["data"]["providers"];
+        assert_eq!(providers[0]["quotaStatus"], "requiresAuthentication");
+        assert_eq!(
+            providers[0]["claudeQuotaFailureOrigin"],
+            "usageEndpointForbidden"
+        );
+        assert_eq!(providers[0]["lastAttemptAt"], "2026-09-16T11:59:59Z");
+        assert_eq!(providers[1]["quotaStatus"], "available");
     }
 }
