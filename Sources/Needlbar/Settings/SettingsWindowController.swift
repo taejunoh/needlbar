@@ -5,9 +5,11 @@ import SwiftUI
 @MainActor
 public final class SettingsWindowController: NSWindowController {
     private let preview: SettingsPreviewModel
+    private let claudeQuotaPresentation: SettingsClaudeQuotaPresentation
     private var screenObservation: SettingsScreenObservation?
 
     var previewResult: MenuBarDashboardRenderResult { preview.result }
+    var claudeQuotaState: ProviderPopoverPresentation { claudeQuotaPresentation.value }
 
     public init(
         configuration: ModuleConfiguration,
@@ -18,7 +20,9 @@ public final class SettingsWindowController: NSWindowController {
         openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() }
     ) {
         let preview = SettingsPreviewModel()
+        let claudeQuotaPresentation = SettingsClaudeQuotaPresentation()
         self.preview = preview
+        self.claudeQuotaPresentation = claudeQuotaPresentation
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -33,7 +37,8 @@ public final class SettingsWindowController: NSWindowController {
             notificationService: notificationService,
             openCursorSpending: openCursorSpending,
             openClaudeUsage: openClaudeUsage,
-            preview: preview
+            preview: preview,
+            claudeQuotaPresentation: claudeQuotaPresentation
         ))
         // AppKit owns the screen-safe limits; intrinsic SwiftUI sizing must not
         // overwrite them when a detail pane or its content changes.
@@ -89,6 +94,7 @@ public final class SettingsWindowController: NSWindowController {
 
     public func update(snapshot: CombinedUsageSnapshot, configuration: SystemMonitorConfiguration) {
         preview.update(snapshot: snapshot, configuration: configuration)
+        claudeQuotaPresentation.update(snapshot: snapshot)
     }
 
     static func fittedFrame(_ desired: NSRect, in screen: NSRect) -> NSRect {

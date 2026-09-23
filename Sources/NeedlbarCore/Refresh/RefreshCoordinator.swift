@@ -33,6 +33,7 @@ public actor RefreshCoordinator {
     private let usageFileWatcher: (any UsageFileWatching)?
     private let quotaApplicationWillApply: (@Sendable () async -> Void)?
     private let quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)?
+    private let claudeQuotaOperationCompleted: (@Sendable () async -> Void)?
     private let widgetUsageDayCapture: any WidgetUsageDayCapturing
 
     private struct UserQuotaWaiter {
@@ -90,7 +91,8 @@ public actor RefreshCoordinator {
         clock: any ClockLike = SystemClock(),
         lastQuotaSuccessfulAt: Date? = nil,
         usageFileWatcher: (any UsageFileWatching)? = nil,
-        widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture()
+        widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture(),
+        claudeQuotaOperationCompleted: (@Sendable () async -> Void)? = nil
     ) {
         self.init(
             usageRepository: usageRepository,
@@ -101,7 +103,8 @@ public actor RefreshCoordinator {
             usageFileWatcher: usageFileWatcher,
             quotaApplicationWillApply: nil,
             quotaIntentRegistered: nil,
-            widgetUsageDayCapture: widgetUsageDayCapture
+            widgetUsageDayCapture: widgetUsageDayCapture,
+            claudeQuotaOperationCompleted: claudeQuotaOperationCompleted
         )
     }
 
@@ -114,7 +117,8 @@ public actor RefreshCoordinator {
         usageFileWatcher: (any UsageFileWatching)? = nil,
         quotaApplicationWillApply: (@Sendable () async -> Void)? = nil,
         quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)? = nil,
-        widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture()
+        widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture(),
+        claudeQuotaOperationCompleted: (@Sendable () async -> Void)? = nil
     ) {
         self.usageRepository = usageRepository
         self.quotaRepository = quotaRepository
@@ -125,6 +129,7 @@ public actor RefreshCoordinator {
         self.quotaApplicationWillApply = quotaApplicationWillApply
         self.quotaIntentRegistered = quotaIntentRegistered
         self.widgetUsageDayCapture = widgetUsageDayCapture
+        self.claudeQuotaOperationCompleted = claudeQuotaOperationCompleted
     }
 
     deinit {
@@ -541,6 +546,8 @@ public actor RefreshCoordinator {
                 )
             }
         }
+        guard applyResult, generation == runGeneration, intent.includesClaude else { return }
+        await claudeQuotaOperationCompleted?()
     }
 
     private func drainQueuedQuotaRefreshes() {

@@ -134,6 +134,92 @@ import Testing
     #expect(recorder.count == 1)
 }
 
+@Test func rustBridgeDiagnosticsEnvelopeCallsInjectedClosureAndFreesItsExactPointerOnce() throws {
+    let calls = CallRecorder()
+    let frees = FreeRecorder()
+    let returnedPointer = try CStringPointer(diagnosticsCString())
+    let bridge = RustBridge(
+        diagnosticsCall: {
+            calls.record("diagnostics")
+            return returnedPointer.pointer
+        },
+        free: { frees.release($0) }
+    )
+
+    let envelope = try bridge.diagnosticsEnvelope()
+
+    #expect(calls.values == ["diagnostics"])
+    #expect(envelope.data?.providers.first?.provider == .claude)
+    #expect(envelope.data?.providers.first?.claudeQuotaFailureOrigin == .otherFailure)
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
+@Test func rustBridgeDiagnosticsEnvelopeFreesPointerWhenJSONIsMalformed() throws {
+    let frees = FreeRecorder()
+    let returnedPointer = try CStringPointer(makeCString(Array("{".utf8).map(CChar.init) + [0]))
+    let bridge = RustBridge(
+        diagnosticsCall: { returnedPointer.pointer },
+        free: { frees.release($0) }
+    )
+
+    #expect(throws: DecodingError.self) {
+        _ = try bridge.diagnosticsEnvelope()
+    }
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
+@Test func rustBridgeDiagnosticsEnvelopeRejectsInvalidDateAndFreesPointerOnce() throws {
+    let frees = FreeRecorder()
+    let returnedPointer = try CStringPointer(
+        diagnosticsCString(attempt: "not-a-date")
+    )
+    let bridge = RustBridge(
+        diagnosticsCall: { returnedPointer.pointer },
+        free: { frees.release($0) }
+    )
+
+    #expect(throws: DecodingError.self) {
+        _ = try bridge.diagnosticsEnvelope()
+    }
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
+@Test func rustBridgeDiagnosticsEnvelopeRejectsInvalidOriginAndFreesPointerOnce() throws {
+    let frees = FreeRecorder()
+    let returnedPointer = try CStringPointer(
+        diagnosticsCString(origin: "futureOrigin")
+    )
+    let bridge = RustBridge(
+        diagnosticsCall: { returnedPointer.pointer },
+        free: { frees.release($0) }
+    )
+
+    #expect(throws: DecodingError.self) {
+        _ = try bridge.diagnosticsEnvelope()
+    }
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
+@Test func rustBridgeDiagnosticsEnvelopeRejectsInvalidUTF8AndFreesPointerOnce() throws {
+    let frees = FreeRecorder()
+    let bytes: [CChar] = [-1, 0]
+    let returnedPointer = try CStringPointer(makeCString(bytes))
+    let bridge = RustBridge(
+        diagnosticsCall: { returnedPointer.pointer },
+        free: { frees.release($0) }
+    )
+
+    #expect(throws: BridgeFailure.invalidUTF8) {
+        _ = try bridge.diagnosticsEnvelope()
+    }
+    #expect(frees.count == 1)
+    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
+}
+
 @Test func rustBridgeFreesReturnedPointerWhenDecodingFails() throws {
     let recorder = FreeRecorder()
     let bridge = RustBridge(
@@ -452,6 +538,16 @@ private func quotaCString(provider: String) -> UnsafePointer<CChar>? {
 private func usageCString(provider: String) -> UnsafePointer<CChar>? {
     let json = """
     {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-08-26T12:00:00Z","data":{"providers":[{"provider":"\(provider)","inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0,"totalTokens":0,"estimatedCostUSD":0,"today":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0,"totalTokens":0,"estimatedCostUSD":0},"last7Days":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0,"totalTokens":0,"estimatedCostUSD":0},"last30Days":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0,"totalTokens":0,"estimatedCostUSD":0}}]},"errors":[]}
+    """
+    return makeCString(Array(json.utf8).map(CChar.init) + [0])
+}
+
+private func diagnosticsCString(
+    origin: String = "otherFailure",
+    attempt: String = "2026-09-16T11:59:59.123Z"
+) -> UnsafePointer<CChar>? {
+    let json = """
+    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-09-16T12:00:00Z","data":{"providers":[{"provider":"claude","usageStatus":"available","quotaStatus":"error","usageSource":"local","quotaSource":"oauth","lastAttemptAt":"\(attempt)","claudeQuotaFailureOrigin":"\(origin)"}]},"errors":[]}
     """
     return makeCString(Array(json.utf8).map(CChar.init) + [0])
 }

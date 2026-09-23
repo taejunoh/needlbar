@@ -135,6 +135,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let caption: String
         public let usageStatus: PresentationFreshness
         public let quotaStatus: PresentationFreshness
+        public let statusText: String?
         public let action: ProviderAuthenticationAction?
         public let apiBillingAction: ProviderAPIBillingAction?
         public let fable: FableQuotaDetail?
@@ -213,12 +214,18 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
             guard preference.dashboardVisible else { return nil }
             let providerSnapshot = snapshot.providers.first { $0.provider == provider }
             let popover = ProviderPopoverPresentation(snapshot: providerSnapshot ?? .unavailable(for: provider))
+            let usageStatus = PresentationFreshness(providerSnapshot?.usageStatus ?? .unavailable)
+            let quotaStatus = PresentationFreshness(providerSnapshot?.quotaStatus ?? .unavailable)
+            let statusText = provider == .claude && popover.quotaFailureReasonText != nil
+                ? DashboardReadabilityPolicy.providerStatus(usage: usageStatus, quota: .fresh)
+                : DashboardReadabilityPolicy.providerStatus(usage: usageStatus, quota: quotaStatus)
             return AIProvider(
                 provider: provider,
                 value: Self.providerValue(preference.metric, snapshot: providerSnapshot),
                 caption: Self.providerCaption(preference.metric),
-                usageStatus: PresentationFreshness(providerSnapshot?.usageStatus ?? .unavailable),
-                quotaStatus: PresentationFreshness(providerSnapshot?.quotaStatus ?? .unavailable),
+                usageStatus: usageStatus,
+                quotaStatus: quotaStatus,
+                statusText: statusText,
                 action: popover.authenticationAction,
                 apiBillingAction: preference.apiBillingLinkVisible ? ProviderAPIBillingAction(provider: provider) : nil,
                 fable: Self.fableDetail(provider: provider, metric: preference.metric, snapshot: providerSnapshot),

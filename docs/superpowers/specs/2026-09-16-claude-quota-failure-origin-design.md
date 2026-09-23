@@ -2,7 +2,7 @@
 
 Date: 2026-09-16
 
-Status: Approach approved in conversation; written specification awaiting review.
+Status: Approach and written specification approved on 2026-09-16.
 
 ## Objective
 

@@ -1,8 +1,8 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use needlbar_quota::{
-    ClaudeCredentialAccess, ClaudeQuotaProvider, ProviderId, ProviderQuotaSnapshot, QuotaError,
-    QuotaErrorCode, QuotaProvider,
+    ClaudeCredentialAccess, ClaudeQuotaFailureOrigin, ClaudeQuotaProvider, ProviderId,
+    ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaProvider,
 };
 #[cfg(not(feature = "bridge-test-runtime"))]
 use needlbar_quota::{CodexQuotaProvider, CursorQuotaProvider};
@@ -13,11 +13,17 @@ use crate::envelope::{BridgeError, Envelope, SCHEMA_VERSION};
 #[derive(Debug, Serialize)]
 pub struct QuotaPayload {
     pub providers: Vec<ProviderQuotaSnapshot>,
+    #[serde(skip)]
+    pub(crate) claude_failure_origin: Option<ClaudeQuotaFailureOrigin>,
+    #[serde(skip)]
+    pub(crate) claude_attempted: bool,
 }
 
 pub struct QuotaCollection {
     pub providers: Vec<ProviderQuotaSnapshot>,
     pub errors: Vec<BridgeError>,
+    pub claude_failure_origin: Option<ClaudeQuotaFailureOrigin>,
+    pub claude_attempted: bool,
 }
 
 /// Narrow Claude boundary used by the explicit verification path. Keeping the
@@ -144,25 +150,44 @@ fn collection_from_results(
 ) -> QuotaCollection {
     let mut providers = Vec::new();
     let mut errors = Vec::new();
+    let mut claude_failure_origin = None;
+    let mut claude_attempted = false;
 
     for result in results {
         match result {
-            Ok(snapshot) => providers.push(snapshot),
-            Err(error) => errors.push(bridge_error_from_quota(error)),
+            Ok(snapshot) => {
+                claude_attempted |= snapshot.provider == ProviderId::Claude;
+                providers.push(snapshot);
+            }
+            Err(error) => {
+                if error.provider == Some(ProviderId::Claude) {
+                    claude_attempted = true;
+                    claude_failure_origin = Some(
+                        error
+                            .claude_failure_origin()
+                            .unwrap_or(ClaudeQuotaFailureOrigin::OtherFailure),
+                    );
+                }
+                errors.push(bridge_error_from_quota(error));
+            }
         }
     }
 
-    QuotaCollection { providers, errors }
+    QuotaCollection {
+        providers,
+        errors,
+        claude_failure_origin,
+        claude_attempted,
+    }
 }
 
 #[cfg(feature = "bridge-test-runtime")]
 fn test_runtime_unavailable_collection() -> QuotaCollection {
-    collection_from_results([Err(QuotaError {
-        provider: None,
-        code: QuotaErrorCode::ProviderUnavailable,
-        message: "Bridge test fixture runtime was not installed.",
-        retry_after: None,
-    })])
+    collection_from_results([Err(QuotaError::new(
+        None,
+        QuotaErrorCode::ProviderUnavailable,
+        "Bridge test fixture runtime was not installed.",
+    ))])
 }
 
 pub fn envelope_from_collection(collection: QuotaCollection) -> Envelope<QuotaPayload> {
@@ -172,6 +197,8 @@ pub fn envelope_from_collection(collection: QuotaCollection) -> Envelope<QuotaPa
         generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         data: Some(QuotaPayload {
             providers: collection.providers,
+            claude_failure_origin: collection.claude_failure_origin,
+            claude_attempted: collection.claude_attempted,
         }),
         errors: collection.errors,
     }

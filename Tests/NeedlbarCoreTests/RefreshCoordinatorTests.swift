@@ -756,6 +756,90 @@ struct RefreshCoordinatorTests {
     await coordinator.stop()
 }
 
+@Test func claudeQuotaCompletionHandlerBlocksQueuedQuotaUntilItCompletes() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let observerGate = QuotaApplicationGate()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota,
+        store: ProviderSnapshotStore(),
+        clock: ManualClock(now: Self.fixedStart),
+        claudeQuotaOperationCompleted: { await observerGate.pause() }
+    )
+
+    await coordinator.start()
+    await quota.waitUntilCallCount(1)
+    let queuedCodex = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .codex) }
+    try quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+
+    await observerGate.waitUntilEntered()
+    #expect(quota.callCount == 1)
+    await observerGate.resume()
+    await quota.waitUntilCallCount(2)
+    #expect(quota.intents[1] == .userInitiated(provider: .codex))
+    try quota.releaseNext(with: quotaResult(for: .codex))
+    #expect(await queuedCodex.value)
+    await coordinator.stop()
+}
+
+@Test func staleClaudeGenerationSkipsCompletionHandlerAfterApplicationGate() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let gate = QuotaApplicationGate()
+    let observer = ClaudeQuotaCompletionRecorder()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota,
+        store: ProviderSnapshotStore(),
+        clock: ManualClock(now: Self.fixedStart),
+        quotaApplicationWillApply: { await gate.pause() },
+        claudeQuotaOperationCompleted: { await observer.record() }
+    )
+    await coordinator.start()
+    await quota.waitUntilCallCount(1)
+    try quota.releaseNext(with: quotaResult(for: .claude))
+    await gate.waitUntilEntered()
+    await coordinator.stop()
+    await gate.resume()
+    await Task.yield()
+    #expect(await observer.count == 0)
+}
+
+@Test func claudeQuotaCompletionHandlerSkipsCodexOnlyAndCancelledRefreshes() async throws {
+    let codexCounter = ClaudeQuotaCompletionRecorder()
+    let codexQuota = QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:]))
+    let codexCoordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: codexQuota,
+        store: ProviderSnapshotStore(),
+        clock: ManualClock(now: Self.fixedStart),
+        claudeQuotaOperationCompleted: { await codexCounter.record() }
+    )
+    await codexCoordinator.start()
+    await codexQuota.waitUntilCallCount(1)
+    await eventuallyAsync { await codexCounter.count == 1 }
+    _ = await codexCoordinator.refreshQuota(afterUserAuthenticationFor: .codex)
+    await codexQuota.waitUntilCallCount(2)
+    await Task.yield()
+    #expect(await codexCounter.count == 1)
+    await codexCoordinator.stop()
+
+    let cancelledCounter = ClaudeQuotaCompletionRecorder()
+    let cancelledQuota = BlockingIntentQuotaRepository()
+    let cancelledCoordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: cancelledQuota,
+        store: ProviderSnapshotStore(),
+        clock: ManualClock(now: Self.fixedStart),
+        claudeQuotaOperationCompleted: { await cancelledCounter.record() }
+    )
+    await cancelledCoordinator.start()
+    await cancelledQuota.waitUntilCallCount(1)
+    await cancelledCoordinator.stop()
+    try cancelledQuota.releaseNext(with: .init(snapshots: [:], errors: [:]))
+    await Task.yield()
+    #expect(await cancelledCounter.count == 0)
+}
+
 @Test func usageRefreshCapturesOneStableDayProofAroundOneRepositoryCall() async throws {
     let usage = UsageRefreshSpy(result: .init(
         snapshots: [.claude: usageSnapshotForWidgetProvenanceTest()],
@@ -1077,6 +1161,14 @@ private actor QuotaApplicationGate {
         released = true
         releaseContinuation?.resume()
         releaseContinuation = nil
+    }
+}
+
+private actor ClaudeQuotaCompletionRecorder {
+    private(set) var count = 0
+
+    func record() {
+        count += 1
     }
 }
 

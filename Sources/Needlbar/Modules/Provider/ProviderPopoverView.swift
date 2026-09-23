@@ -51,6 +51,12 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
         provider != .claude && quotaFreshness == .requiresAuthentication
     }
 
+    public var freshnessSummary: String {
+        let usage = "Usage: \(usageFreshness.label)"
+        guard !(provider == .claude && quotaFailureReasonText != nil) else { return usage }
+        return "\(usage) · Quota: \(quotaFreshness.label)"
+    }
+
     public var authenticationAction: ProviderAuthenticationAction? {
         if provider == .claude, quotaFailureReasonText != nil {
             return .openClaudeUsage(title: "View Claude usage")
@@ -99,7 +105,7 @@ public struct ProviderPopoverView: View {
                     .font(.headline)
                 Spacer()
             }
-            Text("Usage: \(presentation.usageFreshness.label) · Quota: \(presentation.quotaFreshness.label)")
+            Text(presentation.freshnessSummary)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

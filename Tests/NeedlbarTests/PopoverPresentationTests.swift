@@ -17,6 +17,7 @@ import Testing
     #expect(presentation.quotaWindows.count == 1)
     #expect(presentation.usageFreshness == .fresh)
     #expect(presentation.quotaFreshness == .fresh)
+    #expect(presentation.freshnessSummary == "Usage: Fresh · Quota: Fresh")
     #expect(presentation.cacheWriteTokens == "80")
 }
 
@@ -33,6 +34,7 @@ import Testing
     #expect(presentation.quotaWindows.isEmpty)
     #expect(presentation.headlineQuotaRemaining == nil)
     #expect(presentation.requiresProviderSignIn)
+    #expect(presentation.freshnessSummary == "Usage: Fresh · Quota: Authentication required")
     #expect(presentation.cacheWriteTokens == "0")
 }
 
@@ -82,6 +84,7 @@ import Testing
             claudeQuotaFailureReason: reason
         ))
         #expect(presentation.quotaFailureReasonText == expectedText)
+        #expect(presentation.freshnessSummary == "Usage: Unavailable")
     }
 }
 

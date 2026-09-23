@@ -14,6 +14,15 @@ public enum QuotaRefreshIntent: Equatable, Sendable {
     case userInitiated(provider: ProviderID)
 }
 
+extension QuotaRefreshIntent {
+    var includesClaude: Bool {
+        switch self {
+        case .backgroundAll, .claudePreflight, .userInitiated(provider: .claude): true
+        case .userInitiated: false
+        }
+    }
+}
+
 public protocol QuotaRepository: Sendable {
     func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult
 }

@@ -34,12 +34,11 @@ fn successful_snapshot(provider: ProviderId, window_id: &str) -> ProviderQuotaSn
 }
 
 fn authentication_error() -> QuotaError {
-    QuotaError {
-        provider: Some(ProviderId::Codex),
-        code: QuotaErrorCode::RequiresAuthentication,
-        message: "Codex authentication was not available.",
-        retry_after: None,
-    }
+    QuotaError::new(
+        Some(ProviderId::Codex),
+        QuotaErrorCode::RequiresAuthentication,
+        "Codex authentication was not available.",
+    )
 }
 
 struct RecordingClaudeResolver {
@@ -205,12 +204,11 @@ async fn claude_permission_denial_uses_safe_bridge_copy_without_token_data() {
     let canary = "CLAUDE-KEYCHAIN-CANARY";
     let collection = collect_claude_user_initiated_with_source(Arc::new(RecordingClaudeSource {
         accesses: Arc::new(Mutex::new(Vec::new())),
-        result: Err(QuotaError {
-            provider: Some(ProviderId::Claude),
-            code: QuotaErrorCode::PermissionDenied,
-            message: Box::leak(format!("denied {canary}").into_boxed_str()),
-            retry_after: None,
-        }),
+        result: Err(QuotaError::new(
+            Some(ProviderId::Claude),
+            QuotaErrorCode::PermissionDenied,
+            Box::leak(format!("denied {canary}").into_boxed_str()),
+        )),
     }))
     .await;
     let json = serde_json::to_string(&envelope_from_collection(collection))
@@ -263,21 +261,21 @@ async fn quota_collection_with_only_provider_errors_is_a_successful_bridge_respo
     let codex_error = authentication_error();
     let collection = collect_quota_with_providers(
         Arc::new(FakeProvider {
-            result: Err(QuotaError {
-                provider: Some(ProviderId::Claude),
-                ..codex_error.clone()
-            }),
+            result: Err(QuotaError::new(
+                Some(ProviderId::Claude),
+                QuotaErrorCode::RequiresAuthentication,
+                "Codex authentication was not available.",
+            )),
         }),
         Arc::new(FakeProvider {
             result: Err(codex_error),
         }),
         Arc::new(FakeProvider {
-            result: Err(QuotaError {
-                provider: Some(ProviderId::Cursor),
-                code: QuotaErrorCode::ProviderUnavailable,
-                message: "Cursor personal quota is unavailable.",
-                retry_after: None,
-            }),
+            result: Err(QuotaError::new(
+                Some(ProviderId::Cursor),
+                QuotaErrorCode::ProviderUnavailable,
+                "Cursor personal quota is unavailable.",
+            )),
         }),
     )
     .await;

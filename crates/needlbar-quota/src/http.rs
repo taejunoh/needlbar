@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use reqwest::{header, Client, Response, Url};
 
-use crate::{QuotaError, QuotaErrorCode};
+use crate::{domain::ClaudeUsageEndpointStatus, QuotaError, QuotaErrorCode};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const ANTHROPIC_USAGE_HOST: &str = "api.anthropic.com";
@@ -189,7 +189,12 @@ fn status_error(status: reqwest::StatusCode, headers: &header::HeaderMap) -> Quo
             None,
             QuotaErrorCode::AuthenticationExpired,
             "Claude authentication has expired.",
-        ),
+        )
+        .with_usage_endpoint_status(if status.as_u16() == 401 {
+            ClaudeUsageEndpointStatus::Unauthorized
+        } else {
+            ClaudeUsageEndpointStatus::Forbidden
+        }),
         429 => QuotaError::new(
             None,
             QuotaErrorCode::RateLimited,
