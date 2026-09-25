@@ -31,6 +31,14 @@ verification; the extracted app passed deep/strict verification. The final
 Rust/vendor, Swift, package, and notarization contract tests. This is local
 packaging evidence, not Developer ID notarization or live quota acceptance.
 
+Whole-branch review then found and corrected a disconnect/read ordering race:
+an old asynchronous cache read could otherwise restore a disconnected quota.
+The final active-generation check and snapshot mutation now run together on
+one actor; disconnect reconciliation also runs if settings restoration fails.
+Deterministic disconnect/reconnect and missing-cache regressions passed, and
+`PATH=/Users/taejunoh/.cargo/bin:$PATH make test` was rerun at `c21339e`
+with exit 0. Independent whole-branch code review is clean.
+
 Native acceptance remains: after the user's explicit opt-in, observe a real
 Claude Code status-line event, compare Needlbar's five-hour and seven-day
 values and receipt labels with Claude Code, verify the user's existing status
