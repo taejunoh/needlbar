@@ -80,6 +80,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let freshness: PresentationFreshness
         public let isLastKnown: Bool
         public let statusText: String?
+        public let lastCheckedText: String?
     }
 
     public struct CPU: Equatable, Sendable {
@@ -143,6 +144,8 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let quotaUnavailable: Bool
         public let quotaFailureReasonText: String?
         public let quotaLastCheckedText: String?
+        public let quotaSourceText: String?
+        public let quotaObservationLabel: String
     }
 
     public let moduleIDs: [MonitorModuleID]
@@ -153,7 +156,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
     public let battery: Battery
     public let ai: [AIProvider]
 
-    public init(snapshot: CombinedUsageSnapshot, configuration: SystemMonitorConfiguration) {
+    public init(snapshot: CombinedUsageSnapshot, configuration: SystemMonitorConfiguration, now: Date = .now) {
         let system = snapshot.system
         let cpuUsage = system?.cpu.totalUsage?.value
         cpu = CPU(
@@ -213,26 +216,29 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
             let preference = configuration.ai[provider] ?? AIProviderDisplayPreference()
             guard preference.dashboardVisible else { return nil }
             let providerSnapshot = snapshot.providers.first { $0.provider == provider }
-            let popover = ProviderPopoverPresentation(snapshot: providerSnapshot ?? .unavailable(for: provider))
+            let popover = ProviderPopoverPresentation(snapshot: providerSnapshot ?? .unavailable(for: provider), now: now)
             let usageStatus = PresentationFreshness(providerSnapshot?.usageStatus ?? .unavailable)
             let quotaStatus = PresentationFreshness(providerSnapshot?.quotaStatus ?? .unavailable)
-            let statusText = provider == .claude && popover.quotaFailureReasonText != nil
+            let statusText = provider == .claude && (popover.quotaFailureReasonText != nil
+                || popover.quotaSourceText == "Reported by Claude Code")
                 ? DashboardReadabilityPolicy.providerStatus(usage: usageStatus, quota: .fresh)
                 : DashboardReadabilityPolicy.providerStatus(usage: usageStatus, quota: quotaStatus)
             return AIProvider(
                 provider: provider,
-                value: Self.providerValue(preference.metric, snapshot: providerSnapshot),
+                value: Self.providerValue(preference.metric, snapshot: providerSnapshot, popover: popover),
                 caption: Self.providerCaption(preference.metric),
                 usageStatus: usageStatus,
                 quotaStatus: quotaStatus,
                 statusText: statusText,
                 action: popover.authenticationAction,
                 apiBillingAction: preference.apiBillingLinkVisible ? ProviderAPIBillingAction(provider: provider) : nil,
-                fable: Self.fableDetail(provider: provider, metric: preference.metric, snapshot: providerSnapshot),
+                fable: Self.fableDetail(provider: provider, metric: preference.metric, snapshot: providerSnapshot, now: now),
                 quotaIsLastKnown: popover.quotaIsLastKnown,
                 quotaUnavailable: popover.quotaUnavailable,
                 quotaFailureReasonText: popover.quotaFailureReasonText,
-                quotaLastCheckedText: popover.quotaLastCheckedText
+                quotaLastCheckedText: popover.quotaLastCheckedText,
+                quotaSourceText: popover.quotaSourceText,
+                quotaObservationLabel: popover.quotaObservationLabel
             )
         }
 
@@ -244,12 +250,15 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         moduleIDs = validOrder.filter(configuration.dashboardVisibleModules.contains)
     }
 
-    private static func providerValue(_ metric: AIProviderDisplayMetric, snapshot: ProviderSnapshot?) -> String {
+    private static func providerValue(
+        _ metric: AIProviderDisplayMetric, snapshot: ProviderSnapshot?, popover: ProviderPopoverPresentation
+    ) -> String {
         guard let snapshot else { return "—" }
         switch metric {
         case .usage:
             return snapshot.usage.map { Self.dashboardTokens($0.today.totalTokens) } ?? "—"
         case .remaining:
+            if snapshot.provider == .claude { return popover.headlineQuotaRemaining ?? "—" }
             return HeadlineQuotaSelector.mostConstrained([snapshot]).map {
                 MetricFormatter.quotaRemaining($0.remainingPercent)
             } ?? "—"
@@ -278,29 +287,35 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
     private static func fableDetail(
         provider: ProviderID,
         metric: AIProviderDisplayMetric,
-        snapshot: ProviderSnapshot?
+        snapshot: ProviderSnapshot?,
+        now: Date
     ) -> FableQuotaDetail? {
         guard provider == .claude, metric == .remaining else { return nil }
-        guard let window = snapshot?.quota?.windows.first(where: { $0.id == QuotaWindow.claudeFableWeeklyID }) else {
+        guard let snapshot, let window = ClaudeQuotaPresentationSelector.select(snapshot: snapshot, now: now).fable else {
             return FableQuotaDetail(
                 remaining: "—",
                 resetCaption: String(localized: "Reset unavailable"),
                 freshness: .unavailable,
                 isLastKnown: false,
-                statusText: nil
+                statusText: nil,
+                lastCheckedText: nil
             )
         }
-        let freshness = PresentationFreshness(snapshot?.quotaStatus ?? .unavailable)
-        let hasSafeClaudeFallbackReason = snapshot?.provider == .claude
-            && snapshot?.claudeQuotaFailureReason != nil
+        let freshness: PresentationFreshness = window.isLastKnown
+            ? (snapshot.quotaStatus == .fresh ? .stale : PresentationFreshness(snapshot.quotaStatus))
+            : .fresh
+        let hasSafeClaudeFallbackReason = snapshot.claudeQuotaFailureReason != nil
         return FableQuotaDetail(
             remaining: MetricFormatter.quotaRemaining(window.remainingPercent),
-            resetCaption: MetricFormatter.reset(window.resetsAt).map { String(localized: "Resets \($0)") }
-                ?? String(localized: "Reset unavailable"),
+            resetCaption: window.isLastKnown ? String(localized: "Reset unverified")
+                : MetricFormatter.reset(window.resetsAt).map { String(localized: "Resets \($0)") }
+                    ?? String(localized: "Reset unavailable"),
             freshness: freshness,
-            isLastKnown: snapshot?.provider == .claude
-                && (hasSafeClaudeFallbackReason || snapshot?.quotaStatus != .fresh),
-            statusText: hasSafeClaudeFallbackReason ? nil : Self.fableStatus(freshness)
+            isLastKnown: window.isLastKnown,
+            statusText: hasSafeClaudeFallbackReason ? nil : Self.fableStatus(freshness),
+            lastCheckedText: window.isLastKnown
+                ? DateFormatter.localizedString(from: window.observedAt, dateStyle: .medium, timeStyle: .short)
+                : nil
         )
     }
 

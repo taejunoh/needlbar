@@ -151,7 +151,10 @@ private final class LegacyMenuBarController: NSObject {
             notificationService: notificationService,
             openCursorSpending: openCursorSpending,
             openClaudeUsage: openClaudeUsage,
-            claudeStatusLineManager: claudeStatusLineManager
+            claudeStatusLineManager: claudeStatusLineManager,
+            onClaudeStatusLineDisconnected: {
+                Task { await snapshotStore.clearClaudeStatusLineQuota() }
+            }
         )
         super.init()
         panelPresenter.onDismiss = { [weak self] in
@@ -522,7 +525,10 @@ public final class MenuBarController: NSObject {
             notificationService: notificationService,
             openCursorSpending: openCursorSpending,
             openClaudeUsage: openClaudeUsage,
-            claudeStatusLineManager: claudeStatusLineManager
+            claudeStatusLineManager: claudeStatusLineManager,
+            onClaudeStatusLineDisconnected: {
+                Task { await snapshotStore.clearClaudeStatusLineQuota() }
+            }
         )
         self.cachedCombinedSnapshot = CombinedUsageSnapshot(
             system: nil, providers: [], capturedAt: .distantPast, systemAvailability: [:]

@@ -7,15 +7,15 @@ import SwiftUI
 public final class SettingsClaudeQuotaPresentation: ObservableObject {
     @Published private(set) var value: ProviderPopoverPresentation
 
-    init(snapshot: CombinedUsageSnapshot? = nil) {
-        value = Self.presentation(for: snapshot)
+    init(snapshot: CombinedUsageSnapshot? = nil, now: Date = .now) {
+        value = Self.presentation(for: snapshot, now: now)
     }
 
-    func update(snapshot: CombinedUsageSnapshot) {
-        value = Self.presentation(for: snapshot)
+    func update(snapshot: CombinedUsageSnapshot, now: Date = .now) {
+        value = Self.presentation(for: snapshot, now: now)
     }
 
-    private static func presentation(for snapshot: CombinedUsageSnapshot?) -> ProviderPopoverPresentation {
+    private static func presentation(for snapshot: CombinedUsageSnapshot?, now: Date) -> ProviderPopoverPresentation {
         ProviderPopoverPresentation(snapshot: snapshot?.providers.first { $0.provider == .claude }
             ?? ProviderSnapshot(
                 provider: .claude,
@@ -24,7 +24,7 @@ public final class SettingsClaudeQuotaPresentation: ObservableObject {
                 usageStatus: .unavailable,
                 quotaStatus: .unavailable,
                 updatedAt: .distantPast
-            ))
+            ), now: now)
     }
 }
 
@@ -42,6 +42,7 @@ public struct SettingsView: View {
     private let openCursorSpending: () -> Void
     private let openClaudeUsage: () -> Bool
     private let claudeStatusLineManager: ClaudeStatusLineConnectionManager
+    private let onClaudeStatusLineDisconnected: @MainActor () -> Void
     @StateObject private var systemMonitorModel: SystemMonitorSettingsModel
     @ObservedObject private var actions: SettingsActions
     @ObservedObject private var notificationPreferences: QuotaNotificationPreferences
@@ -62,6 +63,7 @@ public struct SettingsView: View {
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() },
         openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() },
         claudeStatusLineManager: ClaudeStatusLineConnectionManager = ClaudeStatusLineConnectionManager(),
+        onClaudeStatusLineDisconnected: @escaping @MainActor () -> Void = {},
         preview: SettingsPreviewModel? = nil,
         claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil
     ) {
@@ -69,6 +71,7 @@ public struct SettingsView: View {
         self.openCursorSpending = openCursorSpending
         self.openClaudeUsage = openClaudeUsage
         self.claudeStatusLineManager = claudeStatusLineManager
+        self.onClaudeStatusLineDisconnected = onClaudeStatusLineDisconnected
         _preview = ObservedObject(wrappedValue: preview ?? SettingsPreviewModel())
         _claudeQuotaPresentation = ObservedObject(wrappedValue: claudeQuotaPresentation ?? SettingsClaudeQuotaPresentation())
         _systemMonitorModel = StateObject(wrappedValue: SystemMonitorSettingsModel(configuration: configuration))
@@ -86,6 +89,7 @@ public struct SettingsView: View {
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() },
         openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() },
         claudeStatusLineManager: ClaudeStatusLineConnectionManager = ClaudeStatusLineConnectionManager(),
+        onClaudeStatusLineDisconnected: @escaping @MainActor () -> Void = {},
         preview: SettingsPreviewModel? = nil,
         claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil
     ) {
@@ -100,6 +104,7 @@ public struct SettingsView: View {
             openCursorSpending: openCursorSpending,
             openClaudeUsage: openClaudeUsage,
             claudeStatusLineManager: claudeStatusLineManager,
+            onClaudeStatusLineDisconnected: onClaudeStatusLineDisconnected,
             preview: preview,
             claudeQuotaPresentation: claudeQuotaPresentation
         )
@@ -199,6 +204,9 @@ public struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                if let source = claudeQuotaPresentation.value.quotaSourceText {
+                    Text(source).font(.caption).foregroundStyle(.secondary)
+                }
                 if claudeQuotaPresentation.value.quotaIsLastKnown {
                     Text("Last known")
                         .font(.caption)
@@ -215,9 +223,18 @@ public struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 if let lastChecked = claudeQuotaPresentation.value.quotaLastCheckedText {
-                    Text("Last checked \(lastChecked)")
+                    Text("\(claudeQuotaPresentation.value.quotaObservationLabel) \(lastChecked)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+                if let fable = claudeQuotaPresentation.value.claudeFable {
+                    Text("Fable weekly \(fable.remaining) · \(fable.isLastKnown ? "Last known" : "Claude usage")")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if let checked = claudeQuotaPresentation.value.fableLastCheckedText {
+                        Text("Fable last checked \(checked)").font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("Fable weekly unavailable").font(.caption).foregroundStyle(.secondary)
                 }
                 if claudeUsageState.showsFailure {
                     Text("Couldn't open Claude usage. Try again.")
@@ -280,13 +297,14 @@ public struct SettingsView: View {
         }
     }
 
-    private func setClaudeStatusLineEnabled(_ enabled: Bool) {
+    func setClaudeStatusLineEnabled(_ enabled: Bool) {
         do {
             if enabled {
                 let inspection = try claudeStatusLineManager.inspect()
                 claudeStatusLineState = try claudeStatusLineManager.connect(expectedRevision: inspection.revision)
             } else {
                 claudeStatusLineState = try claudeStatusLineManager.disconnect()
+                onClaudeStatusLineDisconnected()
             }
             claudeStatusLineError = nil
         } catch {

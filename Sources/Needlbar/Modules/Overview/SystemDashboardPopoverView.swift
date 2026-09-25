@@ -359,6 +359,11 @@ public struct SystemDashboardPopoverView: View {
                 }
             }
             .font(.caption2)
+            if let source = provider.quotaSourceText {
+                Text(source)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
             if provider.quotaIsLastKnown {
                 Text("Last known")
                     .font(.caption2)
@@ -375,7 +380,7 @@ public struct SystemDashboardPopoverView: View {
                     .foregroundStyle(.secondary)
             }
             if let lastChecked = provider.quotaLastCheckedText {
-                Text("Last checked \(lastChecked)")
+                Text("\(provider.quotaObservationLabel) \(lastChecked)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -422,6 +427,11 @@ public struct SystemDashboardPopoverView: View {
                         .foregroundStyle(.orange)
                 } else {
                     Text("\(fable.isLastKnown ? "Last known · " : "")\(fable.resetCaption)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if let checked = fable.lastCheckedText {
+                    Text("Fable last checked \(checked)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }

@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 @testable import NeedlbarApp
 @testable import NeedlbarCore
+import NeedlbarClaudeStatusLineSupport
 
 @Test func dashboardPresentationUsesFactoryDefaultVisibleModules() {
     let configuration = SystemMonitorConfiguration()
@@ -242,7 +243,8 @@ import Testing
     )
     let presentation = SystemDashboardPresentation(
         snapshot: dashboardFixtureSnapshot(claudeQuotaWindows: [base, fable]),
-        configuration: SystemMonitorConfiguration()
+        configuration: SystemMonitorConfiguration(),
+        now: Date(timeIntervalSince1970: 10_000)
     )
     let claude = try #require(presentation.ai.first { $0.provider == .claude })
 
@@ -286,7 +288,7 @@ import Testing
 
         #expect(fable.freshness == expectedFreshness)
         #expect(fable.isLastKnown)
-        #expect(fable.resetCaption.hasPrefix("Resets "))
+        #expect(fable.resetCaption == "Reset unverified")
         #expect(fable.statusText == nil)
     }
 }
@@ -553,6 +555,58 @@ import Testing
     #expect(presentation.ai.filter { $0.provider != .claude }.allSatisfy { $0.fable == nil })
 }
 
+@Test func dashboardRecentClaudeCodeQuotaShowsSourceWhileFableKeepsDirectTimestamp() throws {
+    let received = Date(timeIntervalSince1970: 100_000)
+    let directAt = received.addingTimeInterval(-3_600)
+    let record = StatusLineQuotaRecord(schemaVersion: 1, generation: UUID(),
+        fiveHour: .init(usedPercent: 25, resetsAt: received.addingTimeInterval(3_600), receivedAt: received),
+        sevenDay: nil)
+    let fable = try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", usedPercent: 90,
+                                resetsAt: directAt.addingTimeInterval(600))
+    let presentation = SystemDashboardPresentation(snapshot: dashboardFixtureSnapshot(
+        capturedAt: directAt, claudeQuotaStatus: .requiresAuthentication,
+        claudeQuotaFailureReason: .quotaAccessUnavailable,
+        claudeQuotaWindows: [fable], claudeStatusLineQuota: record),
+        configuration: .init(), now: received.addingTimeInterval(60))
+    let claude = try #require(presentation.ai.first { $0.provider == .claude })
+
+    #expect(claude.value == "75%")
+    #expect(claude.quotaSourceText == "Reported by Claude Code")
+    #expect(claude.quotaLastCheckedText == DateFormatter.localizedString(from: received, dateStyle: .medium, timeStyle: .short))
+    #expect(claude.statusText == nil)
+    #expect(claude.quotaFailureReasonText == nil)
+    #expect(claude.fable?.remaining == "10%")
+    #expect(claude.fable?.isLastKnown == true)
+    #expect(claude.fable?.lastCheckedText == DateFormatter.localizedString(from: directAt, dateStyle: .medium, timeStyle: .short))
+    #expect(claude.fable?.resetCaption == "Reset unverified")
+}
+
+@Test func dashboardOldClaudeCodeQuotaHasNoCurrentHeadlineAndDoesNotAffectCodex() throws {
+    let received = Date(timeIntervalSince1970: 100_000)
+    let record = StatusLineQuotaRecord(schemaVersion: 1, generation: UUID(),
+        fiveHour: .init(usedPercent: 25, resetsAt: received.addingTimeInterval(3_600), receivedAt: received),
+        sevenDay: nil)
+    let presentation = SystemDashboardPresentation(snapshot: dashboardFixtureSnapshot(
+        claudeQuotaStatus: .requiresAuthentication, claudeHasQuota: false,
+        claudeStatusLineQuota: record), configuration: .init(), now: received.addingTimeInterval(20 * 60))
+    #expect(presentation.ai.first { $0.provider == .claude }?.value == "—")
+    #expect(presentation.ai.first { $0.provider == .claude }?.quotaIsLastKnown == true)
+    #expect(presentation.ai.first { $0.provider == .codex }?.value == "55%")
+    #expect(presentation.ai.first { $0.provider == .claude }?.statusText == nil)
+}
+
+@Test func dashboardPassedFableResetIsNotLabeledFreshDespiteDirectSuccess() throws {
+    let now = Date(timeIntervalSince1970: 100_000)
+    let fable = try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly",
+                                usedPercent: 90, resetsAt: now.addingTimeInterval(-1))
+    let dashboard = SystemDashboardPresentation(snapshot: dashboardFixtureSnapshot(
+        claudeQuotaStatus: .fresh, claudeQuotaWindows: [fable]), configuration: .init(), now: now)
+    let detail = try #require(dashboard.ai.first { $0.provider == .claude }?.fable)
+    #expect(detail.isLastKnown)
+    #expect(detail.freshness == .stale)
+    #expect(detail.resetCaption == "Reset unverified")
+}
+
 @Test @MainActor func dashboardReadabilityFittingIsStableAcrossLiveNumericChanges() throws {
     let configuration = SystemMonitorConfiguration()
     let first = dashboardFixtureSnapshot(capturedAt: Date(timeIntervalSince1970: 10_000))
@@ -601,7 +655,7 @@ import Testing
 
     #expect(stale.network.download == "2.0 KB/s")
     #expect(stale.disk.read == "10 B/s")
-    #expect(stale.ai.first { $0.provider == .claude }?.value == "32%")
+    #expect(stale.ai.first { $0.provider == .claude }?.value == "—")
     #expect(stale.ai.first { $0.provider == .cursor }?.value == "—")
     #expect(DashboardReadabilityPolicy.systemStatus(stale.network.freshness) == "Stale")
     #expect(DashboardReadabilityPolicy.providerStatus(
@@ -644,7 +698,8 @@ private func dashboardFixtureSnapshot(
     cursorHasQuota: Bool = true,
     providerUpdatedAt: Date? = nil,
     perCoreUsage: [MetricPercentage] = [],
-    todayTokens: UInt64 = 1_420_000
+    todayTokens: UInt64 = 1_420_000,
+    claudeStatusLineQuota: StatusLineQuotaRecord? = nil
 ) -> CombinedUsageSnapshot {
     let system = SystemMetricsSnapshot(
         capturedAt: date,
@@ -704,7 +759,8 @@ private func dashboardFixtureSnapshot(
                         : .fresh,
             updatedAt: providerUpdatedAt ?? date,
             claudeQuotaFailureReason: provider == .claude ? claudeQuotaFailureReason : nil,
-            quotaLastSuccessfulAt: provider == .claude && claudeQuotaFailureReason != nil ? date : nil
+            quotaLastSuccessfulAt: provider == .claude && claudeQuotaFailureReason != nil ? date : nil,
+            claudeStatusLineQuota: provider == .claude ? claudeStatusLineQuota : nil
         )
     }
     return CombinedUsageSnapshot(

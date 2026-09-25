@@ -7,6 +7,24 @@ public enum ProviderAuthenticationAction: Equatable, Sendable {
     case openClaudeUsage(title: String)
 }
 
+public struct ClaudePopoverQuotaDetail: Equatable, Sendable, Identifiable {
+    public let id: String
+    public let title: String
+    public let remaining: String
+    public let resetCaption: String?
+    public let isLastKnown: Bool
+    public let sourceLabel: String
+
+    init(id: String, title: String, window: DisplayedClaudeWindow) {
+        self.id = id
+        self.title = title
+        remaining = MetricFormatter.quotaRemaining(window.remainingPercent)
+        isLastKnown = window.isLastKnown
+        sourceLabel = window.source == .claudeCodeStatusLine ? "Reported by Claude Code" : "Claude usage"
+        resetCaption = window.isLastKnown ? nil : MetricFormatter.reset(window.resetsAt).map { "Resets \($0)" }
+    }
+}
+
 public struct ProviderPopoverPresentation: Equatable, Sendable {
     public let provider: ProviderID
     public let tokensToday: String?
@@ -23,8 +41,17 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
     public let quotaUnavailable: Bool
     public let quotaFailureReasonText: String?
     public let quotaLastCheckedText: String?
+    public let quotaSourceText: String?
+    public let quotaObservationLabel: String
+    public let claudeFiveHour: ClaudePopoverQuotaDetail?
+    public let claudeSevenDay: ClaudePopoverQuotaDetail?
+    public let claudeFable: ClaudePopoverQuotaDetail?
+    public let claudeOtherWindows: [ClaudePopoverQuotaDetail]
+    public let fableIsLastKnown: Bool
+    public let fableLastCheckedText: String?
+    public let hasRecentClaudeQuota: Bool
 
-    public init(snapshot: ProviderSnapshot) {
+    public init(snapshot: ProviderSnapshot, now: Date = .now) {
         provider = snapshot.provider
         tokensToday = snapshot.usage.map { MetricFormatter.tokens($0.today.totalTokens) }
         estimatedCostToday = snapshot.usage.map { MetricFormatter.costUSD($0.today.estimatedCostUSD) }
@@ -34,17 +61,61 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
         // A present usage snapshot makes even a zero cache-write value explicitly known.
         cacheWriteTokens = snapshot.usage.map { MetricFormatter.tokens($0.today.cacheWriteTokens) }
         quotaWindows = snapshot.quota?.windows ?? []
-        headlineQuotaRemaining = HeadlineQuotaSelector.mostConstrained([snapshot]).map { MetricFormatter.quotaRemaining($0.remainingPercent) }
         usageFreshness = PresentationFreshness(snapshot.usageStatus)
         quotaFreshness = PresentationFreshness(snapshot.quotaStatus)
-        let claudeFallback = snapshot.provider == .claude
-            && (snapshot.claudeQuotaFailureReason != nil || snapshot.quotaStatus != .fresh)
-        quotaIsLastKnown = claudeFallback && snapshot.quota != nil
-        quotaUnavailable = claudeFallback && snapshot.quota == nil
-        quotaFailureReasonText = snapshot.claudeQuotaFailureReason?.displayText
-        quotaLastCheckedText = quotaIsLastKnown
-            ? snapshot.quotaLastSuccessfulAt.map(Self.localizedDateTime)
-            : nil
+        if snapshot.provider == .claude {
+            let selected = ClaudeQuotaPresentationSelector.select(snapshot: snapshot, now: now)
+            claudeFiveHour = selected.fiveHour.map { .init(id: "claude.session", title: "Session", window: $0) }
+            claudeSevenDay = selected.sevenDay.map { .init(id: "claude.weekly", title: "Weekly", window: $0) }
+            claudeFable = selected.fable.map { .init(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", window: $0) }
+            fableIsLastKnown = selected.fable?.isLastKnown ?? false
+            fableLastCheckedText = selected.fable.flatMap { $0.isLastKnown ? Self.localizedDateTime($0.observedAt) : nil }
+
+            let main = [selected.fiveHour, selected.sevenDay].compactMap { $0 }
+            let fallback = quotaWindows.filter { !["claude.session", "claude.weekly", QuotaWindow.claudeFableWeeklyID].contains($0.id) }
+            claudeOtherWindows = main.isEmpty ? fallback.map { window in
+                .init(id: window.id, title: window.title, window: .init(
+                    remainingPercent: window.remainingPercent, source: .direct,
+                    observedAt: snapshot.quotaLastSuccessfulAt ?? snapshot.updatedAt,
+                    resetsAt: window.resetsAt,
+                    isLastKnown: snapshot.quotaStatus != .fresh || (window.resetsAt.map { now >= $0 } ?? false)
+                ))
+            } : []
+            let recent = main.filter { !$0.isLastKnown }
+            let directFallback = main.isEmpty && snapshot.quotaStatus == .fresh
+                ? fallback.filter { $0.resetsAt.map { now < $0 } ?? true }
+                : []
+            hasRecentClaudeQuota = !recent.isEmpty || !directFallback.isEmpty
+            headlineQuotaRemaining = (recent.map(\.remainingPercent) + directFallback.map(\.remainingPercent))
+                .min().map(MetricFormatter.quotaRemaining)
+
+            let primary = recent.min { $0.remainingPercent < $1.remainingPercent }
+                ?? main.min { $0.remainingPercent < $1.remainingPercent }
+            quotaSourceText = primary.map { $0.source == .claudeCodeStatusLine ? "Reported by Claude Code" : "Claude usage" }
+                ?? (!fallback.isEmpty ? "Claude usage" : nil)
+            quotaObservationLabel = primary?.source == .claudeCodeStatusLine ? "Received locally" : "Last checked"
+            quotaLastCheckedText = primary.map { Self.localizedDateTime($0.observedAt) }
+                ?? (snapshot.quotaStatus != .fresh ? snapshot.quotaLastSuccessfulAt.map(Self.localizedDateTime) : nil)
+            quotaIsLastKnown = !hasRecentClaudeQuota && (!main.isEmpty || !fallback.isEmpty)
+            quotaUnavailable = !hasRecentClaudeQuota && main.isEmpty && fallback.isEmpty
+            quotaFailureReasonText = hasRecentClaudeQuota ? nil : snapshot.claudeQuotaFailureReason?.displayText
+        } else {
+            claudeFiveHour = nil
+            claudeSevenDay = nil
+            claudeFable = nil
+            claudeOtherWindows = []
+            fableIsLastKnown = false
+            fableLastCheckedText = nil
+            hasRecentClaudeQuota = false
+            quotaSourceText = nil
+            quotaObservationLabel = "Last checked"
+            headlineQuotaRemaining = HeadlineQuotaSelector.mostConstrained([snapshot], now: now)
+                .map { MetricFormatter.quotaRemaining($0.remainingPercent) }
+            quotaIsLastKnown = false
+            quotaUnavailable = false
+            quotaFailureReasonText = nil
+            quotaLastCheckedText = nil
+        }
     }
 
     public var requiresProviderSignIn: Bool {
@@ -53,12 +124,13 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
 
     public var freshnessSummary: String {
         let usage = "Usage: \(usageFreshness.label)"
-        guard !(provider == .claude && quotaFailureReasonText != nil) else { return usage }
+        guard !(provider == .claude && (quotaFailureReasonText != nil
+            || quotaSourceText == "Reported by Claude Code")) else { return usage }
         return "\(usage) · Quota: \(quotaFreshness.label)"
     }
 
     public var authenticationAction: ProviderAuthenticationAction? {
-        if provider == .claude, quotaFailureReasonText != nil {
+        if provider == .claude, quotaFailureReasonText != nil || quotaSourceText == "Reported by Claude Code" {
             return .openClaudeUsage(title: "View Claude usage")
         }
         if provider == .cursor, quotaWindows.isEmpty, quotaFreshness != .fresh {
@@ -125,7 +197,32 @@ public struct ProviderPopoverView: View {
 
             Divider()
             Text("Quota").font(.subheadline.weight(.medium))
-            if presentation.quotaUnavailable {
+            if presentation.provider == .claude {
+                if let source = presentation.quotaSourceText {
+                    Text(source).font(.caption).foregroundStyle(.secondary)
+                        .accessibilityLabel(source)
+                }
+                if presentation.quotaUnavailable {
+                    Text("Quota unavailable").foregroundStyle(.secondary)
+                }
+                if presentation.quotaIsLastKnown {
+                    Text("Last known").font(.caption).foregroundStyle(.secondary)
+                }
+                if let window = presentation.claudeFiveHour { claudeQuotaRow(window) }
+                if let window = presentation.claudeSevenDay { claudeQuotaRow(window) }
+                ForEach(presentation.claudeOtherWindows) { claudeQuotaRow($0) }
+                if let window = presentation.claudeFable {
+                    Text("Fable · \(window.isLastKnown ? "Last known" : "Claude usage")")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .accessibilityLabel("Fable · \(window.isLastKnown ? "Last known" : "Claude usage")")
+                    claudeQuotaRow(window)
+                    if let checked = presentation.fableLastCheckedText {
+                        Text("Last checked \(checked)").font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("Fable weekly · Unavailable").font(.caption).foregroundStyle(.secondary)
+                }
+            } else if presentation.quotaUnavailable {
                 Text("Quota unavailable").foregroundStyle(.secondary)
             } else if presentation.quotaWindows.isEmpty {
                 Text(presentation.quotaFreshness.label).foregroundStyle(.secondary)
@@ -141,7 +238,7 @@ public struct ProviderPopoverView: View {
                 Text(reason).font(.caption).foregroundStyle(.secondary)
             }
             if let lastChecked = presentation.quotaLastCheckedText {
-                Text("Last checked \(lastChecked)").font(.caption).foregroundStyle(.secondary)
+                Text("\(presentation.quotaObservationLabel) \(lastChecked)").font(.caption).foregroundStyle(.secondary)
             }
 
             if let authenticationAction = presentation.authenticationAction {
@@ -179,6 +276,25 @@ public struct ProviderPopoverView: View {
         GridRow {
             Text(title).foregroundStyle(.secondary)
             Text(value ?? "—").monospacedDigit()
+        }
+    }
+
+    @ViewBuilder
+    private func claudeQuotaRow(_ detail: ClaudePopoverQuotaDetail) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(detail.title)
+                Text(detail.sourceLabel).font(.caption).foregroundStyle(.secondary)
+                    .accessibilityLabel(detail.sourceLabel)
+                if detail.isLastKnown {
+                    Text("Last known").font(.caption).foregroundStyle(.secondary)
+                }
+                if let reset = detail.resetCaption {
+                    Text(reset).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Text(detail.remaining).monospacedDigit()
         }
     }
 }

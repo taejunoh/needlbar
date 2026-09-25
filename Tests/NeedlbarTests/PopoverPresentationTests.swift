@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import NeedlbarApp
 @testable import NeedlbarCore
+import NeedlbarClaudeStatusLineSupport
 
 @Test func freshUsageAndQuotaRenderKnownValues() throws {
     let presentation = ProviderPopoverPresentation(snapshot: snapshot(
@@ -217,6 +218,85 @@ import Testing
     #expect(overview.headlineQuotaRemaining == "80%")
 }
 
+@Test func ClaudePopoverUsesRecentStatusLineWithoutMaskingFableAge() throws {
+    let received = Date(timeIntervalSince1970: 100_000)
+    let directAt = received.addingTimeInterval(-3_600)
+    let direct = QuotaSnapshot(windows: [
+        try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 80, resetsAt: nil),
+        try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", usedPercent: 90,
+                        resetsAt: directAt.addingTimeInterval(600)),
+    ])
+    let record = StatusLineQuotaRecord(schemaVersion: 1, generation: UUID(),
+        fiveHour: .init(usedPercent: 25, resetsAt: received.addingTimeInterval(3_600), receivedAt: received),
+        sevenDay: nil)
+    let mixed = ProviderSnapshot(provider: .claude, usage: nil, quota: direct,
+        usageStatus: .unavailable, quotaStatus: .requiresAuthentication, updatedAt: received,
+        claudeQuotaFailureReason: .quotaAccessUnavailable, quotaLastSuccessfulAt: directAt,
+        claudeStatusLineQuota: record)
+
+    let presentation = ProviderPopoverPresentation(snapshot: mixed, now: received.addingTimeInterval(60))
+
+    #expect(presentation.headlineQuotaRemaining == "75%")
+    #expect(presentation.quotaSourceText == "Reported by Claude Code")
+    #expect(presentation.quotaLastCheckedText == DateFormatter.localizedString(from: received, dateStyle: .medium, timeStyle: .short))
+    #expect(presentation.quotaFailureReasonText == nil)
+    #expect(!presentation.quotaUnavailable)
+    #expect(presentation.claudeFiveHour?.sourceLabel == "Reported by Claude Code")
+    #expect(presentation.fableIsLastKnown)
+    #expect(presentation.fableLastCheckedText == DateFormatter.localizedString(from: directAt, dateStyle: .medium, timeStyle: .short))
+    #expect(presentation.claudeFable?.resetCaption == nil)
+    #expect(presentation.authenticationAction == .openClaudeUsage(title: "View Claude usage"))
+}
+
+@Test func ClaudePopoverDoesNotPresentOldOrResetPassedStatusLineAsCurrent() {
+    let received = Date(timeIntervalSince1970: 100_000)
+    for (age, reset) in [(20 * 60.0, received.addingTimeInterval(3_600)),
+                         (60.0, received.addingTimeInterval(30))] {
+        let record = StatusLineQuotaRecord(schemaVersion: 1, generation: UUID(),
+            fiveHour: .init(usedPercent: 25, resetsAt: reset, receivedAt: received), sevenDay: nil)
+        let value = ProviderPopoverPresentation(snapshot: snapshot(provider: .claude, usage: nil, quota: nil,
+            usageStatus: .unavailable, quotaStatus: .requiresAuthentication,
+            claudeStatusLineQuota: record), now: received.addingTimeInterval(age))
+        #expect(value.headlineQuotaRemaining == nil)
+        #expect(value.quotaIsLastKnown)
+        #expect(value.claudeFiveHour?.remaining == "75%")
+        #expect(value.claudeFiveHour?.isLastKnown == true)
+        #expect(value.claudeFiveHour?.resetCaption == nil)
+    }
+}
+
+@Test func ClaudePopoverMixedMainWindowsKeepPerWindowProvenance() throws {
+    let now = Date(timeIntervalSince1970: 100_000)
+    let direct = QuotaSnapshot(windows: [
+        try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 80,
+                        resetsAt: now.addingTimeInterval(3_600)),
+    ])
+    let record = StatusLineQuotaRecord(schemaVersion: 1, generation: UUID(), fiveHour: nil,
+        sevenDay: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(3_600), receivedAt: now))
+    let value = ProviderPopoverPresentation(snapshot: snapshot(provider: .claude, usage: nil, quota: direct,
+        usageStatus: .unavailable, quotaStatus: .fresh, quotaLastSuccessfulAt: now,
+        claudeStatusLineQuota: record), now: now)
+
+    #expect(value.quotaSourceText == "Claude usage")
+    #expect(value.claudeFiveHour?.sourceLabel == "Claude usage")
+    #expect(value.claudeSevenDay?.sourceLabel == "Reported by Claude Code")
+}
+
+@Test func ClaudePopoverDirectRecoveryTakesPrecedenceOverStatusLine() throws {
+    let now = Date(timeIntervalSince1970: 100_000)
+    let record = StatusLineQuotaRecord(schemaVersion: 1, generation: UUID(),
+        fiveHour: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(3_600), receivedAt: now), sevenDay: nil)
+    let direct = QuotaSnapshot(windows: [
+        try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 40, resetsAt: now.addingTimeInterval(3_600)),
+    ])
+    let value = ProviderPopoverPresentation(snapshot: snapshot(provider: .claude, usage: nil, quota: direct,
+        usageStatus: .unavailable, quotaStatus: .fresh, quotaLastSuccessfulAt: now,
+        claudeStatusLineQuota: record), now: now)
+    #expect(value.headlineQuotaRemaining == "60%")
+    #expect(value.quotaSourceText == "Claude usage")
+    #expect(value.quotaFailureReasonText == nil)
+}
+
 private func snapshot(
     provider: ProviderID,
     usage: UsageSnapshot?,
@@ -225,7 +305,8 @@ private func snapshot(
     quotaStatus: DataStatus,
     updatedAt: Date = .now,
     claudeQuotaFailureReason: ClaudeQuotaFailureReason? = nil,
-    quotaLastSuccessfulAt: Date? = nil
+    quotaLastSuccessfulAt: Date? = nil,
+    claudeStatusLineQuota: StatusLineQuotaRecord? = nil
 ) -> ProviderSnapshot {
     ProviderSnapshot(
         provider: provider,
@@ -235,7 +316,8 @@ private func snapshot(
         quotaStatus: quotaStatus,
         updatedAt: updatedAt,
         claudeQuotaFailureReason: claudeQuotaFailureReason,
-        quotaLastSuccessfulAt: quotaLastSuccessfulAt
+        quotaLastSuccessfulAt: quotaLastSuccessfulAt,
+        claudeStatusLineQuota: claudeStatusLineQuota
     )
 }
 
