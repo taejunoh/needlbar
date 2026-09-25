@@ -69,7 +69,6 @@ set -euo pipefail
 record_stage() { printf '%s\n' "$1" >> "$FAKE_COMMAND_LOG"; }
 if [[ "${1:-}" == --force ]]; then
   [[ "$*" == *'--options runtime --timestamp'* ]] || exit 81
-  [[ "$*" == *'--entitlements'* ]] || exit 82
   target="${@: -1}"
   entitlements=''
   previous=''
@@ -77,11 +76,17 @@ if [[ "${1:-}" == --force ]]; then
     if [[ "$previous" == --entitlements ]]; then entitlements="$argument"; fi
     previous="$argument"
   done
-  [[ -f "$entitlements" ]] || exit 83
+  if [[ "$target" == *NeedlbarClaudeStatusLine ]]; then
+    [[ -z "$entitlements" ]] || exit 85
+  else
+    [[ -f "$entitlements" ]] || exit 83
+  fi
   record_stage codesign:sign
   record_stage "codesign:sign:$target"
   if [[ "$target" == *NeedlbarWidgetExtension.appex ]]; then
     cp "$entitlements" "$FAKE_STATE_DIR/widget-entitlements"
+  elif [[ "$target" == *NeedlbarClaudeStatusLine ]]; then
+    [[ -x "$target" ]] || exit 86
   elif [[ "$target" == *Needlbar.app ]]; then
     cp "$entitlements" "$FAKE_STATE_DIR/host-entitlements"
   else
@@ -89,6 +94,7 @@ if [[ "${1:-}" == --force ]]; then
   fi
 elif [[ "${1:-}" == --verify ]]; then
   record_stage codesign:verify
+  record_stage "codesign:verify:${@: -1}"
 elif [[ "${1:-}" == --display ]]; then
   record_stage codesign:display
   printf 'Authority=Developer ID Application: Test Signer (3BMF4LM6TM)\n'
@@ -314,6 +320,8 @@ new_case() {
   cp "$ROOT/WidgetExtension/NeedlbarWidgetExtension.entitlements" "$case_root/repo/WidgetExtension/NeedlbarWidgetExtension.entitlements"
   chmod 755 "$case_root/repo/scripts/notarize-app.sh"
   : > "$case_root/repo/dist/Needlbar.app/Contents/MacOS/Needlbar"
+  printf '%s\n' synthetic-helper > "$case_root/repo/dist/Needlbar.app/Contents/MacOS/NeedlbarClaudeStatusLine"
+  chmod 755 "$case_root/repo/dist/Needlbar.app/Contents/MacOS/NeedlbarClaudeStatusLine"
   cat > "$case_root/repo/dist/Needlbar.app/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
@@ -2470,8 +2478,14 @@ grep -F "$release_group" "$case_root/repo/dist/Needlbar.app/Contents/PlugIns/Nee
 grep -F "$release_group" "$case_root/state/host-entitlements" >/dev/null || fail 'host signing entitlement group mismatch'
 grep -F "$release_group" "$case_root/state/widget-entitlements" >/dev/null || fail 'extension signing entitlement group mismatch'
 extension_sign_line="$(grep -n 'NeedlbarWidgetExtension.appex' "$case_root/commands.log" | head -n 1 | cut -d: -f1)"
+helper_sign_line="$(grep -n 'codesign:sign:.*NeedlbarClaudeStatusLine$' "$case_root/commands.log" | head -n 1 | cut -d: -f1)"
 host_sign_line="$(grep -n 'codesign:sign:.*Needlbar\.app$' "$case_root/commands.log" | head -n 1 | cut -d: -f1)"
-[[ "$extension_sign_line" =~ ^[0-9]+$ && "$host_sign_line" =~ ^[0-9]+$ ]] || fail 'Developer ID sign records missing'
+[[ "$extension_sign_line" =~ ^[0-9]+$ && "$host_sign_line" =~ ^[0-9]+$ && "$helper_sign_line" =~ ^[0-9]+$ ]] || fail 'Developer ID sign records missing'
 (( extension_sign_line < host_sign_line )) || fail 'Developer ID host signing preceded extension signing'
+(( helper_sign_line < host_sign_line )) || fail 'Developer ID host signing preceded status-line helper signing'
+grep -F "codesign:verify:$case_root/repo/dist/Needlbar.app/Contents/MacOS/NeedlbarClaudeStatusLine" "$case_root/commands.log" >/dev/null ||
+  fail 'packaged status-line helper was not independently verified'
+grep -E 'codesign:verify:.*/extracted/Needlbar\.app/Contents/MacOS/NeedlbarClaudeStatusLine$' "$case_root/commands.log" >/dev/null ||
+  fail 'notarized ZIP status-line helper was not independently verified'
 
 echo 'notarize-app shell contracts passed'

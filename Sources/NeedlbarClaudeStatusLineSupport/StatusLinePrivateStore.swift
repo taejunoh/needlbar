@@ -38,12 +38,93 @@ public final class StatusLinePrivateStore: @unchecked Sendable {
     private let rootURL: URL
     private let maximumRecordBytes = 16 * 1024
     private let maximumMetadataBytes = 1024 * 1024
+    private let maximumHelperBytes = 64 * 1024 * 1024
+
+    public var stableHelperURL: URL {
+        rootURL.appendingPathComponent("NeedlbarClaudeStatusLine", isDirectory: false)
+    }
 
     public init(rootURL: URL = StatusLinePrivateStore.defaultRootURL) throws {
         self.rootURL = rootURL
         if mkdir(rootURL.path, 0o700) != 0 && errno != EEXIST { throw StatusLineStoreError.system(errno) }
         let directory = try openDirectory()
         close(directory)
+    }
+
+    /// Atomically replaces the private executable. Existing invocations keep
+    /// their open inode, while later Claude Code events use the new binary.
+    public func installHelper(from sourceURL: URL) throws {
+        let source = open(sourceURL.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard source >= 0 else { throw StatusLineStoreError.unsafeFile }
+        defer { close(source) }
+        var sourceInfo = stat()
+        guard fstat(source, &sourceInfo) == 0,
+              (sourceInfo.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG),
+              (sourceInfo.st_uid == getuid() || sourceInfo.st_uid == 0),
+              sourceInfo.st_nlink == 1,
+              (sourceInfo.st_mode & 0o022) == 0,
+              (sourceInfo.st_mode & 0o111) != 0,
+              sourceInfo.st_size > 0,
+              sourceInfo.st_size <= maximumHelperBytes else { throw StatusLineStoreError.unsafeFile }
+
+        try withExclusiveLock { directory in
+            try validateInstalledHelperIfPresent(in: directory)
+            let temporary = ".helper-\(UUID().uuidString)"
+            let output = temporary.withCString {
+                openat(directory, $0, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o700)
+            }
+            guard output >= 0 else { throw StatusLineStoreError.system(errno) }
+            defer { close(output); temporary.withCString { _ = unlinkat(directory, $0, 0) } }
+            guard fchmod(output, 0o700) == 0 else { throw StatusLineStoreError.system(errno) }
+            var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+            var total = 0
+            while true {
+                let count = Darwin.read(source, &buffer, buffer.count)
+                if count < 0 {
+                    if errno == EINTR { continue }
+                    throw StatusLineStoreError.system(errno)
+                }
+                if count == 0 { break }
+                total += count
+                guard total <= maximumHelperBytes else { throw StatusLineStoreError.unsafeFile }
+                var offset = 0
+                while offset < count {
+                    let written = buffer.withUnsafeBytes { raw in
+                        Darwin.write(output, raw.baseAddress!.advanced(by: offset), count - offset)
+                    }
+                    if written < 0 {
+                        if errno == EINTR { continue }
+                        throw StatusLineStoreError.system(errno)
+                    }
+                    guard written > 0 else { throw StatusLineStoreError.unsafeFile }
+                    offset += written
+                }
+            }
+            guard total == sourceInfo.st_size, fsync(output) == 0 else {
+                throw StatusLineStoreError.unsafeFile
+            }
+            try validateInstalledHelperIfPresent(in: directory)
+            let renamed = temporary.withCString { old in
+                "NeedlbarClaudeStatusLine".withCString { new in
+                    renameat(directory, old, directory, new)
+                }
+            }
+            guard renamed == 0, fsync(directory) == 0 else { throw StatusLineStoreError.system(errno) }
+        }
+    }
+
+    private func validateInstalledHelperIfPresent(in directory: Int32) throws {
+        let file = openat(directory, "NeedlbarClaudeStatusLine", O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        if file < 0 {
+            if errno == ENOENT { return }
+            throw StatusLineStoreError.unsafeFile
+        }
+        defer { close(file) }
+        var info = stat()
+        guard fstat(file, &info) == 0,
+              (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG),
+              info.st_uid == getuid(), info.st_nlink == 1,
+              (info.st_mode & 0o777) == 0o700 else { throw StatusLineStoreError.unsafeFile }
     }
 
     public func prepare(metadata: StatusLineConnectionMetadata) throws {

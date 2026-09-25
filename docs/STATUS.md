@@ -1,6 +1,6 @@
 # Needlbar Development Status
 
-## Claude Code status-line quota bridge design — 2026-09-25
+## Claude Code status-line quota bridge candidate — 2026-09-25
 
 Written design for a reversible, opt-in Claude Code status-line bridge is at
 `docs/superpowers/specs/2026-09-25-claude-statusline-quota-bridge-design.md`.
@@ -14,10 +14,32 @@ direct token-reading path as an unresolved provider-policy concern.
 The user approved the written design. Implementation plan:
 `docs/superpowers/plans/2026-09-25-claude-statusline-quota-bridge.md`.
 The isolated worktree baseline `PATH=/Users/taejunoh/.cargo/bin:$PATH make test`
-exited 0 before implementation. The plan is awaiting review; no helper,
-settings change, installed-app replacement, release, or claim of restored
-quota refresh has been made. The next continuation is plan review and then
-test-first task-by-task implementation.
+exited 0 before implementation. Tasks 1–5 implement the parser, private
+generation-fenced record, reversible opt-in settings edit, separate Core
+state, and source/freshness presentation. Task 6 now packages the arm64
+status-line helper inside the app and signs it before the host. An explicit
+connection installs an atomic mode-0700 copy at a stable private path; app
+startup refreshes that copy only when the active settings entry still belongs
+to Needlbar, without editing Claude Code settings.
+
+Task 6 verification: synthetic package and notarization contracts passed;
+`make package` built a local ad-hoc signed arm64 app and ZIP; `make smoke`
+passed with Claude configuration access disabled for that run. The extracted
+local ZIP's helper reports arm64 and passed independent strict signature
+verification; the extracted app passed deep/strict verification. The final
+`PATH=/Users/taejunoh/.cargo/bin:$PATH make test` exited 0, including
+Rust/vendor, Swift, package, and notarization contract tests. This is local
+packaging evidence, not Developer ID notarization or live quota acceptance.
+
+Native acceptance remains: after the user's explicit opt-in, observe a real
+Claude Code status-line event, compare Needlbar's five-hour and seven-day
+values and receipt labels with Claude Code, verify the user's existing status
+line still renders, then disconnect and verify exact restoration without
+exposing its command. No real Claude configuration edit, app replacement,
+public release, or claim of restored unattended quota refresh has occurred.
+Fable remains direct-only and the pre-existing direct credential path retains
+its separate provider-policy concern. README has not been changed because the
+native behavior has not yet been demonstrated.
 
 ## v0.3.4 Public Release Record — 2026-09-22/23
 

@@ -108,7 +108,7 @@ struct SettingsStudioTests {
         try Data(#"{"statusLine":{"type":"command","command":"printf original"}}"#.utf8).write(to: settings)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settings.path)
         let helper = root.appendingPathComponent("NeedlbarClaudeStatusLine")
-        try Data().write(to: helper)
+        try Data("synthetic-helper".utf8).write(to: helper)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
         let privateStore = try StatusLinePrivateStore(rootURL: root.appendingPathComponent("private"))
         let manager = ClaudeStatusLineConnectionManager(configRootURL: config, store: privateStore,

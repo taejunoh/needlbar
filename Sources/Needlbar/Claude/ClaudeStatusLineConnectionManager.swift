@@ -115,7 +115,9 @@ public final class ClaudeStatusLineConnectionManager {
         }
         let generation = UUID()
         try validateHelper()
-        let command = "\(shellQuoted(helperURL.path)) \(generation.uuidString)"
+        do { try store.installHelper(from: helperURL) }
+        catch { throw ConnectionError.unsafeSettingsFile }
+        let command = "\(shellQuoted(stableHelperURL.path)) \(generation.uuidString)"
         let ownedObject = try editor.ownedObject(withCommand: command)
         let metadata = StatusLineConnectionMetadata(
             generation: generation,
@@ -134,6 +136,23 @@ public final class ClaudeStatusLineConnectionManager {
             throw ConnectionError.unsafeSettingsFile
         }
         return .waitingForData
+    }
+
+    /// Refreshes only an already owned, active connection after an app update.
+    /// It never changes Claude Code settings or creates a connection.
+    @discardableResult
+    public func refreshEnabledHelper() throws -> Bool {
+        guard isDefaultConfiguration else { return false }
+        let store = try privateStore()
+        guard let active = try store.activeGeneration(),
+              let editor = try? SettingsJSONEditor(readSettings()), editor.isSupported,
+              let metadata = try store.metadata(for: active),
+              editor.statusLineJSON == metadata.ownedStatusLineJSON,
+              ownedGeneration(in: editor) == active else { return false }
+        try validateHelper()
+        do { try store.installHelper(from: helperURL) }
+        catch { throw ConnectionError.unsafeSettingsFile }
+        return true
     }
 
     @discardableResult
@@ -181,9 +200,14 @@ public final class ClaudeStatusLineConnectionManager {
 
     private func ownedGeneration(in editor: SettingsJSONEditor) -> UUID? {
         guard let command = editor.originalCommand else { return nil }
-        let prefix = shellQuoted(helperURL.path) + " "
+        let prefix = shellQuoted(stableHelperURL.path) + " "
         guard command.hasPrefix(prefix) else { return nil }
         return UUID(uuidString: String(command.dropFirst(prefix.count)))
+    }
+
+    private var stableHelperURL: URL {
+        injectedStore?.stableHelperURL ?? StatusLinePrivateStore.defaultRootURL
+            .appendingPathComponent("NeedlbarClaudeStatusLine", isDirectory: false)
     }
 
     private func shellQuoted(_ value: String) -> String {

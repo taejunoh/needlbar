@@ -20,7 +20,7 @@ struct ClaudeStatusLineConnectionManagerTests {
             helper = root.appendingPathComponent("NeedlbarClaudeStatusLine")
             try FileManager.default.createDirectory(at: config, withIntermediateDirectories: true)
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: config.path)
-            try Data().write(to: helper)
+            try Data("synthetic-helper".utf8).write(to: helper)
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
             store = try StatusLinePrivateStore(rootURL: root.appendingPathComponent("private"))
         }
@@ -60,6 +60,63 @@ struct ClaudeStatusLineConnectionManagerTests {
         #expect(!String(decoding: installed, as: UTF8.self).contains("printf original"))
         #expect(try manager.disconnect() == .disconnected)
         #expect(try Data(contentsOf: fixture.settings) == Data(original.utf8))
+    }
+
+    @Test func explicitConnectCopiesHelperToPrivateStablePath() throws {
+        let fixture = try Fixture(); defer { fixture.cleanUp() }
+        try fixture.write(#"{"theme":"dark"}"#)
+        try Data("helper-v1".utf8).write(to: fixture.helper)
+        let manager = fixture.manager()
+        _ = try manager.connect(expectedRevision: manager.inspect().revision)
+        let stable = fixture.store.stableHelperURL
+        let settings = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: fixture.settings)) as? [String: Any])
+        let statusLine = try #require(settings["statusLine"] as? [String: Any])
+        let command = try #require(statusLine["command"] as? String)
+        #expect(command.contains(stable.path))
+        #expect(!command.contains(fixture.helper.path))
+        #expect(try Data(contentsOf: stable) == Data("helper-v1".utf8))
+        let mode = try FileManager.default.attributesOfItem(atPath: stable.path)[.posixPermissions] as? NSNumber
+        #expect(mode?.intValue == 0o700)
+    }
+
+    @Test func installedHelperRefreshesOnlyForOwnedActiveConnectionWithoutChangingSettings() throws {
+        let fixture = try Fixture(); defer { fixture.cleanUp() }
+        try fixture.write(#"{"theme":"dark"}"#)
+        let manager = fixture.manager()
+        try Data("helper-v1".utf8).write(to: fixture.helper)
+        #expect(try manager.refreshEnabledHelper() == false)
+        #expect(!FileManager.default.fileExists(atPath: fixture.store.stableHelperURL.path))
+        _ = try manager.connect(expectedRevision: manager.inspect().revision)
+        let installedSettings = try Data(contentsOf: fixture.settings)
+        try Data("helper-v2".utf8).write(to: fixture.helper)
+        #expect(try manager.refreshEnabledHelper())
+        #expect(try Data(contentsOf: fixture.store.stableHelperURL) == Data("helper-v2".utf8))
+        #expect(try Data(contentsOf: fixture.settings) == installedSettings)
+        try fixture.write(#"{"statusLine":{"type":"command","command":"printf mine"}}"#)
+        try Data("helper-v3".utf8).write(to: fixture.helper)
+        #expect(try manager.refreshEnabledHelper() == false)
+        #expect(try Data(contentsOf: fixture.store.stableHelperURL) == Data("helper-v2".utf8))
+    }
+
+    @Test func unsafeHelperSourceOrPrivateSymlinkCannotBeInstalled() throws {
+        let fixture = try Fixture(); defer { fixture.cleanUp() }
+        try fixture.write(#"{"theme":"dark"}"#)
+        let manager = fixture.manager()
+        try FileManager.default.removeItem(at: fixture.helper)
+        let outside = fixture.root.appendingPathComponent("outside")
+        try Data("outside".utf8).write(to: outside)
+        try FileManager.default.createSymbolicLink(at: fixture.helper, withDestinationURL: outside)
+        #expect(throws: ConnectionError.unsafeSettingsFile) {
+            try manager.connect(expectedRevision: manager.inspect().revision)
+        }
+        try FileManager.default.removeItem(at: fixture.helper)
+        try Data("safe".utf8).write(to: fixture.helper)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.helper.path)
+        try FileManager.default.createSymbolicLink(at: fixture.store.stableHelperURL, withDestinationURL: outside)
+        #expect(throws: ConnectionError.unsafeSettingsFile) {
+            try manager.connect(expectedRevision: manager.inspect().revision)
+        }
+        #expect(try Data(contentsOf: outside) == Data("outside".utf8))
     }
 
     @Test func absentStatusLineIsRemovedWithoutChangingOtherFields() throws {

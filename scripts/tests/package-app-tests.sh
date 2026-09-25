@@ -74,13 +74,22 @@ for argument in "$@"; do
     exit 90
   }
 done
+if [[ " $* " == *' --show-bin-path '* ]]; then
+  dirname "$NEEDLBAR_PACKAGE_EXECUTABLE"
+  exit 0
+fi
 if [[ "${1:-}" == "build" ]]; then
   if [[ -e "$NEEDLBAR_PACKAGE_EXECUTABLE" ]]; then
     echo 'swift stub: stale executable was not removed before release build' >&2
     exit 91
   fi
+  if [[ -e "$NEEDLBAR_PACKAGE_HELPER" ]]; then
+    echo 'swift stub: stale status-line helper was not removed before release build' >&2
+    exit 92
+  fi
   mkdir -p "$(dirname "$NEEDLBAR_PACKAGE_EXECUTABLE")"
   printf '%s\n' 'fresh executable' > "$NEEDLBAR_PACKAGE_EXECUTABLE"
+  printf '%s\n' 'fresh status-line helper' > "$NEEDLBAR_PACKAGE_HELPER"
   mkdir -p "$NEEDLBAR_PACKAGE_RESOURCE_BUNDLE/ProviderBrands"
   cp "$NEEDLBAR_PACKAGE_BRANDS_SOURCE"/* "$NEEDLBAR_PACKAGE_RESOURCE_BUNDLE/ProviderBrands/"
 fi
@@ -116,11 +125,14 @@ EOF
 chmod 755 "$fake_bin/rustup" "$fake_bin/make" "$fake_bin/swift" "$fake_bin/xcrun" "$fake_bin/codesign"
 
 executable_source="$fixture_root/.build/arm64-apple-macosx/release/Needlbar"
+helper_source="$fixture_root/.build/arm64-apple-macosx/release/NeedlbarClaudeStatusLine"
 resource_bundle="$fixture_root/.build/arm64-apple-macosx/release/Needlbar_NeedlbarApp.bundle"
 source_brands="$fixture_root/Sources/Needlbar/Resources/ProviderBrands"
 printf '%s\n' 'stale executable' > "$executable_source"
+printf '%s\n' 'stale status-line helper' > "$helper_source"
 
 if ! PATH="$fake_bin:$PATH" NEEDLBAR_PACKAGE_EXECUTABLE="$executable_source" \
+  NEEDLBAR_PACKAGE_HELPER="$helper_source" \
   NEEDLBAR_PACKAGE_RESOURCE_BUNDLE="$resource_bundle" \
   NEEDLBAR_PACKAGE_BRANDS_SOURCE="$source_brands" \
   FAKE_CODESIGN_LOG="$temp_root/codesign.log" \
@@ -130,8 +142,14 @@ fi
 
 [[ "$(<"$executable_source")" == 'fresh executable' ]] || \
   fail 'stubbed Swift build did not produce a fresh executable'
+[[ "$(<"$helper_source")" == 'fresh status-line helper' ]] || \
+  fail 'stubbed Swift build did not produce a fresh status-line helper'
 [[ "$(<"$fixture_root/dist/Needlbar.app/Contents/MacOS/Needlbar")" == 'fresh executable' ]] || \
   fail 'package did not install the freshly relinked executable'
+[[ -x "$fixture_root/dist/Needlbar.app/Contents/MacOS/NeedlbarClaudeStatusLine" ]] || \
+  fail 'package did not install an executable status-line helper'
+[[ "$(<"$fixture_root/dist/Needlbar.app/Contents/MacOS/NeedlbarClaudeStatusLine")" == 'fresh status-line helper' ]] || \
+  fail 'package did not install the freshly relinked status-line helper'
 [[ -f "$fixture_root/dist/Needlbar-macos-arm64.zip" ]] || \
   fail 'package zip was not produced'
 installed_brands="$fixture_root/dist/Needlbar.app/Contents/Resources/Needlbar_NeedlbarApp.bundle/ProviderBrands"
@@ -149,9 +167,11 @@ grep -F 'com.apple.widgetkit-extension' "$embedded_widget/Contents/Info.plist" >
 grep -F 'TESTTEAMID.com.taejunoh.needlbar' "$embedded_widget/Contents/Info.plist" >/dev/null || fail 'embedded extension group missing'
 grep -F 'TESTTEAMID.com.taejunoh.needlbar' "$fixture_root/dist/Needlbar.app/Contents/Info.plist" >/dev/null || fail 'host group missing'
 extension_sign_line="$(grep -n 'NeedlbarWidgetExtension.appex' "$temp_root/codesign.log" | head -n 1 | cut -d: -f1)"
-host_sign_line="$(grep -n 'Needlbar.app' "$temp_root/codesign.log" | head -n 1 | cut -d: -f1)"
-[[ "$extension_sign_line" =~ ^[0-9]+$ && "$host_sign_line" =~ ^[0-9]+$ ]] || fail 'inner/host sign records missing'
+host_sign_line="$(grep -n 'Needlbar.app$' "$temp_root/codesign.log" | head -n 1 | cut -d: -f1)"
+helper_sign_line="$(grep -n 'codesign --force.*NeedlbarClaudeStatusLine' "$temp_root/codesign.log" | head -n 1 | cut -d: -f1)"
+[[ "$extension_sign_line" =~ ^[0-9]+$ && "$host_sign_line" =~ ^[0-9]+$ && "$helper_sign_line" =~ ^[0-9]+$ ]] || fail 'inner/host/helper sign records missing'
 (( extension_sign_line < host_sign_line )) || fail 'host was signed before extension'
+(( helper_sign_line < host_sign_line )) || fail 'host was signed before status-line helper'
 ! grep -E 'com.apple.security.app-sandbox|network|keychain' "$fixture_root/dist/.NeedlbarHostWidget.entitlements" >/dev/null || fail 'forbidden host entitlement surfaced'
 ! grep -E 'network|keychain' "$fixture_root/.build/widget-extension/NeedlbarWidgetExtension.entitlements" >/dev/null || fail 'forbidden extension entitlement surfaced'
 grep -F 'com.apple.security.app-sandbox' "$fixture_root/.build/widget-extension/NeedlbarWidgetExtension.entitlements" >/dev/null || fail 'extension sandbox missing'
@@ -160,6 +180,7 @@ expect_package_failure() {
   expected_pattern="$1"
   output_file="$temp_root/package-failure.log"
   if PATH="$fake_bin:$PATH" NEEDLBAR_PACKAGE_EXECUTABLE="$executable_source" \
+    NEEDLBAR_PACKAGE_HELPER="$helper_source" \
     NEEDLBAR_PACKAGE_RESOURCE_BUNDLE="$resource_bundle" \
     NEEDLBAR_PACKAGE_BRANDS_SOURCE="$source_brands" \
     FAKE_CODESIGN_LOG="$temp_root/codesign.log" \

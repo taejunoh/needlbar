@@ -11,14 +11,12 @@ DIST_DIR="$ROOT/dist"
 APP_PATH="$DIST_DIR/Needlbar.app"
 ZIP_PATH="$DIST_DIR/Needlbar-macos-arm64.zip"
 CONTENTS_PATH="$APP_PATH/Contents"
-EXECUTABLE_SOURCE="$ROOT/.build/arm64-apple-macosx/release/Needlbar"
 BRIDGE_ARCHIVE="$ROOT/target/release/libneedlbar_bridge.a"
 INFO_PLIST="$ROOT/Resources/Info.plist"
 NOTICES="$ROOT/Resources/ThirdPartyNotices.txt"
 BRAND_VERIFIER="$ROOT/scripts/verify-provider-brand-assets.sh"
 SOURCE_BRANDS="$ROOT/Sources/Needlbar/Resources/ProviderBrands"
-SWIFTPM_RESOURCE_BUNDLE="$ROOT/.build/arm64-apple-macosx/release/Needlbar_NeedlbarApp.bundle"
-PACKAGED_BRANDS="$CONTENTS_PATH/Resources/Needlbar_NeedlbarApp.bundle/ProviderBrands"
+PACKAGED_RESOURCE_BUNDLE="$CONTENTS_PATH/Resources/Needlbar_NeedlbarApp.bundle"
 TEAM_ID="${NEEDLBAR_TEAM_ID:-TESTTEAMID}"
 GROUP_ID="${NEEDLBAR_APP_GROUP_IDENTIFIER:-$TEAM_ID.com.taejunoh.needlbar}"
 IDENTITY="${NEEDLBAR_CODESIGN_IDENTITY:--}"
@@ -49,13 +47,20 @@ fi
 MACOSX_DEPLOYMENT_TARGET=14.0 NEEDLBAR_RUST_TARGET="aarch64-apple-darwin" make -C "$ROOT" rust
 [[ -f "$BRIDGE_ARCHIVE" ]] || fail "Rust bridge archive was not produced: $BRIDGE_ARCHIVE"
 
+RELEASE_BIN_DIR="$(swift build --package-path "$ROOT" -c release --arch arm64 --show-bin-path)"
+[[ "$RELEASE_BIN_DIR" == /* ]] || fail 'Swift release output directory was not resolved'
+EXECUTABLE_SOURCE="$RELEASE_BIN_DIR/Needlbar"
+HELPER_SOURCE="$RELEASE_BIN_DIR/NeedlbarClaudeStatusLine"
+SWIFTPM_RESOURCE_BUNDLE="$RELEASE_BIN_DIR/Needlbar_NeedlbarApp.bundle"
+
 # SwiftPM does not track the unsafe linker archive as a build input. Remove only
 # the stale release executable so the next build relinks without discarding the
 # Swift object and module caches.
-rm -f -- "$EXECUTABLE_SOURCE"
+rm -f -- "$EXECUTABLE_SOURCE" "$HELPER_SOURCE"
 
 swift build --package-path "$ROOT" -c release --arch arm64
 [[ -f "$EXECUTABLE_SOURCE" ]] || fail "release executable was not produced: $EXECUTABLE_SOURCE"
+[[ -f "$HELPER_SOURCE" ]] || fail "release status-line helper was not produced: $HELPER_SOURCE"
 
 # Never clear the whole output directory: these are the only two package targets.
 rm -rf -- "$APP_PATH"
@@ -63,9 +68,14 @@ rm -f -- "$ZIP_PATH"
 mkdir -p "$CONTENTS_PATH/MacOS" "$CONTENTS_PATH/Resources" "$CONTENTS_PATH/PlugIns"
 [[ -d "$SWIFTPM_RESOURCE_BUNDLE" ]] || fail "release provider resource bundle was not produced: $SWIFTPM_RESOURCE_BUNDLE"
 cp -R "$SWIFTPM_RESOURCE_BUNDLE" "$CONTENTS_PATH/Resources/"
+PACKAGED_BRANDS="$PACKAGED_RESOURCE_BUNDLE/ProviderBrands"
+if [[ ! -d "$PACKAGED_BRANDS" ]]; then
+  PACKAGED_BRANDS="$PACKAGED_RESOURCE_BUNDLE/Contents/Resources/ProviderBrands"
+fi
 "$BRAND_VERIFIER" "$PACKAGED_BRANDS"
 
 install -m 755 "$EXECUTABLE_SOURCE" "$CONTENTS_PATH/MacOS/Needlbar"
+install -m 755 "$HELPER_SOURCE" "$CONTENTS_PATH/MacOS/NeedlbarClaudeStatusLine"
 install -m 644 "$INFO_PLIST" "$CONTENTS_PATH/Info.plist"
 install -m 644 "$NOTICES" "$CONTENTS_PATH/Resources/ThirdPartyNotices.txt"
 cp "$HOST_ENTITLEMENTS_TEMPLATE" "$HOST_ENTITLEMENTS"
@@ -87,9 +97,11 @@ appex_count="$(find "$CONTENTS_PATH/PlugIns" -maxdepth 1 -type d -name '*.appex'
 ! strings "$CONTENTS_PATH/MacOS/Needlbar" | grep -F -- '--acceptance-fixture' >/dev/null ||
   fail 'public host contains acceptance fixture parser'
 
-# build-widget-extension.sh has already completed the inner signature.
-# Sign the host only after the extension is embedded; do not use --deep here.
+# Build-widget-extension.sh has already signed the extension. Sign both inner
+# executables before the enclosing app; do not use --deep here.
+codesign --force --sign "$IDENTITY" "$CONTENTS_PATH/MacOS/NeedlbarClaudeStatusLine"
 codesign --force --sign "$IDENTITY" --entitlements "$HOST_ENTITLEMENTS" "$APP_PATH"
+codesign --verify --strict "$CONTENTS_PATH/MacOS/NeedlbarClaudeStatusLine"
 codesign --verify --deep --strict "$APP_PATH"
 
 # Archive from inside dist so Needlbar.app is the zip root rather than dist/.
