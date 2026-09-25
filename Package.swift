@@ -31,7 +31,7 @@ let package = Package(
         ),
         .target(
             name: "NeedlbarApp",
-            dependencies: ["NeedlbarCore", "CNeedlbar"],
+            dependencies: ["NeedlbarCore", "CNeedlbar", "NeedlbarClaudeStatusLineSupport"],
             path: "Sources/Needlbar",
             resources: [.copy("Resources/ProviderBrands")]
         ),
@@ -49,7 +49,7 @@ let package = Package(
             linkerSettings: [.linkedFramework("WebKit", .when(platforms: [.macOS]))]
         ),
         .testTarget(name: "NeedlbarCoreTests", dependencies: ["NeedlbarCore", "NeedlbarWidgetSupport"]),
-        .testTarget(name: "NeedlbarTests", dependencies: ["NeedlbarApp", "NeedlbarSettingsStudioReviewSupport"]),
+        .testTarget(name: "NeedlbarTests", dependencies: ["NeedlbarApp", "NeedlbarSettingsStudioReviewSupport", "NeedlbarClaudeStatusLineSupport"]),
         .testTarget(name: "NeedlbarWidgetSupportTests", dependencies: ["NeedlbarWidgetSupport"]),
         .testTarget(name: "NeedlbarClaudeAPIBalanceFeasibilitySupportTests", dependencies: ["NeedlbarClaudeAPIBalanceFeasibilitySupport"]),
         .testTarget(name: "NeedlbarClaudeStatusLineSupportTests", dependencies: ["NeedlbarClaudeStatusLineSupport"]),

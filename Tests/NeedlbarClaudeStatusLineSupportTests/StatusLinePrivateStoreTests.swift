@@ -42,6 +42,21 @@ private func record(_ generation: UUID, used: Double, receivedAt: Date = Date(ti
     #expect(try store.metadata(for: generation)?.originalCommand == "printf original")
 }
 
+@Test func deactivateFencesPublicationWhenCacheCleanupFails() throws {
+    let (root, store, generation) = try storeFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let outside = root.deletingLastPathComponent().appendingPathComponent("needlbar-outside-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: outside) }
+    try Data("outside".utf8).write(to: outside)
+    try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("quota.json"), withDestinationURL: outside)
+
+    #expect(throws: Error.self) { try store.deactivate(generation: generation) }
+    #expect(try store.activeGeneration() == nil)
+    #expect(try !store.publish(record(generation, used: 25)))
+    #expect(try store.metadata(for: generation)?.originalCommand == "printf original")
+    #expect(try Data(contentsOf: outside) == Data("outside".utf8))
+}
+
 @Test func storeRejectsSymlinkedCacheAndUnsafeRootMode() throws {
     let (root, store, generation) = try storeFixture()
     defer { try? FileManager.default.removeItem(at: root) }

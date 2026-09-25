@@ -41,6 +41,7 @@ public struct SettingsView: View {
     private let configuration: ModuleConfiguration
     private let openCursorSpending: () -> Void
     private let openClaudeUsage: () -> Bool
+    private let claudeStatusLineManager: ClaudeStatusLineConnectionManager
     @StateObject private var systemMonitorModel: SystemMonitorSettingsModel
     @ObservedObject private var actions: SettingsActions
     @ObservedObject private var notificationPreferences: QuotaNotificationPreferences
@@ -48,6 +49,8 @@ public struct SettingsView: View {
     @State private var selectedPage: SettingsStudioPage = .layout
     @State private var selectedTab: SettingsStudioTab = .menuBar
     @State private var claudeUsageState = SettingsClaudeUsageRowState()
+    @State private var claudeStatusLineState: ConnectionState = .disconnected
+    @State private var claudeStatusLineError: String?
     @ObservedObject private var preview: SettingsPreviewModel
     @ObservedObject private var claudeQuotaPresentation: SettingsClaudeQuotaPresentation
 
@@ -58,12 +61,14 @@ public struct SettingsView: View {
         notificationService: QuotaNotificationService,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() },
         openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() },
+        claudeStatusLineManager: ClaudeStatusLineConnectionManager = ClaudeStatusLineConnectionManager(),
         preview: SettingsPreviewModel? = nil,
         claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil
     ) {
         self.configuration = configuration
         self.openCursorSpending = openCursorSpending
         self.openClaudeUsage = openClaudeUsage
+        self.claudeStatusLineManager = claudeStatusLineManager
         _preview = ObservedObject(wrappedValue: preview ?? SettingsPreviewModel())
         _claudeQuotaPresentation = ObservedObject(wrappedValue: claudeQuotaPresentation ?? SettingsClaudeQuotaPresentation())
         _systemMonitorModel = StateObject(wrappedValue: SystemMonitorSettingsModel(configuration: configuration))
@@ -80,6 +85,7 @@ public struct SettingsView: View {
         notificationService: QuotaNotificationService,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() },
         openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() },
+        claudeStatusLineManager: ClaudeStatusLineConnectionManager = ClaudeStatusLineConnectionManager(),
         preview: SettingsPreviewModel? = nil,
         claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil
     ) {
@@ -93,6 +99,7 @@ public struct SettingsView: View {
             notificationService: notificationService,
             openCursorSpending: openCursorSpending,
             openClaudeUsage: openClaudeUsage,
+            claudeStatusLineManager: claudeStatusLineManager,
             preview: preview,
             claudeQuotaPresentation: claudeQuotaPresentation
         )
@@ -151,6 +158,7 @@ public struct SettingsView: View {
                 SettingsStudioConfigurationPane(model: systemMonitorModel, page: selectedPage, surface: surface)
                 if case let .provider(provider) = selectedPage {
                     connectionPane(provider)
+                    if provider == .claude { claudeStatusLinePane }
                     apiBillingPane(provider)
                 }
             } else if case .module = selectedPage {
@@ -222,6 +230,70 @@ public struct SettingsView: View {
             Button("View Claude usage") { claudeUsageState.openUsage(openClaudeUsage) }
         }
         .frame(minHeight: 54)
+    }
+
+    private var claudeStatusLinePane: some View {
+        SettingsStudioSection(title: "Claude Code status line") {
+            SettingsStudioToggle(title: "Show Claude quota from Claude Code", value: Binding(
+                get: {
+                    switch claudeStatusLineState {
+                    case .waitingForData, .connected: true
+                    default: false
+                    }
+                },
+                set: { setClaudeStatusLineEnabled($0) }
+            ))
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                Text(claudeStatusLineStatusText)
+                    .font(.callout.weight(.medium))
+                Text("Updates arrive when an active Claude Code session emits status-line data. The first value may take time to appear.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("Your existing status-line command is kept in a private local copy, including after disconnect, so delayed invocations can finish.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if claudeStatusLineState == .configurationChanged {
+                    HStack {
+                        Button("Reconnect") { setClaudeStatusLineEnabled(true) }
+                        Button("Disconnect bridge") { setClaudeStatusLineEnabled(false) }
+                    }
+                }
+                if let claudeStatusLineError {
+                    Text(claudeStatusLineError)
+                        .font(.caption).foregroundStyle(.orange)
+                }
+            }
+            .padding(.vertical, 12)
+        }
+        .onAppear { claudeStatusLineState = claudeStatusLineManager.recover() }
+        .onReceive(Timer.publish(every: 15, on: .main, in: .common).autoconnect()) { _ in
+            claudeStatusLineState = claudeStatusLineManager.recover()
+        }
+    }
+
+    private var claudeStatusLineStatusText: String {
+        switch claudeStatusLineState {
+        case .disconnected: "Disconnected"
+        case .waitingForData: "Waiting for Claude Code data"
+        case .connected(let receivedAt): "Reported by Claude Code · \(receivedAt.formatted(date: .abbreviated, time: .shortened))"
+        case .configurationChanged: "Configuration changed"
+        case .unsupportedConfiguration: "This Claude Code configuration is not supported"
+        }
+    }
+
+    private func setClaudeStatusLineEnabled(_ enabled: Bool) {
+        do {
+            if enabled {
+                let inspection = try claudeStatusLineManager.inspect()
+                claudeStatusLineState = try claudeStatusLineManager.connect(expectedRevision: inspection.revision)
+            } else {
+                claudeStatusLineState = try claudeStatusLineManager.disconnect()
+            }
+            claudeStatusLineError = nil
+        } catch {
+            claudeStatusLineState = claudeStatusLineManager.recover()
+            claudeStatusLineError = (error as? ConnectionError)?.errorDescription
+                ?? ConnectionError.unsafeSettingsFile.errorDescription
+        }
     }
 
     @ViewBuilder private func apiBillingPane(_ provider: ProviderID) -> some View {

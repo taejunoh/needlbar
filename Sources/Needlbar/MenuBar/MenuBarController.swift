@@ -128,7 +128,8 @@ private final class LegacyMenuBarController: NSObject {
         onAnalyticsRequested: @escaping @MainActor () -> Void = {},
         openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() },
         openClaudeUsage: @escaping @MainActor () -> Bool = { ClaudeUsageAction.open() },
-        openAPIBilling: @escaping @MainActor (ProviderAPIBillingAction) -> Bool = { ProviderAPIBillingActionRouter.open($0) }
+        openAPIBilling: @escaping @MainActor (ProviderAPIBillingAction) -> Bool = { ProviderAPIBillingActionRouter.open($0) },
+        claudeStatusLineManager: ClaudeStatusLineConnectionManager = ClaudeStatusLineConnectionManager()
     ) {
         self.configuration = configuration
         self.snapshotStore = snapshotStore
@@ -149,7 +150,8 @@ private final class LegacyMenuBarController: NSObject {
             notificationPreferences: notificationPreferences,
             notificationService: notificationService,
             openCursorSpending: openCursorSpending,
-            openClaudeUsage: openClaudeUsage
+            openClaudeUsage: openClaudeUsage,
+            claudeStatusLineManager: claudeStatusLineManager
         )
         super.init()
         panelPresenter.onDismiss = { [weak self] in
@@ -495,7 +497,8 @@ public final class MenuBarController: NSObject {
         onAnalyticsRequested: @escaping @MainActor () -> Void = {},
         openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() },
         openClaudeUsage: @escaping @MainActor () -> Bool = { ClaudeUsageAction.open() },
-        openAPIBilling: @escaping @MainActor (ProviderAPIBillingAction) -> Bool = { ProviderAPIBillingActionRouter.open($0) }
+        openAPIBilling: @escaping @MainActor (ProviderAPIBillingAction) -> Bool = { ProviderAPIBillingActionRouter.open($0) },
+        claudeStatusLineManager: ClaudeStatusLineConnectionManager = ClaudeStatusLineConnectionManager()
     ) {
         self.configuration = configuration
         self.snapshotStore = snapshotStore
@@ -518,7 +521,8 @@ public final class MenuBarController: NSObject {
             notificationPreferences: notificationPreferences,
             notificationService: notificationService,
             openCursorSpending: openCursorSpending,
-            openClaudeUsage: openClaudeUsage
+            openClaudeUsage: openClaudeUsage,
+            claudeStatusLineManager: claudeStatusLineManager
         )
         self.cachedCombinedSnapshot = CombinedUsageSnapshot(
             system: nil, providers: [], capturedAt: .distantPast, systemAvailability: [:]

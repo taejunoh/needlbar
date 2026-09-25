@@ -73,6 +73,12 @@ public final class StatusLinePrivateStore: @unchecked Sendable {
         }
     }
 
+    public func activeGeneration() throws -> UUID? {
+        try withExclusiveLock { directory in
+            try activeGeneration(in: directory)
+        }
+    }
+
     public func activate(generation: UUID) throws {
         try withExclusiveLock { directory in
             guard try readFile(metadataName(generation), limit: maximumMetadataBytes, from: directory) != nil else {
@@ -87,9 +93,11 @@ public final class StatusLinePrivateStore: @unchecked Sendable {
     public func deactivate(generation: UUID) throws {
         try withExclusiveLock { directory in
             guard try activeGeneration(in: directory) == generation else { return }
+            // Fence publication first. If the process exits before cache removal,
+            // readers and delayed writers still reject this generation.
+            try removeIfPresent("active", from: directory)
             try validateIfPresent("quota.json", in: directory)
             try removeIfPresent("quota.json", from: directory)
-            try removeIfPresent("active", from: directory)
         }
     }
 
