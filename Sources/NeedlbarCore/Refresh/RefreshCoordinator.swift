@@ -34,6 +34,7 @@ public actor RefreshCoordinator {
     private let usageFileWatcher: (any UsageFileWatching)?
     private let quotaApplicationWillApply: (@Sendable () async -> Void)?
     private let quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)?
+    private let statusLineApplicationWillApply: (@Sendable () async -> Void)?
     private let claudeQuotaOperationCompleted: (@Sendable () async -> Void)?
     private let widgetUsageDayCapture: any WidgetUsageDayCapturing
     private let statusLineRepository: (any ClaudeStatusLineCacheReading)?
@@ -107,6 +108,7 @@ public actor RefreshCoordinator {
             usageFileWatcher: usageFileWatcher,
             quotaApplicationWillApply: nil,
             quotaIntentRegistered: nil,
+            statusLineApplicationWillApply: nil,
             widgetUsageDayCapture: widgetUsageDayCapture,
             statusLineRepository: statusLineRepository,
             claudeQuotaOperationCompleted: claudeQuotaOperationCompleted
@@ -122,6 +124,7 @@ public actor RefreshCoordinator {
         usageFileWatcher: (any UsageFileWatching)? = nil,
         quotaApplicationWillApply: (@Sendable () async -> Void)? = nil,
         quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)? = nil,
+        statusLineApplicationWillApply: (@Sendable () async -> Void)? = nil,
         widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture(),
         statusLineRepository: (any ClaudeStatusLineCacheReading)? = nil,
         claudeQuotaOperationCompleted: (@Sendable () async -> Void)? = nil
@@ -134,6 +137,7 @@ public actor RefreshCoordinator {
         self.usageFileWatcher = usageFileWatcher
         self.quotaApplicationWillApply = quotaApplicationWillApply
         self.quotaIntentRegistered = quotaIntentRegistered
+        self.statusLineApplicationWillApply = statusLineApplicationWillApply
         self.widgetUsageDayCapture = widgetUsageDayCapture
         self.statusLineRepository = statusLineRepository
         self.claudeQuotaOperationCompleted = claudeQuotaOperationCompleted
@@ -417,13 +421,12 @@ public actor RefreshCoordinator {
         repository: any ClaudeStatusLineCacheReading,
         runGeneration: UInt64
     ) async {
-        guard runGeneration == self.runGeneration, !Task.isCancelled,
-              repository.activeGeneration() == expectedGeneration else { return }
-        if let record, record.generation == expectedGeneration {
-            await store.applyClaudeStatusLineQuota(record)
-        } else {
-            await store.clearClaudeStatusLineQuota()
-        }
+        guard runGeneration == self.runGeneration, !Task.isCancelled else { return }
+        await statusLineApplicationWillApply?()
+        guard runGeneration == self.runGeneration, !Task.isCancelled else { return }
+        let validatedRecord = record?.generation == expectedGeneration ? record : nil
+        await store.applyClaudeStatusLineQuota(validatedRecord, expectedGeneration: expectedGeneration,
+                                               activeGeneration: { repository.activeGeneration() })
     }
 
     private func finishUsageRefresh(

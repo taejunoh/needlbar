@@ -124,6 +124,37 @@ public actor ProviderSnapshotStore {
         publishUpdates()
     }
 
+    /// Revalidate the active private-store generation inside this actor before changing display state.
+    /// The closure and state mutation have no suspension point between them.
+    public func applyClaudeStatusLineQuota(
+        _ incoming: StatusLineQuotaRecord?,
+        expectedGeneration: UUID?,
+        activeGeneration: @Sendable () -> UUID?
+    ) {
+        let active = activeGeneration()
+        guard active == expectedGeneration else {
+            clearClaudeStatusLineQuotaUnlessActive(active)
+            return
+        }
+        if let incoming, incoming.generation == expectedGeneration {
+            applyClaudeStatusLineQuota(incoming)
+        } else {
+            clearClaudeStatusLineQuota()
+        }
+    }
+
+    /// A delayed disconnect callback must not erase data from a newer reconnection.
+    public func reconcileClaudeStatusLineQuota(activeGeneration: @Sendable () -> UUID?) {
+        clearClaudeStatusLineQuotaUnlessActive(activeGeneration())
+    }
+
+    private func clearClaudeStatusLineQuotaUnlessActive(_ active: UUID?) {
+        if let retained = states[.claude]?.claudeStatusLineQuota,
+           retained.generation != active {
+            clearClaudeStatusLineQuota()
+        }
+    }
+
     public func clearClaudeStatusLineQuota() {
         guard var state = states[.claude], state.claudeStatusLineQuota != nil else { return }
         state.claudeStatusLineQuota = nil

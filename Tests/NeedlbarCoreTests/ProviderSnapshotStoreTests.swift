@@ -220,6 +220,22 @@ struct ProviderSnapshotStoreTests {
         #expect(exported?.quota == nil)
         #expect(exported?.quotaStatus == .requiresAuthentication)
     }
+
+    @Test func missingValidatedRecordClearsRetainedValueForTheSameActiveGeneration() async {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let generation = UUID()
+        let store = ProviderSnapshotStore(now: { now })
+        let retained = StatusLineQuotaRecord(
+            schemaVersion: StatusLineQuotaRecord.currentSchemaVersion, generation: generation,
+            fiveHour: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(3_600), receivedAt: now),
+            sevenDay: nil
+        )
+        await store.applyClaudeStatusLineQuota(retained)
+        await store.applyClaudeStatusLineQuota(nil, expectedGeneration: generation,
+                                               activeGeneration: { generation })
+
+        #expect(await store.snapshot(for: .claude).claudeStatusLineQuota == nil)
+    }
 }
 
 private func makeUsage(totalTokens: UInt64) -> UsageSnapshot {

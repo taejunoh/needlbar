@@ -153,7 +153,11 @@ private final class LegacyMenuBarController: NSObject {
             openClaudeUsage: openClaudeUsage,
             claudeStatusLineManager: claudeStatusLineManager,
             onClaudeStatusLineDisconnected: {
-                Task { await snapshotStore.clearClaudeStatusLineQuota() }
+                Task {
+                    await snapshotStore.reconcileClaudeStatusLineQuota(activeGeneration: {
+                        ClaudeStatusLineCacheRepository().activeGeneration()
+                    })
+                }
             }
         )
         super.init()
@@ -527,7 +531,11 @@ public final class MenuBarController: NSObject {
             openClaudeUsage: openClaudeUsage,
             claudeStatusLineManager: claudeStatusLineManager,
             onClaudeStatusLineDisconnected: {
-                Task { await snapshotStore.clearClaudeStatusLineQuota() }
+                Task {
+                    await snapshotStore.reconcileClaudeStatusLineQuota(activeGeneration: {
+                        ClaudeStatusLineCacheRepository().activeGeneration()
+                    })
+                }
             }
         )
         self.cachedCombinedSnapshot = CombinedUsageSnapshot(

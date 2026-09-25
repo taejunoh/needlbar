@@ -304,8 +304,9 @@ public struct SettingsView: View {
                 let inspection = try claudeStatusLineManager.inspect()
                 claudeStatusLineState = try claudeStatusLineManager.connect(expectedRevision: inspection.revision)
             } else {
+                // Deactivation can succeed even when restoring Claude Code settings later throws.
+                defer { onClaudeStatusLineDisconnected() }
                 claudeStatusLineState = try claudeStatusLineManager.disconnect()
-                onClaudeStatusLineDisconnected()
             }
             claudeStatusLineError = nil
         } catch {
