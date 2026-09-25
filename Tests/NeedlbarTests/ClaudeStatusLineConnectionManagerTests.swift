@@ -150,6 +150,40 @@ struct ClaudeStatusLineConnectionManagerTests {
         #expect(installed != Data(external.utf8))
     }
 
+    @Test func nonCommandEditKeepsDisconnectAvailableAndFencesGeneration() throws {
+        let fixture = try Fixture(); defer { fixture.cleanUp() }
+        try fixture.write(#"{"statusLine":{"type":"command","command":"printf original"}}"#)
+        let manager = fixture.manager()
+        _ = try manager.connect(expectedRevision: manager.inspect().revision)
+        let generation = try #require(try fixture.store.activeGeneration())
+        let changed = #"{"statusLine":{"type":"text","text":"mine"}}"#
+        try fixture.write(changed)
+
+        #expect(manager.recover() == .configurationChanged)
+        #expect(try manager.disconnect() == .configurationChanged)
+        #expect(try fixture.store.activeGeneration() == nil)
+        #expect(try !fixture.store.publish(StatusLineQuotaRecord(schemaVersion: 1, generation: generation,
+            fiveHour: StatusLineWindowObservation(usedPercent: 25, resetsAt: nil, receivedAt: Date()), sevenDay: nil)))
+        #expect(try Data(contentsOf: fixture.settings) == Data(changed.utf8))
+    }
+
+    @Test func malformedEditKeepsDisconnectAvailableAndFencesGeneration() throws {
+        let fixture = try Fixture(); defer { fixture.cleanUp() }
+        try fixture.write(#"{"statusLine":{"type":"command","command":"printf original"}}"#)
+        let manager = fixture.manager()
+        _ = try manager.connect(expectedRevision: manager.inspect().revision)
+        let generation = try #require(try fixture.store.activeGeneration())
+        let changed = #"{"statusLine": [}"#
+        try fixture.write(changed)
+
+        #expect(manager.recover() == .configurationChanged)
+        #expect(try manager.disconnect() == .configurationChanged)
+        #expect(try fixture.store.activeGeneration() == nil)
+        #expect(try !fixture.store.publish(StatusLineQuotaRecord(schemaVersion: 1, generation: generation,
+            fiveHour: StatusLineWindowObservation(usedPercent: 25, resetsAt: nil, receivedAt: Date()), sevenDay: nil)))
+        #expect(try Data(contentsOf: fixture.settings) == Data(changed.utf8))
+    }
+
     @Test func repeatedConnectAndDisconnectCanRecoverWithoutEditingOnLaunch() throws {
         let fixture = try Fixture(); defer { fixture.cleanUp() }
         let original = #"{"statusLine":{"type":"command","command":"printf original"}}"#

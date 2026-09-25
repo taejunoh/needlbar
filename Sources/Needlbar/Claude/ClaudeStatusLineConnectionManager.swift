@@ -57,15 +57,21 @@ public final class ClaudeStatusLineConnectionManager {
     public func inspect() throws -> ConnectionInspection {
         let bytes = try readSettings()
         let revision = Data(SHA256.hash(data: bytes))
-        guard isDefaultConfiguration else {
-            return ConnectionInspection(revision: revision, state: .unsupportedConfiguration)
-        }
-        let editor = try SettingsJSONEditor(bytes)
-        guard editor.isSupported else {
-            return ConnectionInspection(revision: revision, state: .unsupportedConfiguration)
-        }
         let store = try privateStore()
-        guard let generation = try store.activeGeneration() else {
+        let active = try store.activeGeneration()
+        guard isDefaultConfiguration else {
+            return ConnectionInspection(revision: revision,
+                state: active == nil ? .unsupportedConfiguration : .configurationChanged)
+        }
+        guard let editor = try? SettingsJSONEditor(bytes) else {
+            return ConnectionInspection(revision: revision,
+                state: active == nil ? .unsupportedConfiguration : .configurationChanged)
+        }
+        guard editor.isSupported else {
+            return ConnectionInspection(revision: revision,
+                state: active == nil ? .unsupportedConfiguration : .configurationChanged)
+        }
+        guard let generation = active else {
             if let generation = ownedGeneration(in: editor),
                let metadata = try store.metadata(for: generation),
                editor.statusLineJSON == metadata.ownedStatusLineJSON {
@@ -136,7 +142,9 @@ public final class ClaudeStatusLineConnectionManager {
         let active = try store.activeGeneration()
         if let active { try store.deactivate(generation: active) }
         let bytes = try readSettings()
-        let editor = try SettingsJSONEditor(bytes)
+        guard let editor = try? SettingsJSONEditor(bytes) else {
+            return .configurationChanged
+        }
         let generation = active ?? ownedGeneration(in: editor)
         guard let generation, let metadata = try store.metadata(for: generation) else {
             return .disconnected
@@ -153,7 +161,12 @@ public final class ClaudeStatusLineConnectionManager {
     /// Reconciles state only; it never writes Claude Code settings.
     public func recover() -> ConnectionState {
         do { return try inspect().state }
-        catch { return .unsupportedConfiguration }
+        catch {
+            if let store = try? privateStore(), (try? store.activeGeneration()) != nil {
+                return .configurationChanged
+            }
+            return .unsupportedConfiguration
+        }
     }
 
     private var isDefaultConfiguration: Bool {
