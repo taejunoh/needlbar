@@ -1,5 +1,21 @@
 # Needlbar Development Status
 
+## Claude Code status-line quota bridge design — 2026-09-25
+
+Written design for a reversible, opt-in Claude Code status-line bridge is at
+`docs/superpowers/specs/2026-09-25-claude-statusline-quota-bridge-design.md`.
+It proposes reading provider-emitted five-hour and seven-day quota fields
+without Needlbar acquiring or rotating credentials, while preserving the
+user's existing status-line command. Fable remains an independent direct-source
+value and cannot be inferred from status-line data. The document explicitly
+distinguishes local receipt time from a provider fetch and records the retained
+direct token-reading path as an unresolved provider-policy concern.
+
+The design is awaiting written-spec review. No helper, settings change,
+installed-app replacement, release, or claim of restored quota refresh has
+been made. The next continuation is design approval, then an implementation
+plan with test-first and native acceptance gates.
+
 ## v0.3.4 Public Release Record — 2026-09-22/23
 
 PR #5 passed CI run `35801922708` and merged as
