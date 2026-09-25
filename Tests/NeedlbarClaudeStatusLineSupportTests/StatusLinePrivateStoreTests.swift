@@ -97,3 +97,47 @@ private func record(_ generation: UUID, used: Double, receivedAt: Date = Date(ti
     let newInode = try FileManager.default.attributesOfItem(atPath: lockURL.path)[.systemFileNumber] as? NSNumber
     #expect(oldInode == newInode)
 }
+
+@Test func storeCanPrepareIdenticalMetadataRepeatedlyAcrossInstances() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("needlbar-metadata-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try StatusLinePrivateStore(rootURL: root)
+    let generation = UUID()
+    let same = StatusLineConnectionMetadata(generation: generation,
+        originalStatusLineJSON: Data(#"{"command":"printf original","type":"command"}"#.utf8),
+        originalCommand: "printf original", ownedStatusLineJSON: Data(#"{"command":"helper"}"#.utf8))
+    try store.prepare(metadata: same)
+    for _ in 0..<100 {
+        let another = try StatusLinePrivateStore(rootURL: root)
+        try another.prepare(metadata: same)
+    }
+    #expect(try store.metadata(for: generation) == same)
+}
+
+@Test func storeRejectsFIFOsAtActiveMetadataAndCacheWithoutBlocking() throws {
+    for leaf in ["active", "metadata", "quota.json"] {
+        let (root, store, generation) = try storeFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let name = leaf == "metadata" ? "metadata-\(generation.uuidString).json" : leaf
+        let path = root.appendingPathComponent(name).path
+        if leaf != "quota.json" { try FileManager.default.removeItem(atPath: path) }
+        #expect(mkfifo(path, 0o600) == 0)
+        let completed = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            if leaf == "metadata" { _ = try? store.metadata(for: generation) }
+            else { _ = try? store.read(expectedGeneration: generation) }
+            completed.signal()
+        }
+        let returnedPromptly = completed.wait(timeout: .now() + 0.5) == .success
+        if !returnedPromptly {
+            let writer = open(path, O_RDWR | O_NONBLOCK)
+            if writer >= 0 {
+                _ = Darwin.write(writer, "x", 1)
+                close(writer)
+            }
+            _ = completed.wait(timeout: .now() + 2)
+        }
+        #expect(returnedPromptly, "\(leaf) FIFO must be rejected before opening blocks")
+    }
+}

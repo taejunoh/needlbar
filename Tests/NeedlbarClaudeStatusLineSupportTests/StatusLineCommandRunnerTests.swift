@@ -3,13 +3,13 @@ import Darwin
 import Testing
 @testable import NeedlbarClaudeStatusLineSupport
 
-private func runnerFixture() throws -> (URL, StatusLinePrivateStore, UUID) {
+private func runnerFixture(originalCommand: ((URL) -> String?)? = nil) throws -> (URL, StatusLinePrivateStore, UUID) {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("needlbar-runner-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     let store = try StatusLinePrivateStore(rootURL: root)
     let generation = UUID()
     try store.prepare(metadata: StatusLineConnectionMetadata(generation: generation, originalStatusLineJSON: nil,
-        originalCommand: nil, ownedStatusLineJSON: Data()))
+        originalCommand: originalCommand?(root), ownedStatusLineJSON: Data()))
     try store.activate(generation: generation)
     return (root, store, generation)
 }
@@ -179,4 +179,90 @@ private func fileHandle(_ url: URL, data: Data = Data()) throws -> FileHandle {
         input: input, output: output, error: error, store: store, now: Date.init)
     #expect(exitCode == 0)
     #expect(try Data(contentsOf: root.appendingPathComponent("out")) == Data("Needlbar\n".utf8))
+}
+
+private func builtStatusLineHelper() throws -> URL {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+    for relative in [".build/out/Products/Debug/NeedlbarClaudeStatusLine",
+                     ".build/arm64-apple-macosx/debug/NeedlbarClaudeStatusLine"] {
+        let candidate = root.appendingPathComponent(relative)
+        if access(candidate.path, X_OK) == 0 { return candidate }
+    }
+    throw CocoaError(.fileNoSuchFile)
+}
+
+private func waitForPath(_ path: String, timeout: TimeInterval = 3) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while !FileManager.default.fileExists(atPath: path) && Date() < deadline {
+        Thread.sleep(forTimeInterval: 0.01)
+    }
+    return FileManager.default.fileExists(atPath: path)
+}
+
+private func waitForExit(_ process: Process, timeout: TimeInterval = 3) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+    if !process.isRunning { process.waitUntilExit(); return true }
+    return false
+}
+
+@Test func helperSIGTERMInterruptsOpenStdinAndReapsOriginalCommand() throws {
+    let (root, _, generation) = try runnerFixture(originalCommand: { root in
+        "echo $$ > '\(root.appendingPathComponent("child-pid").path)'; exec /bin/cat"
+    })
+    defer { try? FileManager.default.removeItem(at: root) }
+    let childPID = root.appendingPathComponent("child-pid")
+    let helper = Process()
+    helper.executableURL = try builtStatusLineHelper()
+    helper.arguments = [generation.uuidString]
+    helper.environment = ProcessInfo.processInfo.environment.merging(["NEEDLBAR_STATUSLINE_TEST_ROOT": root.path]) { _, new in new }
+    let input = Pipe()
+    helper.standardInput = input
+    helper.standardOutput = FileHandle.nullDevice
+    helper.standardError = FileHandle.nullDevice
+    try helper.run()
+    defer {
+        if helper.isRunning { kill(helper.processIdentifier, SIGKILL); try? input.fileHandleForWriting.close(); helper.waitUntilExit() }
+        if let text = try? String(contentsOf: childPID, encoding: .utf8), let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) { kill(pid, SIGKILL) }
+    }
+    #expect(waitForPath(childPID.path))
+    let child = Int32((try String(contentsOf: childPID, encoding: .utf8)).trimmingCharacters(in: .whitespacesAndNewlines))!
+    kill(helper.processIdentifier, SIGTERM)
+    #expect(waitForExit(helper, timeout: 2), "helper must stop while parent still holds stdin open")
+    #expect(helper.terminationStatus == 143)
+    let deadline = Date().addingTimeInterval(2)
+    while kill(child, 0) == 0 && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+    #expect(kill(child, 0) != 0)
+}
+
+@Test func helperSIGTERMInterruptsBlockedWriteAndDescendant() throws {
+    let (root, _, generation) = try runnerFixture(originalCommand: { root in
+        "sleep 30 & echo $! > '\(root.appendingPathComponent("descendant-pid").path)'; wait"
+    })
+    defer { try? FileManager.default.removeItem(at: root) }
+    let descendantPID = root.appendingPathComponent("descendant-pid")
+    let input = root.appendingPathComponent("large-input")
+    try Data(repeating: 0x51, count: 2 * 1024 * 1024).write(to: input)
+    let helper = Process()
+    helper.executableURL = try builtStatusLineHelper()
+    helper.arguments = [generation.uuidString]
+    helper.environment = ProcessInfo.processInfo.environment.merging(["NEEDLBAR_STATUSLINE_TEST_ROOT": root.path]) { _, new in new }
+    helper.standardInput = try FileHandle(forReadingFrom: input)
+    helper.standardOutput = FileHandle.nullDevice
+    helper.standardError = FileHandle.nullDevice
+    try helper.run()
+    defer {
+        if helper.isRunning { kill(helper.processIdentifier, SIGKILL); helper.waitUntilExit() }
+        if let text = try? String(contentsOf: descendantPID, encoding: .utf8), let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) { kill(pid, SIGKILL) }
+    }
+    #expect(waitForPath(descendantPID.path))
+    let child = Int32((try String(contentsOf: descendantPID, encoding: .utf8)).trimmingCharacters(in: .whitespacesAndNewlines))!
+    Thread.sleep(forTimeInterval: 0.1)
+    kill(helper.processIdentifier, SIGTERM)
+    #expect(waitForExit(helper, timeout: 2), "helper must stop while child refuses stdin")
+    #expect(helper.terminationStatus == 143)
+    let deadline = Date().addingTimeInterval(2)
+    while kill(child, 0) == 0 && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+    #expect(kill(child, 0) != 0)
 }

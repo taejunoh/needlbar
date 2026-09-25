@@ -26,7 +26,12 @@ public enum StatusLineStoreError: Error {
 /// `lock` is never replaced or removed, including when a generation is deactivated.
 public final class StatusLinePrivateStore: @unchecked Sendable {
     public static var defaultRootURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        #if DEBUG
+        if let testRoot = ProcessInfo.processInfo.environment["NEEDLBAR_STATUSLINE_TEST_ROOT"], testRoot.hasPrefix("/") {
+            return URL(fileURLWithPath: testRoot, isDirectory: true)
+        }
+        #endif
+        return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/Needlbar-StatusLine", isDirectory: true)
     }
 
@@ -42,12 +47,16 @@ public final class StatusLinePrivateStore: @unchecked Sendable {
     }
 
     public func prepare(metadata: StatusLineConnectionMetadata) throws {
-        let encoded = try JSONEncoder().encode(metadata)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let encoded = try encoder.encode(metadata)
         guard encoded.count <= maximumMetadataBytes else { throw StatusLineStoreError.invalidRecord }
         try withExclusiveLock { directory in
             let name = metadataName(metadata.generation)
             if let existing = try readFile(name, limit: maximumMetadataBytes, from: directory) {
-                guard existing == encoded else { throw StatusLineStoreError.unsafeFile }
+                guard (try? JSONDecoder().decode(StatusLineConnectionMetadata.self, from: existing)) == metadata else {
+                    throw StatusLineStoreError.unsafeFile
+                }
                 return
             }
             try atomicWrite(encoded, named: name, in: directory)
@@ -187,7 +196,7 @@ public final class StatusLinePrivateStore: @unchecked Sendable {
     }
 
     private func validateIfPresent(_ name: String, in directory: Int32) throws {
-        let fd = name.withCString { openat(directory, $0, O_RDONLY | O_NOFOLLOW | O_CLOEXEC) }
+        let fd = name.withCString { openat(directory, $0, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC) }
         if fd < 0 {
             if errno == ENOENT { return }
             throw StatusLineStoreError.unsafeFile
@@ -197,7 +206,7 @@ public final class StatusLinePrivateStore: @unchecked Sendable {
     }
 
     private func readFile(_ name: String, limit: Int, from directory: Int32) throws -> Data? {
-        let fd = name.withCString { openat(directory, $0, O_RDONLY | O_NOFOLLOW | O_CLOEXEC) }
+        let fd = name.withCString { openat(directory, $0, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC) }
         if fd < 0 {
             if errno == ENOENT { return nil }
             throw StatusLineStoreError.unsafeFile
