@@ -25,9 +25,9 @@ struct ClaudeStatusLineConnectionManagerTests {
             store = try StatusLinePrivateStore(rootURL: root.appendingPathComponent("private"))
         }
 
-        func write(_ text: String) throws {
+        func write(_ text: String, permissions: Int = 0o600) throws {
             try Data(text.utf8).write(to: settings)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settings.path)
+            try FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: settings.path)
         }
 
         @MainActor func manager(beforeReplace: (() -> Void)? = nil, environment: [String: String] = [:]) -> ClaudeStatusLineConnectionManager {
@@ -60,6 +60,36 @@ struct ClaudeStatusLineConnectionManagerTests {
         #expect(!String(decoding: installed, as: UTF8.self).contains("printf original"))
         #expect(try manager.disconnect() == .disconnected)
         #expect(try Data(contentsOf: fixture.settings) == Data(original.utf8))
+    }
+
+    @Test func connectAndDisconnectPreserveExistingSettingsPermissions() throws {
+        let fixture = try Fixture(); defer { fixture.cleanUp() }
+        let original = #"{"theme":"dark"}"#
+        try fixture.write(original, permissions: 0o644)
+        let manager = fixture.manager()
+
+        _ = try manager.connect(expectedRevision: manager.inspect().revision)
+        let connectedPermissions = try FileManager.default.attributesOfItem(atPath: fixture.settings.path)[.posixPermissions] as? NSNumber
+        #expect(connectedPermissions?.intValue == 0o644)
+
+        #expect(try manager.disconnect() == .disconnected)
+        let disconnectedPermissions = try FileManager.default.attributesOfItem(atPath: fixture.settings.path)[.posixPermissions] as? NSNumber
+        #expect(disconnectedPermissions?.intValue == 0o644)
+        #expect(try Data(contentsOf: fixture.settings) == Data(original.utf8))
+    }
+
+    @Test func missingSettingsFileIsCreatedWithPrivatePermissions() throws {
+        let fixture = try Fixture(); defer { fixture.cleanUp() }
+        let manager = fixture.manager()
+
+        _ = try manager.connect(expectedRevision: manager.inspect().revision)
+        let connectedPermissions = try FileManager.default.attributesOfItem(atPath: fixture.settings.path)[.posixPermissions] as? NSNumber
+        #expect(connectedPermissions?.intValue == 0o600)
+
+        #expect(try manager.disconnect() == .disconnected)
+        let disconnectedPermissions = try FileManager.default.attributesOfItem(atPath: fixture.settings.path)[.posixPermissions] as? NSNumber
+        #expect(disconnectedPermissions?.intValue == 0o600)
+        #expect(try Data(contentsOf: fixture.settings) == Data("{}".utf8))
     }
 
     @Test func explicitConnectCopiesHelperToPrivateStablePath() throws {

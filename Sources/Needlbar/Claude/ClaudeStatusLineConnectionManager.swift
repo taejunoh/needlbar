@@ -277,6 +277,7 @@ public final class ClaudeStatusLineConnectionManager {
     private func atomicReplace(_ bytes: Data, expecting expected: Data) throws {
         let directory = try openConfigDirectory()
         defer { close(directory) }
+        let permissions = try settingsPermissions(in: directory)
         let temporary = ".needlbar-settings-\(UUID().uuidString)"
         let descriptor = openat(directory, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard descriptor >= 0 else { throw ConnectionError.unsafeSettingsFile }
@@ -292,12 +293,26 @@ public final class ClaudeStatusLineConnectionManager {
                 offset += count
             }
         }
+        guard fchmod(descriptor, permissions) == 0 else { throw ConnectionError.unsafeSettingsFile }
         guard fsync(descriptor) == 0 else { throw ConnectionError.unsafeSettingsFile }
         beforeAtomicReplace?()
         guard try readSettings() == expected else { throw ConnectionError.configurationChanged }
         guard renameat(directory, temporary, directory, "settings.json") == 0,
               fsync(directory) == 0 else { throw ConnectionError.unsafeSettingsFile }
         guard try readSettings() == bytes else { throw ConnectionError.configurationChanged }
+    }
+
+    private func settingsPermissions(in directory: Int32) throws -> mode_t {
+        let descriptor = openat(directory, "settings.json", O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
+        if descriptor < 0 {
+            if errno == ENOENT { return 0o600 }
+            throw ConnectionError.unsafeSettingsFile
+        }
+        defer { close(descriptor) }
+        try validateSettingsFile(descriptor)
+        var info = stat()
+        guard fstat(descriptor, &info) == 0 else { throw ConnectionError.unsafeSettingsFile }
+        return mode_t(info.st_mode & 0o7777)
     }
 }
 

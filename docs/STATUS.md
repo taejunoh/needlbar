@@ -39,6 +39,16 @@ Deterministic disconnect/reconnect and missing-cache regressions passed, and
 `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` was rerun at `c21339e`
 with exit 0. Independent whole-branch code review is clean.
 
+Native preflight exposed one additional settings transaction defect: replacing
+an existing `settings.json` changed its POSIX mode from 0644 to 0600. A
+synthetic connect/disconnect test reproduced the change before the fix. The
+transaction now keeps the temporary file private while writing, then restores
+the existing file mode before atomic replacement; a newly created file still
+uses 0600. All 20 focused connection-manager tests, the full
+`PATH=/Users/taejunoh/.cargo/bin:$PATH make test`, `make package`, `make smoke`,
+strict/deep app signature verification, and `git diff --check` passed after
+this correction. The package remains local and ad-hoc signed.
+
 Native acceptance remains: after the user's explicit opt-in, observe a real
 Claude Code status-line event, compare Needlbar's five-hour and seven-day
 values and receipt labels with Claude Code, verify the user's existing status
