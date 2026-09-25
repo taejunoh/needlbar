@@ -156,3 +156,55 @@ private func record(_ generation: UUID, used: Double, receivedAt: Date = Date(ti
         #expect(returnedPromptly, "\(leaf) FIFO must be rejected before opening blocks")
     }
 }
+
+@Test func storeRejectsFIFOHelperSourceWithoutBlocking() throws {
+    let (root, store, _) = try storeFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.deletingLastPathComponent().appendingPathComponent("needlbar-helper-fifo-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: source) }
+    #expect(mkfifo(source.path, 0o700) == 0)
+    let completed = DispatchSemaphore(value: 0)
+    DispatchQueue.global().async {
+        _ = try? store.installHelper(from: source)
+        completed.signal()
+    }
+    let returnedPromptly = completed.wait(timeout: .now() + 0.5) == .success
+    if !returnedPromptly {
+        let writer = open(source.path, O_RDWR | O_NONBLOCK)
+        if writer >= 0 {
+            _ = Darwin.write(writer, "x", 1)
+            close(writer)
+        }
+        _ = completed.wait(timeout: .now() + 2)
+    }
+    #expect(returnedPromptly, "helper source FIFO must be rejected without blocking")
+    #expect(!FileManager.default.fileExists(atPath: store.stableHelperURL.path))
+}
+
+@Test func storeRejectsExistingFIFOHelperDestinationWithoutBlocking() throws {
+    let (root, store, _) = try storeFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.deletingLastPathComponent().appendingPathComponent("needlbar-helper-source-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: source) }
+    try Data("helper".utf8).write(to: source)
+    #expect(chmod(source.path, 0o700) == 0)
+    #expect(mkfifo(store.stableHelperURL.path, 0o700) == 0)
+    let completed = DispatchSemaphore(value: 0)
+    DispatchQueue.global().async {
+        _ = try? store.installHelper(from: source)
+        completed.signal()
+    }
+    let returnedPromptly = completed.wait(timeout: .now() + 0.5) == .success
+    if !returnedPromptly {
+        let writer = open(store.stableHelperURL.path, O_RDWR | O_NONBLOCK)
+        if writer >= 0 {
+            _ = Darwin.write(writer, "x", 1)
+            close(writer)
+        }
+        _ = completed.wait(timeout: .now() + 2)
+    }
+    #expect(returnedPromptly, "existing helper FIFO must be rejected without blocking")
+    var info = stat()
+    #expect(lstat(store.stableHelperURL.path, &info) == 0)
+    #expect((info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFIFO), "unsafe destination must not be replaced")
+}

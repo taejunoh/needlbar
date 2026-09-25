@@ -54,7 +54,7 @@ public final class StatusLinePrivateStore: @unchecked Sendable {
     /// Atomically replaces the private executable. Existing invocations keep
     /// their open inode, while later Claude Code events use the new binary.
     public func installHelper(from sourceURL: URL) throws {
-        let source = open(sourceURL.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        let source = open(sourceURL.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         guard source >= 0 else { throw StatusLineStoreError.unsafeFile }
         defer { close(source) }
         var sourceInfo = stat()
@@ -114,7 +114,7 @@ public final class StatusLinePrivateStore: @unchecked Sendable {
     }
 
     private func validateInstalledHelperIfPresent(in directory: Int32) throws {
-        let file = openat(directory, "NeedlbarClaudeStatusLine", O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        let file = openat(directory, "NeedlbarClaudeStatusLine", O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         if file < 0 {
             if errno == ENOENT { return }
             throw StatusLineStoreError.unsafeFile
