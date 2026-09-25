@@ -154,6 +154,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 quotaRepository: RustQuotaRepository(bridge: bridge),
                 store: snapshotStore,
                 usageFileWatcher: usageFileWatcher,
+                statusLineRepository: ClaudeStatusLineCacheRepository(),
                 claudeQuotaOperationCompleted: {
                     claudeFailureDiagnosticsReporter.reportLatestClaudeQuotaFailure()
                 }

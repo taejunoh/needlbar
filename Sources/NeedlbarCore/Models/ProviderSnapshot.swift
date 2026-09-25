@@ -1,4 +1,5 @@
 import Foundation
+import NeedlbarClaudeStatusLineSupport
 
 public struct ProviderSnapshot: Sendable, Equatable {
     public let provider: ProviderID
@@ -9,6 +10,7 @@ public struct ProviderSnapshot: Sendable, Equatable {
     public let updatedAt: Date
     public let claudeQuotaFailureReason: ClaudeQuotaFailureReason?
     public let quotaLastSuccessfulAt: Date?
+    public let claudeStatusLineQuota: StatusLineQuotaRecord?
 
     public init(
         provider: ProviderID,
@@ -18,7 +20,8 @@ public struct ProviderSnapshot: Sendable, Equatable {
         quotaStatus: DataStatus,
         updatedAt: Date,
         claudeQuotaFailureReason: ClaudeQuotaFailureReason? = nil,
-        quotaLastSuccessfulAt: Date? = nil
+        quotaLastSuccessfulAt: Date? = nil,
+        claudeStatusLineQuota: StatusLineQuotaRecord? = nil
     ) {
         self.provider = provider
         self.usage = usage
@@ -28,5 +31,6 @@ public struct ProviderSnapshot: Sendable, Equatable {
         self.updatedAt = updatedAt
         self.claudeQuotaFailureReason = claudeQuotaFailureReason
         self.quotaLastSuccessfulAt = quotaLastSuccessfulAt
+        self.claudeStatusLineQuota = claudeStatusLineQuota
     }
 }

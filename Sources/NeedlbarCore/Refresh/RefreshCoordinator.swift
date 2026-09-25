@@ -1,4 +1,5 @@
 import Foundation
+import NeedlbarClaudeStatusLineSupport
 
 public protocol ClockLike: Sendable {
     var now: Date { get }
@@ -35,6 +36,7 @@ public actor RefreshCoordinator {
     private let quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)?
     private let claudeQuotaOperationCompleted: (@Sendable () async -> Void)?
     private let widgetUsageDayCapture: any WidgetUsageDayCapturing
+    private let statusLineRepository: (any ClaudeStatusLineCacheReading)?
 
     private struct UserQuotaWaiter {
         let generation: UInt64
@@ -63,6 +65,7 @@ public actor RefreshCoordinator {
 
     private var usageTask: Task<Void, Never>?
     private var quotaTask: Task<Void, Never>?
+    private var statusLineTask: Task<Void, Never>?
     private var usageSafetyTask: Task<Void, Never>?
     private var quotaSafetyTask: Task<Void, Never>?
     private var lastBackgroundQuotaSuccessfulAt: Date?
@@ -92,6 +95,7 @@ public actor RefreshCoordinator {
         lastQuotaSuccessfulAt: Date? = nil,
         usageFileWatcher: (any UsageFileWatching)? = nil,
         widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture(),
+        statusLineRepository: (any ClaudeStatusLineCacheReading)? = nil,
         claudeQuotaOperationCompleted: (@Sendable () async -> Void)? = nil
     ) {
         self.init(
@@ -104,6 +108,7 @@ public actor RefreshCoordinator {
             quotaApplicationWillApply: nil,
             quotaIntentRegistered: nil,
             widgetUsageDayCapture: widgetUsageDayCapture,
+            statusLineRepository: statusLineRepository,
             claudeQuotaOperationCompleted: claudeQuotaOperationCompleted
         )
     }
@@ -118,6 +123,7 @@ public actor RefreshCoordinator {
         quotaApplicationWillApply: (@Sendable () async -> Void)? = nil,
         quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)? = nil,
         widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture(),
+        statusLineRepository: (any ClaudeStatusLineCacheReading)? = nil,
         claudeQuotaOperationCompleted: (@Sendable () async -> Void)? = nil
     ) {
         self.usageRepository = usageRepository
@@ -129,12 +135,14 @@ public actor RefreshCoordinator {
         self.quotaApplicationWillApply = quotaApplicationWillApply
         self.quotaIntentRegistered = quotaIntentRegistered
         self.widgetUsageDayCapture = widgetUsageDayCapture
+        self.statusLineRepository = statusLineRepository
         self.claudeQuotaOperationCompleted = claudeQuotaOperationCompleted
     }
 
     deinit {
         usageTask?.cancel()
         quotaTask?.cancel()
+        statusLineTask?.cancel()
         usageSafetyTask?.cancel()
         quotaSafetyTask?.cancel()
     }
@@ -169,6 +177,7 @@ public actor RefreshCoordinator {
     }
 
     public func popoverOpened() {
+        requestStatusLineRead()
         guard let lastBackgroundQuotaSuccessfulAt else {
             requestQuotaRefresh()
             return
@@ -269,6 +278,8 @@ public actor RefreshCoordinator {
         isRunning = false
         usageTask?.cancel()
         quotaTask?.cancel()
+        statusLineTask?.cancel()
+        statusLineTask = nil
         usageSafetyTask?.cancel()
         quotaSafetyTask?.cancel()
         usageSafetyTask = nil
@@ -328,6 +339,7 @@ public actor RefreshCoordinator {
 
     private func requestQuotaRefresh(generation: UInt64? = nil) {
         if let generation, (!isRunning || generation != runGeneration) { return }
+        requestStatusLineRead()
         guard quotaTask == nil else {
             if !queuedBackgroundQuotaRefresh {
                 queuedBackgroundQuotaRefresh = true
@@ -379,6 +391,38 @@ public actor RefreshCoordinator {
         quotaTask = Task { [weak self, repository, intent] in
             let result = Result { try repository.refresh(intent: intent) }
             await self?.finishQuotaRefresh(result, intent: intent, applyResult: !Task.isCancelled, generation: generation)
+        }
+    }
+
+    private func requestStatusLineRead() {
+        guard statusLineTask == nil, let repository = statusLineRepository else { return }
+        let generation = runGeneration
+        statusLineTask = Task { [weak self, repository] in
+            let connectionGeneration = repository.activeGeneration()
+            let record = connectionGeneration.flatMap { repository.read(expectedGeneration: $0) }
+            await self?.applyStatusLineRecord(record, expectedGeneration: connectionGeneration,
+                                              repository: repository, runGeneration: generation)
+            await self?.finishStatusLineRead(generation: generation)
+        }
+    }
+
+    private func finishStatusLineRead(generation: UInt64) {
+        guard generation == runGeneration else { return }
+        statusLineTask = nil
+    }
+
+    private func applyStatusLineRecord(
+        _ record: StatusLineQuotaRecord?,
+        expectedGeneration: UUID?,
+        repository: any ClaudeStatusLineCacheReading,
+        runGeneration: UInt64
+    ) async {
+        guard runGeneration == self.runGeneration, !Task.isCancelled,
+              repository.activeGeneration() == expectedGeneration else { return }
+        if let record, record.generation == expectedGeneration {
+            await store.applyClaudeStatusLineQuota(record)
+        } else {
+            await store.clearClaudeStatusLineQuota()
         }
     }
 
