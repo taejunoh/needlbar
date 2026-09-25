@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-25
 
-**Status:** Written design for review; not yet implemented.
+**Status:** Written design approved by the user on 2026-09-25; not yet implemented.
 
 **Scope:** Restore unattended, clearly timestamped Claude subscription-quota
 readings without asking users to log in to Needlbar repeatedly or letting
@@ -68,6 +68,10 @@ credential files.
   or the app must detect and repair only its own stale path with the user's
   connection still enabled. A signed, versioned helper and its lifecycle are
   part of implementation planning; do not rely on a temporary build path.
+  Re-read/compare plus atomic replacement is optimistic conflict detection,
+  not a true compare-and-swap against editors that do not share Needlbar's
+  lock. The implementation must narrow and test the race and surface a
+  conflict when detected; it must not claim impossible absolute protection.
 - The wrapper reads Claude Code's stdin once, parses only the documented quota
   fields into a bounded local record, then forwards the **original stdin** to
   the original command and forwards that command's stdout/stderr and exit
@@ -94,8 +98,11 @@ credential files.
   the full status-line JSON, cwd, repository, model, session ID, or the
   original command's stdin/output. Disconnect removes the Needlbar quota cache
   after in-flight publications are fenced; it does not delete the user's
-  original status-line script. Remove the private backup only when no running
-  wrapper still needs it.
+  original status-line script. An invocation that starts late from an old
+  Claude session may need its original command even after disconnect. Retain
+  retired immutable command metadata conservatively rather than deleting it
+  based only on the active process count; define an explicit safe cleanup
+  policy before implementation and disclose any retained private copy.
 - Initial scope is the default Claude Code user configuration. Detect a
   nondefault `CLAUDE_CONFIG_DIR` when visible and report that this
   configuration is not yet connected; do not modify an unverified directory.
@@ -117,7 +124,11 @@ credential files.
   intact; reject symlinks/unexpected ownership and permissions on files, and
   use atomic writes. An older or malformed record cannot replace a newer
   valid observation. Multiple concurrent Claude Code sessions must not
-  regress the stored observation per window.
+  regress the stored observation per window. Because status-line JSON has no
+  provider observation timestamp, receipt ordering alone cannot prove which
+  of two sessions has the newest server state. Prefer a conservative same-reset
+  merge that does not reduce used percentage or revert to an older reset;
+  document that legitimate downward corrections may be delayed.
 - Keep direct-source and status-line-source observations separate in the
   domain model. On a fresh direct success, show direct 5-hour/7-day/Fable.
   When direct lookup fails but recent status-line data exists, show its

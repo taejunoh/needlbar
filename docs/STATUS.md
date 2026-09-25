@@ -11,10 +11,13 @@ value and cannot be inferred from status-line data. The document explicitly
 distinguishes local receipt time from a provider fetch and records the retained
 direct token-reading path as an unresolved provider-policy concern.
 
-The design is awaiting written-spec review. No helper, settings change,
-installed-app replacement, release, or claim of restored quota refresh has
-been made. The next continuation is design approval, then an implementation
-plan with test-first and native acceptance gates.
+The user approved the written design. Implementation plan:
+`docs/superpowers/plans/2026-09-25-claude-statusline-quota-bridge.md`.
+The isolated worktree baseline `PATH=/Users/taejunoh/.cargo/bin:$PATH make test`
+exited 0 before implementation. The plan is awaiting review; no helper,
+settings change, installed-app replacement, release, or claim of restored
+quota refresh has been made. The next continuation is plan review and then
+test-first task-by-task implementation.
 
 ## v0.3.4 Public Release Record — 2026-09-22/23
 
