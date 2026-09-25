@@ -9,10 +9,10 @@ public enum HeadlineQuotaSelector {
                 let selected = ClaudeQuotaPresentationSelector.select(snapshot: snapshot, now: now)
                 let known: [QuotaWindow] = [
                     selected.fiveHour.flatMap { window in
-                        window.isLastKnown && window.source == .claudeCodeStatusLine ? nil : try? QuotaWindow(id: "claude.session", title: "Session", usedPercent: 100 - window.remainingPercent, resetsAt: window.resetsAt)
+                        try? QuotaWindow(id: "claude.session", title: "Session", usedPercent: 100 - window.remainingPercent, resetsAt: window.resetsAt)
                     },
                     selected.sevenDay.flatMap { window in
-                        window.isLastKnown && window.source == .claudeCodeStatusLine ? nil : try? QuotaWindow(id: "claude.weekly", title: "Weekly", usedPercent: 100 - window.remainingPercent, resetsAt: window.resetsAt)
+                        try? QuotaWindow(id: "claude.weekly", title: "Weekly", usedPercent: 100 - window.remainingPercent, resetsAt: window.resetsAt)
                     },
                 ].compactMap { $0 }
                 let other = snapshot.quota?.windows.filter {
