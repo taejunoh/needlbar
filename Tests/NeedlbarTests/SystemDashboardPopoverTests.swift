@@ -590,9 +590,27 @@ import NeedlbarClaudeStatusLineSupport
         claudeQuotaStatus: .requiresAuthentication, claudeHasQuota: false,
         claudeStatusLineQuota: record), configuration: .init(), now: received.addingTimeInterval(20 * 60))
     #expect(presentation.ai.first { $0.provider == .claude }?.value == "—")
+    #expect(presentation.ai.first { $0.provider == .claude }?.quotaLastKnownRemaining == "75%")
     #expect(presentation.ai.first { $0.provider == .claude }?.quotaIsLastKnown == true)
     #expect(presentation.ai.first { $0.provider == .codex }?.value == "55%")
     #expect(presentation.ai.first { $0.provider == .claude }?.statusText == nil)
+}
+
+@Test func dashboardRetainsStaleDirectClaudeValueAsSeparateLastKnownDetail() throws {
+    let observed = Date(timeIntervalSince1970: 100_000)
+    let session = try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68,
+                                  resetsAt: observed.addingTimeInterval(-1))
+    let dashboard = SystemDashboardPresentation(snapshot: dashboardFixtureSnapshot(
+        capturedAt: observed, claudeQuotaStatus: .error(message: "network", lastSuccessfulAt: observed),
+        claudeQuotaFailureReason: .connectionUnavailable, claudeQuotaWindows: [session]),
+        configuration: .init(), now: observed.addingTimeInterval(60))
+    let claude = try #require(dashboard.ai.first { $0.provider == .claude })
+
+    #expect(claude.value == "—")
+    #expect(claude.quotaLastKnownRemaining == "32%")
+    #expect(claude.quotaSourceText == "Claude usage")
+    #expect(claude.quotaLastCheckedText == DateFormatter.localizedString(
+        from: observed, dateStyle: .medium, timeStyle: .short))
 }
 
 @Test func dashboardPassedFableResetIsNotLabeledFreshDespiteDirectSuccess() throws {

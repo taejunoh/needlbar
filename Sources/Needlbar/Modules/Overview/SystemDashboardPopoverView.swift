@@ -365,7 +365,7 @@ public struct SystemDashboardPopoverView: View {
                     .foregroundStyle(.secondary)
             }
             if provider.quotaIsLastKnown {
-                Text("Last known")
+                Text(provider.quotaLastKnownRemaining.map { "Last known · \($0) remaining" } ?? "Last known")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

@@ -208,7 +208,8 @@ public struct SettingsView: View {
                     Text(source).font(.caption).foregroundStyle(.secondary)
                 }
                 if claudeQuotaPresentation.value.quotaIsLastKnown {
-                    Text("Last known")
+                    Text(claudeQuotaPresentation.value.lastKnownQuotaRemaining.map { "Last known quota \($0)" }
+                        ?? "Last known")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

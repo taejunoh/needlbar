@@ -104,6 +104,7 @@ import NeedlbarClaudeStatusLineSupport
     ))
 
     #expect(presentation.quotaIsLastKnown)
+    #expect(presentation.lastKnownQuotaRemaining == "65%")
     #expect(presentation.quotaFailureReasonText == "Connection unavailable")
     #expect(presentation.quotaLastCheckedText != nil)
     #expect(presentation.quotaLastCheckedText != MetricFormatter.reset(attemptedAt))
@@ -126,7 +127,7 @@ import NeedlbarClaudeStatusLineSupport
     #expect(presentation.quotaFailureReasonText == "Could not update quota")
 }
 
-@Test func nonAuthenticationQuotaStatesDoNotInventAuthenticationActions() {
+@Test func nonAuthenticationQuotaStatesOfferClaudeUsageWithoutInventingSignIn() {
     let statuses: [DataStatus] = [
         .fresh,
         .stale(lastSuccessfulAt: .distantPast),
@@ -144,8 +145,24 @@ import NeedlbarClaudeStatusLineSupport
             usageStatus: .unavailable,
             quotaStatus: status
         ))
-        #expect(presentation.authenticationAction == nil)
+        #expect(presentation.authenticationAction == .openClaudeUsage(title: "View Claude usage"))
     }
+}
+
+@Test func resetExpiredDirectClaudeQuotaRetainsValueAndUsageAction() throws {
+    let now = Date(timeIntervalSince1970: 100_000)
+    let direct = QuotaSnapshot(windows: [
+        try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 80,
+                        resetsAt: now.addingTimeInterval(-1)),
+    ])
+    let presentation = ProviderPopoverPresentation(snapshot: snapshot(provider: .claude, usage: nil, quota: direct,
+        usageStatus: .unavailable, quotaStatus: .fresh, updatedAt: now,
+        quotaLastSuccessfulAt: now.addingTimeInterval(-3_600)), now: now)
+
+    #expect(presentation.headlineQuotaRemaining == nil)
+    #expect(presentation.lastKnownQuotaRemaining == "20%")
+    #expect(presentation.claudeFiveHour?.resetCaption == nil)
+    #expect(presentation.authenticationAction == .openClaudeUsage(title: "View Claude usage"))
 }
 
 @Test func staleUsageKeepsTheLastKnownUsageWhileFreshQuotaRendersNormally() throws {
@@ -258,6 +275,7 @@ import NeedlbarClaudeStatusLineSupport
             usageStatus: .unavailable, quotaStatus: .requiresAuthentication,
             claudeStatusLineQuota: record), now: received.addingTimeInterval(age))
         #expect(value.headlineQuotaRemaining == nil)
+        #expect(value.lastKnownQuotaRemaining == "75%")
         #expect(value.quotaIsLastKnown)
         #expect(value.claudeFiveHour?.remaining == "75%")
         #expect(value.claudeFiveHour?.isLastKnown == true)
@@ -274,12 +292,16 @@ import NeedlbarClaudeStatusLineSupport
     let record = StatusLineQuotaRecord(schemaVersion: 1, generation: UUID(), fiveHour: nil,
         sevenDay: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(3_600), receivedAt: now))
     let value = ProviderPopoverPresentation(snapshot: snapshot(provider: .claude, usage: nil, quota: direct,
-        usageStatus: .unavailable, quotaStatus: .fresh, quotaLastSuccessfulAt: now,
+        usageStatus: .unavailable, quotaStatus: .fresh, quotaLastSuccessfulAt: now.addingTimeInterval(-600),
         claudeStatusLineQuota: record), now: now)
 
     #expect(value.quotaSourceText == "Claude usage")
     #expect(value.claudeFiveHour?.sourceLabel == "Claude usage")
     #expect(value.claudeSevenDay?.sourceLabel == "Reported by Claude Code")
+    #expect(value.claudeFiveHour?.observationLabel == "Last checked")
+    #expect(value.claudeSevenDay?.observationLabel == "Received locally")
+    #expect(value.claudeFiveHour?.observedAt == now.addingTimeInterval(-600))
+    #expect(value.claudeSevenDay?.observedAt == now)
 }
 
 @Test func ClaudePopoverDirectRecoveryTakesPrecedenceOverStatusLine() throws {

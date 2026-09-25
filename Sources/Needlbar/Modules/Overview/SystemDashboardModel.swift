@@ -141,6 +141,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let apiBillingAction: ProviderAPIBillingAction?
         public let fable: FableQuotaDetail?
         public let quotaIsLastKnown: Bool
+        public let quotaLastKnownRemaining: String?
         public let quotaUnavailable: Bool
         public let quotaFailureReasonText: String?
         public let quotaLastCheckedText: String?
@@ -234,6 +235,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                 apiBillingAction: preference.apiBillingLinkVisible ? ProviderAPIBillingAction(provider: provider) : nil,
                 fable: Self.fableDetail(provider: provider, metric: preference.metric, snapshot: providerSnapshot, now: now),
                 quotaIsLastKnown: popover.quotaIsLastKnown,
+                quotaLastKnownRemaining: popover.lastKnownQuotaRemaining,
                 quotaUnavailable: popover.quotaUnavailable,
                 quotaFailureReasonText: popover.quotaFailureReasonText,
                 quotaLastCheckedText: popover.quotaLastCheckedText,

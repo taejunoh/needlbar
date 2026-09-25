@@ -14,6 +14,8 @@ public struct ClaudePopoverQuotaDetail: Equatable, Sendable, Identifiable {
     public let resetCaption: String?
     public let isLastKnown: Bool
     public let sourceLabel: String
+    public let observationLabel: String
+    public let observedAt: Date
 
     init(id: String, title: String, window: DisplayedClaudeWindow) {
         self.id = id
@@ -21,6 +23,8 @@ public struct ClaudePopoverQuotaDetail: Equatable, Sendable, Identifiable {
         remaining = MetricFormatter.quotaRemaining(window.remainingPercent)
         isLastKnown = window.isLastKnown
         sourceLabel = window.source == .claudeCodeStatusLine ? "Reported by Claude Code" : "Claude usage"
+        observationLabel = window.source == .claudeCodeStatusLine ? "Received locally" : "Last checked"
+        observedAt = window.observedAt
         resetCaption = window.isLastKnown ? nil : MetricFormatter.reset(window.resetsAt).map { "Resets \($0)" }
     }
 }
@@ -35,6 +39,7 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
     public let cacheWriteTokens: String?
     public let quotaWindows: [QuotaWindow]
     public let headlineQuotaRemaining: String?
+    public let lastKnownQuotaRemaining: String?
     public let usageFreshness: PresentationFreshness
     public let quotaFreshness: PresentationFreshness
     public let quotaIsLastKnown: Bool
@@ -88,6 +93,9 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
             hasRecentClaudeQuota = !recent.isEmpty || !directFallback.isEmpty
             headlineQuotaRemaining = (recent.map(\.remainingPercent) + directFallback.map(\.remainingPercent))
                 .min().map(MetricFormatter.quotaRemaining)
+            lastKnownQuotaRemaining = hasRecentClaudeQuota ? nil :
+                (main.map(\.remainingPercent) + fallback.map(\.remainingPercent))
+                    .min().map(MetricFormatter.quotaRemaining)
 
             let primary = recent.min { $0.remainingPercent < $1.remainingPercent }
                 ?? main.min { $0.remainingPercent < $1.remainingPercent }
@@ -111,6 +119,7 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
             quotaObservationLabel = "Last checked"
             headlineQuotaRemaining = HeadlineQuotaSelector.mostConstrained([snapshot], now: now)
                 .map { MetricFormatter.quotaRemaining($0.remainingPercent) }
+            lastKnownQuotaRemaining = nil
             quotaIsLastKnown = false
             quotaUnavailable = false
             quotaFailureReasonText = nil
@@ -130,7 +139,7 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
     }
 
     public var authenticationAction: ProviderAuthenticationAction? {
-        if provider == .claude, quotaFailureReasonText != nil || quotaSourceText == "Reported by Claude Code" {
+        if provider == .claude, !hasRecentClaudeQuota || quotaSourceText == "Reported by Claude Code" {
             return .openClaudeUsage(title: "View Claude usage")
         }
         if provider == .cursor, quotaWindows.isEmpty, quotaFreshness != .fresh {
@@ -215,7 +224,7 @@ public struct ProviderPopoverView: View {
                     Text("Fable · \(window.isLastKnown ? "Last known" : "Claude usage")")
                         .font(.caption).foregroundStyle(.secondary)
                         .accessibilityLabel("Fable · \(window.isLastKnown ? "Last known" : "Claude usage")")
-                    claudeQuotaRow(window)
+                    claudeQuotaRow(window, showObservation: false)
                     if let checked = presentation.fableLastCheckedText {
                         Text("Last checked \(checked)").font(.caption).foregroundStyle(.secondary)
                     }
@@ -237,7 +246,7 @@ public struct ProviderPopoverView: View {
             if let reason = presentation.quotaFailureReasonText {
                 Text(reason).font(.caption).foregroundStyle(.secondary)
             }
-            if let lastChecked = presentation.quotaLastCheckedText {
+            if presentation.provider != .claude, let lastChecked = presentation.quotaLastCheckedText {
                 Text("\(presentation.quotaObservationLabel) \(lastChecked)").font(.caption).foregroundStyle(.secondary)
             }
 
@@ -280,12 +289,16 @@ public struct ProviderPopoverView: View {
     }
 
     @ViewBuilder
-    private func claudeQuotaRow(_ detail: ClaudePopoverQuotaDetail) -> some View {
+    private func claudeQuotaRow(_ detail: ClaudePopoverQuotaDetail, showObservation: Bool = true) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(detail.title)
                 Text(detail.sourceLabel).font(.caption).foregroundStyle(.secondary)
                     .accessibilityLabel(detail.sourceLabel)
+                if showObservation {
+                    Text("\(detail.observationLabel) \(DateFormatter.localizedString(from: detail.observedAt, dateStyle: .medium, timeStyle: .short))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if detail.isLastKnown {
                     Text("Last known").font(.caption).foregroundStyle(.secondary)
                 }

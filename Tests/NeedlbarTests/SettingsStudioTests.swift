@@ -78,6 +78,7 @@ struct SettingsStudioTests {
 
         #expect(controller.claudeQuotaState.quotaIsLastKnown)
         #expect(controller.claudeQuotaState.headlineQuotaRemaining == nil)
+        #expect(controller.claudeQuotaState.lastKnownQuotaRemaining == "32%")
         #expect(controller.claudeQuotaState.quotaFailureReasonText == "Could not update quota")
         #expect(controller.claudeQuotaState.quotaLastCheckedText != nil)
         #expect(controller.claudeQuotaState.quotaLastCheckedText != MetricFormatter.reset(failedAttempt))
