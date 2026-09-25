@@ -8,6 +8,7 @@ let package = Package(
         .executable(name: "Needlbar", targets: ["Needlbar"]),
         .executable(name: "NeedlbarSettingsStudioReview", targets: ["NeedlbarSettingsStudioReview"]),
         .executable(name: "NeedlbarClaudeAPIBalanceFeasibility", targets: ["NeedlbarClaudeAPIBalanceFeasibility"]),
+        .executable(name: "NeedlbarClaudeStatusLine", targets: ["NeedlbarClaudeStatusLine"]),
         .library(name: "NeedlbarCore", targets: ["NeedlbarCore"]),
         .library(name: "NeedlbarApp", targets: ["NeedlbarApp"]),
     ],
@@ -39,6 +40,7 @@ let package = Package(
         .target(name: "NeedlbarClaudeAPIBalanceFeasibilitySupport"),
         .target(name: "NeedlbarClaudeStatusLineSupport"),
         .executableTarget(name: "Needlbar", dependencies: ["NeedlbarApp"], path: "Sources/NeedlbarMain"),
+        .executableTarget(name: "NeedlbarClaudeStatusLine", dependencies: ["NeedlbarClaudeStatusLineSupport"]),
         .executableTarget(name: "NeedlbarSettingsStudioReview", dependencies: ["NeedlbarApp", "NeedlbarCore", "NeedlbarSettingsStudioReviewSupport"], path: "Sources/NeedlbarSettingsStudioReview"),
         .executableTarget(
             name: "NeedlbarClaudeAPIBalanceFeasibility",
