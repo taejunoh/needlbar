@@ -49,15 +49,29 @@ uses 0600. All 20 focused connection-manager tests, the full
 strict/deep app signature verification, and `git diff --check` passed after
 this correction. The package remains local and ad-hoc signed.
 
-Native acceptance remains: after the user's explicit opt-in, observe a real
-Claude Code status-line event, compare Needlbar's five-hour and seven-day
-values and receipt labels with Claude Code, verify the user's existing status
-line still renders, then disconnect and verify exact restoration without
-exposing its command. No real Claude configuration edit, app replacement,
-public release, or claim of restored unattended quota refresh has occurred.
-Fable remains direct-only and the pre-existing direct credential path retains
-its separate provider-policy concern. README has not been changed because the
-native behavior has not yet been demonstrated.
+Partial native acceptance on 2026-09-26 used the user's explicit opt-in and
+the isolated diagnostic app, without replacing the installed app. Settings
+changed from Disconnected to Waiting for Claude Code data. A genuine Claude
+Code response produced a private validated record with 4% five-hour and 26%
+seven-day usage; Claude Code's `/usage` display independently showed the same
+figures and reset windows. No original command or raw status-line payload was
+printed or saved as evidence. Reselecting the Claude Settings pane displayed
+Reported by Claude Code with the local receipt time. The initially visible
+Waiting state did not update during the observation; automatic in-place state
+refresh needs further verification.
+
+During this check the direct quota path also recovered, so Settings selected
+its newer direct reading (73% headline remaining, Fable 98% remaining), not
+the status-line fallback. Actual fallback selection in a native popover and
+visual compatibility of the original status line remain unverified. The
+bridge was disconnected through Settings; `cmp` confirmed byte-identical
+restoration of the original settings file, its mode remained 0644, and the
+quota cache was removed. Both diagnostic Claude CLI sessions and the temporary
+Needlbar process were stopped; only the original installed app remains running.
+No app replacement, push, public release, or restored unattended refresh is
+claimed. Fable remains direct-only, and the pre-existing credential path
+retains its separate provider-policy concern. README is unchanged pending the
+remaining native gates. CI for this branch is unverified.
 
 ## v0.3.4 Public Release Record — 2026-09-22/23
 
