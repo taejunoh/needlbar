@@ -1,5 +1,18 @@
 # Needlbar Development Status
 
+## 2026-09-28 v0.3.5 public release
+
+The approved v0.3.5 tag dereferences to release source commit
+`907db37fb6b0b291bd5c90d2a96e3be57d509354`. GitHub Release/publish run
+[36491912963](https://github.com/taejunoh/needlbar/actions/runs/36491912963)
+succeeded, and the public release is
+<https://github.com/taejunoh/needlbar/releases/tag/v0.3.5>. The published
+Apple Silicon ZIP SHA-256 is
+`0e39f6d5c7587369b549be316ef8ca703cacf7d0a77d4206bdaaf0f0c85ab992`.
+
+The release is now public; the earlier candidate, CI, and acceptance entries
+below are historical records of the state at their respective checkpoints.
+
 ## 2026-09-28 numeric fallback and visual acceptance
 
 PR #7 is green at `43ec8ca` (CI run `36453608287`). The installed local
