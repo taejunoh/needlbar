@@ -69,7 +69,6 @@ set -euo pipefail
 record_stage() { printf '%s\n' "$1" >> "$FAKE_COMMAND_LOG"; }
 if [[ "${1:-}" == --force ]]; then
   [[ "$*" == *'--options runtime --timestamp'* ]] || exit 81
-  [[ "$*" == *'--entitlements'* ]] || exit 82
   target="${@: -1}"
   entitlements=''
   previous=''
@@ -77,11 +76,17 @@ if [[ "${1:-}" == --force ]]; then
     if [[ "$previous" == --entitlements ]]; then entitlements="$argument"; fi
     previous="$argument"
   done
-  [[ -f "$entitlements" ]] || exit 83
+  if [[ "$target" == *NeedlbarClaudeStatusLine ]]; then
+    [[ -z "$entitlements" ]] || exit 85
+  else
+    [[ -f "$entitlements" ]] || exit 83
+  fi
   record_stage codesign:sign
   record_stage "codesign:sign:$target"
   if [[ "$target" == *NeedlbarWidgetExtension.appex ]]; then
     cp "$entitlements" "$FAKE_STATE_DIR/widget-entitlements"
+  elif [[ "$target" == *NeedlbarClaudeStatusLine ]]; then
+    [[ -x "$target" ]] || exit 86
   elif [[ "$target" == *Needlbar.app ]]; then
     cp "$entitlements" "$FAKE_STATE_DIR/host-entitlements"
   else
@@ -89,6 +94,7 @@ if [[ "${1:-}" == --force ]]; then
   fi
 elif [[ "${1:-}" == --verify ]]; then
   record_stage codesign:verify
+  record_stage "codesign:verify:${@: -1}"
 elif [[ "${1:-}" == --display ]]; then
   record_stage codesign:display
   printf 'Authority=Developer ID Application: Test Signer (3BMF4LM6TM)\n'
@@ -314,6 +320,8 @@ new_case() {
   cp "$ROOT/WidgetExtension/NeedlbarWidgetExtension.entitlements" "$case_root/repo/WidgetExtension/NeedlbarWidgetExtension.entitlements"
   chmod 755 "$case_root/repo/scripts/notarize-app.sh"
   : > "$case_root/repo/dist/Needlbar.app/Contents/MacOS/Needlbar"
+  printf '%s\n' synthetic-helper > "$case_root/repo/dist/Needlbar.app/Contents/MacOS/NeedlbarClaudeStatusLine"
+  chmod 755 "$case_root/repo/dist/Needlbar.app/Contents/MacOS/NeedlbarClaudeStatusLine"
   cat > "$case_root/repo/dist/Needlbar.app/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
@@ -1144,7 +1152,7 @@ test_v031_release_metadata_contract() {
 
   cp "$host_plist" "$valid_host"
   cp "$widget_plist" "$valid_widget"
-  sed 's#docs/releases/v0\.3\.4\.md#\.github/release-notes/v0.3.1.md#' "$release_workflow" > "$valid_workflow"
+  sed 's#docs/releases/v0\.3\.5\.md#\.github/release-notes/v0.3.1.md#' "$release_workflow" > "$valid_workflow"
   /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.3.1' "$valid_host"
   /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 4' "$valid_host"
   /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.3.1' "$valid_widget"
@@ -1236,7 +1244,7 @@ test_v032_release_metadata_contract() {
 
   cp "$host_plist" "$valid_host"
   cp "$widget_plist" "$valid_widget"
-  sed 's#docs/releases/v0\.3\.4\.md#\.github/release-notes/v0.3.2.md#' "$release_workflow" > "$valid_workflow"
+  sed 's#docs/releases/v0\.3\.5\.md#\.github/release-notes/v0.3.2.md#' "$release_workflow" > "$valid_workflow"
   cp "$release_notes" "$valid_notes"
   /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.3.2' "$valid_host"
   /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 5' "$valid_host"
@@ -1282,111 +1290,110 @@ test_v032_release_metadata_contract() {
 
 test_v032_release_metadata_contract
 
-v034_release_metadata_contract_is_valid() {
+v035_release_metadata_contract_is_valid() {
   local host_plist="$1"
   local widget_plist="$2"
   local release_workflow="$3"
   local release_notes="$4"
 
-  assert_plist_value "$host_plist" CFBundleShortVersionString 0.3.4
-  assert_plist_value "$host_plist" CFBundleVersion 7
-  assert_plist_value "$widget_plist" CFBundleShortVersionString 0.3.4
-  assert_plist_value "$widget_plist" CFBundleVersion 7
+  assert_plist_value "$host_plist" CFBundleShortVersionString 0.3.5
+  assert_plist_value "$host_plist" CFBundleVersion 8
+  assert_plist_value "$widget_plist" CFBundleShortVersionString 0.3.5
+  assert_plist_value "$widget_plist" CFBundleVersion 8
 
-  grep -Fx '          body_path: docs/releases/v0.3.4.md' "$release_workflow" >/dev/null ||
-    fail 'v0.3.4 release workflow body_path must select v0.3.4 notes'
-  [[ -f "$release_notes" ]] || fail 'v0.3.4 release notes file is missing'
+  grep -Fx '          body_path: docs/releases/v0.3.5.md' "$release_workflow" >/dev/null ||
+    fail 'v0.3.5 release workflow body_path must select v0.3.5 notes'
+  [[ -f "$release_notes" ]] || fail 'v0.3.5 release notes file is missing'
 
   ruby - "$release_notes" <<'RUBY'
 notes = File.read(ARGV.fetch(0))
 [
-  'consistent across the dashboard, provider popover, and Settings',
-  'actual last successful check time',
-  'failure-origin and attempt-time diagnostics',
-  'Fixed diagnostics decoding for the Rust OAuth source spelling `oAuth`',
-  'status and failure metadata, not numeric quota values',
-  'Local installed-app acceptance on September 22, 2026 showed Claude at 0% and Fable weekly at 38% remaining',
-  'does not guarantee future refresh availability',
-  'No additional quota request or automatic authentication renewal was added'
+  'Needlbar v0.3.5 adds an optional Claude Code status-line quota source.',
+  'off by default',
+  'five-hour and seven-day quota windows',
+  'not a timestamped provider fetch',
+  'Fable remains an independent direct-source value',
+  'not inferred from the status-line seven-day window',
+  'does not guarantee future provider refresh availability'
 ].each do |fact|
-  abort "v0.3.4 release notes are missing #{fact.inspect}" unless notes.include?(fact)
+  abort "v0.3.5 release notes are missing #{fact.inspect}" unless notes.include?(fact)
 end
 [
-  'diagnostics envelope contains numeric quota values',
-  'every future refresh succeeds',
+  'Fable is inferred from the status-line seven-day window',
+  'guarantees future provider refresh availability',
   'automatically renews Claude authentication',
-  'all quota failures are resolved'
+  'always reflects the current provider quota'
 ].each do |claim|
-  abort "v0.3.4 release notes contain forbidden claim #{claim.inspect}" if notes.include?(claim)
+  abort "v0.3.5 release notes contain forbidden claim #{claim.inspect}" if notes.include?(claim)
 end
 RUBY
 }
 
-test_v034_release_metadata_contract() {
+test_v035_release_metadata_contract() {
   local host_plist="$ROOT/Resources/Info.plist"
   local widget_plist="$ROOT/WidgetExtension/NeedlbarWidgetExtension-Info.plist"
   local release_workflow="$ROOT/.github/workflows/release.yml"
-  local release_notes="$ROOT/docs/releases/v0.3.4.md"
-  local valid_host="$temp_root/v034-valid-host.plist"
-  local valid_widget="$temp_root/v034-valid-widget.plist"
-  local valid_workflow="$temp_root/v034-valid-release.yml"
-  local valid_notes="$temp_root/v034-valid-notes.md"
-  local wrong_host_version="$temp_root/v034-wrong-host-version.plist"
-  local wrong_widget_build="$temp_root/v034-wrong-widget-build.plist"
-  local wrong_notes_path="$temp_root/v034-wrong-notes-path.yml"
-  local missing_note="$temp_root/v034-missing-note.md"
+  local release_notes="$ROOT/docs/releases/v0.3.5.md"
+  local valid_host="$temp_root/v035-valid-host.plist"
+  local valid_widget="$temp_root/v035-valid-widget.plist"
+  local valid_workflow="$temp_root/v035-valid-release.yml"
+  local valid_notes="$temp_root/v035-valid-notes.md"
+  local wrong_host_version="$temp_root/v035-wrong-host-version.plist"
+  local wrong_widget_build="$temp_root/v035-wrong-widget-build.plist"
+  local wrong_notes_path="$temp_root/v035-wrong-notes-path.yml"
+  local missing_note="$temp_root/v035-missing-note.md"
   local decoy_output decoy_status
 
   set +e
-  decoy_output="$(v034_release_metadata_contract_is_valid "$host_plist" "$widget_plist" "$release_workflow" "$release_notes" 2>&1)"
+  decoy_output="$(v035_release_metadata_contract_is_valid "$host_plist" "$widget_plist" "$release_workflow" "$release_notes" 2>&1)"
   decoy_status=$?
   set -e
   [[ "$decoy_status" -eq 0 ]] ||
-    fail "current v0.3.4 release metadata contract is invalid: $decoy_output"
+    fail "current v0.3.5 release metadata contract is invalid: $decoy_output"
 
   cp "$host_plist" "$valid_host"
   cp "$widget_plist" "$valid_widget"
   cp "$release_workflow" "$valid_workflow"
   cp "$release_notes" "$valid_notes"
-  v034_release_metadata_contract_is_valid "$valid_host" "$valid_widget" "$valid_workflow" "$valid_notes" ||
-    fail 'valid v0.3.4 release metadata fixture was rejected'
+  v035_release_metadata_contract_is_valid "$valid_host" "$valid_widget" "$valid_workflow" "$valid_notes" ||
+    fail 'valid v0.3.5 release metadata fixture was rejected'
 
   cp "$valid_host" "$wrong_host_version"
-  /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.3.3' "$wrong_host_version"
+  /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.3.4' "$wrong_host_version"
   set +e
-  decoy_output="$(v034_release_metadata_contract_is_valid "$wrong_host_version" "$valid_widget" "$valid_workflow" "$valid_notes" 2>&1)"
+  decoy_output="$(v035_release_metadata_contract_is_valid "$wrong_host_version" "$valid_widget" "$valid_workflow" "$valid_notes" 2>&1)"
   decoy_status=$?
   set -e
-  [[ "$decoy_status" -ne 0 ]] || fail 'wrong v0.3.4 host version decoy was accepted'
-  [[ "$decoy_output" == *'CFBundleShortVersionString must be 0.3.4'* ]] || fail 'wrong v0.3.4 host version decoy failed unexpectedly'
+  [[ "$decoy_status" -ne 0 ]] || fail 'wrong v0.3.5 host version decoy was accepted'
+  [[ "$decoy_output" == *'CFBundleShortVersionString must be 0.3.5'* ]] || fail 'wrong v0.3.5 host version decoy failed unexpectedly'
 
   cp "$valid_widget" "$wrong_widget_build"
-  /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 6' "$wrong_widget_build"
+  /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 7' "$wrong_widget_build"
   set +e
-  decoy_output="$(v034_release_metadata_contract_is_valid "$valid_host" "$wrong_widget_build" "$valid_workflow" "$valid_notes" 2>&1)"
+  decoy_output="$(v035_release_metadata_contract_is_valid "$valid_host" "$wrong_widget_build" "$valid_workflow" "$valid_notes" 2>&1)"
   decoy_status=$?
   set -e
-  [[ "$decoy_status" -ne 0 ]] || fail 'wrong v0.3.4 widget build decoy was accepted'
-  [[ "$decoy_output" == *'CFBundleVersion must be 7'* ]] || fail 'wrong v0.3.4 widget build decoy failed unexpectedly'
+  [[ "$decoy_status" -ne 0 ]] || fail 'wrong v0.3.5 widget build decoy was accepted'
+  [[ "$decoy_output" == *'CFBundleVersion must be 8'* ]] || fail 'wrong v0.3.5 widget build decoy failed unexpectedly'
 
-  sed 's#docs/releases/v0\.3\.4\.md#docs/releases/v0.3.3.md#' "$valid_workflow" > "$wrong_notes_path"
+  sed 's#docs/releases/v0\.3\.5\.md#docs/releases/v0.3.4.md#' "$valid_workflow" > "$wrong_notes_path"
   set +e
-  decoy_output="$(v034_release_metadata_contract_is_valid "$valid_host" "$valid_widget" "$wrong_notes_path" "$valid_notes" 2>&1)"
+  decoy_output="$(v035_release_metadata_contract_is_valid "$valid_host" "$valid_widget" "$wrong_notes_path" "$valid_notes" 2>&1)"
   decoy_status=$?
   set -e
-  [[ "$decoy_status" -ne 0 ]] || fail 'wrong v0.3.4 release-notes body_path decoy was accepted'
-  [[ "$decoy_output" == *'body_path must select v0.3.4 notes'* ]] || fail 'wrong v0.3.4 release-notes body_path decoy failed unexpectedly'
+  [[ "$decoy_status" -ne 0 ]] || fail 'wrong v0.3.5 release-notes body_path decoy was accepted'
+  [[ "$decoy_output" == *'body_path must select v0.3.5 notes'* ]] || fail 'wrong v0.3.5 release-notes body_path decoy failed unexpectedly'
 
-  sed '/does not guarantee future refresh availability/d' "$valid_notes" > "$missing_note"
+  sed '/does not guarantee future provider refresh availability/d' "$valid_notes" > "$missing_note"
   set +e
-  decoy_output="$(v034_release_metadata_contract_is_valid "$valid_host" "$valid_widget" "$valid_workflow" "$missing_note" 2>&1)"
+  decoy_output="$(v035_release_metadata_contract_is_valid "$valid_host" "$valid_widget" "$valid_workflow" "$missing_note" 2>&1)"
   decoy_status=$?
   set -e
-  [[ "$decoy_status" -ne 0 ]] || fail 'incomplete v0.3.4 release-notes decoy was accepted'
-  [[ "$decoy_output" == *'does not guarantee future refresh availability'* ]] || fail 'incomplete v0.3.4 release-notes decoy failed unexpectedly'
+  [[ "$decoy_status" -ne 0 ]] || fail 'incomplete v0.3.5 release-notes decoy was accepted'
+  [[ "$decoy_output" == *'does not guarantee future provider refresh availability'* ]] || fail 'incomplete v0.3.5 release-notes decoy failed unexpectedly'
 }
 
-test_v034_release_metadata_contract
+test_v035_release_metadata_contract
 
 v034_readme_contract_is_valid() {
   local readme_file="$1"
@@ -1400,13 +1407,21 @@ readme = File.read(ARGV.fetch(0))
   'To install the public v0.3.4 release:',
   'from the v0.3.4 GitHub Release.',
   'Claude quota failures retain a prior successful value as **Last known**',
-  'v0.3.4 keeps the same Claude quota status and safe failure reason consistent'
+  'v0.3.4 keeps the same Claude quota status and safe failure reason consistent',
+  'Claude Settings includes an explicit, off-by-default connection to Claude',
+  "five-hour and seven-day values as\n**Reported by Claude Code**",
+  'Fable remains direct-only, keeps independent freshness',
+  'background refresh or continuous freshness is not guaranteed'
 ].each do |fact|
   abort "v0.3.4 README is missing #{fact.inspect}" unless readme.include?(fact)
 end
 [
   'Needlbar v0.3.3 is publicly available for macOS 14 or later on Apple Silicon.',
-  'v0.3.4 is prepared for public release'
+  'Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.',
+  'v0.3.4 is prepared for public release',
+  '8% five-hour usage',
+  '3:44 PM',
+  '2% Fable usage'
 ].each do |claim|
   abort "v0.3.4 README contains stale claim #{claim.inspect}" if readme.include?(claim)
 end
@@ -2015,7 +2030,7 @@ release_index = publish_steps.index(release_actions.first)
 assert_contract(download_index < release_index, 'publish artifact download must precede release')
 release_with = mapping(release_actions.first['with'], 'release action settings')
 exact_artifact_paths(release_with['files'], 'release action files')
-assert_contract(release_with['body_path'] == 'docs/releases/v0.3.4.md', 'release action body_path is wrong')
+assert_contract(release_with['body_path'] == 'docs/releases/v0.3.5.md', 'release action body_path is wrong')
 assert_contract(release_with['generate_release_notes'] == false, 'release action generate_release_notes must be false')
 
 all_runs = all_steps.map { |_, _, step| step['run'].to_s }
@@ -2059,7 +2074,7 @@ upload_paths = "          path: |\n            dist/Needlbar-macos-arm64.zip\n  
 unless document.sub!(/          path: (?:dist\/Needlbar-macos-arm64\.zip\n|\|\n            dist\/Needlbar-macos-arm64\.zip\n            dist\/Needlbar-macos-arm64\.zip\.sha256\n)/, upload_paths)
   abort 'fixture setup: could not normalize artifact upload path'
 end
-release_fields = "          files: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n          body_path: docs/releases/v0.3.4.md\n          generate_release_notes: false\n"
+release_fields = "          files: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n          body_path: docs/releases/v0.3.5.md\n          generate_release_notes: false\n"
 unless document.sub!(/          files: dist\/Needlbar-macos-arm64\.zip\n|          files: \|\n            dist\/Needlbar-macos-arm64\.zip\n            dist\/Needlbar-macos-arm64\.zip\.sha256\n          body_path: [^\n]+\n          generate_release_notes: (?:true|false)\n/, release_fields)
   abort 'fixture setup: could not normalize release action settings'
 end
@@ -2140,7 +2155,7 @@ RUBY
   ruby - "$valid_workflow" "$decoy_missing_body_path" <<'RUBY'
 source, destination = ARGV
 document = File.read(source)
-  abort 'fixture setup: valid body_path was not found' unless document.sub!("          body_path: docs/releases/v0.3.4.md\n", '')
+  abort 'fixture setup: valid body_path was not found' unless document.sub!("          body_path: docs/releases/v0.3.5.md\n", '')
 File.write(destination, document)
 RUBY
   set +e
@@ -2199,7 +2214,7 @@ source, destination = ARGV
 document = File.read(source)
 checkout = "      - name: Checkout release notes\n        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          persist-credentials: false\n\n"
 download = "      - name: Download validated release artifact\n        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093\n        with:\n          name: Needlbar-macos-arm64-notarized\n          path: dist\n\n"
-release = "      - name: Publish notarized GitHub Release\n        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65\n        with:\n          files: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n          body_path: docs/releases/v0.3.4.md\n          generate_release_notes: false\n"
+release = "      - name: Publish notarized GitHub Release\n        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65\n        with:\n          files: |\n            dist/Needlbar-macos-arm64.zip\n            dist/Needlbar-macos-arm64.zip.sha256\n          body_path: docs/releases/v0.3.5.md\n          generate_release_notes: false\n"
 abort 'fixture setup: publish step order was not found' unless document.sub!(checkout + download + release, checkout + release + download)
 File.write(destination, document)
 RUBY
@@ -2470,8 +2485,14 @@ grep -F "$release_group" "$case_root/repo/dist/Needlbar.app/Contents/PlugIns/Nee
 grep -F "$release_group" "$case_root/state/host-entitlements" >/dev/null || fail 'host signing entitlement group mismatch'
 grep -F "$release_group" "$case_root/state/widget-entitlements" >/dev/null || fail 'extension signing entitlement group mismatch'
 extension_sign_line="$(grep -n 'NeedlbarWidgetExtension.appex' "$case_root/commands.log" | head -n 1 | cut -d: -f1)"
+helper_sign_line="$(grep -n 'codesign:sign:.*NeedlbarClaudeStatusLine$' "$case_root/commands.log" | head -n 1 | cut -d: -f1)"
 host_sign_line="$(grep -n 'codesign:sign:.*Needlbar\.app$' "$case_root/commands.log" | head -n 1 | cut -d: -f1)"
-[[ "$extension_sign_line" =~ ^[0-9]+$ && "$host_sign_line" =~ ^[0-9]+$ ]] || fail 'Developer ID sign records missing'
+[[ "$extension_sign_line" =~ ^[0-9]+$ && "$host_sign_line" =~ ^[0-9]+$ && "$helper_sign_line" =~ ^[0-9]+$ ]] || fail 'Developer ID sign records missing'
 (( extension_sign_line < host_sign_line )) || fail 'Developer ID host signing preceded extension signing'
+(( helper_sign_line < host_sign_line )) || fail 'Developer ID host signing preceded status-line helper signing'
+grep -F "codesign:verify:$case_root/repo/dist/Needlbar.app/Contents/MacOS/NeedlbarClaudeStatusLine" "$case_root/commands.log" >/dev/null ||
+  fail 'packaged status-line helper was not independently verified'
+grep -E 'codesign:verify:.*/extracted/Needlbar\.app/Contents/MacOS/NeedlbarClaudeStatusLine$' "$case_root/commands.log" >/dev/null ||
+  fail 'notarized ZIP status-line helper was not independently verified'
 
 echo 'notarize-app shell contracts passed'

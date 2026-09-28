@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 @testable import NeedlbarApp
 @testable import NeedlbarCore
+import NeedlbarClaudeStatusLineSupport
 
 @Suite("SettingsStudio", .serialized)
 @MainActor
@@ -76,7 +77,8 @@ struct SettingsStudioTests {
         ), configuration: .init())
 
         #expect(controller.claudeQuotaState.quotaIsLastKnown)
-        #expect(controller.claudeQuotaState.headlineQuotaRemaining == "32%")
+        #expect(controller.claudeQuotaState.headlineQuotaRemaining == nil)
+        #expect(controller.claudeQuotaState.lastKnownQuotaRemaining == "32%")
         #expect(controller.claudeQuotaState.quotaFailureReasonText == "Could not update quota")
         #expect(controller.claudeQuotaState.quotaLastCheckedText != nil)
         #expect(controller.claudeQuotaState.quotaLastCheckedText != MetricFormatter.reset(failedAttempt))
@@ -92,7 +94,83 @@ struct SettingsStudioTests {
         #expect(!controller.claudeQuotaState.quotaIsLastKnown)
         #expect(!controller.claudeQuotaState.quotaUnavailable)
         #expect(controller.claudeQuotaState.quotaFailureReasonText == nil)
-        #expect(controller.claudeQuotaState.quotaLastCheckedText == nil)
+        #expect(controller.claudeQuotaState.quotaLastCheckedText
+            == DateFormatter.localizedString(from: lastSuccess, dateStyle: .medium, timeStyle: .short))
+    }
+
+    @Test func claudeStatusLineDisconnectInvokesImmediateClearCallback() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("Needlbar-settings-disconnect-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = root.appendingPathComponent("claude")
+        try FileManager.default.createDirectory(at: config, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: config.path)
+        let settings = config.appendingPathComponent("settings.json")
+        try Data(#"{"statusLine":{"type":"command","command":"printf original"}}"#.utf8).write(to: settings)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settings.path)
+        let helper = root.appendingPathComponent("NeedlbarClaudeStatusLine")
+        try Data("synthetic-helper".utf8).write(to: helper)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
+        let privateStore = try StatusLinePrivateStore(rootURL: root.appendingPathComponent("private"))
+        let manager = ClaudeStatusLineConnectionManager(configRootURL: config, store: privateStore,
+                                                        helperURL: helper, environment: [:])
+        let name = "SettingsStudio.disconnect.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let preferences = QuotaNotificationPreferences(defaults: defaults)
+        var clearCalls = 0
+        let view = SettingsView(configuration: ModuleConfiguration(defaults: defaults), actions: SettingsActions(),
+            notificationPreferences: preferences,
+            notificationService: QuotaNotificationService(store: ProviderSnapshotStore(), preferences: preferences),
+            claudeStatusLineManager: manager,
+            onClaudeStatusLineDisconnected: { clearCalls += 1 })
+
+        view.setClaudeStatusLineEnabled(true)
+        #expect(manager.recover() == .waitingForData)
+        #expect(clearCalls == 0)
+        view.setClaudeStatusLineEnabled(false)
+        #expect(clearCalls == 1)
+        #expect(manager.recover() == .disconnected)
+    }
+
+    @Test func failedRestorationStillClearsFencedStatusLineWithoutOverwritingUserChange() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("Needlbar-settings-partial-disconnect-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = root.appendingPathComponent("claude")
+        try FileManager.default.createDirectory(at: config, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: config.path)
+        let settings = config.appendingPathComponent("settings.json")
+        try Data(#"{"statusLine":{"type":"command","command":"printf original"}}"#.utf8).write(to: settings)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settings.path)
+        let helper = root.appendingPathComponent("NeedlbarClaudeStatusLine")
+        try Data("synthetic-helper".utf8).write(to: helper)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
+        let privateStore = try StatusLinePrivateStore(rootURL: root.appendingPathComponent("private"))
+        let userChange = Data(#"{"statusLine":{"type":"command","command":"printf user-change"}}"#.utf8)
+        var replaces = 0
+        let manager = ClaudeStatusLineConnectionManager(
+            configRootURL: config, store: privateStore, helperURL: helper, environment: [:],
+            beforeAtomicReplace: {
+                replaces += 1
+                if replaces == 2 { try? userChange.write(to: settings) }
+            }
+        )
+        let name = "SettingsStudio.partial-disconnect.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let preferences = QuotaNotificationPreferences(defaults: defaults)
+        var clearCalls = 0
+        let view = SettingsView(configuration: ModuleConfiguration(defaults: defaults), actions: SettingsActions(),
+            notificationPreferences: preferences,
+            notificationService: QuotaNotificationService(store: ProviderSnapshotStore(), preferences: preferences),
+            claudeStatusLineManager: manager,
+            onClaudeStatusLineDisconnected: { clearCalls += 1 })
+
+        view.setClaudeStatusLineEnabled(true)
+        #expect(manager.recover() == .waitingForData)
+        view.setClaudeStatusLineEnabled(false)
+        #expect(try privateStore.activeGeneration() == nil)
+        #expect(try Data(contentsOf: settings) == userChange)
+        #expect(clearCalls == 1)
     }
 
     @Test func apiBillingSettingsToggleDoesNotMakeProviderVisible() throws {

@@ -6,8 +6,9 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_PATH="$ROOT/dist/Needlbar.app"
 INFO_PLIST="$APP_PATH/Contents/Info.plist"
 EXECUTABLE="$APP_PATH/Contents/MacOS/Needlbar"
+STATUS_LINE_HELPER="$APP_PATH/Contents/MacOS/NeedlbarClaudeStatusLine"
 BRAND_VERIFIER="$ROOT/scripts/verify-provider-brand-assets.sh"
-BRAND_DIRECTORY="$APP_PATH/Contents/Resources/Needlbar_NeedlbarApp.bundle/ProviderBrands"
+BRAND_RESOURCE_BUNDLE="$APP_PATH/Contents/Resources/Needlbar_NeedlbarApp.bundle"
 PLUGINS_PATH="$APP_PATH/Contents/PlugIns"
 WIDGET_APP="$PLUGINS_PATH/NeedlbarWidgetExtension.appex"
 WIDGET_INFO_PLIST="$WIDGET_APP/Contents/Info.plist"
@@ -166,12 +167,19 @@ main() {
   [[ -d "$APP_PATH" ]] || fail "missing bundle: $APP_PATH (run make package first)"
   [[ -f "$INFO_PLIST" ]] || fail "missing bundle Info.plist: $INFO_PLIST"
   [[ -x "$EXECUTABLE" ]] || fail "missing executable: $EXECUTABLE"
+  [[ -x "$STATUS_LINE_HELPER" ]] || fail "missing status-line helper: $STATUS_LINE_HELPER"
   [[ -x "$BRAND_VERIFIER" ]] || fail "missing provider brand verifier: $BRAND_VERIFIER"
+  BRAND_DIRECTORY="$BRAND_RESOURCE_BUNDLE/ProviderBrands"
+  if [[ ! -d "$BRAND_DIRECTORY" ]]; then
+    BRAND_DIRECTORY="$BRAND_RESOURCE_BUNDLE/Contents/Resources/ProviderBrands"
+  fi
   "$BRAND_VERIFIER" "$BRAND_DIRECTORY"
 
   plutil -lint "$INFO_PLIST"
   codesign --verify --deep --strict "$APP_PATH"
   file "$EXECUTABLE" | grep -q 'arm64'
+  codesign --verify --strict "$STATUS_LINE_HELPER"
+  file "$STATUS_LINE_HELPER" | grep -q 'arm64' || fail 'status-line helper is not arm64'
   [[ -d "$PLUGINS_PATH" ]] || fail "missing PlugIns directory: $PLUGINS_PATH"
   appex_count="$(find "$PLUGINS_PATH" -maxdepth 1 -type d -name '*.appex' -print | wc -l | tr -d '[:space:]')"
   [[ "$appex_count" == 1 ]] || fail "expected exactly one widget extension, found $appex_count"

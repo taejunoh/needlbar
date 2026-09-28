@@ -8,6 +8,7 @@ let package = Package(
         .executable(name: "Needlbar", targets: ["Needlbar"]),
         .executable(name: "NeedlbarSettingsStudioReview", targets: ["NeedlbarSettingsStudioReview"]),
         .executable(name: "NeedlbarClaudeAPIBalanceFeasibility", targets: ["NeedlbarClaudeAPIBalanceFeasibility"]),
+        .executable(name: "NeedlbarClaudeStatusLine", targets: ["NeedlbarClaudeStatusLine"]),
         .library(name: "NeedlbarCore", targets: ["NeedlbarCore"]),
         .library(name: "NeedlbarApp", targets: ["NeedlbarApp"]),
     ],
@@ -25,19 +26,21 @@ let package = Package(
         ),
         .target(
             name: "NeedlbarCore",
-            dependencies: ["CNeedlbar", "NeedlbarWidgetSupport"],
+            dependencies: ["CNeedlbar", "NeedlbarWidgetSupport", "NeedlbarClaudeStatusLineSupport"],
             linkerSettings: [.linkedFramework("IOKit", .when(platforms: [.macOS]))]
         ),
         .target(
             name: "NeedlbarApp",
-            dependencies: ["NeedlbarCore", "CNeedlbar"],
+            dependencies: ["NeedlbarCore", "CNeedlbar", "NeedlbarClaudeStatusLineSupport"],
             path: "Sources/Needlbar",
             resources: [.copy("Resources/ProviderBrands")]
         ),
         .target(name: "NeedlbarWidgetSupport"),
         .target(name: "NeedlbarSettingsStudioReviewSupport", dependencies: ["NeedlbarApp", "NeedlbarCore"]),
         .target(name: "NeedlbarClaudeAPIBalanceFeasibilitySupport"),
+        .target(name: "NeedlbarClaudeStatusLineSupport"),
         .executableTarget(name: "Needlbar", dependencies: ["NeedlbarApp"], path: "Sources/NeedlbarMain"),
+        .executableTarget(name: "NeedlbarClaudeStatusLine", dependencies: ["NeedlbarClaudeStatusLineSupport"]),
         .executableTarget(name: "NeedlbarSettingsStudioReview", dependencies: ["NeedlbarApp", "NeedlbarCore", "NeedlbarSettingsStudioReviewSupport"], path: "Sources/NeedlbarSettingsStudioReview"),
         .executableTarget(
             name: "NeedlbarClaudeAPIBalanceFeasibility",
@@ -45,9 +48,10 @@ let package = Package(
             path: "Sources/NeedlbarClaudeAPIBalanceFeasibility",
             linkerSettings: [.linkedFramework("WebKit", .when(platforms: [.macOS]))]
         ),
-        .testTarget(name: "NeedlbarCoreTests", dependencies: ["NeedlbarCore", "NeedlbarWidgetSupport"]),
-        .testTarget(name: "NeedlbarTests", dependencies: ["NeedlbarApp", "NeedlbarSettingsStudioReviewSupport"]),
+        .testTarget(name: "NeedlbarCoreTests", dependencies: ["NeedlbarCore", "NeedlbarWidgetSupport", "NeedlbarClaudeStatusLineSupport"]),
+        .testTarget(name: "NeedlbarTests", dependencies: ["NeedlbarApp", "NeedlbarSettingsStudioReviewSupport", "NeedlbarClaudeStatusLineSupport"]),
         .testTarget(name: "NeedlbarWidgetSupportTests", dependencies: ["NeedlbarWidgetSupport"]),
         .testTarget(name: "NeedlbarClaudeAPIBalanceFeasibilitySupportTests", dependencies: ["NeedlbarClaudeAPIBalanceFeasibilitySupport"]),
+        .testTarget(name: "NeedlbarClaudeStatusLineSupportTests", dependencies: ["NeedlbarClaudeStatusLineSupport"]),
     ]
 )

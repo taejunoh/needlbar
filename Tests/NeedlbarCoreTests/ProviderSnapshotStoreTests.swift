@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import NeedlbarClaudeStatusLineSupport
 @testable import NeedlbarCore
 
 @Suite("ProviderSnapshotStoreTests")
@@ -189,6 +190,51 @@ struct ProviderSnapshotStoreTests {
         #expect(snapshot.quota == nil)
         #expect(snapshot.quotaLastSuccessfulAt == nil)
         #expect(snapshot.claudeQuotaFailureReason == .quotaAccessUnavailable)
+    }
+
+    @Test func statusLineUpdateDoesNotRefreshDirectAlertsWidgetOrExport() async {
+        let directAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let statusAt = directAt.addingTimeInterval(1_800)
+        let store = ProviderSnapshotStore(now: { statusAt })
+        await store.markQuotaFailure(for: .claude, status: .requiresAuthentication,
+                                     claudeFailureReason: .quotaAccessUnavailable, at: directAt)
+        let beforeAlert = await store.currentQuotaAlertSample(for: .claude)
+        let incoming = StatusLineQuotaRecord(
+            schemaVersion: StatusLineQuotaRecord.currentSchemaVersion,
+            generation: UUID(),
+            fiveHour: .init(usedPercent: 25, resetsAt: nil, receivedAt: statusAt),
+            sevenDay: nil
+        )
+        await store.applyClaudeStatusLineQuota(incoming)
+        let snapshot = await store.snapshot(for: .claude)
+        let afterAlert = await store.currentQuotaAlertSample(for: .claude)
+        let widget = await store.captureForWidget(exportedAt: statusAt).providers.first { $0.provider == .claude }
+        let exported = await store.captureForExport(exportedAt: statusAt).providers.first { $0.provider == .claude }
+
+        #expect(snapshot.claudeStatusLineQuota == incoming)
+        #expect(snapshot.claudeQuotaFailureReason == .quotaAccessUnavailable)
+        #expect(snapshot.quotaLastSuccessfulAt == nil)
+        #expect(beforeAlert == afterAlert)
+        #expect(widget?.quota == nil)
+        #expect(widget?.quotaStatus == .requiresAuthentication)
+        #expect(exported?.quota == nil)
+        #expect(exported?.quotaStatus == .requiresAuthentication)
+    }
+
+    @Test func missingValidatedRecordClearsRetainedValueForTheSameActiveGeneration() async {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let generation = UUID()
+        let store = ProviderSnapshotStore(now: { now })
+        let retained = StatusLineQuotaRecord(
+            schemaVersion: StatusLineQuotaRecord.currentSchemaVersion, generation: generation,
+            fiveHour: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(3_600), receivedAt: now),
+            sevenDay: nil
+        )
+        await store.applyClaudeStatusLineQuota(retained)
+        await store.applyClaudeStatusLineQuota(nil, expectedGeneration: generation,
+                                               activeGeneration: { generation })
+
+        #expect(await store.snapshot(for: .claude).claudeStatusLineQuota == nil)
     }
 }
 

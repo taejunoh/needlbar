@@ -154,6 +154,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 quotaRepository: RustQuotaRepository(bridge: bridge),
                 store: snapshotStore,
                 usageFileWatcher: usageFileWatcher,
+                statusLineRepository: ClaudeStatusLineCacheRepository(),
                 claudeQuotaOperationCompleted: {
                     claudeFailureDiagnosticsReporter.reportLatestClaudeQuotaFailure()
                 }
@@ -342,6 +343,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 @MainActor
 extension AppDelegate: ProductionLifecycleServing {
     func startProductionMenu() async {
+        // Replacing the private binary is safe only when the existing Claude
+        // settings entry still belongs to the active connection.
+        _ = try? ClaudeStatusLineConnectionManager().refreshEnabledHelper()
         await menuBarController.startObserving()
     }
 

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import NeedlbarClaudeStatusLineSupport
 @testable import NeedlbarCore
 
 @Test func mostConstrainedSelectsTheLowestRemainingEligibleWindow() throws {
@@ -50,6 +51,84 @@ import Testing
     let selected = HeadlineQuotaSelector.mostConstrained(snapshots)
 
     #expect(selected?.remainingPercent == 32)
+}
+
+@Test func statusLineHeadlineUsesRecentSourceInsteadOfFailedDirectValue() throws {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let record = StatusLineQuotaRecord(
+        schemaVersion: StatusLineQuotaRecord.currentSchemaVersion,
+        generation: UUID(),
+        fiveHour: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(3_600), receivedAt: now),
+        sevenDay: nil
+    )
+    let claude = ProviderSnapshot(
+        provider: .claude, usage: nil,
+        quota: QuotaSnapshot(windows: [try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 100, resetsAt: nil)]),
+        usageStatus: .unavailable,
+        quotaStatus: .requiresAuthentication,
+        updatedAt: now,
+        quotaLastSuccessfulAt: now.addingTimeInterval(-3_600),
+        claudeStatusLineQuota: record
+    )
+    let codex = ProviderSnapshot(
+        provider: .codex, usage: nil,
+        quota: QuotaSnapshot(windows: [try QuotaWindow(id: "codex.primary", title: "Primary", usedPercent: 20, resetsAt: nil)]),
+        usageStatus: .unavailable, quotaStatus: .fresh, updatedAt: now
+    )
+    #expect(HeadlineQuotaSelector.mostConstrained([claude, codex], now: now)?.remainingPercent == 75)
+}
+
+@Test func failedDirectQuotaStillProvidesLastKnownHeadlineWhenThereIsNoStatusLine() throws {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let claude = ProviderSnapshot(
+        provider: .claude, usage: nil,
+        quota: QuotaSnapshot(windows: [try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil)]),
+        usageStatus: .unavailable, quotaStatus: .requiresAuthentication,
+        updatedAt: now, quotaLastSuccessfulAt: now.addingTimeInterval(-3_600)
+    )
+
+    #expect(HeadlineQuotaSelector.mostConstrained([claude], now: now)?.remainingPercent == 32)
+}
+
+@Test func newerButLastKnownStatusLineHeadlineWinsOverOlderFailedDirect() throws {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let receivedAt = now.addingTimeInterval(-20 * 60)
+    let claude = ProviderSnapshot(
+        provider: .claude, usage: nil,
+        quota: QuotaSnapshot(windows: [try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 100, resetsAt: nil)]),
+        usageStatus: .unavailable, quotaStatus: .requiresAuthentication,
+        updatedAt: now, quotaLastSuccessfulAt: now.addingTimeInterval(-60 * 60),
+        claudeStatusLineQuota: StatusLineQuotaRecord(
+            schemaVersion: StatusLineQuotaRecord.currentSchemaVersion, generation: UUID(),
+            fiveHour: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(60 * 60), receivedAt: receivedAt),
+            sevenDay: nil
+        )
+    )
+
+    let selected = ClaudeQuotaPresentationSelector.select(snapshot: claude, now: now).fiveHour
+    #expect(selected?.source == .claudeCodeStatusLine)
+    #expect(selected?.isLastKnown == true)
+    #expect(HeadlineQuotaSelector.mostConstrained([claude], now: now)?.remainingPercent == 75)
+}
+
+@Test func lastKnownStatusLineOnlyHeadlineRemainsVisible() throws {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let claude = ProviderSnapshot(
+        provider: .claude, usage: nil, quota: nil,
+        usageStatus: .unavailable, quotaStatus: .requiresAuthentication,
+        updatedAt: now,
+        claudeStatusLineQuota: StatusLineQuotaRecord(
+            schemaVersion: StatusLineQuotaRecord.currentSchemaVersion, generation: UUID(),
+            fiveHour: nil,
+            sevenDay: .init(usedPercent: 40, resetsAt: now.addingTimeInterval(60 * 60),
+                            receivedAt: now.addingTimeInterval(-20 * 60))
+        )
+    )
+
+    let selected = ClaudeQuotaPresentationSelector.select(snapshot: claude, now: now).sevenDay
+    #expect(selected?.source == .claudeCodeStatusLine)
+    #expect(selected?.isLastKnown == true)
+    #expect(HeadlineQuotaSelector.mostConstrained([claude], now: now)?.remainingPercent == 60)
 }
 
 @Test func fableDoesNotChangeHeadlineButOtherUnknownWindowsRemainEligible() throws {

@@ -72,6 +72,21 @@ between the popover and Settings. It also corrects decoding of the quota
 source in diagnostics; it does not add a new login flow or guarantee that
 future provider refreshes will always succeed.
 
+### Claude Code status-line quota source (v0.3.5)
+
+Claude Settings includes an explicit, off-by-default connection to Claude
+Code's local status line. When connected, Needlbar preserves the configured
+status-line command and can report its five-hour and seven-day values as
+**Reported by Claude Code**, with the local receipt time. It receives updates
+only when Claude Code emits status-line data; it adds no polling request,
+login flow, or credential handling. Settings may remain at **Waiting for
+Claude Code data** until an event arrives. The receipt time is not a provider
+fetch time, and background refresh or continuous freshness is not guaranteed.
+
+Fable remains direct-only, keeps independent freshness, and is never inferred
+from the status-line seven-day value. Disconnecting restores the original
+status-line settings entry when Needlbar still owns it.
+
 ### Claude API billing link and feasibility harness
 
 The optional Claude API billing action opens the official Anthropic Console

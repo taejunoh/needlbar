@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import NeedlbarClaudeStatusLineSupport
 @testable import NeedlbarCore
 
 // These tests deliberately hold a synchronous repository call in flight to
@@ -7,6 +8,170 @@ import Testing
 // bounded blocking test doubles cannot exhaust Swift's cooperative executor.
 @Suite(.serialized)
 struct RefreshCoordinatorTests {
+
+@Test func localStatusLineReadSurvivesDirectFailureAndClearsAfterDisconnectOnNextCadence() async throws {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let generation = UUID()
+    let cache = StatusLineCacheSpy(generation: generation, record: .init(
+        schemaVersion: StatusLineQuotaRecord.currentSchemaVersion,
+        generation: generation,
+        fiveHour: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(3_600), receivedAt: now),
+        sevenDay: nil
+    ))
+    let store = ProviderSnapshotStore(now: { now })
+    let quota = QuotaRefreshSpy(result: .init(snapshots: [:], errors: [
+        .claude: .init(provider: "claude", code: "authenticationExpired", message: "fixture", action: nil)
+    ]))
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota,
+        store: store,
+        clock: ManualClock(now: now),
+        statusLineRepository: cache
+    )
+    await coordinator.start()
+    await eventuallyAsync { await store.snapshot(for: .claude).claudeStatusLineQuota != nil }
+    await eventuallyAsync { await store.snapshot(for: .claude).claudeQuotaFailureReason == .quotaAccessUnavailable }
+    #expect(cache.readCount == 1)
+    #expect(await store.snapshot(for: .claude).quota == nil)
+
+    cache.disconnect()
+    await coordinator.manualRefresh()
+    await eventuallyAsync { await store.snapshot(for: .claude).claudeStatusLineQuota == nil }
+    #expect(await store.snapshot(for: .claude).claudeQuotaFailureReason == .quotaAccessUnavailable)
+    await coordinator.stop()
+}
+
+@Test func popoverReadsLocalStatusLineEvenWhenDirectQuotaIsTooRecentToRefresh() async {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let generation = UUID()
+    let cache = StatusLineCacheSpy(generation: generation, record: .init(
+        schemaVersion: StatusLineQuotaRecord.currentSchemaVersion,
+        generation: generation,
+        fiveHour: .init(usedPercent: 40, resetsAt: now.addingTimeInterval(3_600), receivedAt: now),
+        sevenDay: nil
+    ))
+    let store = ProviderSnapshotStore(now: { now })
+    let quota = QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:]))
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota,
+        store: store,
+        clock: ManualClock(now: now),
+        lastQuotaSuccessfulAt: now,
+        statusLineRepository: cache
+    )
+    await coordinator.popoverOpened()
+    await eventuallyAsync { await store.snapshot(for: .claude).claudeStatusLineQuota != nil }
+    #expect(await store.snapshot(for: .claude).claudeStatusLineQuota?.fiveHour?.usedPercent == 40)
+    #expect(cache.readCount == 1)
+    #expect(quota.callCount == 0)
+    await coordinator.stop()
+}
+
+@Test func disconnectWhileOldReadWaitsToApplyCannotResurrectClaudeQuota() async {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let generation = UUID()
+    let old = StatusLineQuotaRecord(
+        schemaVersion: StatusLineQuotaRecord.currentSchemaVersion, generation: generation,
+        fiveHour: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(3_600), receivedAt: now), sevenDay: nil
+    )
+    let cache = StatusLineCacheSpy(generation: generation, record: old)
+    let gate = QuotaApplicationGate()
+    let store = ProviderSnapshotStore(now: { now })
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        store: store, clock: ManualClock(now: now),
+        statusLineApplicationWillApply: { await gate.pause() }, statusLineRepository: cache
+    )
+
+    await coordinator.popoverOpened()
+    await gate.waitUntilEntered()
+    cache.disconnect()
+    await store.reconcileClaudeStatusLineQuota(activeGeneration: { cache.activeGeneration() })
+    await gate.resume()
+    await eventuallyAsync { cache.activeGenerationChecks >= 3 }
+
+    #expect(await store.snapshot(for: .claude).claudeStatusLineQuota == nil)
+    await coordinator.stop()
+}
+
+@Test func oldReadCannotReplaceNewlyConnectedGeneration() async {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let oldGeneration = UUID()
+    let old = StatusLineQuotaRecord(
+        schemaVersion: StatusLineQuotaRecord.currentSchemaVersion, generation: oldGeneration,
+        fiveHour: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(3_600), receivedAt: now), sevenDay: nil
+    )
+    let cache = StatusLineCacheSpy(generation: oldGeneration, record: old)
+    let gate = QuotaApplicationGate()
+    let store = ProviderSnapshotStore(now: { now })
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        store: store, clock: ManualClock(now: now),
+        statusLineApplicationWillApply: { await gate.pause() }, statusLineRepository: cache
+    )
+
+    await coordinator.popoverOpened()
+    await gate.waitUntilEntered()
+    cache.disconnect()
+    await store.reconcileClaudeStatusLineQuota(activeGeneration: { cache.activeGeneration() })
+    let newGeneration = UUID()
+    let newer = StatusLineQuotaRecord(
+        schemaVersion: StatusLineQuotaRecord.currentSchemaVersion, generation: newGeneration,
+        fiveHour: .init(usedPercent: 60, resetsAt: now.addingTimeInterval(3_600), receivedAt: now), sevenDay: nil
+    )
+    cache.connect(generation: newGeneration, record: newer)
+    await store.applyClaudeStatusLineQuota(newer, expectedGeneration: newGeneration,
+                                          activeGeneration: { cache.activeGeneration() })
+    // A delayed disconnect callback must preserve the newly connected generation.
+    await store.reconcileClaudeStatusLineQuota(activeGeneration: { cache.activeGeneration() })
+    await gate.resume()
+    await eventuallyAsync { cache.activeGenerationChecks >= 5 }
+
+    let retained = await store.snapshot(for: .claude).claudeStatusLineQuota
+    #expect(retained?.generation == newGeneration)
+    #expect(retained?.fiveHour?.usedPercent == 60)
+    await coordinator.stop()
+}
+
+private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked Sendable {
+    private let lock = NSLock()
+    private var generation: UUID?
+    private var record: StatusLineQuotaRecord
+    private var reads = 0
+    private var activeChecks = 0
+
+    init(generation: UUID, record: StatusLineQuotaRecord) {
+        self.generation = generation
+        self.record = record
+    }
+
+    var readCount: Int { lock.withLock { reads } }
+    var activeGenerationChecks: Int { lock.withLock { activeChecks } }
+
+    func activeGeneration() -> UUID? { lock.withLock {
+        activeChecks += 1
+        return generation
+    } }
+
+    func read(expectedGeneration: UUID) -> StatusLineQuotaRecord? {
+        lock.withLock {
+            reads += 1
+            return generation == expectedGeneration ? record : nil
+        }
+    }
+
+    func disconnect() { lock.withLock { generation = nil } }
+    func connect(generation: UUID, record: StatusLineQuotaRecord) {
+        lock.withLock {
+            self.generation = generation
+            self.record = record
+        }
+    }
+}
 
 @Test func popoverDoesNotRefreshQuotaBeforeSixtySeconds() async throws {
     let now = try #require(BridgeDecoder.date("2026-08-14T10:00:30Z"))

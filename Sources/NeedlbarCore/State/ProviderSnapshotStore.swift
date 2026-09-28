@@ -1,4 +1,5 @@
 import Foundation
+import NeedlbarClaudeStatusLineSupport
 
 public struct QuotaAlertSample: Sendable, Equatable {
     public let provider: ProviderID
@@ -34,6 +35,7 @@ public actor ProviderSnapshotStore {
         var usage = StreamState<UsageSnapshot>()
         var quota = StreamState<QuotaSnapshot>()
         var claudeQuotaFailureReason: ClaudeQuotaFailureReason?
+        var claudeStatusLineQuota: StatusLineQuotaRecord?
         var quotaRevision: UInt64 = 0
         var everUpdated = false
         var updatedAt: Date
@@ -109,6 +111,57 @@ public actor ProviderSnapshotStore {
         publishUpdates()
     }
 
+    /// Status-line observations do not change direct quota freshness, errors, alerts, widgets, or exports.
+    public func applyClaudeStatusLineQuota(_ incoming: StatusLineQuotaRecord) {
+        guard incoming.schemaVersion == StatusLineQuotaRecord.currentSchemaVersion else { return }
+        var state = state(for: .claude, timestamp: now())
+        let merged = state.claudeStatusLineQuota.map {
+            StatusLineQuotaMerger.merge(existing: $0, incoming: incoming)
+        } ?? incoming
+        guard state.claudeStatusLineQuota != merged else { return }
+        state.claudeStatusLineQuota = merged
+        states[.claude] = state
+        publishUpdates()
+    }
+
+    /// Revalidate the active private-store generation inside this actor before changing display state.
+    /// The closure and state mutation have no suspension point between them.
+    public func applyClaudeStatusLineQuota(
+        _ incoming: StatusLineQuotaRecord?,
+        expectedGeneration: UUID?,
+        activeGeneration: @Sendable () -> UUID?
+    ) {
+        let active = activeGeneration()
+        guard active == expectedGeneration else {
+            clearClaudeStatusLineQuotaUnlessActive(active)
+            return
+        }
+        if let incoming, incoming.generation == expectedGeneration {
+            applyClaudeStatusLineQuota(incoming)
+        } else {
+            clearClaudeStatusLineQuota()
+        }
+    }
+
+    /// A delayed disconnect callback must not erase data from a newer reconnection.
+    public func reconcileClaudeStatusLineQuota(activeGeneration: @Sendable () -> UUID?) {
+        clearClaudeStatusLineQuotaUnlessActive(activeGeneration())
+    }
+
+    private func clearClaudeStatusLineQuotaUnlessActive(_ active: UUID?) {
+        if let retained = states[.claude]?.claudeStatusLineQuota,
+           retained.generation != active {
+            clearClaudeStatusLineQuota()
+        }
+    }
+
+    public func clearClaudeStatusLineQuota() {
+        guard var state = states[.claude], state.claudeStatusLineQuota != nil else { return }
+        state.claudeStatusLineQuota = nil
+        states[.claude] = state
+        publishUpdates()
+    }
+
     public func snapshot(for provider: ProviderID) -> ProviderSnapshot {
         let state = states[provider] ?? State(updatedAt: now())
         return ProviderSnapshot(
@@ -119,7 +172,8 @@ public actor ProviderSnapshotStore {
             quotaStatus: status(for: state.quota),
             updatedAt: state.updatedAt,
             claudeQuotaFailureReason: state.claudeQuotaFailureReason,
-            quotaLastSuccessfulAt: state.quota.lastSuccessfulAt
+            quotaLastSuccessfulAt: state.quota.lastSuccessfulAt,
+            claudeStatusLineQuota: provider == .claude ? state.claudeStatusLineQuota : nil
         )
     }
 

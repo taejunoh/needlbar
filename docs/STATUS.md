@@ -1,5 +1,214 @@
 # Needlbar Development Status
 
+## 2026-09-28 numeric fallback and visual acceptance
+
+PR #7 is green at `43ec8ca` (CI run `36453608287`). The installed local
+v0.3.5/build 8 Developer ID candidate was tested while the direct quota path
+was blocked by HTTPS connectivity. Needlbar showed Claude at 64% remaining,
+reported by Claude Code; a genuine Claude CLI `/usage` observation and the
+validated private record agreed on five-hour usage of 100% and seven-day
+usage of 36%. Fable remained direct-only.
+
+After disconnect, the settings file matched its private backup byte-for-byte
+and remained mode 0644; the quota cache was removed and the normal installed
+app was restored. The fresh `make test` at `43ec8ca` exited 0; testing was on
+the exact PR candidate SHA.
+
+Visual acceptance was attempted on September 28 with the original bridge-off
+command in both the isolated worktree and trusted main repository. No custom
+status line was visible in the actual Claude Code UI, even though one
+explicitly approved small model prompt returned `OK` in the worktree. Visual
+compatibility is therefore unverified; PR #7 has not been merged and no tag or
+release was made. A `/statusline` diagnostic unintentionally opened Claude's
+setup agent; it was immediately canceled with Exit and stop-tasks. The settings
+hash still matched backup `a0076cea67a2cbfc240bde286231f1e6a75fbada2b855cf09fec731b83c9fe25`,
+with no configuration change. No private command or payload was retained.
+
+## Claude Code status-line quota bridge candidate — 2026-09-25
+
+Written design for a reversible, opt-in Claude Code status-line bridge is at
+`docs/superpowers/specs/2026-09-25-claude-statusline-quota-bridge-design.md`.
+It proposes reading provider-emitted five-hour and seven-day quota fields
+without Needlbar acquiring or rotating credentials, while preserving the
+user's existing status-line command. Fable remains an independent direct-source
+value and cannot be inferred from status-line data. The document explicitly
+distinguishes local receipt time from a provider fetch and records the retained
+direct token-reading path as an unresolved provider-policy concern.
+
+The user approved the written design. Implementation plan:
+`docs/superpowers/plans/2026-09-25-claude-statusline-quota-bridge.md`.
+The isolated worktree baseline `PATH=/Users/taejunoh/.cargo/bin:$PATH make test`
+exited 0 before implementation. Tasks 1–5 implement the parser, private
+generation-fenced record, reversible opt-in settings edit, separate Core
+state, and source/freshness presentation. Task 6 now packages the arm64
+status-line helper inside the app and signs it before the host. An explicit
+connection installs an atomic mode-0700 copy at a stable private path; app
+startup refreshes that copy only when the active settings entry still belongs
+to Needlbar, without editing Claude Code settings.
+
+Task 6 verification: synthetic package and notarization contracts passed;
+`make package` built a local ad-hoc signed arm64 app and ZIP; `make smoke`
+passed with Claude configuration access disabled for that run. The extracted
+local ZIP's helper reports arm64 and passed independent strict signature
+verification; the extracted app passed deep/strict verification. The final
+`PATH=/Users/taejunoh/.cargo/bin:$PATH make test` exited 0, including
+Rust/vendor, Swift, package, and notarization contract tests. This is local
+packaging evidence, not Developer ID notarization or live quota acceptance.
+
+Whole-branch review then found and corrected a disconnect/read ordering race:
+an old asynchronous cache read could otherwise restore a disconnected quota.
+The final active-generation check and snapshot mutation now run together on
+one actor; disconnect reconciliation also runs if settings restoration fails.
+Deterministic disconnect/reconnect and missing-cache regressions passed, and
+`PATH=/Users/taejunoh/.cargo/bin:$PATH make test` was rerun at `c21339e`
+with exit 0. Independent whole-branch code review is clean.
+
+Native preflight exposed one additional settings transaction defect: replacing
+an existing `settings.json` changed its POSIX mode from 0644 to 0600. A
+synthetic connect/disconnect test reproduced the change before the fix. The
+transaction now keeps the temporary file private while writing, then restores
+the existing file mode before atomic replacement; a newly created file still
+uses 0600. All 20 focused connection-manager tests, the full
+`PATH=/Users/taejunoh/.cargo/bin:$PATH make test`, `make package`, `make smoke`,
+strict/deep app signature verification, and `git diff --check` passed after
+this correction. The package remains local and ad-hoc signed.
+
+An earlier native acceptance on 2026-09-26 used the user's explicit opt-in and
+the isolated diagnostic app, without replacing the installed app. Settings
+changed from Disconnected to Waiting for Claude Code data. A genuine Claude
+Code response produced a private validated record with 4% five-hour and 26%
+seven-day usage; Claude Code's `/usage` display independently showed those
+figures and reset windows at that observation. No original command or raw
+status-line payload was printed or saved as evidence. Reselecting the Claude
+Settings pane displayed Reported by Claude Code with the local receipt time.
+The initially visible Waiting state did not update during that observation.
+
+During this check the direct quota path also recovered, so Settings selected
+its newer direct reading (73% headline remaining, Fable 98% remaining), not
+the status-line fallback. Actual fallback selection in a native popover and
+visual compatibility of the original status line remain unverified. The
+bridge was disconnected through Settings; `cmp` confirmed byte-identical
+restoration of the original settings file, its mode remained 0644, and the
+quota cache was removed. Both diagnostic Claude CLI sessions and the temporary
+Needlbar process were stopped; only the original installed app remains running.
+No app replacement, push, public release, or restored unattended refresh is
+claimed. Fable remains direct-only, and the pre-existing credential path
+retains its separate provider-policy concern. README now describes the
+demonstrated status-line source and the unverified in-place refresh and visual
+compatibility limits. CI for this branch is unverified.
+
+2026-09-26 follow-up: The Developer ID `latest` app and bundled helper were
+verified with strict signature/hash checks; one canonical process (PID 93951)
+was running. With explicit opt-in approved, Claude Settings changed from
+Disconnected to Waiting. A genuine status-line response produced a validated
+record with 8% five-hour and 28% seven-day usage, received at 3:44 PM. Returning
+to the Claude Settings pane immediately showed `Reported by Claude Code` with
+that receipt time. The same pane remained at Waiting after 17 seconds and again
+after more than three minutes, so automatic in-place refresh is not established.
+
+A later Claude Code `/usage` check showed 9% five-hour, 28% seven-day, and 2%
+Fable usage. Because that check happened later, it is not an exact point-in-time
+comparison with the 3:44 PM sample. Fable remains direct-only; the status-line
+sample provides no Fable data. The UI was disconnected afterward; `cmp`
+confirmed byte-identical settings restoration with mode 0644, the quota cache
+was absent, and both diagnostic CLI sessions were stopped. The installed app
+was left running; no replacement occurred. The existing status-line's visible
+output and status-line fallback selection during a direct quota failure remain
+unverified.
+
+The Settings timer publisher is now retained as view state so ordinary view
+recomputation does not create a replacement publisher. A native refresh check
+after this correction is still pending; the earlier CUA observation predates
+the correction. An earlier full test run also failed while a native harness
+edit was in flight. The final `PATH=/Users/taejunoh/.cargo/bin:$PATH make test`
+on the current candidate exited 0: Rust workspace (1,379 passed, 1 ignored),
+vendor tests, 596 Swift tests across 21 suites, package/widget/brand contracts,
+and the v0.3.5 notarization/release metadata contracts passed. The focused
+`make notarize-test` also passed. Private full-suite log:
+`/tmp/needlbar-v035-full.xeaShB/make-test.log`. No push or public release has
+occurred. The 2026-09-28 Settings observation below verifies in-place refresh
+after the timer correction. The original status-line's visible output and
+status-line fallback selection during a direct quota failure remain
+unverified. Fable remains direct-only.
+Release metadata is prepared as v0.3.5/build 8; publication remains gated on
+the pending native acceptance checks.
+
+2026-09-26 signed-candidate launch: The v0.3.5/build 8 Developer ID-signed
+candidate is installed at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app`; the
+previous app is preserved at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/local-developer-id.2kdGoQ/Needlbar.app`.
+The installed host SHA-256 is
+`9b349155ba6d559adb2c00ed2d9225a6259639170085d40bf37faec28377ef5c`; the
+bundled helper SHA-256 is
+`f3bee66ffd72998da3705151c21c41a1f7b0ebe3648d9aee332619a6ee88911b`.
+CUA launched Needlbar and `pgrep` found one process (PID 24911), but no Settings
+window was opened: `cua.getApp` timed out with `-10005` while the app remained
+running. That check did not establish a post-fix native timer result; the later
+acceptance observation is recorded below. No public notarized release, commit,
+or push occurred.
+
+2026-09-28 native Settings acceptance: With the installed v0.3.5/build 8
+Developer ID-signed candidate (PID 24911), Claude Settings initially showed
+the bridge off. After explicit opt-in, and without a new model request, Claude
+Code startup and `/usage` emitted a genuine validated schema-1 cache record:
+6% five-hour usage (reset epoch 812301000) and 34% seven-day usage (reset epoch
+812541600), received at 11:05 AM ET (epoch 812300721.697509). The Claude pane
+remained selected and changed from Waiting to `Reported by Claude Code`
+without reselection. This verifies the Settings in-place refresh after the
+timer correction.
+
+The separate direct source was unavailable at that time and still showed its
+September 26 last-known values (68% Claude remaining and 98% Fable remaining).
+This does not verify status-line fallback selection or numeric popover
+presentation. Fable remains direct-only. The bridge was explicitly turned
+off; `cmp` confirmed the settings file matched its private backup byte-for-byte
+and remained mode 0644, the quota cache was absent, and diagnostic Claude CLI
+PID 54196 had exited. No raw status-line payload or user command was retained.
+This is local signed-candidate acceptance, not a public notarized release;
+CI and official release remain pending. No commit or push occurred.
+
+2026-09-28 PR #7 validation follow-up: Branch `codex/claude-statusline-hybrid`
+was pushed at `2c4f963`; CI run `36441779704` failed during Swift 6.0.3 / Xcode
+16.2 compilation at `StatusLineCommandRunner.swift:147` because the
+`shell.path` method reference was ambiguous. Rust, vendor, and lint checks
+passed, but the Swift suite was not reached. The runner call site now uses an
+explicit `String` binding for the shell path, reused for argv and process
+launch; the local target build passed. A focused synthetic fallback integration
+test also passed, exercising the real coordinator/store cache import when the
+direct source fails (headline Claude remaining 66%, Fable 98%, last-known
+values). This verifies the integration path in the test, not native status-line
+selection or numeric popover presentation. The direct source later recovered
+to a fresh 65% Claude remaining in Settings, so the earlier direct-source error
+alone does not establish fallback behavior. PR CI re-run, merge, and official
+release remain pending.
+
+2026-09-28 CI run `36445139335` hit a second Swift 6.0.3 compile error at
+`StatusLineCommandRunner.swift:148`: `[shellPath, "-c", command].map` inferred
+pointer elements. This is the same type-inference issue; the supported next
+fix is to declare `argumentStrings: [String]` before mapping, consistent with
+the working `environmentStrings` pattern. That fix allowed compilation to
+complete on CI run `36447582840`, but its Swift harness timed out while FIFO
+and runner-disconnect tests waited on work submitted to the shared global
+queue. The timeout paths then removed fixture paths and closed handles while
+workers or the child process could still be pending, causing an uncaught
+`NSFileHandleOperationException`.
+
+The harness-only repair in `StatusLinePrivateStoreTests.swift` and
+`StatusLineCommandRunnerTests.swift` uses dedicated threads, keeps finite
+failure bounds, and avoids fixture cleanup until workers and children finish.
+The local `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` now exits 0 across
+Rust/vendor, Swift (including all 35 Claude status-line tests), and package
+contract checks; `git diff --check` also passes.
+
+2026-09-28 CI run `36450774927` passed in 21m46s, including Swift, package,
+smoke, and artifact jobs. PR #7 remains open and CLEAN at `e836fc3`; no merge
+or release has occurred. Remaining release gates are native numeric fallback
+presentation during an actual direct-quota failure and visual compatibility
+with the original Claude Code status-line output, neither of which is verified.
+The next continuation is completing those native acceptance checks before
+considering merge or release.
+
 ## v0.3.4 Public Release Record — 2026-09-22/23
 
 PR #5 passed CI run `35801922708` and merged as

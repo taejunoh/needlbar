@@ -56,6 +56,7 @@ group_id="$APPLE_TEAM_ID.com.taejunoh.needlbar"
 widget_app="$APP_PATH/Contents/PlugIns/NeedlbarWidgetExtension.appex"
 widget_info="$widget_app/Contents/Info.plist"
 widget_executable="$widget_app/Contents/MacOS/NeedlbarWidgetExtension"
+status_line_helper="$APP_PATH/Contents/MacOS/NeedlbarClaudeStatusLine"
 host_entitlements="$work_dir/host-widget.entitlements"
 widget_entitlements="$work_dir/widget.entitlements"
 candidate_zip="$(mktemp "$zip_parent/.needlbar-final.XXXXXX.zip")"
@@ -116,6 +117,8 @@ identity_count="$(printf '%s\n' "$identity_names" | grep -Fxc "$DEVELOPER_ID_APP
 [[ -d "$widget_app" ]] || fail "embedded widget extension not found: $widget_app"
 [[ -f "$widget_info" ]] || fail "embedded widget Info.plist not found: $widget_info"
 [[ -x "$widget_executable" ]] || fail "embedded widget executable not found: $widget_executable"
+[[ -f "$status_line_helper" && -x "$status_line_helper" ]] ||
+  fail "status-line helper not found: $status_line_helper"
 cp "$ROOT/Resources/NeedlbarHostWidget.entitlements" "$host_entitlements"
 cp "$ROOT/WidgetExtension/NeedlbarWidgetExtension.entitlements" "$widget_entitlements"
 /usr/libexec/PlistBuddy -c "Set :com.apple.security.application-groups:0 $group_id" "$host_entitlements"
@@ -127,9 +130,12 @@ codesign --force --options runtime --timestamp \
   --sign "$DEVELOPER_ID_APPLICATION" \
   --entitlements "$widget_entitlements" "$widget_app"
 codesign --force --options runtime --timestamp \
+  --sign "$DEVELOPER_ID_APPLICATION" "$status_line_helper"
+codesign --force --options runtime --timestamp \
   --sign "$DEVELOPER_ID_APPLICATION" \
   --entitlements "$host_entitlements" "$APP_PATH"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+codesign --verify --strict --verbose=2 "$status_line_helper"
 
 signing_details="$(codesign --display --verbose=4 "$APP_PATH" 2>&1)"
 printf '%s\n' "$signing_details" | grep -Fx "Authority=$DEVELOPER_ID_APPLICATION" >/dev/null ||
@@ -138,6 +144,13 @@ printf '%s\n' "$signing_details" | grep -Fx "TeamIdentifier=$APPLE_TEAM_ID" >/de
   fail "team verification failed"
 printf '%s\n' "$signing_details" | grep -E '^Runtime Version=.+$' >/dev/null ||
   fail "hardened runtime verification failed"
+helper_signing_details="$(codesign --display --verbose=4 "$status_line_helper" 2>&1)"
+printf '%s\n' "$helper_signing_details" | grep -Fx "Authority=$DEVELOPER_ID_APPLICATION" >/dev/null ||
+  fail "helper identity verification failed"
+printf '%s\n' "$helper_signing_details" | grep -Fx "TeamIdentifier=$APPLE_TEAM_ID" >/dev/null ||
+  fail "helper team verification failed"
+printf '%s\n' "$helper_signing_details" | grep -E '^Runtime Version=.+$' >/dev/null ||
+  fail "helper hardened runtime verification failed"
 
 (
   cd "$(dirname "$APP_PATH")"
@@ -162,6 +175,9 @@ spctl --assess --type execute --verbose=4 "$APP_PATH"
 ditto -x -k "$candidate_zip" "$extract_root"
 extracted_app="$extract_root/$(basename "$APP_PATH")"
 codesign --verify --deep --strict --verbose=2 "$extracted_app"
+[[ -x "$extracted_app/Contents/MacOS/NeedlbarClaudeStatusLine" ]] ||
+  fail 'notarized ZIP is missing the status-line helper'
+codesign --verify --strict --verbose=2 "$extracted_app/Contents/MacOS/NeedlbarClaudeStatusLine"
 xcrun stapler validate "$extracted_app"
 spctl --assess --type execute --verbose=4 "$extracted_app"
 candidate_checksum="$(mktemp "$zip_parent/.needlbar-checksum.XXXXXX.sha256")"

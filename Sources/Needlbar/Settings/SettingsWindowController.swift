@@ -17,7 +17,9 @@ public final class SettingsWindowController: NSWindowController {
         notificationPreferences: QuotaNotificationPreferences,
         notificationService: QuotaNotificationService,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() },
-        openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() }
+        openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() },
+        claudeStatusLineManager: ClaudeStatusLineConnectionManager = ClaudeStatusLineConnectionManager(),
+        onClaudeStatusLineDisconnected: @escaping @MainActor () -> Void = {}
     ) {
         let preview = SettingsPreviewModel()
         let claudeQuotaPresentation = SettingsClaudeQuotaPresentation()
@@ -37,6 +39,8 @@ public final class SettingsWindowController: NSWindowController {
             notificationService: notificationService,
             openCursorSpending: openCursorSpending,
             openClaudeUsage: openClaudeUsage,
+            claudeStatusLineManager: claudeStatusLineManager,
+            onClaudeStatusLineDisconnected: onClaudeStatusLineDisconnected,
             preview: preview,
             claudeQuotaPresentation: claudeQuotaPresentation
         ))
@@ -65,7 +69,9 @@ public final class SettingsWindowController: NSWindowController {
         notificationPreferences: QuotaNotificationPreferences,
         notificationService: QuotaNotificationService,
         openCursorSpending: @escaping () -> Void = { _ = CursorSpendingAction.open() },
-        openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() }
+        openClaudeUsage: @escaping () -> Bool = { ClaudeUsageAction.open() },
+        claudeStatusLineManager: ClaudeStatusLineConnectionManager = ClaudeStatusLineConnectionManager(),
+        onClaudeStatusLineDisconnected: @escaping @MainActor () -> Void = {}
     ) {
         self.init(
             configuration: configuration,
@@ -76,7 +82,9 @@ public final class SettingsWindowController: NSWindowController {
             notificationPreferences: notificationPreferences,
             notificationService: notificationService,
             openCursorSpending: openCursorSpending,
-            openClaudeUsage: openClaudeUsage
+            openClaudeUsage: openClaudeUsage,
+            claudeStatusLineManager: claudeStatusLineManager,
+            onClaudeStatusLineDisconnected: onClaudeStatusLineDisconnected
         )
     }
 
