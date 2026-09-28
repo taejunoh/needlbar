@@ -175,10 +175,15 @@ The harness-only repair in `StatusLinePrivateStoreTests.swift` and
 failure bounds, and avoids fixture cleanup until workers and children finish.
 The local `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` now exits 0 across
 Rust/vendor, Swift (including all 35 Claude status-line tests), and package
-contract checks; `git diff --check` also passes. CI rerun is pending. Native
-numeric fallback presentation and original CLI visual output are still
-unverified; there is no merge or release. The next continuation is rerunning
-CI on this harness repair.
+contract checks; `git diff --check` also passes.
+
+2026-09-28 CI run `36450774927` passed in 21m46s, including Swift, package,
+smoke, and artifact jobs. PR #7 remains open and CLEAN at `e836fc3`; no merge
+or release has occurred. Remaining release gates are native numeric fallback
+presentation during an actual direct-quota failure and visual compatibility
+with the original Claude Code status-line output, neither of which is verified.
+The next continuation is completing those native acceptance checks before
+considering merge or release.
 
 ## v0.3.4 Public Release Record — 2026-09-22/23
 
