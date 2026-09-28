@@ -73,25 +73,40 @@ private func fileHandle(_ url: URL, data: Data = Data()) throws -> FileHandle {
 
 @Test func runnerDoesNotPublishAfterDisconnectDuringBlockedChild() throws {
     let (root, store, generation) = try runnerFixture()
-    defer { try? FileManager.default.removeItem(at: root) }
+    var workerFinished = false
+    defer {
+        // The runner and shell still own these paths/handles after a hard
+        // timeout, so preserve them instead of racing asynchronous cleanup.
+        if workerFinished { try? FileManager.default.removeItem(at: root) }
+    }
     let gate = root.appendingPathComponent("gate")
     let input = try fileHandle(root.appendingPathComponent("input"), data: Data(#"{"rate_limits":{"five_hour":{"used_percentage":25}}}"#.utf8))
     let output = try fileHandle(root.appendingPathComponent("out"))
     let error = try fileHandle(root.appendingPathComponent("err"))
-    defer { try? input.close(); try? output.close(); try? error.close() }
+    defer {
+        if workerFinished {
+            try? input.close()
+            try? output.close()
+            try? error.close()
+        }
+    }
     let started = root.appendingPathComponent("started")
     let completed = DispatchSemaphore(value: 0)
-    DispatchQueue.global().async {
+    Thread {
         _ = StatusLineCommandRunner.run(originalCommand: "touch '\(started.path)'; while [ ! -e '\(gate.path)' ]; do sleep 0.02; done; printf done", generation: generation,
             input: input, output: output, error: error, store: store, now: Date.init)
         completed.signal()
-    }
+    }.start()
     let deadline = Date().addingTimeInterval(5)
     while !FileManager.default.fileExists(atPath: started.path) && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
-    #expect(FileManager.default.fileExists(atPath: started.path))
-    try store.deactivate(generation: generation)
+    let childStarted = FileManager.default.fileExists(atPath: started.path)
+    let disconnected = (try? store.deactivate(generation: generation)) != nil
     FileManager.default.createFile(atPath: gate.path, contents: Data())
-    #expect(completed.wait(timeout: .now() + 5) == .success)
+    workerFinished = completed.wait(timeout: .now() + 5) == .success
+    #expect(childStarted, "runner child must start within the bounded startup interval")
+    #expect(disconnected, "store must deactivate while the child is blocked")
+    #expect(workerFinished, "runner and child must finish before fixture cleanup")
+    guard workerFinished else { return }
     #expect(try Data(contentsOf: root.appendingPathComponent("out")) == Data("done".utf8))
     #expect(try store.read(expectedGeneration: generation) == nil)
 }

@@ -163,10 +163,22 @@ release remain pending.
 `StatusLineCommandRunner.swift:148`: `[shellPath, "-c", command].map` inferred
 pointer elements. This is the same type-inference issue; the supported next
 fix is to declare `argumentStrings: [String]` before mapping, consistent with
-the working `environmentStrings` pattern. The local target build passed; the
-full `make test` is running and CI rerun remains pending. Native numeric
-fallback presentation and original CLI visual output are still unverified;
-there is no merge or release.
+the working `environmentStrings` pattern. That fix allowed compilation to
+complete on CI run `36447582840`, but its Swift harness timed out while FIFO
+and runner-disconnect tests waited on work submitted to the shared global
+queue. The timeout paths then removed fixture paths and closed handles while
+workers or the child process could still be pending, causing an uncaught
+`NSFileHandleOperationException`.
+
+The harness-only repair in `StatusLinePrivateStoreTests.swift` and
+`StatusLineCommandRunnerTests.swift` uses dedicated threads, keeps finite
+failure bounds, and avoids fixture cleanup until workers and children finish.
+The local `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` now exits 0 across
+Rust/vendor, Swift (including all 35 Claude status-line tests), and package
+contract checks; `git diff --check` also passes. CI rerun is pending. Native
+numeric fallback presentation and original CLI visual output are still
+unverified; there is no merge or release. The next continuation is rerunning
+CI on this harness repair.
 
 ## v0.3.4 Public Release Record — 2026-09-22/23
 

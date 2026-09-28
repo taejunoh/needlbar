@@ -72,16 +72,22 @@ private func record(_ generation: UUID, used: Double, receivedAt: Date = Date(ti
 
 @Test func storeConcurrentWritersCannotRegressSameReset() throws {
     let (root, store, generation) = try storeFixture()
-    defer { try? FileManager.default.removeItem(at: root) }
+    var allWritersFinished = false
+    defer {
+        // Keep paths alive if a timed-out writer may still be using the store.
+        if allWritersFinished { try? FileManager.default.removeItem(at: root) }
+    }
     let group = DispatchGroup()
     for used in [25.0, 35.0, 30.0, 10.0] {
         group.enter()
-        DispatchQueue.global().async {
+        Thread {
             _ = try? store.publish(record(generation, used: used))
             group.leave()
-        }
+        }.start()
     }
-    group.wait()
+    allWritersFinished = group.wait(timeout: .now() + 5) == .success
+    #expect(allWritersFinished, "concurrent writers must finish before fixture cleanup")
+    guard allWritersFinished else { return }
     #expect(try store.read(expectedGeneration: generation)?.fiveHour?.usedPercent == 35)
 }
 
@@ -133,77 +139,94 @@ private func record(_ generation: UUID, used: Double, receivedAt: Date = Date(ti
 @Test func storeRejectsFIFOsAtActiveMetadataAndCacheWithoutBlocking() throws {
     for leaf in ["active", "metadata", "quota.json"] {
         let (root, store, generation) = try storeFixture()
-        defer { try? FileManager.default.removeItem(at: root) }
         let name = leaf == "metadata" ? "metadata-\(generation.uuidString).json" : leaf
         let path = root.appendingPathComponent(name).path
         if leaf != "quota.json" { try FileManager.default.removeItem(atPath: path) }
         #expect(mkfifo(path, 0o600) == 0)
         let completed = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
+        Thread {
             if leaf == "metadata" { _ = try? store.metadata(for: generation) }
             else { _ = try? store.read(expectedGeneration: generation) }
             completed.signal()
-        }
+        }.start()
         let returnedPromptly = completed.wait(timeout: .now() + 0.5) == .success
+        var workerFinished = returnedPromptly
         if !returnedPromptly {
             let writer = open(path, O_RDWR | O_NONBLOCK)
             if writer >= 0 {
                 _ = Darwin.write(writer, "x", 1)
                 close(writer)
             }
-            _ = completed.wait(timeout: .now() + 2)
+            workerFinished = completed.wait(timeout: .now() + 2) == .success
+        }
+        defer {
+            // Never unlink a FIFO while a timed-out read may still be opening it.
+            if workerFinished { try? FileManager.default.removeItem(at: root) }
         }
         #expect(returnedPromptly, "\(leaf) FIFO must be rejected before opening blocks")
+        #expect(workerFinished, "\(leaf) FIFO worker must stop before fixture cleanup")
     }
 }
 
 @Test func storeRejectsFIFOHelperSourceWithoutBlocking() throws {
     let (root, store, _) = try storeFixture()
-    defer { try? FileManager.default.removeItem(at: root) }
     let source = root.deletingLastPathComponent().appendingPathComponent("needlbar-helper-fifo-\(UUID())")
-    defer { try? FileManager.default.removeItem(at: source) }
     #expect(mkfifo(source.path, 0o700) == 0)
     let completed = DispatchSemaphore(value: 0)
-    DispatchQueue.global().async {
+    Thread {
         _ = try? store.installHelper(from: source)
         completed.signal()
-    }
+    }.start()
     let returnedPromptly = completed.wait(timeout: .now() + 0.5) == .success
+    var workerFinished = returnedPromptly
     if !returnedPromptly {
         let writer = open(source.path, O_RDWR | O_NONBLOCK)
         if writer >= 0 {
             _ = Darwin.write(writer, "x", 1)
             close(writer)
         }
-        _ = completed.wait(timeout: .now() + 2)
+        workerFinished = completed.wait(timeout: .now() + 2) == .success
+    }
+    defer {
+        if workerFinished {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: source)
+        }
     }
     #expect(returnedPromptly, "helper source FIFO must be rejected without blocking")
+    #expect(workerFinished, "helper source FIFO worker must stop before fixture cleanup")
     #expect(!FileManager.default.fileExists(atPath: store.stableHelperURL.path))
 }
 
 @Test func storeRejectsExistingFIFOHelperDestinationWithoutBlocking() throws {
     let (root, store, _) = try storeFixture()
-    defer { try? FileManager.default.removeItem(at: root) }
     let source = root.deletingLastPathComponent().appendingPathComponent("needlbar-helper-source-\(UUID())")
-    defer { try? FileManager.default.removeItem(at: source) }
     try Data("helper".utf8).write(to: source)
     #expect(chmod(source.path, 0o700) == 0)
     #expect(mkfifo(store.stableHelperURL.path, 0o700) == 0)
     let completed = DispatchSemaphore(value: 0)
-    DispatchQueue.global().async {
+    Thread {
         _ = try? store.installHelper(from: source)
         completed.signal()
-    }
+    }.start()
     let returnedPromptly = completed.wait(timeout: .now() + 0.5) == .success
+    var workerFinished = returnedPromptly
     if !returnedPromptly {
         let writer = open(store.stableHelperURL.path, O_RDWR | O_NONBLOCK)
         if writer >= 0 {
             _ = Darwin.write(writer, "x", 1)
             close(writer)
         }
-        _ = completed.wait(timeout: .now() + 2)
+        workerFinished = completed.wait(timeout: .now() + 2) == .success
+    }
+    defer {
+        if workerFinished {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: source)
+        }
     }
     #expect(returnedPromptly, "existing helper FIFO must be rejected without blocking")
+    #expect(workerFinished, "helper destination FIFO worker must stop before fixture cleanup")
     var info = stat()
     #expect(lstat(store.stableHelperURL.path, &info) == 0)
     #expect((info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFIFO), "unsafe destination must not be replaced")
