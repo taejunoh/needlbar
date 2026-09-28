@@ -52,6 +52,8 @@ public struct SettingsView: View {
     @State private var claudeUsageState = SettingsClaudeUsageRowState()
     @State private var claudeStatusLineState: ConnectionState = .disconnected
     @State private var claudeStatusLineError: String?
+    // Keep the publisher alive across the dashboard's per-second model updates.
+    @State private var claudeStatusLineTimer = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
     @ObservedObject private var preview: SettingsPreviewModel
     @ObservedObject private var claudeQuotaPresentation: SettingsClaudeQuotaPresentation
 
@@ -283,7 +285,7 @@ public struct SettingsView: View {
             .padding(.vertical, 12)
         }
         .onAppear { claudeStatusLineState = claudeStatusLineManager.recover() }
-        .onReceive(Timer.publish(every: 15, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(claudeStatusLineTimer) { _ in
             claudeStatusLineState = claudeStatusLineManager.recover()
         }
     }
