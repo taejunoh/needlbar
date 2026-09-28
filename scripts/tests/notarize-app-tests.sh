@@ -1395,17 +1395,17 @@ test_v035_release_metadata_contract() {
 
 test_v035_release_metadata_contract
 
-v034_readme_contract_is_valid() {
+v035_readme_contract_is_valid() {
   local readme_file="$1"
 
   ruby - "$readme_file" <<'RUBY'
 readme = File.read(ARGV.fetch(0))
 [
-  'Needlbar v0.3.4 is publicly available for macOS 14 or later on Apple Silicon.',
-  '[Download Needlbar v0.3.4 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.4/Needlbar-macos-arm64.zip)',
-  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.4/Needlbar-macos-arm64.zip.sha256)',
-  'To install the public v0.3.4 release:',
-  'from the v0.3.4 GitHub Release.',
+  'Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.5 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip)',
+  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip.sha256)',
+  'To install the public v0.3.5 release:',
+  'from the v0.3.5 GitHub Release.',
   'Claude quota failures retain a prior successful value as **Last known**',
   'v0.3.4 keeps the same Claude quota status and safe failure reason consistent',
   'Claude Settings includes an explicit, off-by-default connection to Claude',
@@ -1413,44 +1413,44 @@ readme = File.read(ARGV.fetch(0))
   'Fable remains direct-only, keeps independent freshness',
   'background refresh or continuous freshness is not guaranteed'
 ].each do |fact|
-  abort "v0.3.4 README is missing #{fact.inspect}" unless readme.include?(fact)
+  abort "v0.3.5 README is missing #{fact.inspect}" unless readme.include?(fact)
 end
 [
-  'Needlbar v0.3.3 is publicly available for macOS 14 or later on Apple Silicon.',
-  'Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.',
-  'v0.3.4 is prepared for public release',
+  'Needlbar v0.3.4 is publicly available for macOS 14 or later on Apple Silicon.',
+  'Needlbar v0.3.6 is publicly available for macOS 14 or later on Apple Silicon.',
+  'v0.3.5 is prepared for public release',
   '8% five-hour usage',
   '3:44 PM',
   '2% Fable usage'
 ].each do |claim|
-  abort "v0.3.4 README contains stale claim #{claim.inspect}" if readme.include?(claim)
+  abort "v0.3.5 README contains stale claim #{claim.inspect}" if readme.include?(claim)
 end
 RUBY
 }
 
-test_v034_readme_contract() {
+test_v035_readme_contract() {
   local readme_file="$ROOT/README.md"
-  local stale_readme="$temp_root/v034-stale-readme.md"
+  local stale_readme="$temp_root/v035-stale-readme.md"
   local decoy_output decoy_status
 
-  v034_readme_contract_is_valid "$readme_file" ||
-    fail 'current v0.3.4 README contract is invalid'
+  v035_readme_contract_is_valid "$readme_file" ||
+    fail 'current v0.3.5 README contract is invalid'
 
   ruby - "$readme_file" "$stale_readme" <<'RUBY'
 source, destination = ARGV
 readme = File.read(source)
-readme << "\nNeedlbar v0.3.3 is publicly available for macOS 14 or later on Apple Silicon.\n"
+readme << "\nNeedlbar v0.3.4 is publicly available for macOS 14 or later on Apple Silicon.\n"
 File.write(destination, readme)
 RUBY
   set +e
-  decoy_output="$(v034_readme_contract_is_valid "$stale_readme" 2>&1)"
+  decoy_output="$(v035_readme_contract_is_valid "$stale_readme" 2>&1)"
   decoy_status=$?
   set -e
-  [[ "$decoy_status" -ne 0 ]] || fail 'stale v0.3.3 README claim decoy was accepted'
-  [[ "$decoy_output" == *'contains stale claim'* ]] || fail 'stale v0.3.3 README claim decoy failed unexpectedly'
+  [[ "$decoy_status" -ne 0 ]] || fail 'stale v0.3.4 README claim decoy was accepted'
+  [[ "$decoy_output" == *'contains stale claim'* ]] || fail 'stale v0.3.4 README claim decoy failed unexpectedly'
 }
 
-test_v034_readme_contract
+test_v035_readme_contract
 
 v031_release_source_contract_is_valid() {
   local readme_file="$1"
@@ -1534,12 +1534,12 @@ test_v031_release_source_contract() {
 source, destination = ARGV
 document = File.read(source)
 replacements = {
-  'Needlbar v0.3.4 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.',
-  '[Download Needlbar v0.3.4 for Apple Silicon]' => '[Download Needlbar v0.3.1 for Apple Silicon]',
-  'https://github.com/taejunoh/needlbar/releases/download/v0.3.4/Needlbar-macos-arm64.zip' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip',
-  'https://github.com/taejunoh/needlbar/releases/download/v0.3.4/Needlbar-macos-arm64.zip.sha256' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip.sha256',
-  'To install the public v0.3.4 release:' => 'To install the public v0.3.1 release:',
-  'from the v0.3.4 GitHub Release.' => 'from the v0.3.1 GitHub Release.'
+  'Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.5 for Apple Silicon]' => '[Download Needlbar v0.3.1 for Apple Silicon]',
+  'https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip',
+  'https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip.sha256' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip.sha256',
+  'To install the public v0.3.5 release:' => 'To install the public v0.3.1 release:',
+  'from the v0.3.5 GitHub Release.' => 'from the v0.3.1 GitHub Release.'
 }
 replacements.each { |from, to| abort "fixture setup: missing #{from.inspect}" unless document.sub!(from, to) }
 anchor = 'The v0.3.1 refinement remains the historical compact-readability release'
@@ -1737,11 +1737,11 @@ test_v032_release_source_contract() {
 source, destination = ARGV
 document = File.read(source)
 replacements = {
-  'Needlbar v0.3.4 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.',
-  '[Download Needlbar v0.3.4 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.4/Needlbar-macos-arm64.zip)' => '[Download Needlbar v0.3.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip)',
-  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.4/Needlbar-macos-arm64.zip.sha256)' => '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip.sha256)',
-  'To install the public v0.3.4 release:' => 'To install the public v0.3.2 release:',
-  'from the v0.3.4 GitHub Release.' => 'from the v0.3.2 GitHub Release.'
+  'Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.5 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip)' => '[Download Needlbar v0.3.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip)',
+  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip.sha256)' => '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip.sha256)',
+  'To install the public v0.3.5 release:' => 'To install the public v0.3.2 release:',
+  'from the v0.3.5 GitHub Release.' => 'from the v0.3.2 GitHub Release.'
 }
 replacements.each do |from, to|
   abort "fixture setup: missing #{from.inspect}" unless document.include?(from)
@@ -1851,11 +1851,11 @@ test_v033_release_source_contract() {
 source, destination = ARGV
 document = File.read(source)
 replacements = {
-  'Needlbar v0.3.4 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.3 is publicly available for macOS 14 or later on Apple Silicon.',
-  '[Download Needlbar v0.3.4 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.4/Needlbar-macos-arm64.zip)' => '[Download Needlbar v0.3.3 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip)',
-  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.4/Needlbar-macos-arm64.zip.sha256)' => '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip.sha256)',
-  'To install the public v0.3.4 release:' => 'To install the public v0.3.3 release:',
-  'from the v0.3.4 GitHub Release.' => 'from the v0.3.3 GitHub Release.'
+  'Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.3 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.5 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip)' => '[Download Needlbar v0.3.3 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip)',
+  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip.sha256)' => '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip.sha256)',
+  'To install the public v0.3.5 release:' => 'To install the public v0.3.3 release:',
+  'from the v0.3.5 GitHub Release.' => 'from the v0.3.3 GitHub Release.'
 }
 replacements.each { |from, to| abort "fixture setup: missing #{from.inspect}" unless document.sub!(from, to) }
 File.write(destination, document)
