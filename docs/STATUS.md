@@ -159,6 +159,15 @@ to a fresh 65% Claude remaining in Settings, so the earlier direct-source error
 alone does not establish fallback behavior. PR CI re-run, merge, and official
 release remain pending.
 
+2026-09-28 CI run `36445139335` hit a second Swift 6.0.3 compile error at
+`StatusLineCommandRunner.swift:148`: `[shellPath, "-c", command].map` inferred
+pointer elements. This is the same type-inference issue; the supported next
+fix is to declare `argumentStrings: [String]` before mapping, consistent with
+the working `environmentStrings` pattern. The local target build passed; the
+full `make test` is running and CI rerun remains pending. Native numeric
+fallback presentation and original CLI visual output are still unverified;
+there is no merge or release.
+
 ## v0.3.4 Public Release Record — 2026-09-22/23
 
 PR #5 passed CI run `35801922708` and merged as

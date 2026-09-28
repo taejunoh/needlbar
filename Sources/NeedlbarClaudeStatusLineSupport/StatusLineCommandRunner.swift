@@ -145,7 +145,8 @@ private final class Child {
             close(descriptors[1]); return nil
         }
         let shellPath: String = shell.path
-        let args = [shellPath, "-c", command].map { strdup($0) }
+        let argumentStrings: [String] = [shellPath, "-c", command]
+        let args = argumentStrings.map { strdup($0) }
         let environmentStrings: [String] = ProcessInfo.processInfo.environment.map { pair in
             pair.key + "=" + pair.value
         }
