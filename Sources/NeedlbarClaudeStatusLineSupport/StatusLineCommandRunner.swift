@@ -144,7 +144,8 @@ private final class Child {
               posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF)) == 0 else {
             close(descriptors[1]); return nil
         }
-        let args = [shell.path, "-c", command].map { strdup($0) }
+        let shellPath: String = shell.path
+        let args = [shellPath, "-c", command].map { strdup($0) }
         let environmentStrings: [String] = ProcessInfo.processInfo.environment.map { pair in
             pair.key + "=" + pair.value
         }
@@ -156,7 +157,7 @@ private final class Child {
         var argv = args + [nil]
         var envp = environment + [nil]
         var spawned: pid_t = 0
-        let result = shell.path.withCString { path in
+        let result = shellPath.withCString { path in
             posix_spawn(&spawned, path, &actions, &attributes, &argv, &envp)
         }
         if result != 0 { close(descriptors[1]); return nil }

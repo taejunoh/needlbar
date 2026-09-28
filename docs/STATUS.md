@@ -144,6 +144,21 @@ PID 54196 had exited. No raw status-line payload or user command was retained.
 This is local signed-candidate acceptance, not a public notarized release;
 CI and official release remain pending. No commit or push occurred.
 
+2026-09-28 PR #7 validation follow-up: Branch `codex/claude-statusline-hybrid`
+was pushed at `2c4f963`; CI run `36441779704` failed during Swift 6.0.3 / Xcode
+16.2 compilation at `StatusLineCommandRunner.swift:147` because the
+`shell.path` method reference was ambiguous. Rust, vendor, and lint checks
+passed, but the Swift suite was not reached. The runner call site now uses an
+explicit `String` binding for the shell path, reused for argv and process
+launch; the local target build passed. A focused synthetic fallback integration
+test also passed, exercising the real coordinator/store cache import when the
+direct source fails (headline Claude remaining 66%, Fable 98%, last-known
+values). This verifies the integration path in the test, not native status-line
+selection or numeric popover presentation. The direct source later recovered
+to a fresh 65% Claude remaining in Settings, so the earlier direct-source error
+alone does not establish fallback behavior. PR CI re-run, merge, and official
+release remain pending.
+
 ## v0.3.4 Public Release Record — 2026-09-22/23
 
 PR #5 passed CI run `35801922708` and merged as
