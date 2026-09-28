@@ -1,5 +1,29 @@
 # Needlbar Development Status
 
+## 2026-09-28 numeric fallback and visual acceptance
+
+PR #7 is green at `43ec8ca` (CI run `36453608287`). The installed local
+v0.3.5/build 8 Developer ID candidate was tested while the direct quota path
+was blocked by HTTPS connectivity. Needlbar showed Claude at 64% remaining,
+reported by Claude Code; a genuine Claude CLI `/usage` observation and the
+validated private record agreed on five-hour usage of 100% and seven-day
+usage of 36%. Fable remained direct-only.
+
+After disconnect, the settings file matched its private backup byte-for-byte
+and remained mode 0644; the quota cache was removed and the normal installed
+app was restored. The fresh `make test` at `43ec8ca` exited 0; testing was on
+the exact PR candidate SHA.
+
+Visual acceptance was attempted on September 28 with the original bridge-off
+command in both the isolated worktree and trusted main repository. No custom
+status line was visible in the actual Claude Code UI, even though one
+explicitly approved small model prompt returned `OK` in the worktree. Visual
+compatibility is therefore unverified; PR #7 has not been merged and no tag or
+release was made. A `/statusline` diagnostic unintentionally opened Claude's
+setup agent; it was immediately canceled with Exit and stop-tasks. The settings
+hash still matched backup `a0076cea67a2cbfc240bde286231f1e6a75fbada2b855cf09fec731b83c9fe25`,
+with no configuration change. No private command or payload was retained.
+
 ## Claude Code status-line quota bridge candidate — 2026-09-25
 
 Written design for a reversible, opt-in Claude Code status-line bridge is at
