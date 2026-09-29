@@ -1,5 +1,27 @@
 # Needlbar Development Status
 
+## 2026-09-29 installed local compact Claude candidate
+
+Commit `10ee0eb` was packaged and installed locally with the same Developer ID
+identity, team, designated requirement, and App Group entitlement as the prior
+installed app. `NEEDLBAR_TEAM_ID=3BMF4LM6TM`,
+`NEEDLBAR_APP_GROUP_IDENTIFIER=3BMF4LM6TM.com.taejunoh.needlbar`, and the
+matching `Developer ID Application: Taejun Oh (3BMF4LM6TM)` identity were used.
+`make package` and `make smoke` both exited 0. The candidate passed deep/strict
+signature verification and fixture exclusion checks before installation.
+
+The exact prior app was preserved at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/compact-claude-20260929-164957/Needlbar.app`.
+The installed app remains version 0.3.5/build 8, with host executable SHA-256
+`82d26b01bb98ee6d2c6adcc1aab4517b7ec7720b837451274ebcd24dfdbbf631`.
+After replacement, deep/strict signature verification passed and one runtime
+process (PID 7872) was observed at the canonical `latest/Needlbar.app` path.
+Native visual acceptance of the compact Overview is still pending: the
+available native computer-control surface cannot inspect menu bar content,
+menus, or dialogs. No settings, authentication, cache, or account data was
+read or changed. This is a local installed candidate only; no release, tag,
+push, PR, or Homebrew change occurred.
+
 ## 2026-09-29 Claude compact overview dashboard
 
 The Overview now presents Claude quota in a compact row: the current remaining
