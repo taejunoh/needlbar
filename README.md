@@ -87,6 +87,20 @@ Fable remains direct-only, keeps independent freshness, and is never inferred
 from the status-line seven-day value. Disconnecting restores the original
 status-line settings entry when Needlbar still owns it.
 
+### Compact Claude quota overview (v0.3.6 candidate)
+
+The v0.3.6 release candidate presents Claude quota in a compact Overview row:
+it shows the current remaining value when fresh, or the retained percentage
+with an explicit **Last known** label when the current quota is unavailable.
+Source, failure reason, observation time, unavailable state, reset
+verification, and Fable's separate observation time are under a default-
+collapsed **Quota details** disclosure. Fable keeps its independent status.
+Expanding the disclosure preserves the dashboard's existing layout behavior.
+
+This is candidate documentation; v0.3.6 is not publicly available until its
+release workflow and public artifact have been verified. Refresh and
+authentication behavior are unchanged.
+
 ### Claude API billing link and feasibility harness
 
 The optional Claude API billing action opens the official Anthropic Console

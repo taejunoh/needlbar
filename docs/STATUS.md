@@ -1,5 +1,85 @@
 # Needlbar Development Status
 
+## 2026-09-29 v0.3.6 release candidate preparation
+
+Prepared the approved compact Claude Overview presentation as v0.3.6/build 9
+in the host and widget metadata, with versioned release notes and the existing
+protected Release workflow selecting those notes. The README retains the
+verified public v0.3.5 download and labels the compact presentation as a
+v0.3.6 candidate; no public v0.3.6 link or availability claim is present.
+
+The release contract checks require host/widget 0.3.6/build 9, v0.3.6 notes
+selection and contents, and the existing v0.3.5 public README links plus
+candidate labeling. Historical v0.3.5/build 8 notes checks remain in a
+synthetic historical fixture. After this repair, `make notarize-test` and
+`git diff --check` passed. An earlier `make test` log at
+`/tmp/needlbar-v036-release-prepare-make-test.log` reached the notarization
+contracts, but its execution wrapper did not return the final exit code and it
+predates the restored historical fixture check. A fresh final-candidate
+`source /Users/taejunoh/.cargo/env && make test` subsequently exited 0;
+the captured log is `/tmp/needlbar-v036-final-candidate-make-test.log`.
+Independent staged spec and quality reviews approved the repaired metadata
+and historical contract coverage. Next: push the reviewed candidate, require
+PR and merged-main CI success, run the tagless signing/notarization gate,
+then publish the immutable v0.3.6 tag. Publication, CI, native macOS 14
+acceptance, Homebrew update, and public-artifact verification remain pending.
+
+## 2026-09-29 installed local compact Claude candidate
+
+Commit `10ee0eb` was packaged and installed locally with the same Developer ID
+identity, team, designated requirement, and App Group entitlement as the prior
+installed app. `NEEDLBAR_TEAM_ID=3BMF4LM6TM`,
+`NEEDLBAR_APP_GROUP_IDENTIFIER=3BMF4LM6TM.com.taejunoh.needlbar`, and the
+matching `Developer ID Application: Taejun Oh (3BMF4LM6TM)` identity were used.
+`make package` and `make smoke` both exited 0. The candidate passed deep/strict
+signature verification and fixture exclusion checks before installation.
+
+The exact prior app was preserved at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/compact-claude-20260929-164957/Needlbar.app`.
+The installed app remains version 0.3.5/build 8, with host executable SHA-256
+`82d26b01bb98ee6d2c6adcc1aab4517b7ec7720b837451274ebcd24dfdbbf631`.
+After replacement, deep/strict signature verification passed and one runtime
+process (PID 7872) was observed at the canonical `latest/Needlbar.app` path.
+Native visual acceptance of the compact Overview is still pending: the
+available native computer-control surface cannot inspect menu bar content,
+menus, or dialogs. No settings, authentication, cache, or account data was
+read or changed. This is a local installed candidate only; no release, tag,
+push, PR, or Homebrew change occurred.
+
+## 2026-09-29 Claude compact overview dashboard
+
+The Overview now presents Claude quota in a compact row: the current remaining
+value when fresh, or the retained percentage with an explicit `Last known`
+label when the current quota is unavailable. Fable remains a separate row and
+keeps its own stale/authentication/error indication. Source, failure reason,
+observation time, unavailable state, reset verification, and Fable's separate
+observation time are in a default-collapsed `Quota details` disclosure. The
+disclosure uses the shared dashboard layout state so height remeasurement
+preserves its expansion and the existing screen-height clamp.
+
+The configured Claude API balance action and Claude usage action remain
+available; action failures stay visible. Usage/quota selection, refresh,
+credential access, provider freshness, and all non-Claude row presentations
+are unchanged.
+
+Verification: `source /Users/taejunoh/.cargo/env && make test` exited 0. It
+passed the Rust workspace, 1,379 vendor tests (1 ignored), 601 Swift tests
+across 22 suites, and bridge, brand, widget, package, and notarization
+contracts. Captured full-suite output is `/tmp/needlbar-claude-compact-make-test.log`.
+The focused
+`make swift-test SWIFT_TEST_FILTER=SystemDashboardPopoverTests` passed all 43
+tests, including retained headline semantics, fresh local Claude data with an
+independent Fable error, and collapsed/expanded remeasurement. The explicit
+opt-in `NEEDLBAR_CAPTURE_CLAUDE_COMPACT_FIXTURES=1` capture produced sanitized
+312 px wide collapsed (221 px high) and expanded (317 px high) fixture images
+under the system temporary directory; both were inspected. `git diff --check`
+passed. Independent spec-compliance and code-quality reviews approved the
+change after preserving Fable's independent status alongside `Last known`.
+This is local presentation verification only; CI and native account acceptance
+remain unverified. The installed app and public release are unchanged. Next
+continuation: integrate the verified compact presentation branch and perform
+packaged native acceptance before updating the installed app or a release.
+
 ## 2026-09-28 v0.3.5 public release
 
 The approved v0.3.5 tag dereferences to release source commit

@@ -81,6 +81,11 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let isLastKnown: Bool
         public let statusText: String?
         public let lastCheckedText: String?
+
+        public var compactStatusText: String? {
+            let labels = [isLastKnown ? String(localized: "Last known") : nil, statusText].compactMap { $0 }
+            return labels.isEmpty ? nil : labels.joined(separator: " · ")
+        }
     }
 
     public struct CPU: Equatable, Sendable {
@@ -147,6 +152,9 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let quotaLastCheckedText: String?
         public let quotaSourceText: String?
         public let quotaObservationLabel: String
+        public let compactQuotaValue: String
+        public let compactQuotaLabel: String
+        public let showsCompactClaudeQuota: Bool
     }
 
     public let moduleIDs: [MonitorModuleID]
@@ -240,7 +248,14 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                 quotaFailureReasonText: popover.quotaFailureReasonText,
                 quotaLastCheckedText: popover.quotaLastCheckedText,
                 quotaSourceText: popover.quotaSourceText,
-                quotaObservationLabel: popover.quotaObservationLabel
+                quotaObservationLabel: popover.quotaObservationLabel,
+                compactQuotaValue: popover.headlineQuotaRemaining
+                    ?? (popover.quotaIsLastKnown ? popover.lastKnownQuotaRemaining : nil)
+                    ?? "—",
+                compactQuotaLabel: popover.quotaIsLastKnown
+                    ? String(localized: "Last known")
+                    : String(localized: "Quota remaining"),
+                showsCompactClaudeQuota: provider == .claude && preference.metric == .remaining
             )
         }
 

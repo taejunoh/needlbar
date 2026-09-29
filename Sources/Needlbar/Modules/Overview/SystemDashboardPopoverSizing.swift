@@ -40,6 +40,7 @@ public enum SystemDashboardPanelSizing {
 @MainActor
 final class SystemDashboardPopoverLayout: ObservableObject {
     @Published var height: CGFloat
+    @Published var quotaDetailsExpanded = false
 
     init(height: CGFloat) {
         self.height = height
@@ -50,12 +51,14 @@ final class SystemDashboardPopoverLayout: ObservableObject {
 enum SystemDashboardPopoverMeasurement {
     static func naturalHeight(
         for model: SystemDashboardModel,
+        layout: SystemDashboardPopoverLayout? = nil,
         billingState: DashboardAPIBillingLinkState = .init(),
         claudeUsageState: DashboardClaudeUsageLinkState = .init()
     ) -> CGFloat? {
         let controller = NSHostingController(
             rootView: SystemDashboardPopoverView(
                 measuring: model,
+                layout: layout,
                 billingState: billingState,
                 claudeUsageState: claudeUsageState
             )

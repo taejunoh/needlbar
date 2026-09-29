@@ -81,6 +81,7 @@ public struct SystemDashboardPopoverView: View {
     private let onAPIBillingStateChanged: (DashboardAPIBillingLinkState) -> Void
     private let onClaudeUsageAction: () -> Bool
     private let onClaudeUsageStateChanged: (DashboardClaudeUsageLinkState) -> Void
+    private let onQuotaDetailsExpansionChanged: () -> Void
 
     public init(
         model: SystemDashboardModel,
@@ -91,7 +92,8 @@ public struct SystemDashboardPopoverView: View {
         onAPIBillingAction: @escaping (ProviderAPIBillingAction) -> Bool = { _ in false },
         onAPIBillingStateChanged: @escaping (DashboardAPIBillingLinkState) -> Void = { _ in },
         onClaudeUsageAction: @escaping () -> Bool = { false },
-        onClaudeUsageStateChanged: @escaping (DashboardClaudeUsageLinkState) -> Void = { _ in }
+        onClaudeUsageStateChanged: @escaping (DashboardClaudeUsageLinkState) -> Void = { _ in },
+        onQuotaDetailsExpansionChanged: @escaping () -> Void = {}
     ) {
         _model = ObservedObject(wrappedValue: model)
         _layout = ObservedObject(wrappedValue: SystemDashboardPopoverLayout(height: height))
@@ -105,6 +107,7 @@ public struct SystemDashboardPopoverView: View {
         self.onAPIBillingStateChanged = onAPIBillingStateChanged
         self.onClaudeUsageAction = onClaudeUsageAction
         self.onClaudeUsageStateChanged = onClaudeUsageStateChanged
+        self.onQuotaDetailsExpansionChanged = onQuotaDetailsExpansionChanged
     }
 
     init(
@@ -116,7 +119,8 @@ public struct SystemDashboardPopoverView: View {
         onAPIBillingAction: @escaping (ProviderAPIBillingAction) -> Bool = { _ in false },
         onAPIBillingStateChanged: @escaping (DashboardAPIBillingLinkState) -> Void = { _ in },
         onClaudeUsageAction: @escaping () -> Bool = { false },
-        onClaudeUsageStateChanged: @escaping (DashboardClaudeUsageLinkState) -> Void = { _ in }
+        onClaudeUsageStateChanged: @escaping (DashboardClaudeUsageLinkState) -> Void = { _ in },
+        onQuotaDetailsExpansionChanged: @escaping () -> Void = {}
     ) {
         _model = ObservedObject(wrappedValue: model)
         _layout = ObservedObject(wrappedValue: layout)
@@ -130,15 +134,17 @@ public struct SystemDashboardPopoverView: View {
         self.onAPIBillingStateChanged = onAPIBillingStateChanged
         self.onClaudeUsageAction = onClaudeUsageAction
         self.onClaudeUsageStateChanged = onClaudeUsageStateChanged
+        self.onQuotaDetailsExpansionChanged = onQuotaDetailsExpansionChanged
     }
 
     init(
         measuring model: SystemDashboardModel,
+        layout: SystemDashboardPopoverLayout? = nil,
         billingState: DashboardAPIBillingLinkState = .init(),
         claudeUsageState: DashboardClaudeUsageLinkState = .init()
     ) {
         _model = ObservedObject(wrappedValue: model)
-        _layout = ObservedObject(wrappedValue: SystemDashboardPopoverLayout(height: SystemDashboardPanelSizing.fallbackHeight))
+        _layout = ObservedObject(wrappedValue: layout ?? SystemDashboardPopoverLayout(height: SystemDashboardPanelSizing.fallbackHeight))
         _billingState = State(initialValue: billingState)
         _claudeUsageState = State(initialValue: claudeUsageState)
         isMeasuring = true
@@ -149,6 +155,7 @@ public struct SystemDashboardPopoverView: View {
         onAPIBillingStateChanged = { _ in }
         onClaudeUsageAction = { false }
         onClaudeUsageStateChanged = { _ in }
+        onQuotaDetailsExpansionChanged = {}
     }
 
     // Retain the previously public construction path for existing presenters.
@@ -323,6 +330,142 @@ public struct SystemDashboardPopoverView: View {
 
     @ViewBuilder
     private func providerRow(_ provider: SystemDashboardPresentation.AIProvider) -> some View {
+        if provider.showsCompactClaudeQuota {
+            compactClaudeQuotaRow(provider)
+        } else {
+            standardProviderRow(provider)
+        }
+    }
+
+    private func compactClaudeQuotaRow(_ provider: SystemDashboardPresentation.AIProvider) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(
+                alignment: ProviderTitleRowAlignmentPolicy.swiftUIAlignment,
+                spacing: ProviderTitleRowAlignmentPolicy.horizontalSpacing
+            ) {
+                ProviderBrandIcon(provider: provider.provider, accessibility: .decorative)
+                Text(provider.provider.displayName)
+                    .fontWeight(.medium)
+                    .layoutPriority(1)
+                Spacer(minLength: 8)
+                DashboardMetricText(value: .init(provider.compactQuotaValue))
+                if let action = provider.action {
+                    let visibleTitle = Self.compactVisibleActionTitle(for: action)
+                    let identityTitle = Self.accessibilityActionTitle(for: action)
+                    Button(visibleTitle) {
+                        if case .openClaudeUsage = action {
+                            performClaudeUsageAction()
+                        } else {
+                            onProviderAction(provider.provider)
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .help(identityTitle)
+                    .accessibilityLabel(identityTitle)
+                }
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(provider.compactQuotaLabel)
+                    .foregroundStyle(.secondary)
+                if let status = provider.statusText {
+                    Text("· \(status)")
+                        .foregroundStyle(.orange)
+                }
+            }
+            .font(.caption2)
+
+            if let action = provider.action,
+               case .openClaudeUsage = action,
+               claudeUsageState.showsFailure {
+                Text(claudeUsageState.failureMessage)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel(claudeUsageState.failureMessage)
+            }
+
+            if let fable = provider.fable {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    HStack(spacing: 4) {
+                        Text("Fable")
+                        if let status = fable.compactStatusText {
+                            Text("· \(status)")
+                        }
+                    }
+                    .foregroundStyle(fable.statusText == nil ? Color.secondary : Color.orange)
+                    Spacer(minLength: 8)
+                    DashboardMetricText(value: .init("\(fable.remaining) remaining"))
+                }
+                .font(.caption)
+            }
+
+            if let action = provider.apiBillingAction {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(action.providerLabel)
+                    Spacer(minLength: 8)
+                    Button("Check balance") { performAPIBillingAction(action) }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .accessibilityLabel("Check balance in \(action.providerLabel)")
+                }
+                .font(.caption)
+                if billingState.showsFailure(for: action.provider) {
+                    Text(billingState.failureMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel(billingState.failureMessage)
+                    Button("Retry") { performAPIBillingAction(action) }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .accessibilityLabel("Retry opening \(action.providerLabel) billing page")
+                }
+            }
+
+            DisclosureGroup(
+                "Quota details",
+                isExpanded: Binding(
+                    get: { layout.quotaDetailsExpanded },
+                    set: { expanded in
+                        guard layout.quotaDetailsExpanded != expanded else { return }
+                        layout.quotaDetailsExpanded = expanded
+                        onQuotaDetailsExpansionChanged()
+                    }
+                )
+            ) {
+                VStack(alignment: .leading, spacing: 3) {
+                    if let source = provider.quotaSourceText {
+                        Text(source)
+                    }
+                    if provider.quotaIsLastKnown {
+                        Text(provider.quotaLastKnownRemaining.map { "Last known · \($0) remaining" } ?? "Last known")
+                    }
+                    if provider.quotaUnavailable {
+                        Text("Quota unavailable")
+                    }
+                    if let reason = provider.quotaFailureReasonText {
+                        Text(reason)
+                    }
+                    if let lastChecked = provider.quotaLastCheckedText {
+                        Text("\(provider.quotaObservationLabel) \(lastChecked)")
+                    }
+                    if let fable = provider.fable {
+                        Text(fable.resetCaption)
+                        if let checked = fable.lastCheckedText {
+                            Text("Fable checked \(checked)")
+                        }
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.top, 3)
+            }
+            .font(.caption2)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func standardProviderRow(_ provider: SystemDashboardPresentation.AIProvider) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(
                 alignment: ProviderTitleRowAlignmentPolicy.swiftUIAlignment,
@@ -494,6 +637,11 @@ public struct SystemDashboardPopoverView: View {
         case let .openCursorSpending(title), let .openClaudeUsage(title):
             return title
         }
+    }
+
+    private static func compactVisibleActionTitle(for action: ProviderAuthenticationAction) -> String {
+        if case .openClaudeUsage = action { return "Usage" }
+        return visibleActionTitle(for: action)
     }
 
     nonisolated internal static func accessibilityActionTitle(for action: ProviderAuthenticationAction) -> String {
