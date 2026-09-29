@@ -1,5 +1,29 @@
 # Needlbar Development Status
 
+## 2026-09-29 v0.3.6 release candidate preparation
+
+Prepared the approved compact Claude Overview presentation as v0.3.6/build 9
+in the host and widget metadata, with versioned release notes and the existing
+protected Release workflow selecting those notes. The README retains the
+verified public v0.3.5 download and labels the compact presentation as a
+v0.3.6 candidate; no public v0.3.6 link or availability claim is present.
+
+The release contract checks require host/widget 0.3.6/build 9, v0.3.6 notes
+selection and contents, and the existing v0.3.5 public README links plus
+candidate labeling. Historical v0.3.5/build 8 notes checks remain in a
+synthetic historical fixture. After this repair, `make notarize-test` and
+`git diff --check` passed. An earlier `make test` log at
+`/tmp/needlbar-v036-release-prepare-make-test.log` reached the notarization
+contracts, but its execution wrapper did not return the final exit code and it
+predates the restored historical fixture check. A fresh final-candidate
+`source /Users/taejunoh/.cargo/env && make test` subsequently exited 0;
+the captured log is `/tmp/needlbar-v036-final-candidate-make-test.log`.
+Independent staged spec and quality reviews approved the repaired metadata
+and historical contract coverage. Next: push the reviewed candidate, require
+PR and merged-main CI success, run the tagless signing/notarization gate,
+then publish the immutable v0.3.6 tag. Publication, CI, native macOS 14
+acceptance, Homebrew update, and public-artifact verification remain pending.
+
 ## 2026-09-29 installed local compact Claude candidate
 
 Commit `10ee0eb` was packaged and installed locally with the same Developer ID
