@@ -6,11 +6,11 @@ Needlbar is local-first: it has no Needlbar account, backend, hosted sync, cloud
 
 ## Availability and download
 
-Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.
+Needlbar v0.3.6 is publicly available for macOS 14 or later on Apple Silicon.
 
-[Download Needlbar v0.3.5 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip)
+[Download Needlbar v0.3.6 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip)
 
-[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip.sha256)
+[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip.sha256)
 
 The `Needlbar-macos-arm64.zip.sha256` file is the SHA-256 checksum sidecar for the ZIP. Verify both downloaded files from the same directory:
 
@@ -20,9 +20,9 @@ shasum -a 256 -c Needlbar-macos-arm64.zip.sha256
 
 The public artifact is Developer ID-signed and notarized.
 
-To install the public v0.3.5 release:
+To install the public v0.3.6 release:
 
-1. Download the ZIP and checksum sidecar from the v0.3.5 GitHub Release.
+1. Download the ZIP and checksum sidecar from the v0.3.6 GitHub Release.
 2. Run the checksum command from the directory containing both files.
 3. Open the verified ZIP and drag `Needlbar.app` into `/Applications`.
 4. Launch Needlbar from `/Applications`; it appears in the macOS menu bar.
@@ -87,9 +87,9 @@ Fable remains direct-only, keeps independent freshness, and is never inferred
 from the status-line seven-day value. Disconnecting restores the original
 status-line settings entry when Needlbar still owns it.
 
-### Compact Claude quota overview (v0.3.6 candidate)
+### Compact Claude quota overview (v0.3.6)
 
-The v0.3.6 release candidate presents Claude quota in a compact Overview row:
+The v0.3.6 release presents Claude quota in a compact Overview row:
 it shows the current remaining value when fresh, or the retained percentage
 with an explicit **Last known** label when the current quota is unavailable.
 Source, failure reason, observation time, unavailable state, reset
@@ -97,9 +97,7 @@ verification, and Fable's separate observation time are under a default-
 collapsed **Quota details** disclosure. Fable keeps its independent status.
 Expanding the disclosure preserves the dashboard's existing layout behavior.
 
-This is candidate documentation; v0.3.6 is not publicly available until its
-release workflow and public artifact have been verified. Refresh and
-authentication behavior are unchanged.
+Refresh and authentication behavior are unchanged.
 
 ### Claude API billing link and feasibility harness
 
@@ -209,7 +207,7 @@ The released app includes one medium Overview widget backed by a sanitized local
 
 ## Native macOS 14 acceptance (maintainer-only)
 
-The public v0.3.5 ZIP is the production artifact for Gallery and entitlement
+The public v0.3.6 ZIP is the production artifact for Gallery and entitlement
 acceptance checks. The
 separately signed fixture-driven artifact is acceptance-only and is not a
 release or notarization substitute. It uses no provider account, credential,
@@ -248,7 +246,7 @@ Analytics is manual and local-only: there is no startup scan, timer, watcher, ba
 
 The v0.3.1 refinement remains the historical compact-readability release
 record for macOS 14 or later on Apple Silicon. The current supported public
-distribution is v0.3.5 above. The refinement keeps the existing data semantics while adding:
+distribution is v0.3.6 above. The refinement keeps the existing data semantics while adding:
 
 - colored summary cards;
 - full-width, aligned repository rows for name, estimated cost, and tokens;

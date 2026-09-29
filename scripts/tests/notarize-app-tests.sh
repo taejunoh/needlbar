@@ -1462,7 +1462,7 @@ test_v036_release_metadata_contract() {
 
 test_v036_release_metadata_contract
 
-v035_readme_contract_is_valid() {
+v035_historical_readme_contract_is_valid() {
   local readme_file="$1"
 
   ruby - "$readme_file" <<'RUBY'
@@ -1478,51 +1478,131 @@ readme = File.read(ARGV.fetch(0))
   'Claude Settings includes an explicit, off-by-default connection to Claude',
   "five-hour and seven-day values as\n**Reported by Claude Code**",
   'Fable remains direct-only, keeps independent freshness',
-  'background refresh or continuous freshness is not guaranteed',
-  '### Compact Claude quota overview (v0.3.6 candidate)',
-  'current remaining value when fresh',
-  'explicit **Last known** label when the current quota is unavailable',
-  "default-\ncollapsed **Quota details** disclosure",
-  "v0.3.6 is not publicly available until its\nrelease workflow and public artifact have been verified."
+  'background refresh or continuous freshness is not guaranteed'
 ].each do |fact|
-  abort "v0.3.5 README is missing #{fact.inspect}" unless readme.include?(fact)
+  abort "historical v0.3.5 README is missing #{fact.inspect}" unless readme.include?(fact)
 end
 [
   'Needlbar v0.3.4 is publicly available for macOS 14 or later on Apple Silicon.',
   'Needlbar v0.3.6 is publicly available for macOS 14 or later on Apple Silicon.',
   'v0.3.5 is prepared for public release',
+  'Needlbar v0.3.6 is prepared for public release',
   '8% five-hour usage',
   '3:44 PM',
   '2% Fable usage'
 ].each do |claim|
-  abort "v0.3.5 README contains stale claim #{claim.inspect}" if readme.include?(claim)
+  abort "historical v0.3.5 README contains stale claim #{claim.inspect}" if readme.include?(claim)
 end
 RUBY
 }
 
-test_v035_readme_contract() {
+test_v035_historical_readme_contract() {
   local readme_file="$ROOT/README.md"
   local stale_readme="$temp_root/v035-stale-readme.md"
+  local historical_readme="$temp_root/v035-historical-readme.md"
   local decoy_output decoy_status
 
-  v035_readme_contract_is_valid "$readme_file" ||
-    fail 'current v0.3.5 README contract is invalid'
+  ruby - "$readme_file" "$historical_readme" <<'RUBY'
+source, destination = ARGV
+readme = File.read(source)
+{
+  'Needlbar v0.3.6 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.6 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip)' => '[Download Needlbar v0.3.5 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip)',
+  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip.sha256)' => '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip.sha256)',
+  'To install the public v0.3.6 release:' => 'To install the public v0.3.5 release:',
+  'from the v0.3.6 GitHub Release.' => 'from the v0.3.5 GitHub Release.'
+}.each do |from, to|
+  abort "fixture setup: missing #{from.inspect}" unless readme.sub!(from, to)
+end
+readme.sub!(/^### Compact Claude quota overview \(v0\.3\.6\)\n.*?(?=^### |\z)/m, '') or
+  abort 'fixture setup: current compact Claude section missing'
+File.write(destination, readme)
+RUBY
 
-  ruby - "$readme_file" "$stale_readme" <<'RUBY'
+  v035_historical_readme_contract_is_valid "$historical_readme" ||
+    fail 'historical v0.3.5 README fixture was rejected'
+
+  ruby - "$historical_readme" "$stale_readme" <<'RUBY'
 source, destination = ARGV
 readme = File.read(source)
 readme << "\nNeedlbar v0.3.4 is publicly available for macOS 14 or later on Apple Silicon.\n"
 File.write(destination, readme)
 RUBY
   set +e
-  decoy_output="$(v035_readme_contract_is_valid "$stale_readme" 2>&1)"
+  decoy_output="$(v035_historical_readme_contract_is_valid "$stale_readme" 2>&1)"
   decoy_status=$?
   set -e
   [[ "$decoy_status" -ne 0 ]] || fail 'stale v0.3.4 README claim decoy was accepted'
   [[ "$decoy_output" == *'contains stale claim'* ]] || fail 'stale v0.3.4 README claim decoy failed unexpectedly'
 }
 
-test_v035_readme_contract
+test_v035_historical_readme_contract
+
+v036_public_readme_contract_is_valid() {
+  local readme_file="$1"
+
+  ruby - "$readme_file" <<'RUBY'
+readme = File.read(ARGV.fetch(0))
+[
+  'Needlbar v0.3.6 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.6 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip)',
+  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip.sha256)',
+  'To install the public v0.3.6 release:',
+  'from the v0.3.6 GitHub Release.',
+  '### Compact Claude quota overview (v0.3.6)',
+  'current remaining value when fresh',
+  'explicit **Last known** label when the current quota is unavailable',
+  "default-\ncollapsed **Quota details** disclosure",
+  'Fable keeps its independent status',
+  'Refresh and authentication behavior are unchanged.'
+].each do |fact|
+  abort "v0.3.6 README is missing #{fact.inspect}" unless readme.include?(fact)
+end
+[
+  'Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.',
+  'releases/download/v0.3.5/Needlbar-macos-arm64.zip',
+  'v0.3.6 candidate',
+  'v0.3.6 release candidate',
+  'v0.3.6 is not publicly available'
+].each do |claim|
+  abort "v0.3.6 README contains stale claim #{claim.inspect}" if readme.include?(claim)
+end
+RUBY
+}
+
+test_v036_public_readme_contract() {
+  local readme_file="$ROOT/README.md"
+  local stale_readme="$temp_root/v036-stale-v035-readme.md"
+  local candidate_readme="$temp_root/v036-candidate-readme.md"
+  local decoy_output decoy_status
+
+  v036_public_readme_contract_is_valid "$readme_file" ||
+    fail 'current v0.3.6 public README contract is invalid'
+
+  ruby - "$readme_file" "$stale_readme" "$candidate_readme" <<'RUBY'
+source, stale_path, candidate_path = ARGV
+readme = File.read(source)
+File.write(stale_path, readme + "\nNeedlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.\n")
+candidate = readme + "\nThis v0.3.6 candidate is not yet public.\n"
+File.write(candidate_path, candidate)
+RUBY
+
+  set +e
+  decoy_output="$(v036_public_readme_contract_is_valid "$stale_readme" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'stale v0.3.5 public README claim was accepted'
+  [[ "$decoy_output" == *'contains stale claim'* ]] || fail 'stale v0.3.5 public README claim failed unexpectedly'
+
+  set +e
+  decoy_output="$(v036_public_readme_contract_is_valid "$candidate_readme" 2>&1)"
+  decoy_status=$?
+  set -e
+  [[ "$decoy_status" -ne 0 ]] || fail 'candidate-only v0.3.6 README was accepted as public'
+  [[ "$decoy_output" == *'contains stale claim'* ]] || fail 'candidate v0.3.6 README decoy failed unexpectedly'
+}
+
+test_v036_public_readme_contract
 
 v031_release_source_contract_is_valid() {
   local readme_file="$1"
@@ -1606,12 +1686,12 @@ test_v031_release_source_contract() {
 source, destination = ARGV
 document = File.read(source)
 replacements = {
-  'Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.',
-  '[Download Needlbar v0.3.5 for Apple Silicon]' => '[Download Needlbar v0.3.1 for Apple Silicon]',
-  'https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip',
-  'https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip.sha256' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip.sha256',
-  'To install the public v0.3.5 release:' => 'To install the public v0.3.1 release:',
-  'from the v0.3.5 GitHub Release.' => 'from the v0.3.1 GitHub Release.'
+  'Needlbar v0.3.6 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.1 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.6 for Apple Silicon]' => '[Download Needlbar v0.3.1 for Apple Silicon]',
+  'https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip',
+  'https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip.sha256' => 'https://github.com/taejunoh/needlbar/releases/download/v0.3.1/Needlbar-macos-arm64.zip.sha256',
+  'To install the public v0.3.6 release:' => 'To install the public v0.3.1 release:',
+  'from the v0.3.6 GitHub Release.' => 'from the v0.3.1 GitHub Release.'
 }
 replacements.each { |from, to| abort "fixture setup: missing #{from.inspect}" unless document.sub!(from, to) }
 anchor = 'The v0.3.1 refinement remains the historical compact-readability release'
@@ -1809,11 +1889,11 @@ test_v032_release_source_contract() {
 source, destination = ARGV
 document = File.read(source)
 replacements = {
-  'Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.',
-  '[Download Needlbar v0.3.5 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip)' => '[Download Needlbar v0.3.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip)',
-  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip.sha256)' => '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip.sha256)',
-  'To install the public v0.3.5 release:' => 'To install the public v0.3.2 release:',
-  'from the v0.3.5 GitHub Release.' => 'from the v0.3.2 GitHub Release.'
+  'Needlbar v0.3.6 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.2 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.6 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip)' => '[Download Needlbar v0.3.2 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip)',
+  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip.sha256)' => '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.2/Needlbar-macos-arm64.zip.sha256)',
+  'To install the public v0.3.6 release:' => 'To install the public v0.3.2 release:',
+  'from the v0.3.6 GitHub Release.' => 'from the v0.3.2 GitHub Release.'
 }
 replacements.each do |from, to|
   abort "fixture setup: missing #{from.inspect}" unless document.include?(from)
@@ -1923,11 +2003,11 @@ test_v033_release_source_contract() {
 source, destination = ARGV
 document = File.read(source)
 replacements = {
-  'Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.3 is publicly available for macOS 14 or later on Apple Silicon.',
-  '[Download Needlbar v0.3.5 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip)' => '[Download Needlbar v0.3.3 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip)',
-  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.5/Needlbar-macos-arm64.zip.sha256)' => '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip.sha256)',
-  'To install the public v0.3.5 release:' => 'To install the public v0.3.3 release:',
-  'from the v0.3.5 GitHub Release.' => 'from the v0.3.3 GitHub Release.'
+  'Needlbar v0.3.6 is publicly available for macOS 14 or later on Apple Silicon.' => 'Needlbar v0.3.3 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.6 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip)' => '[Download Needlbar v0.3.3 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip)',
+  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip.sha256)' => '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.3/Needlbar-macos-arm64.zip.sha256)',
+  'To install the public v0.3.6 release:' => 'To install the public v0.3.3 release:',
+  'from the v0.3.6 GitHub Release.' => 'from the v0.3.3 GitHub Release.'
 }
 replacements.each { |from, to| abort "fixture setup: missing #{from.inspect}" unless document.sub!(from, to) }
 File.write(destination, document)
@@ -1938,6 +2018,116 @@ RUBY
 }
 
 test_v033_release_source_contract
+
+v036_public_release_source_contract_is_valid() {
+  local readme_file="$1"
+  local status_file="$2"
+  local release_notes_file="$3"
+
+  ruby - "$readme_file" "$status_file" "$release_notes_file" <<'RUBY'
+readme_path, status_path, notes_path = ARGV
+abort 'v0.3.6 release notes are missing' unless File.file?(notes_path)
+
+readme = File.read(readme_path)
+status = File.read(status_path)
+notes = File.read(notes_path)
+readme_text = readme.gsub(/\s+/, ' ')
+
+[
+  'Needlbar v0.3.6 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.6 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip)',
+  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.6/Needlbar-macos-arm64.zip.sha256)',
+  'To install the public v0.3.6 release:',
+  'from the v0.3.6 GitHub Release.',
+  '### Compact Claude quota overview (v0.3.6)',
+  'Refresh and authentication behavior are unchanged.'
+].each do |fact|
+  abort "v0.3.6 README is missing #{fact.inspect}" unless readme.include?(fact)
+end
+[
+  'Needlbar v0.3.6 is prepared for public release',
+  'Needlbar v0.3.6 release candidate',
+  'Needlbar v0.3.5 is publicly available for macOS 14 or later on Apple Silicon.',
+  'releases/download/v0.3.5/Needlbar-macos-arm64.zip'
+].each do |claim|
+  abort "v0.3.6 README contains stale claim #{claim.inspect}" if readme.include?(claim)
+end
+abort 'v0.3.6 README is missing pending native macOS 14 acceptance' unless readme_text.include?('Native acceptance remains an external maintainer gate')
+
+[
+  'Needlbar v0.3.6 presents Claude quota more compactly in the Overview.',
+  'retained percentage labeled **Last known**',
+  'default-collapsed **Quota details** disclosure',
+  "Fable's separate observation time",
+  'Fable keeps its independent status',
+  'Quota refresh, authentication, and provider selection behavior are unchanged.'
+].each do |fact|
+  abort "v0.3.6 release notes are missing #{fact.inspect}" unless notes.include?(fact)
+end
+
+public_record = status.match(/^## 2026-09-29 v0\.3\.6 public release\n(.*?)(?=^## |\z)/m)
+abort 'v0.3.6 STATUS is missing public release record' unless public_record
+evidence = public_record[1]
+evidence_text = evidence.gsub(/\s+/, ' ')
+{
+  'Tag' => /^Tag: `v0\.3\.6`$/,
+  'Candidate commit' => /^Candidate commit: `53db9d628ef12636e277d03b97e7652831032c3c`$/,
+  'Public release URL' => /^Public release URL: <https:\/\/github\.com\/taejunoh\/needlbar\/releases\/tag\/v0\.3\.6>$/,
+  'Public ZIP SHA-256' => /^Public ZIP SHA-256: `e9fa5255918043622e0e4f386a0cceda9a4eb523bf10ac3b6b6f7120a949df79`$/,
+  'Tagless validation run' => /^Tagless validation run: \[36633733896\]\(https:\/\/github\.com\/taejunoh\/needlbar\/actions\/runs\/36633733896\)$/,
+  'Tag-triggered validation/publication run' => /^Tag-triggered validation\/publication run: \[36636138147\]\(https:\/\/github\.com\/taejunoh\/needlbar\/actions\/runs\/36636138147\)$/,
+  'Homebrew tap commit' => /^Homebrew tap commit: `39048d4179cbc57427ba30aa349e7e98d4befdb8`$/
+}.each do |field, pattern|
+  abort "v0.3.6 public release record is missing #{field} evidence" unless evidence.match?(pattern)
+end
+abort 'v0.3.6 STATUS is missing successful exact-candidate run evidence' unless evidence_text.include?('Both validation runs succeeded at the exact candidate above.')
+abort 'v0.3.6 STATUS is missing pending native macOS 14 acceptance' unless evidence_text.include?('Native macOS 14 Gallery, entitlement, and notification-permission acceptance remain pending')
+abort 'v0.3.6 STATUS is missing public install verification' unless evidence_text.include?('matched the fresh public ZIP payload')
+abort 'v0.3.6 STATUS claims unverified public fixture exclusion' if evidence_text.include?('public fixture-exclusion checks passed')
+RUBY
+}
+
+test_v036_public_release_source_contract() {
+  local readme_file="$ROOT/README.md"
+  local status_file="$ROOT/docs/STATUS.md"
+  local release_notes_file="$ROOT/docs/releases/v0.3.6.md"
+  local prepared_readme="$temp_root/v036-prepared-public-readme.md"
+  local decoy_status="$temp_root/v036-bad-public-status.md"
+  local decoy_output decoy_status_code
+
+  v036_public_release_source_contract_is_valid "$readme_file" "$status_file" "$release_notes_file" ||
+    fail 'current v0.3.6 public release-source contract is invalid'
+
+  ruby - "$readme_file" "$prepared_readme" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+public = 'Needlbar v0.3.6 is publicly available for macOS 14 or later on Apple Silicon.'
+prepared = 'Needlbar v0.3.6 is prepared for public release for macOS 14 or later on Apple Silicon.'
+abort 'fixture setup: v0.3.6 public availability line missing' unless document.sub!(public, prepared)
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(v036_public_release_source_contract_is_valid "$prepared_readme" "$status_file" "$release_notes_file" 2>&1)"
+  decoy_status_code=$?
+  set -e
+  [[ "$decoy_status_code" -ne 0 ]] || fail 'prepared v0.3.6 README was accepted as public'
+  [[ "$decoy_output" == *'is missing'* ]] || fail 'prepared v0.3.6 README failed unexpectedly'
+
+  ruby - "$status_file" "$decoy_status" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+abort 'fixture setup: v0.3.6 public hash missing' unless document.sub!('e9fa5255918043622e0e4f386a0cceda9a4eb523bf10ac3b6b6f7120a949df79', '0000000000000000000000000000000000000000000000000000000000000000')
+File.write(destination, document)
+RUBY
+  set +e
+  decoy_output="$(v036_public_release_source_contract_is_valid "$readme_file" "$decoy_status" "$release_notes_file" 2>&1)"
+  decoy_status_code=$?
+  set -e
+  [[ "$decoy_status_code" -ne 0 ]] || fail 'incorrect v0.3.6 public SHA decoy was accepted'
+  [[ "$decoy_output" == *'Public ZIP SHA-256'* ]] || fail 'incorrect v0.3.6 public SHA decoy failed unexpectedly'
+}
+
+test_v036_public_release_source_contract
 
 release_workflow_contract_is_valid() {
   local release_workflow="$1"

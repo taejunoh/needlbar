@@ -1,28 +1,44 @@
 # Needlbar Development Status
 
-## 2026-09-29 v0.3.6 release candidate preparation
+## 2026-09-29 v0.3.6 public release
 
-Prepared the approved compact Claude Overview presentation as v0.3.6/build 9
-in the host and widget metadata, with versioned release notes and the existing
-protected Release workflow selecting those notes. The README retains the
-verified public v0.3.5 download and labels the compact presentation as a
-v0.3.6 candidate; no public v0.3.6 link or availability claim is present.
+Tag: `v0.3.6`
+Candidate commit: `53db9d628ef12636e277d03b97e7652831032c3c`
+Public release URL: <https://github.com/taejunoh/needlbar/releases/tag/v0.3.6>
+Public ZIP SHA-256: `e9fa5255918043622e0e4f386a0cceda9a4eb523bf10ac3b6b6f7120a949df79`
+Tagless validation run: [36633733896](https://github.com/taejunoh/needlbar/actions/runs/36633733896)
+Tag-triggered validation/publication run: [36636138147](https://github.com/taejunoh/needlbar/actions/runs/36636138147)
+Homebrew tap commit: `39048d4179cbc57427ba30aa349e7e98d4befdb8`
 
-The release contract checks require host/widget 0.3.6/build 9, v0.3.6 notes
-selection and contents, and the existing v0.3.5 public README links plus
-candidate labeling. Historical v0.3.5/build 8 notes checks remain in a
-synthetic historical fixture. After this repair, `make notarize-test` and
-`git diff --check` passed. An earlier `make test` log at
-`/tmp/needlbar-v036-release-prepare-make-test.log` reached the notarization
-contracts, but its execution wrapper did not return the final exit code and it
-predates the restored historical fixture check. A fresh final-candidate
-`source /Users/taejunoh/.cargo/env && make test` subsequently exited 0;
-the captured log is `/tmp/needlbar-v036-final-candidate-make-test.log`.
-Independent staged spec and quality reviews approved the repaired metadata
-and historical contract coverage. Next: push the reviewed candidate, require
-PR and merged-main CI success, run the tagless signing/notarization gate,
-then publish the immutable v0.3.6 tag. Publication, CI, native macOS 14
-acceptance, Homebrew update, and public-artifact verification remain pending.
+Both validation runs succeeded at the exact candidate above. A fresh public
+Apple Silicon ZIP and checksum sidecar matched the SHA-256 above and the GitHub
+asset digest. Host and widget identify as v0.3.6/build 9; host, helper, and
+widget are arm64 and signed by Developer ID team `3BMF4LM6TM`. Strict deep
+signature verification, stapler validation, and Gatekeeper assessment passed.
+The public app was installed at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app`; its host
+executable SHA-256 `15d0635f042cc96dc85ad1b142557672fc7929a623331acd99ac3e941e49a62f`
+matched the fresh public ZIP payload. One canonical process (PID 13893) was
+observed. Independent static checks confirmed arm64 architecture, expected
+bundle/team/App Group identity, hardened runtime, fixture exclusion, stapling,
+and Gatekeeper acceptance. The prior v0.3.5/build 8 app was preserved at
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-v036-public-run-36636138147/Needlbar.app`
+and its host executable hash was confirmed as
+`82d26b01bb98ee6d2c6adcc1aab4517b7ec7720b837451274ebcd24dfdbbf631`.
+
+The Homebrew Cask was updated at tap commit
+`39048d4179cbc57427ba30aa349e7e98d4befdb8` to v0.3.6 and the public ZIP hash.
+Ruby syntax, style, and fetch checks passed. Online Homebrew audit remains
+unverified because the installed Command Line Tools do not support macOS 27.
+
+The public README and current/historical release contracts passed focused
+notarization tests and the full `source /Users/taejunoh/.cargo/env && make test`
+run (exit 0; captured output: `/tmp/needlbar-v036-public-docs-make-test.log`).
+Independent review passed.
+
+Native macOS 14 Gallery, entitlement, and notification-permission acceptance
+remain pending; public artifact and local installation verification do not
+establish those checks.
 
 ## 2026-09-29 installed local compact Claude candidate
 
@@ -36,15 +52,16 @@ signature verification and fixture exclusion checks before installation.
 
 The exact prior app was preserved at
 `/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/compact-claude-20260929-164957/Needlbar.app`.
-The installed app remains version 0.3.5/build 8, with host executable SHA-256
+At this checkpoint, the local candidate was version 0.3.5/build 8, with host executable SHA-256
 `82d26b01bb98ee6d2c6adcc1aab4517b7ec7720b837451274ebcd24dfdbbf631`.
 After replacement, deep/strict signature verification passed and one runtime
 process (PID 7872) was observed at the canonical `latest/Needlbar.app` path.
 Native visual acceptance of the compact Overview is still pending: the
 available native computer-control surface cannot inspect menu bar content,
 menus, or dialogs. No settings, authentication, cache, or account data was
-read or changed. This is a local installed candidate only; no release, tag,
-push, PR, or Homebrew change occurred.
+read or changed. This records the local installed candidate at that historical
+checkpoint; it was superseded by the verified v0.3.6 public installation above.
+No release, tag, push, PR, or Homebrew change had occurred at that checkpoint.
 
 ## 2026-09-29 Claude compact overview dashboard
 
