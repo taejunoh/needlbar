@@ -1,5 +1,39 @@
 # Needlbar Development Status
 
+## 2026-09-29 Claude compact overview dashboard
+
+The Overview now presents Claude quota in a compact row: the current remaining
+value when fresh, or the retained percentage with an explicit `Last known`
+label when the current quota is unavailable. Fable remains a separate row and
+keeps its own stale/authentication/error indication. Source, failure reason,
+observation time, unavailable state, reset verification, and Fable's separate
+observation time are in a default-collapsed `Quota details` disclosure. The
+disclosure uses the shared dashboard layout state so height remeasurement
+preserves its expansion and the existing screen-height clamp.
+
+The configured Claude API balance action and Claude usage action remain
+available; action failures stay visible. Usage/quota selection, refresh,
+credential access, provider freshness, and all non-Claude row presentations
+are unchanged.
+
+Verification: `source /Users/taejunoh/.cargo/env && make test` exited 0. It
+passed the Rust workspace, 1,379 vendor tests (1 ignored), 601 Swift tests
+across 22 suites, and bridge, brand, widget, package, and notarization
+contracts. Captured full-suite output is `/tmp/needlbar-claude-compact-make-test.log`.
+The focused
+`make swift-test SWIFT_TEST_FILTER=SystemDashboardPopoverTests` passed all 43
+tests, including retained headline semantics, fresh local Claude data with an
+independent Fable error, and collapsed/expanded remeasurement. The explicit
+opt-in `NEEDLBAR_CAPTURE_CLAUDE_COMPACT_FIXTURES=1` capture produced sanitized
+312 px wide collapsed (221 px high) and expanded (317 px high) fixture images
+under the system temporary directory; both were inspected. `git diff --check`
+passed. Independent spec-compliance and code-quality reviews approved the
+change after preserving Fable's independent status alongside `Last known`.
+This is local presentation verification only; CI and native account acceptance
+remain unverified. The installed app and public release are unchanged. Next
+continuation: integrate the verified compact presentation branch and perform
+packaged native acceptance before updating the installed app or a release.
+
 ## 2026-09-28 v0.3.5 public release
 
 The approved v0.3.5 tag dereferences to release source commit

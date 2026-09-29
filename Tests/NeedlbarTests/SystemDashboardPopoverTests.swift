@@ -581,6 +581,27 @@ import NeedlbarClaudeStatusLineSupport
     #expect(claude.fable?.resetCaption == "Reset unverified")
 }
 
+@Test func dashboardFreshClaudeCodeQuotaKeepsIndependentFableFailureVisible() throws {
+    let received = Date(timeIntervalSince1970: 100_000)
+    let record = StatusLineQuotaRecord(schemaVersion: 1, generation: UUID(),
+        fiveHour: .init(usedPercent: 25, resetsAt: received.addingTimeInterval(3_600), receivedAt: received),
+        sevenDay: nil)
+    let fable = try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly",
+                                usedPercent: 90, resetsAt: received.addingTimeInterval(-600))
+    let presentation = SystemDashboardPresentation(snapshot: dashboardFixtureSnapshot(
+        capturedAt: received.addingTimeInterval(-3_600),
+        claudeQuotaStatus: .error(message: "network", lastSuccessfulAt: received.addingTimeInterval(-3_600)),
+        claudeQuotaWindows: [fable],
+        claudeStatusLineQuota: record
+    ), configuration: .init(), now: received.addingTimeInterval(60))
+    let claude = try #require(presentation.ai.first { $0.provider == .claude })
+
+    #expect(claude.value == "75%")
+    #expect(claude.fable?.isLastKnown == true)
+    #expect(claude.fable?.statusText == "Error")
+    #expect(claude.fable?.compactStatusText == "Last known · Error")
+}
+
 @Test func dashboardOldClaudeCodeQuotaHasNoCurrentHeadlineAndDoesNotAffectCodex() throws {
     let received = Date(timeIntervalSince1970: 100_000)
     let record = StatusLineQuotaRecord(schemaVersion: 1, generation: UUID(),
@@ -611,6 +632,84 @@ import NeedlbarClaudeStatusLineSupport
     #expect(claude.quotaSourceText == "Claude usage")
     #expect(claude.quotaLastCheckedText == DateFormatter.localizedString(
         from: observed, dateStyle: .medium, timeStyle: .short))
+    #expect(claude.compactQuotaValue == "32%")
+    #expect(claude.compactQuotaLabel == "Last known")
+}
+
+@Test func dashboardCompactClaudeQuotaLabelsFreshMissingAndRetainedValues() throws {
+    let fresh = try #require(SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(), configuration: .init()
+    ).ai.first { $0.provider == .claude })
+    let missing = try #require(SystemDashboardPresentation(
+        snapshot: dashboardFixtureSnapshot(claudeQuotaStatus: .requiresAuthentication, claudeHasQuota: false),
+        configuration: .init()
+    ).ai.first { $0.provider == .claude })
+
+    #expect(fresh.compactQuotaValue == "32%")
+    #expect(fresh.compactQuotaLabel == "Quota remaining")
+    #expect(missing.compactQuotaValue == "—")
+    #expect(missing.compactQuotaLabel == "Quota remaining")
+}
+
+@Test @MainActor func dashboardClaudeQuotaDisclosureMeasurementKeepsExpansionState() throws {
+    let model = SystemDashboardModel(snapshot: dashboardFixtureSnapshot(
+        claudeQuotaStatus: .requiresAuthentication,
+        claudeQuotaFailureReason: .quotaAccessUnavailable,
+        claudeHasQuota: false
+    ), configuration: .init())
+    let layout = SystemDashboardPopoverLayout(height: 320)
+    let collapsedHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: model, layout: layout))
+
+    layout.quotaDetailsExpanded = true
+    let expandedHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: model, layout: layout))
+    let remeasuredHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: model, layout: layout))
+
+    #expect(expandedHeight > collapsedHeight)
+    #expect(remeasuredHeight == expandedHeight)
+}
+
+@Test @MainActor func dashboardClaudeCompactFixturePNGIsCapturedOnlyWhenOptedIn() throws {
+    guard ProcessInfo.processInfo.environment["NEEDLBAR_CAPTURE_CLAUDE_COMPACT_FIXTURES"] == "1" else { return }
+
+    let now = Date()
+    let windows = [
+        try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil),
+        try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", usedPercent: 90,
+                        resetsAt: now.addingTimeInterval(86_400))
+    ]
+    var configuration = SystemMonitorConfiguration(
+        aiOrder: [.claude],
+        dashboardVisibleModules: [.ai]
+    )
+    configuration.ai[.claude]?.apiBillingLinkVisible = true
+    let model = SystemDashboardModel(snapshot: dashboardFixtureSnapshot(
+        capturedAt: now,
+        claudeQuotaStatus: .requiresAuthentication,
+        claudeQuotaFailureReason: .quotaAccessUnavailable,
+        claudeQuotaWindows: windows
+    ), configuration: configuration)
+    let outputDirectory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("needlbar-claude-compact-qa-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+
+    let layout = SystemDashboardPopoverLayout(height: SystemDashboardPanelSizing.fallbackHeight)
+    let collapsedHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: model, layout: layout))
+    layout.height = collapsedHeight
+    let collapsed = try renderClaudeCompactFixturePNG(model: model, layout: layout)
+    try collapsed.write(to: outputDirectory.appendingPathComponent("collapsed.png"), options: .atomic)
+
+    layout.quotaDetailsExpanded = true
+    let expandedHeight = try #require(SystemDashboardPopoverMeasurement.naturalHeight(for: model, layout: layout))
+    layout.height = expandedHeight
+    let expanded = try renderClaudeCompactFixturePNG(model: model, layout: layout)
+    try expanded.write(to: outputDirectory.appendingPathComponent("expanded.png"), options: .atomic)
+
+    #expect(collapsed.count > 64)
+    let collapsedBitmap = try #require(NSBitmapImageRep(data: collapsed))
+    let expandedBitmap = try #require(NSBitmapImageRep(data: expanded))
+    #expect(expandedBitmap.pixelsWide == 312)
+    #expect(expandedBitmap.pixelsHigh > collapsedBitmap.pixelsHigh)
+    print("Claude compact fixture PNGs: \(outputDirectory.path)")
 }
 
 @Test func dashboardPassedFableResetIsNotLabeledFreshDespiteDirectSuccess() throws {
@@ -787,4 +886,50 @@ private func dashboardFixtureSnapshot(
         capturedAt: date,
         systemAvailability: system.availability
     )
+}
+
+@MainActor
+private func renderClaudeCompactFixturePNG(
+    model: SystemDashboardModel,
+    layout: SystemDashboardPopoverLayout
+) throws -> Data {
+    _ = NSApplication.shared
+    let frame = NSRect(x: 0, y: 0, width: 312, height: layout.height)
+    let hosted = NSHostingView(rootView: SystemDashboardPopoverView(model: model, layout: layout))
+    hosted.frame = frame
+    let appearance = try #require(NSAppearance(named: .aqua))
+    hosted.appearance = appearance
+    let window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.appearance = appearance
+    window.contentView = hosted
+    defer { window.close() }
+    window.makeKeyAndOrderFront(nil)
+    window.display()
+    hosted.layoutSubtreeIfNeeded()
+
+    guard let bitmap = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: Int(frame.width),
+        pixelsHigh: Int(frame.height),
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) else {
+        throw DashboardFixtureCaptureError.bitmapUnavailable
+    }
+    hosted.cacheDisplay(in: hosted.bounds, to: bitmap)
+    guard let png = bitmap.representation(using: .png, properties: [:]) else {
+        throw DashboardFixtureCaptureError.pngUnavailable
+    }
+    return png
+}
+
+private enum DashboardFixtureCaptureError: Error {
+    case bitmapUnavailable
+    case pngUnavailable
 }

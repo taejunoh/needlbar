@@ -741,8 +741,10 @@ public final class MenuBarController: NSObject {
         }
         displayedBillingState = .init()
         displayedClaudeUsageState = .init()
+        let layout = SystemDashboardPopoverLayout(height: SystemDashboardPanelSizing.fallbackHeight)
         let naturalHeight = SystemDashboardPopoverMeasurement.naturalHeight(
             for: model,
+            layout: layout,
             billingState: displayedBillingState,
             claudeUsageState: displayedClaudeUsageState
         )
@@ -750,7 +752,7 @@ public final class MenuBarController: NSObject {
             naturalContentHeight: naturalHeight,
             visibleScreenHeight: anchor.visibleFrameInScreen.height
         )
-        let layout = SystemDashboardPopoverLayout(height: panelHeight)
+        layout.height = panelHeight
         let view = AnyView(SystemDashboardPopoverView(
             model: model,
             layout: layout,
@@ -770,6 +772,9 @@ public final class MenuBarController: NSObject {
             },
             onClaudeUsageStateChanged: { [weak self] state in
                 self?.displayedClaudeUsageStateDidChange(state)
+            },
+            onQuotaDetailsExpansionChanged: { [weak self] in
+                self?.resizeDisplayedDashboardIfNeeded()
             }
         ))
         cancelGlobalMouseDownMonitoring()
@@ -830,6 +835,7 @@ public final class MenuBarController: NSObject {
 
         let naturalHeight = SystemDashboardPopoverMeasurement.naturalHeight(
             for: model,
+            layout: layout,
             billingState: displayedBillingState,
             claudeUsageState: displayedClaudeUsageState
         )
