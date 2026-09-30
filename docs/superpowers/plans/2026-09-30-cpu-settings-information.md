@@ -128,6 +128,8 @@ let groups = indexes.compactMap { index in
 - Modify: `Sources/Needlbar/Settings/SettingsWindowController.swift`
 - Create: `Tests/NeedlbarTests/SettingsCPUInformationTests.swift`
 - Modify: `Tests/NeedlbarTests/SettingsStudioTests.swift`
+- Modify: `Sources/NeedlbarSettingsStudioReviewSupport/SettingsStudioReviewFixtures.swift`
+- Modify: `Sources/NeedlbarSettingsStudioReview/main.swift`
 - Reuse without unnecessary edits: `SettingsStudioComponents.swift`,
   `SystemDashboardDisplayComponents.swift` (`PerCoreActivityBars`).
 
@@ -199,6 +201,15 @@ detailPane
   accessible. Keep rendering helpers/test fixtures in tests; do not add app
   launch flags solely for screenshots or install another app. Clearly label
   fixture render versus installed-app inspection.
+- [ ] Extend the existing, exact-argument-guarded Settings review target with
+  an inert CPU fixture (M5 Pro, 15 physical/logical, Super 5 / Performance 10,
+  usage 25%, fifteen per-core samples, fresh fixture timestamp). Use the same
+  fixture for initial and configuration-change updates so toggling visibility
+  does not erase the preview. Keep provider/process/file/browser boundaries
+  inert and use its existing isolated defaults suite. Do not add production
+  launch flags, initial-page APIs, or live collectors. Run
+  `swift run NeedlbarSettingsStudioReview --settings-studio-review` and select
+  CPU in the existing sidebar through native UI inspection when available.
 - [ ] Self-review and commit Task 2 files with
   `git commit -m "feat: show live CPU information in settings"`.
   Report tests and visual artifacts; request spec then quality review.
