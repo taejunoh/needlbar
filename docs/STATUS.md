@@ -22,8 +22,14 @@ Pre-implementation `make test` exited 0 (`MAKE_TEST_EXIT=0`), log:
 `/tmp/needlbar-network-settings-baseline-test.log`. No production edits, push,
 install or release have occurred in this implementation step yet.
 Existing counter-width/wrap, empty-source-set, shared rate-boundary and stale
-fallback limitations are recorded, not repaired. Next: delegated test-first
-Core name retention, Settings card, independent reviews and native/final tests.
+fallback limitations are recorded, not repaired. Core Task 1 committed at
+`1144484`: compatible optional names, existing collector-set forwarding and
+service preservation. Model/IP/conversion focused tests and full `make test`
+exited 0; log `/tmp/needlbar-network-core-task1-test.log` (658 Swift tests,
+1,379 vendor tests with 1 ignored, Rust workspace and contracts).
+Independent spec and quality reviews approved without Critical/Important
+findings. Native getifaddrs failures/interface changes are not injected.
+Next: Settings card Task 2, independent reviews and native/final tests.
 
 ## 2026-09-30 Disk Settings PR published
 

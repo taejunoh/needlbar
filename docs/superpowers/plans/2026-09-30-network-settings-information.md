@@ -56,15 +56,15 @@ exit "$network_test_exit"
   empty array remains empty; an explicit array survives unchanged. Representative:
 
 ```swift
-let legacy = SystemMetricsSnapshot.Network(downloadBytesPerSecond: nil,
-    uploadBytesPerSecond: nil, localIPAddresses: [], publicIPAddress: nil)
+let legacy = SystemMetricsSnapshot.Network(uploadBytesPerSecond: nil,
+    downloadBytesPerSecond: nil, localIPAddresses: [], publicIPAddress: nil)
 #expect(legacy.interfaceNames == nil)
-let empty = SystemMetricsSnapshot.Network(downloadBytesPerSecond: nil,
-    uploadBytesPerSecond: nil, localIPAddresses: [], publicIPAddress: nil,
+let empty = SystemMetricsSnapshot.Network(uploadBytesPerSecond: nil,
+    downloadBytesPerSecond: nil, localIPAddresses: [], publicIPAddress: nil,
     interfaceNames: [])
 #expect(empty.interfaceNames == [])
-let named = SystemMetricsSnapshot.Network(downloadBytesPerSecond: 0,
-    uploadBytesPerSecond: 128, localIPAddresses: [], publicIPAddress: nil,
+let named = SystemMetricsSnapshot.Network(uploadBytesPerSecond: 128,
+    downloadBytesPerSecond: 0, localIPAddresses: [], publicIPAddress: nil,
     interfaceNames: ["en0", "utun3"])
 #expect(named.interfaceNames == ["en0", "utun3"])
 ```
