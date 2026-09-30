@@ -21,6 +21,80 @@ struct SettingsCPUInformationTests {
         #expect(presentation.value.idlePercent == 75)
         #expect(presentation.value.perCorePercents == [10, 40, 25])
         #expect(presentation.value.status == .fresh(capturedAt: capturedAt))
+        #expect(SettingsCPUInformationView(presentation: presentation).freshnessText
+            == "Sampled \(capturedAt.formatted(date: .abbreviated, time: .shortened))")
+    }
+
+    @Test func staleSamplesFromDifferentDaysRenderDifferentSuccessfulDates() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let firstSuccess = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 9, day: 28, hour: 17, minute: 13
+        )))
+        let secondSuccess = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 9, day: 29, hour: 17, minute: 13
+        )))
+        let failedAttempt = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 9, day: 30, hour: 17, minute: 13
+        )))
+        let first = SettingsCPUInformationPresentation(snapshot: Self.snapshot(
+            usage: 25, perCore: [25], availability: .stale(lastSuccessfulAt: firstSuccess), capturedAt: failedAttempt
+        ))
+        let second = SettingsCPUInformationPresentation(snapshot: Self.snapshot(
+            usage: 25, perCore: [25], availability: .stale(lastSuccessfulAt: secondSuccess), capturedAt: failedAttempt
+        ))
+        let firstImage = try SettingsCPUInformationTestHost(presentation: first)
+            .render(width: 477, appearance: .darkAqua)
+        let secondImage = try SettingsCPUInformationTestHost(presentation: second)
+            .render(width: 477, appearance: .darkAqua)
+        let firstPNG = try #require(SettingsCPUInformationTestHost.pngData(firstImage))
+        let secondPNG = try #require(SettingsCPUInformationTestHost.pngData(secondImage))
+        let firstText = SettingsCPUInformationView(presentation: first).freshnessText
+        let secondText = SettingsCPUInformationView(presentation: second).freshnessText
+
+        #expect(firstPNG != secondPNG)
+        #expect(firstText.contains(firstSuccess.formatted(date: .abbreviated, time: .shortened)))
+        #expect(secondText.contains(secondSuccess.formatted(date: .abbreviated, time: .shortened)))
+        #expect(firstText != secondText)
+        #expect(!firstText.contains(failedAttempt.formatted(date: .abbreviated, time: .shortened)))
+    }
+
+    @Test func freshToUnavailableOrMissingAvailabilityClearsPriorActivityAndSampleTime() {
+        let sampledAt = Date(timeIntervalSince1970: 45_000)
+        let freshSnapshot = Self.snapshot(
+            usage: 25,
+            perCore: [20, 30],
+            availability: .fresh(capturedAt: sampledAt)
+        )
+        let presentation = SettingsCPUInformationPresentation(snapshot: freshSnapshot)
+
+        presentation.update(snapshot: Self.snapshot(
+            usage: 25,
+            perCore: [20, 30],
+            availability: .unavailable(code: "cpuUnavailable")
+        ))
+
+        #expect(presentation.value.totalUsagePercent == nil)
+        #expect(presentation.value.idlePercent == nil)
+        #expect(presentation.value.perCorePercents == nil)
+        #expect(presentation.value.lastSuccessfulAt == nil)
+        #expect(presentation.value.status == .unavailable)
+        #expect(presentation.value.hardware?.name == "Apple M5 Pro")
+
+        let missingAvailability = CombinedUsageSnapshot(
+            system: freshSnapshot.system,
+            providers: [],
+            capturedAt: sampledAt.addingTimeInterval(30),
+            systemAvailability: [:]
+        )
+        presentation.update(snapshot: missingAvailability)
+
+        #expect(presentation.value.totalUsagePercent == nil)
+        #expect(presentation.value.idlePercent == nil)
+        #expect(presentation.value.perCorePercents == nil)
+        #expect(presentation.value.lastSuccessfulAt == nil)
+        #expect(presentation.value.status == .unavailable)
+        #expect(presentation.value.hardware?.name == "Apple M5 Pro")
     }
 
     @Test func warmingUpDoesNotTurnHardwarePresenceIntoZeroActivity() {
@@ -111,6 +185,30 @@ struct SettingsCPUInformationTests {
             #expect(image.pixelsHigh > 0)
             try host.writePNG(image, name: name)
         }
+    }
+
+    @Test func longCoreGroupNamesWrapAtMinimumDetailWidth() throws {
+        let presentation = SettingsCPUInformationPresentation(snapshot: Self.snapshot(
+            usage: 25,
+            perCore: Array(repeating: 25, count: 15),
+            availability: .fresh(capturedAt: Date(timeIntervalSince1970: 80_000)),
+            hardware: CPUHardwareInfo(
+                name: "Apple M5 Pro",
+                physicalCoreCount: 15,
+                logicalCoreCount: 15,
+                coreGroups: [
+                    CPUHardwareInfo.CoreGroup(name: "Super cluster with wide high-performance cores", physicalCoreCount: 5)!,
+                    CPUHardwareInfo.CoreGroup(name: "Performance cluster optimized for sustained workloads", physicalCoreCount: 10)!,
+                ]
+            )
+        ))
+        let image = try SettingsCPUInformationTestHost(presentation: presentation)
+            .render(width: 477, appearance: .darkAqua)
+
+        #expect(image.pixelsWide == 477)
+        #expect(image.pixelsHigh > 155)
+        let host = SettingsCPUInformationTestHost(presentation: presentation)
+        try host.writePNG(image, name: "long-groups-minimum")
     }
 
     @Test func reviewFixtureKeepsDeterministicAppleSiliconCPUData() {
@@ -207,7 +305,15 @@ private struct SettingsCPUInformationTestHost {
     func writePNG(_ image: NSBitmapImageRep, name: String) throws {
         let directory = URL(fileURLWithPath: "/tmp/needlbar-cpu-settings-review", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let data = try #require(image.representation(using: .png, properties: [:]))
+        guard let data = Self.pngData(image) else { throw CPUInformationImageError.pngUnavailable }
         try data.write(to: directory.appendingPathComponent("\(name).png"), options: .atomic)
     }
+
+    static func pngData(_ image: NSBitmapImageRep) -> Data? {
+        image.representation(using: .png, properties: [:])
+    }
+}
+
+private enum CPUInformationImageError: Error {
+    case pngUnavailable
 }

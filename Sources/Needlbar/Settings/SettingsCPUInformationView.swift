@@ -53,7 +53,7 @@ struct SettingsCPUInformationView: View {
                     hardwareName
                     hardwareCounts
                 }
-                if let group { Text(group).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                if let group { Text(group).font(.caption).foregroundStyle(.secondary) }
             }
         }
     }
@@ -101,11 +101,11 @@ struct SettingsCPUInformationView: View {
         }
     }
 
-    private var freshnessText: String {
+    var freshnessText: String {
         switch value.status {
-        case let .fresh(capturedAt): "Sampled \(capturedAt.formatted(date: .omitted, time: .shortened))"
+        case let .fresh(capturedAt): "Sampled \(capturedAt.formatted(date: .abbreviated, time: .shortened))"
         case let .stale(lastSuccessfulAt):
-            "Last known · \(lastSuccessfulAt.formatted(date: .omitted, time: .shortened))"
+            "Last known · \(lastSuccessfulAt.formatted(date: .abbreviated, time: .shortened))"
         case .warmingUp: value.reason ?? "Waiting for the first CPU sample"
         case .unavailable: value.reason ?? "CPU information is unavailable"
         }
