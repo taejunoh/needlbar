@@ -1,5 +1,17 @@
 # Needlbar Development Status
 
+## 2026-09-30 CPU Settings information — design review
+
+The user approved adding CPU hardware summary, live total/idle and per-core
+usage, and sample freshness above the existing surface controls. The scoped
+design is recorded in
+`docs/superpowers/specs/2026-09-30-cpu-settings-information-design.md`.
+Written-spec review is the next continuation point; production code and the
+installed v0.3.6 app are unchanged. After approval, write the CPU-only test-first
+implementation plan, implement it, and require focused tests plus `make test`.
+Other SYSTEM pages, provider behavior, and release/install work remain outside
+this step.
+
 ## 2026-09-29 v0.3.6 public release
 
 Tag: `v0.3.6`
