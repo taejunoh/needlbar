@@ -1,5 +1,21 @@
 # Needlbar Development Status
 
+## 2026-09-30 Disk Settings PR published
+
+The user chose push and PR creation. Branch
+`codex/disk-settings-information` was pushed and PR
+<https://github.com/taejunoh/needlbar/pull/12> was created and attached to this
+chat. Its base is `codex/ram-settings-information`, isolating Disk changes
+from RAM #11 and CPU #10. Merge CPU, then RAM before retargeting Disk to main
+and verifying combined checks. Those prerequisite PRs are unchanged.
+No merge, installation or release was performed; the worktree is retained.
+
+Fresh pre-PR `make test` on `ef38fac` exited 0 (`MAKE_TEST_EXIT=0`):
+656 Swift tests, Rust workspace, 1,379 vendor tests (1 ignored), all contracts.
+Log: `/tmp/needlbar-disk-settings-pre-pr-test.log`. Local test success does
+not establish remote CI completion. Next: PR review/CI and a separately
+authorized integration choice.
+
 ## 2026-09-30 Disk Settings information — implementation verified
 
 The user selected approach 1: system-volume capacity plus backing-device
