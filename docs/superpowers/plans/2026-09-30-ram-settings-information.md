@@ -206,13 +206,13 @@ presentation.update(snapshot: unavailableFixture)
 
   Construct full CombinedUsageSnapshot test fixtures from existing CPU helpers;
   test the controller's updated presentation state even with RAM visibility off.
-- [ ] Strengthen Task 1's existing stale-memory field-preservation test by
+- [x] Strengthen Task 1's existing stale-memory field-preservation test by
   retaining its TestClock and advancing it before the failed second tick.
   Assert all three fields remain intact and stale timestamp remains the first
   successful time, distinct from the failed attempt. No service production edit.
-- [ ] Run `make swift-test SWIFT_TEST_FILTER=SettingsRAMInformationTests`;
+- [x] Run `make swift-test SWIFT_TEST_FILTER=SettingsRAMInformationTests`;
   record expected RED for missing presentation before production edits.
-- [ ] Implement the pure display value and `@MainActor ObservableObject`
+- [x] Implement the pure display value and `@MainActor ObservableObject`
   presentation, following CPU's default-compatible injection pattern. Public
   class only if necessary for public SettingsView initializer; keep DTO internal.
   Display fields are independently optional Total/Used/Available/Compressed/
@@ -238,7 +238,7 @@ if !sum.overflow, sum.partialValue > 0,
 }
 ```
 
-- [ ] Implement one responsive native section. Show labeled Total, prominent
+- [x] Implement one responsive native section. Show labeled Total, prominent
   purple used percentage, Used/Available and labeled usage bar, then a compact
   Compressed/Wired/Swap group, labeled OS pressure, and full successful date/time.
   Reuse the existing section shape/spacing; wrap values at narrow widths. Help
@@ -306,7 +306,7 @@ private func bytesText(_ bytes: UInt64?) -> String {
   This gives the complete minimal native content; group the detail rows
   responsively for a compact card without changing their semantics or inventing
   additional information. Do not add a generic dashboard framework.
-- [ ] Own one RAM presentation in SettingsWindowController and update beside
+- [x] Own one RAM presentation in SettingsWindowController and update beside
   preview/CPU/quota updates. Forward through both SettingsView initializers
   with optional default-compatible arguments and mount before detailPane:
 
@@ -318,12 +318,12 @@ if selectedPage == .module(.memory) {
 
   `.memory` is the existing MonitorModuleID case displayed as RAM. Preserve
   all CPU and RAM controls and Alerts copy.
-- [ ] Add inert RAM fixture to existing review support: 48/36/12 GiB,
+- [x] Add inert RAM fixture to existing review support: 48/36/12 GiB,
   Compressed 8, Wired 6, Swap 2 GiB, normal pressure, fresh timestamp.
   Use it in both initial and configuration-change combined snapshots so
   visibility toggles do not erase the card. Existing launch guard and isolated
   defaults remain unchanged. No live collection/provider access in review.
-- [ ] Run focused RAM/Settings suites, SystemMonitorSettingsViewTests and
+- [x] Run focused RAM/Settings suites, SystemMonitorSettingsViewTests and
   SystemDashboardPopoverTests, then `make test` (including all Swift suites);
   require exit 0 before calling Task 2 complete. Capture attached-native-
   window light/dark RAM card PNGs using test-only helpers (CPU helper is the
@@ -334,17 +334,38 @@ if selectedPage == .module(.memory) {
 
 ## Task 3: Final verification and documentation (main)
 
-- [ ] Apply all Important review fixes with failing regression tests where
+- [x] Apply all Important review fixes with failing regression tests where
   appropriate; obtain final full-feature independent approval.
-- [ ] Run `swift run NeedlbarSettingsStudioReview --settings-studio-review`
+- [x] Run `swift run NeedlbarSettingsStudioReview --settings-studio-review`
   with the existing guarded executable, no packaging. Native-inspect RAM at
   960×720 light and 760×560 dark, all three tabs, visibility-off retention,
   pressure/text, wrapping/help/accessibility where supported; CPU remains
   correct and other pages do not display RAM's card. Close review windows
   before build/test cleanup. Mark fixture evidence distinct from installed app.
-- [ ] Run final `source /Users/taejunoh/.cargo/env && make test` with output
+- [x] Run final `source /Users/taejunoh/.cargo/env && make test` with output
   `/tmp/needlbar-ram-settings-final-test.log`; require exit 0. Also require
   `git diff --check`. No silent omission of failing tests or native limitations.
-- [ ] Update STATUS and this plan's checkboxes/results, commit documentation.
+- [x] Update STATUS and this plan's checkboxes/results, commit documentation.
   Installed app, CPU PR #10 and public release remain unchanged. Present the
   finishing-branch integration choices; keep the reused worktree until chosen.
+
+## Completion evidence
+
+Core: `c1f9476`; Settings: `94a2d86`. Independent spec and cumulative quality
+reviews approved both tasks. Final parent `make test` on the committed
+implementation exited 0: 641 Swift tests, Rust workspace, 1,379 vendor tests
+(1 ignored), and all contract scripts. Log:
+`/tmp/needlbar-ram-settings-final-test.log`. `git diff --check` passed.
+
+Guarded native review inspected all three RAM tabs at light 960×720 and dark
+minimum 760×560, both visibility-off states, retained unsupported Alerts copy,
+and unchanged CPU-only card. Attached native card captures in
+`/tmp/needlbar-ram-settings-review` cover normal, stale Critical, and unavailable.
+No installed-app behavior, VoiceOver, Increase Contrast, quantitative contrast,
+macOS 14 hardware, or injected native Mach-failure pass is claimed. The native
+tool did not expose each byte value; explicit labels were reviewed in source.
+Full details, the original unrelated Analytics baseline failure, and the
+corrected test-filter invocation issue are recorded in `docs/STATUS.md`.
+
+Installed v0.3.6 and CPU PR #10 are unchanged. RAM branch remains local and
+depends on CPU head `524e05c`; integration is a separate user choice.

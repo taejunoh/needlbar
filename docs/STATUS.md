@@ -1,6 +1,6 @@
 # Needlbar Development Status
 
-## 2026-09-30 RAM Settings information — Core verified, Settings next
+## 2026-09-30 RAM Settings information — implementation verified
 
 The user approved the recommended RAM summary, including compressed and
 Wired fields already available in the existing VM statistics read, and
@@ -20,15 +20,58 @@ Independent spec and quality reviews approved Task 1. Native Mach/page-size
 failure injection remains unverified; pure builder tests cover those fallback
 inputs. Quality review's nonblocking request to distinguish success/failure
 times in the existing stale-memory test is assigned to Task 2.
-Next is RAM Settings presentation/view/wiring, then reviews and final native
-fixture inspection plus `make test`.
+Settings Task 2 is committed at `94a2d86`. The RAM page now shows a compact
+purple Used/Available capacity bar, independently known Total, Compressed,
+Wired, Swap, OS pressure, and full successful sample date/time above existing
+controls on all three tabs. Missing availability or unusable activity clears
+dynamic values without erasing known Total. Stale values are explicitly Last
+known; zero, unknown, inconsistent capacity, and arithmetic overflow remain
+distinct. No extra collector, timer, cache, process scan, or provider request
+was introduced. Task 1's stale-test clock follow-up is now resolved.
+
+Task 2 RED reproduced missing presentation/view symbols before implementation.
+Final focused verification passed RAM 8/8, RAM plus Settings Studio 72/72,
+service 1/1, system-surface 5/5, and dashboard 43/43 tests. One initial combined
+filter command failed from shell pipe interpretation, not product behavior;
+corrected commands and the full Swift run covered the intended tests. Full
+Task 2 `make test` exited 0 in `/tmp/needlbar-ram-settings-task2-test.log`.
+Two subsequent test-only assertions were strengthened and RAM 8/8 reran green.
+Independent Task 2 spec review and cumulative Core/Settings quality review
+approved the implementation with no outstanding findings.
+
+Parent final `source /Users/taejunoh/.cargo/env && make test` on the committed
+implementation tree exited 0 (`MAKE_TEST_EXIT=0`). It passed the Rust workspace,
+1,379 vendor tests (1 ignored), 641 Swift tests including widget projection,
+and bridge, brand, widget, package, and notarization contracts. Full log:
+`/tmp/needlbar-ram-settings-final-test.log`. `git diff --check` passed.
+
+Native checks used only the existing guarded Settings review executable with
+isolated defaults and inert fixtures, not the installed app. Light 960×720
+and dark minimum 760×560 content windows displayed the RAM card without
+clipping on Menu bar, Dashboard, and Alerts. Disabling both visibility toggles
+kept RAM information intact; the Alerts unsupported-threshold copy remained.
+CPU still showed its correct card and no RAM card. Attached native card PNGs
+at 677px light and 477px dark, including stale Critical and unavailable states,
+were inspected in `/tmp/needlbar-ram-settings-review`. Native ProgressView tint
+initially rendered gray; the final compact bar renders purple as approved.
+The review windows were closed and their process exited 0 before final tests.
+
+Orca's accessibility tree exposed the RAM container's percentage, pressure,
+date, and help but did not expose individual byte values. Those explicit
+labels/values were statically reviewed; neither a VoiceOver pass nor a proven
+tool-flattening explanation is claimed. Actual VoiceOver, Increase Contrast,
+quantitative contrast, and macOS 14 hardware execution remain unverified.
+Pure builder fallback tests do not inject real Mach failures. Existing local
+macOS 27 Rust-link warnings remain; the deployment target is still macOS 14.
+Next is the user's integration choice. No push, merge, release, installation,
+or new persistent app bundle was performed by this RAM task.
 
 Branch `codex/ram-settings-information` reuses the current worktree from CPU
 commit `524e05c`. CPU work was pushed separately in
 <https://github.com/taejunoh/needlbar/pull/10> against main; this new RAM work
-does not alter that PR. RAM Core production changes exist only on this branch;
-Settings, the installed v0.3.6 app and public release are unchanged. No merge,
-release or installation is claimed.
+does not alter that PR. RAM Core and Settings changes exist only on this
+branch; the installed v0.3.6 app and public release are unchanged. CPU PR #10
+must remain an explicit dependency when choosing RAM integration.
 
 Initial pre-implementation `make test` exited 2 with one existing
 `cancelledWaiterDoesNotCancelSharedAnalyticsTask` issue. The focused Analytics
