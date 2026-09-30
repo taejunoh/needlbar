@@ -58,6 +58,14 @@ import Testing
     #expect(memory.wiredBytes == nil)
 }
 
+@Test func existingDiskVolumeInitializerDefaultsTotalCapacityToUnknown() {
+    let disk = SystemMetricsSnapshot.DiskVolume(
+        name: "Macintosh HD", usedBytes: 100, freeBytes: 200,
+        readBytesPerSecond: nil, writeBytesPerSecond: nil)
+
+    #expect(disk.totalBytes == nil)
+}
+
 private func freshDefaults() -> UserDefaults {
     let suiteName = "SystemMetricModelTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suiteName)!
