@@ -156,7 +156,8 @@ return .init(usedBytes: memory.usedBytes, freeBytes: memory.freeBytes,
   Compressed, Wired values and assert stale snapshots preserve them and the
   successful availability timestamp. Keep whole-struct copy paths unchanged
   unless a test exposes loss. Add no native-failure flags to production.
-- [ ] Run builder, model, conversion and service suites, then all Swift tests.
+- [ ] Run builder, model, conversion and service suites, then `make test`
+  (including all Swift suites); require exit 0 before calling Task 1 complete.
   Report honest native-limit distinction: pure builder failure tests are not
   injected real Mach failures. Self-review; commit only Task 1 files as
   `feat: retain RAM capacity and VM memory details`. Request independent spec
@@ -317,7 +318,8 @@ if selectedPage == .module(.memory) {
   visibility toggles do not erase the card. Existing launch guard and isolated
   defaults remain unchanged. No live collection/provider access in review.
 - [ ] Run focused RAM/Settings suites, SystemMonitorSettingsViewTests and
-  SystemDashboardPopoverTests, then all Swift tests. Capture attached-native-
+  SystemDashboardPopoverTests, then `make test` (including all Swift suites);
+  require exit 0 before calling Task 2 complete. Capture attached-native-
   window light/dark RAM card PNGs using test-only helpers (CPU helper is the
   proven pattern; detached hosting-view cache alone produced invalid images).
   Report exact artifact paths, inspect real pixels, and do not call PNG width

@@ -19,6 +19,14 @@ commit `524e05c`. CPU work was pushed separately in
 does not alter that PR. RAM production code and the installed v0.3.6 app are
 unchanged. No RAM implementation, merge, release, or installation is claimed.
 
+Initial pre-implementation `make test` exited 2 with one existing
+`cancelledWaiterDoesNotCancelSharedAnalyticsTask` issue. The focused Analytics
+suite subsequently passed 3/3. Read-only diagnosis identified missing overlap
+synchronization in that existing test as a plausible ordering race; the failed
+execution's exact schedule was not recorded. No unrelated fix was made.
+The initial log is `/tmp/needlbar-ram-settings-baseline-test.log`; a full
+baseline repeat is in progress before RAM production edits begin.
+
 ## 2026-09-30 CPU Settings information — implementation verified
 
 Branch `codex/cpu-settings-information` implements the approved CPU-only spec
