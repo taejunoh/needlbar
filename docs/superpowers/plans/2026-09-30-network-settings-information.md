@@ -52,7 +52,7 @@ exit "$network_test_exit"
 - Modify `Tests/NeedlbarCoreTests/SystemMetricModelTests.swift`
 - Modify `Tests/NeedlbarCoreTests/SystemMetricsServiceTests.swift`
 
-- [ ] Add failing model tests: original initializer defaults to nil; explicit
+- [x] Add failing model tests: original initializer defaults to nil; explicit
   empty array remains empty; an explicit array survives unchanged. Representative:
 
 ```swift
@@ -69,24 +69,24 @@ let named = SystemMetricsSnapshot.Network(uploadBytesPerSecond: 128,
 #expect(named.interfaceNames == ["en0", "utun3"])
 ```
 
-- [ ] Extend existing fake-service fixtures/tests so public-IP disabled,
+- [x] Extend existing fake-service fixtures/tests so public-IP disabled,
   enabled-success and enabled-failure reconstruction each preserve names.
   Success→whole-collector-throw must retain names and original successful
   Network timestamp. Reuse existing fake clock/collector conventions; avoid
   live getifaddrs or real addresses. Observe the focused tests fail because
   the field does not exist or is not preserved, not unrelated build errors.
-- [ ] Add `public let interfaceNames: [String]?` and trailing
+- [x] Add `public let interfaceNames: [String]?` and trailing
   `interfaceNames: [String]? = nil` initializer parameter; assign it directly.
-- [ ] In collectNetwork's successful return add
+- [x] In collectNetwork's successful return add
   `interfaceNames: trafficInterfaces.sorted()`. Failure uses default nil.
   No additional query, filtering, builder, counters or baseline changes.
-- [ ] In replacingPublicIP forward
+- [x] In replacingPublicIP forward
   `interfaceNames: snapshot.network.interfaceNames`. Whole-record stale copy
   already preserves the field; do not change its policy.
-- [ ] Focused model/service and existing conversion tests; full `make test`
+- [x] Focused model/service and existing conversion tests; full `make test`
   with an explicit exit marker. Inspect diff for incidental changes.
-- [ ] Commit `feat: preserve reported network interface names`.
-- [ ] Independent spec then quality review; repair and reverify if needed.
+- [x] Commit `feat: preserve reported network interface names`.
+- [x] Independent spec then quality review; repair and reverify if needed.
 
 ### Task 2: Derive and mount the Network Settings card
 
@@ -99,6 +99,8 @@ let named = SystemMetricsSnapshot.Network(uploadBytesPerSecond: 128,
 - Modify `Sources/Needlbar/Settings/SettingsWindowController.swift`
 - Modify `Tests/NeedlbarTests/SettingsStudioTests.swift`
 - Modify `Sources/NeedlbarSettingsStudioReviewSupport/SettingsStudioReviewFixtures.swift`
+- Modify `Sources/NeedlbarSettingsStudioReview/main.swift` only to select the
+  populated inert Network fixture while retaining other module fixture data.
 
 **Presentation API:** Follow the existing CPU/RAM/Disk structure with
 `SettingsNetworkInformationStatus` cases fresh(capturedAt),
@@ -110,7 +112,7 @@ metadataIsStale Bool, validated localIPAddresses and optional publicIPAddress.
 one `@Published private(set) var value`, compatible `init(snapshot: ... = nil)`
 and `update(snapshot:)`. Internal value APIs need not be public.
 
-- [ ] Add failing tests using existing combined/system fixture factories for
+- [x] Add failing tests using existing combined/system fixture factories for
   fresh two rates, independent one rate, real zero, both nil, stale cross-day,
   unavailable/missing availability with orphan data, stale nil rates, missing
   system, success→unavailable→recovery clearing. Assert each data and timestamp
@@ -126,75 +128,75 @@ and `update(snapshot:)`. Internal value APIs need not be public.
 #expect(presentation.value.successfulAt == nil)
 ```
 
-- [ ] Test names independent of traffic: first-sample names with no rates,
+- [x] Test names independent of traffic: first-sample names with no rates,
   stale names/no rates, nil vs explicit [], missing-system clearing, trimming,
   case-sensitive dedup/sort, empty/control/over-64-UTF8-byte rejection,
   limit 16 with omission, nonempty-all-rejected becomes nil+omission. Duplicate
   collapse alone is not an omission warning. No truncation of identifiers.
-- [ ] Test numeric IPv4/IPv6 validation and local ordered dedup: trim,
+- [x] Test numeric IPv4/IPv6 validation and local ordered dedup: trim,
   empty/control/over-45-byte/malformed literals reject, documentation
   literals preserved, missing system clears, stale metadata marked. Use
   Darwin inet_pton (no DNS). No tests read actual user addresses.
-- [ ] Implement derivation. Metadata stale is read from original availability
+- [x] Implement derivation. Metadata stale is read from original availability
   independently of traffic eligibility. Traffic requires system + explicit
   fresh/stale availability + one nonnil rate. Missing/unavailable/both nil
   clears both rates and date. Fresh date uses capturedAt, stale date uses
   lastSuccessfulAt. No UI cache, task, timer, fetch or collection.
-- [ ] Add pure `SettingsNetworkIPVisibility` value with explicit initializer
+- [x] Add pure `SettingsNetworkIPVisibility` value with explicit initializer
   `init(tab: SettingsStudioTab, localEnabled: Bool, publicEnabled: Bool)` and
   `showsLocalIP`, `showsPublicIP`. Both require tab == .dashboard plus their
   own current flag. Test all tabs and independent booleans, including true→
   false while retaining the same presentation payload. This helper is invoked
   from SettingsView body with current selectedTab/systemMonitorModel.value;
   no preferences or tab state in the snapshot DTO.
-- [ ] Implement card using existing SettingsStudioSection, no fixed height.
+- [x] Implement card using existing SettingsStudioSection, no fixed height.
   Download blue/Upload orange, labeled prominent monospaced rates, binary
   B/s units, 0 B/s distinct from —, adaptive horizontal/vertical layout.
   Full localized Traffic sampled/Last known traffic date; unavailable copy
   without inferred error/warmup. Test rate formatting zero/nil/1MiB/s and
   freshness text includes actual successful date and stale label.
-- [ ] Wrapped reported-name text, explicit empty/unknown and omission note,
+- [x] Wrapped reported-name text, explicit empty/unknown and omission note,
   Last known metadata text when stale. Scope explanation exactly from spec.
   IP rows only if current visibility helper permits; — for enabled unknown,
   middle-truncated monospaced display with full help/accessibility. Public
   row explains caching without lookup timestamp. IPs never logged/exported.
   Explicit accessibility labels/values and stale prefixes for all data.
-- [ ] Inject optional default-compatible presentation into both SettingsView
+- [x] Inject optional default-compatible presentation into both SettingsView
   initializers; mount only `.module(.network)` below picker above controls on
   all tabs. Controller owns, injects, exposes internal networkInformationState
   and updates from the same stream regardless of visibility. No change to
   existing options, services, Alerts text or CPU/RAM/Disk behavior.
-- [ ] Add controller test with Network visibility disabled on both surfaces:
+- [x] Add controller test with Network visibility disabled on both surfaces:
   state updates, stale transition, missing-system clearing still occur.
-- [ ] Extend existing guarded review fixture without renaming cpuSnapshot:
+- [x] Extend existing guarded review fixture without renaming cpuSnapshot:
   download 1_048_576, upload 131_072, names en0/lo0/utun3, local 192.0.2.10 and
   2001:db8::10, public 198.51.100.10, explicit fresh Network availability.
   Do not add live collection, an endpoint or additional persistent bundle.
-- [ ] If practical reuse existing attached NSHostingView screenshot test
+- [x] If practical reuse existing attached NSHostingView screenshot test
   pattern for light, minimum dark long-name/IPv6, stale and unavailable cards;
   images are supplemental to assertions, not proof of functional content.
-- [ ] Run focused Network, SettingsStudio, CPU/RAM/Disk tests; full make test
+- [x] Run focused Network, SettingsStudio, CPU/RAM/Disk tests; full make test
   with explicit status. Commit `feat: add Network information to Settings`.
-- [ ] Independent spec then cumulative quality review, repair/reverify.
+- [x] Independent spec then cumulative quality review, repair/reverify.
 
 ### Task 3: Root native and final verification
 
 **Files (root ownership):** `docs/STATUS.md`, this plan and approved spec if
 recording evidence or a justified deviation. No new implementation scope.
 
-- [ ] Read computer-use skill and full runtime guide before native operations.
-- [ ] Run existing `swift run NeedlbarSettingsStudioReview --settings-studio-review`
+- [x] Read computer-use skill and full runtime guide before native operations.
+- [x] Run existing `swift run NeedlbarSettingsStudioReview --settings-studio-review`
   with isolated defaults/inert fixtures. Use native app window inspection.
-- [ ] Inspect light 960×720 and dark 760×560 Network card on all three tabs.
+- [x] Inspect light 960×720 and dark 760×560 Network card on all three tabs.
   Toggle Local/Public IP independently on Dashboard; confirm immediate hiding
   with same fixture, no addresses on Menu/Alerts with flags on. Check wrapped
   long names/IPv6 fixtures, visibility-off card retention, unchanged Alerts
   explanation and CPU/RAM/Disk negative mount checks. Read supported AX output.
   Do not claim actual VoiceOver, measured contrast or macOS 14 hardware proof.
-- [ ] Close only fixture review windows and confirm process exit before builds.
-- [ ] Read verification-before-completion skill; run final full make test,
+- [x] Close only fixture review windows and confirm process exit before builds.
+- [x] Read verification-before-completion skill; run final full make test,
   inspect explicit exit marker, current diff/status and contract test output.
-- [ ] Update STATUS: exact commits/tests/native evidence, known collection
+- [x] Update STATUS: exact commits/tests/native evidence, known collection
   limitations, privacy scope and unchanged installed/public release state.
-- [ ] Commit docs, read finishing-a-development-branch skill and offer local
+- [x] Commit docs, read finishing-a-development-branch skill and offer local
   merge into Disk / push+stacked PR / retain branch. No unauthorized mutation.

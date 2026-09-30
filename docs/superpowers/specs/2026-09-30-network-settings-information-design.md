@@ -199,6 +199,9 @@ from Disk head `b138836`, with no new folders or app bundles. Disk PR #12, RAM
 PR #11 and CPU PR #10 remain unchanged dependencies. No push, retarget, merge,
 installation or release is authorized by this design step.
 
-After written-spec approval, prepare a test-first plan with sequential bounded
-Core-name-retention and Settings-card tasks, independent reviews and final
-verification. Update STATUS with the exact continuation and evidence.
+Written-spec approval led to the test-first plan
+`docs/superpowers/plans/2026-09-30-network-settings-information.md`.
+Core retention `1144484` and Settings card `da08144` passed independent reviews,
+inert native checks and final `make test` exit 0. STATUS records detailed
+evidence and unverified hardware/collection cases. Next is the user's integration
+choice; the installed app and public releases remain unchanged.
