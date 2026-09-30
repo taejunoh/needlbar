@@ -24,8 +24,10 @@ Initial pre-implementation `make test` exited 2 with one existing
 suite subsequently passed 3/3. Read-only diagnosis identified missing overlap
 synchronization in that existing test as a plausible ordering race; the failed
 execution's exact schedule was not recorded. No unrelated fix was made.
-The initial log is `/tmp/needlbar-ram-settings-baseline-test.log`; a full
-baseline repeat is in progress before RAM production edits begin.
+The initial log is `/tmp/needlbar-ram-settings-baseline-test.log`; the full
+baseline repeat exited 0 before RAM production edits began. Its log is
+`/tmp/needlbar-ram-settings-baseline-repeat-test.log`. The initial failure
+remains a pre-existing test-stability limitation, not a repaired defect.
 
 ## 2026-09-30 CPU Settings information — implementation verified
 
