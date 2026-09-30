@@ -1,5 +1,22 @@
 # Needlbar Development Status
 
+## 2026-09-30 RAM Settings information — written design review
+
+The user approved the recommended RAM summary, including compressed and
+Wired fields already available in the existing VM statistics read, and
+excluding per-app/process memory. The written spec is
+`docs/superpowers/specs/2026-09-30-ram-settings-information-design.md`.
+It preserves aggregate memory semantics and distinguishes pressure from
+usage percentage, overlapping categories from additive slices, and physical
+capacity from dynamic availability. The next continuation is written-spec
+review, then a test-first RAM-only implementation plan.
+
+Branch `codex/ram-settings-information` reuses the current worktree from CPU
+commit `524e05c`. CPU work was pushed separately in
+<https://github.com/taejunoh/needlbar/pull/10> against main; this new RAM work
+does not alter that PR. RAM production code and the installed v0.3.6 app are
+unchanged. No RAM implementation, merge, release, or installation is claimed.
+
 ## 2026-09-30 CPU Settings information — implementation verified
 
 Branch `codex/cpu-settings-information` implements the approved CPU-only spec
