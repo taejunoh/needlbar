@@ -1,5 +1,26 @@
 # Needlbar Development Status
 
+## 2026-09-30 Network Settings information — scope approved, written review next
+
+The user approved speeds + reported interface list + opted-in IP display,
+excluding cumulative traffic and per-interface speeds. Written design:
+`docs/superpowers/specs/2026-09-30-network-settings-information-design.md`.
+It preserves the existing all-interface rate semantics, adds only optional
+name retention from the existing native set and service IP reconstruction,
+and separates usable traffic timestamps from interface/address metadata.
+IP rows are a narrow user-approved exception to phase-1 Settings restrictions:
+Network Dashboard only, independently gated by current existing options,
+immediately hidden on opt-out, never logged/exported or sent to providers.
+No extra collector, lookup, timer, endpoint or permission is introduced.
+
+Local `codex/network-settings-information` branches from Disk `b138836` in
+the same attached worktree. CPU #10, RAM #11 and Disk #12 are unchanged
+dependencies. Read-only UI/privacy and native semantic analyses informed the
+spec; no production edits, tests, build, push, install or release occurred.
+Existing counter-width/wrap, empty-source-set, shared rate-boundary and stale
+fallback limitations are recorded, not repaired. Next: user's written-spec
+review, then a test-first delegated Core/Settings plan and verification.
+
 ## 2026-09-30 Disk Settings PR published
 
 The user chose push and PR creation. Branch
