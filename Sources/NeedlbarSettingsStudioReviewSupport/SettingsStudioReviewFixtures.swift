@@ -2,6 +2,41 @@ import Foundation
 import NeedlbarApp
 import NeedlbarCore
 
+public enum SettingsStudioReviewFixtures {
+    public static func cpuSnapshot() -> CombinedUsageSnapshot {
+        let capturedAt = Date(timeIntervalSince1970: 1_790_755_200)
+        let cpu = SystemMetricsSnapshot.CPU(
+            totalUsage: MetricPercentage(25),
+            perCoreUsage: Array(repeating: MetricPercentage(25)!, count: 15),
+            hardware: CPUHardwareInfo(
+                name: "Apple M5 Pro",
+                physicalCoreCount: 15,
+                logicalCoreCount: 15,
+                coreGroups: [
+                    CPUHardwareInfo.CoreGroup(name: "Super", physicalCoreCount: 5)!,
+                    CPUHardwareInfo.CoreGroup(name: "Performance", physicalCoreCount: 10)!,
+                ]
+            )
+        )
+        let system = SystemMetricsSnapshot(
+            capturedAt: capturedAt,
+            cpu: cpu,
+            memory: .init(usedBytes: nil, freeBytes: nil, swapUsedBytes: nil, pressure: nil),
+            disks: [],
+            network: .init(uploadBytesPerSecond: nil, downloadBytesPerSecond: nil,
+                           localIPAddresses: [], publicIPAddress: nil),
+            battery: .init(level: nil, isCharging: nil, health: nil),
+            availability: [.cpu: .fresh(capturedAt: capturedAt)]
+        )
+        return CombinedUsageSnapshot(
+            system: system,
+            providers: [],
+            capturedAt: capturedAt,
+            systemAvailability: [.cpu: .fresh(capturedAt: capturedAt)]
+        )
+    }
+}
+
 public enum SettingsStudioReviewLaunch {
     public static let argument = "--settings-studio-review"
 

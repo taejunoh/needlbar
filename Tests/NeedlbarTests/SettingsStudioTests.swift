@@ -5,6 +5,7 @@ import Testing
 @testable import NeedlbarApp
 @testable import NeedlbarCore
 import NeedlbarClaudeStatusLineSupport
+import NeedlbarSettingsStudioReviewSupport
 
 @Suite("SettingsStudio", .serialized)
 @MainActor
@@ -96,6 +97,33 @@ struct SettingsStudioTests {
         #expect(controller.claudeQuotaState.quotaFailureReasonText == nil)
         #expect(controller.claudeQuotaState.quotaLastCheckedText
             == DateFormatter.localizedString(from: lastSuccess, dateStyle: .medium, timeStyle: .short))
+    }
+
+    @Test func settingsControllerUpdatesCPUInformationWithoutFollowingVisibilityPreferences() throws {
+        let name = "SettingsStudio.cpu-information.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let configuration = ModuleConfiguration(defaults: defaults)
+        var monitor = configuration.systemMonitor
+        monitor.menuBarVisibleModules.remove(.cpu)
+        monitor.dashboardVisibleModules.remove(.cpu)
+        configuration.setSystemMonitor(monitor)
+        let preferences = QuotaNotificationPreferences(defaults: defaults)
+        let controller = SettingsWindowController(
+            configuration: configuration,
+            actions: SettingsActions(),
+            notificationPreferences: preferences,
+            notificationService: QuotaNotificationService(store: ProviderSnapshotStore(), preferences: preferences),
+            openCursorSpending: {}
+        )
+
+        controller.update(snapshot: SettingsStudioReviewFixtures.cpuSnapshot(), configuration: configuration.systemMonitor)
+
+        #expect(!configuration.systemMonitor.menuBarVisibleModules.contains(.cpu))
+        #expect(!configuration.systemMonitor.dashboardVisibleModules.contains(.cpu))
+        #expect(controller.cpuInformationState.hardware?.name == "Apple M5 Pro")
+        #expect(controller.cpuInformationState.totalUsagePercent == 25)
+        #expect(controller.cpuInformationState.idlePercent == 75)
     }
 
     @Test func claudeStatusLineDisconnectInvokesImmediateClearCallback() throws {
