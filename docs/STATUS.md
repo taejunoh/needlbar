@@ -1,6 +1,6 @@
 # Needlbar Development Status
 
-## 2026-09-30 RAM Settings information — written design review
+## 2026-09-30 RAM Settings information — implementation planned
 
 The user approved the recommended RAM summary, including compressed and
 Wired fields already available in the existing VM statistics read, and
@@ -8,8 +8,10 @@ excluding per-app/process memory. The written spec is
 `docs/superpowers/specs/2026-09-30-ram-settings-information-design.md`.
 It preserves aggregate memory semantics and distinguishes pressure from
 usage percentage, overlapping categories from additive slices, and physical
-capacity from dynamic availability. The next continuation is written-spec
-review, then a test-first RAM-only implementation plan.
+capacity from dynamic availability. The written spec was approved. The
+test-first implementation plan is
+`docs/superpowers/plans/2026-09-30-ram-settings-information.md`; next is Core
+memory extension, then Settings wiring, independent reviews and `make test`.
 
 Branch `codex/ram-settings-information` reuses the current worktree from CPU
 commit `524e05c`. CPU work was pushed separately in

@@ -2,7 +2,7 @@
 
 Date: 2026-09-30
 Scope: Settings → SYSTEM → RAM only
-State: Recommended scope approved; written specification awaiting user review.
+State: Recommended scope and written specification approved by the user.
 
 ## Intent and approved scope
 
