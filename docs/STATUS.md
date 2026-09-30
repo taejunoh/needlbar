@@ -1,6 +1,6 @@
 # Needlbar Development Status
 
-## 2026-09-30 RAM Settings information — implementation planned
+## 2026-09-30 RAM Settings information — Core verified, Settings next
 
 The user approved the recommended RAM summary, including compressed and
 Wired fields already available in the existing VM statistics read, and
@@ -10,14 +10,25 @@ It preserves aggregate memory semantics and distinguishes pressure from
 usage percentage, overlapping categories from additive slices, and physical
 capacity from dynamic availability. The written spec was approved. The
 test-first implementation plan is
-`docs/superpowers/plans/2026-09-30-ram-settings-information.md`; next is Core
-memory extension, then Settings wiring, independent reviews and `make test`.
+`docs/superpowers/plans/2026-09-30-ram-settings-information.md`.
+Core Task 1 is committed at `c1f9476`: optional physical Total, Compressed,
+and Wired fields; a pure bounded builder reusing the original aggregate
+conversion; and memory-only native wiring preserving Total on dynamic
+failures. Focused suites passed 7/6/8/7 tests and full `make test` exited 0
+in `/tmp/needlbar-ram-core-task1-test-confirmed.log` (`MAKE_TEST_EXIT=0`).
+Independent spec and quality reviews approved Task 1. Native Mach/page-size
+failure injection remains unverified; pure builder tests cover those fallback
+inputs. Quality review's nonblocking request to distinguish success/failure
+times in the existing stale-memory test is assigned to Task 2.
+Next is RAM Settings presentation/view/wiring, then reviews and final native
+fixture inspection plus `make test`.
 
 Branch `codex/ram-settings-information` reuses the current worktree from CPU
 commit `524e05c`. CPU work was pushed separately in
 <https://github.com/taejunoh/needlbar/pull/10> against main; this new RAM work
-does not alter that PR. RAM production code and the installed v0.3.6 app are
-unchanged. No RAM implementation, merge, release, or installation is claimed.
+does not alter that PR. RAM Core production changes exist only on this branch;
+Settings, the installed v0.3.6 app and public release are unchanged. No merge,
+release or installation is claimed.
 
 Initial pre-implementation `make test` exited 2 with one existing
 `cancelledWaiterDoesNotCancelSharedAnalyticsTask` issue. The focused Analytics

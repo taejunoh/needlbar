@@ -21,7 +21,8 @@ through AGENTS. Execute all tasks continuously, sequentially, with independent
 spec review followed by quality review between implementation tasks.
 
 Task 1 owns Core memory model/normalization/collector/tests. Task 2 owns RAM
-Settings presentation/view/wiring/review fixtures/tests. Main owns documents
+Settings presentation/view/wiring/review fixtures/tests and the small Task 1
+review follow-up on the stale-service test clock. Main owns documents
 and final verification. Workers are not alone; preserve others' edits.
 No new worktree, app bundle installation, push, merge, or release in this plan.
 
@@ -44,7 +45,7 @@ Builds must not overlap with other builds or the native review executable.
 - Modify: `Tests/NeedlbarCoreTests/SystemMetricsServiceTests.swift` (memory preservation assertion)
 - Reuse unchanged: `SystemMetricConversions.memoryUsage`; its formula remains authoritative.
 
-- [ ] Write RED tests for source-compatible initializer defaults and pure
+- [x] Write RED tests for source-compatible initializer defaults and pure
   `MemorySnapshotBuilder.make(physicalMemory:pageSize:counters:)`. Define
   internal nested `Counters` with six UInt64 properties: `active`, `inactive`,
   `wired`, `compressed`, `purgeable`, `fileBacked`. Expectations are literal:
@@ -79,9 +80,9 @@ Builds must not overlap with other builds or the native review executable.
   detail multiplication overflow while original aggregate remains valid
   (wired=purgeable=UInt64.max, other counters=0). Missing optional detail must
   not invalidate valid Used/Available. Old initializer omits all three fields.
-- [ ] Run the builder/model suites with `make swift-test` and record RED
+- [x] Run the builder/model suites with `make swift-test` and record RED
   failure for missing fields/builder before writing production code.
-- [ ] Add `totalBytes`, `compressedBytes`, `wiredBytes: UInt64?` to Memory
+- [x] Add `totalBytes`, `compressedBytes`, `wiredBytes: UInt64?` to Memory
   with defaulted trailing initializer parameters. Preserve all old fields:
 
 ```swift
@@ -99,7 +100,7 @@ public init(usedBytes: UInt64?, freeBytes: UInt64?,
 }
 ```
 
-- [ ] Implement the small internal pure builder. No query closures or public
+- [x] Implement the small internal pure builder. No query closures or public
   native API additions are needed. Its contract is:
 
 ```swift
@@ -137,7 +138,7 @@ enum MemorySnapshotBuilder {
 ```
 
   Reuse `SystemMetricConversions.MemoryUsage` unchanged.
-- [ ] Capture physicalMemory once at the beginning of `collectMemory`.
+- [x] Capture physicalMemory once at the beginning of `collectMemory`.
   Replace early stats/page-size returns with the builder's Total-only result.
   On successful stats/page-size, map the existing six VM counters into the
   builder. If its Used is nil, return it without swap/pressure reads. Otherwise
@@ -152,11 +153,11 @@ return .init(usedBytes: memory.usedBytes, freeBytes: memory.freeBytes,
 
   Keep existing helper names without renaming them. Do not use uncompressed logical
   compressor counters. Memory availability still depends on Used, not Total.
-- [ ] Extend existing fake-service success→failure coverage with nonnil Total,
+- [x] Extend existing fake-service success→failure coverage with nonnil Total,
   Compressed, Wired values and assert stale snapshots preserve them and the
   successful availability timestamp. Keep whole-struct copy paths unchanged
   unless a test exposes loss. Add no native-failure flags to production.
-- [ ] Run builder, model, conversion and service suites, then `make test`
+- [x] Run builder, model, conversion and service suites, then `make test`
   (including all Swift suites); require exit 0 before calling Task 1 complete.
   Report honest native-limit distinction: pure builder failure tests are not
   injected real Mach failures. Self-review; commit only Task 1 files as
@@ -172,13 +173,14 @@ return .init(usedBytes: memory.usedBytes, freeBytes: memory.freeBytes,
 - Modify: `Sources/Needlbar/Settings/SettingsWindowController.swift`
 - Create: `Tests/NeedlbarTests/SettingsRAMInformationTests.swift`
 - Modify: `Tests/NeedlbarTests/SettingsStudioTests.swift`
+- Modify: `Tests/NeedlbarCoreTests/SystemMetricsServiceTests.swift` (review follow-up: advance existing test clock before failed tick only)
 - Modify: `Sources/NeedlbarSettingsStudioReviewSupport/SettingsStudioReviewFixtures.swift`
 - Modify: `Sources/NeedlbarSettingsStudioReview/main.swift`
 - Reuse: native section styling, CPU presentation/controller pattern and
   existing binary byte formatting where its access level permits. Do not
   refactor unrelated Overview/CPU formatting simply to share a helper.
 
-- [ ] Write RED presentation/controller tests. Fixture: actual Total 48 GiB,
+- [x] Write RED presentation/controller tests. Fixture: actual Total 48 GiB,
   Used 36 GiB, Available 12 GiB, Compressed 8 GiB, Wired 6 GiB, Swap 2 GiB,
   pressure normal, successful T. Expect 75% (not Used+details), all details
   visible, Total independent, and original timestamp T. Zero is real; nil is
@@ -204,6 +206,10 @@ presentation.update(snapshot: unavailableFixture)
 
   Construct full CombinedUsageSnapshot test fixtures from existing CPU helpers;
   test the controller's updated presentation state even with RAM visibility off.
+- [ ] Strengthen Task 1's existing stale-memory field-preservation test by
+  retaining its TestClock and advancing it before the failed second tick.
+  Assert all three fields remain intact and stale timestamp remains the first
+  successful time, distinct from the failed attempt. No service production edit.
 - [ ] Run `make swift-test SWIFT_TEST_FILTER=SettingsRAMInformationTests`;
   record expected RED for missing presentation before production edits.
 - [ ] Implement the pure display value and `@MainActor ObservableObject`
