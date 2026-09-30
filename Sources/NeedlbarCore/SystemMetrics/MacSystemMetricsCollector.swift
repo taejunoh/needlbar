@@ -6,19 +6,33 @@ import SystemConfiguration
 
 public actor MacSystemMetricsCollector: SystemMetricsCollecting {
   private var previousCPUTicks: CPUTicks?
+  private let readCPUHardware: @Sendable () -> CPUHardwareInfo?
+  private var cpuHardwareWasRead = false
+  private var cachedCPUHardware: CPUHardwareInfo?
   private var previousSystemDiskCounters: SystemMetricConversions.ByteCounters?
   private var previousNetworkCounters: SystemMetricConversions.ByteCounters?
 
-  public init() {}
+  public init() {
+    readCPUHardware = { MacCPUHardwareReader().read() }
+  }
+
+  init(readCPUHardware: @escaping @Sendable () -> CPUHardwareInfo?) {
+    self.readCPUHardware = readCPUHardware
+  }
 
   public func collect(at date: Date) async throws -> SystemMetricsSnapshot {
-    let cpu = collectCPU()
+    if !cpuHardwareWasRead {
+      cachedCPUHardware = readCPUHardware()
+      cpuHardwareWasRead = true
+    }
+    let cpuResult = collectCPU(hardware: cachedCPUHardware, capturedAt: date)
+    let cpu = cpuResult.snapshot
     let memory = collectMemory()
     let disks = collectDisks(at: date)
     let network = collectNetwork(at: date)
     let battery = collectBattery()
     let availability: [MonitorModuleID: MetricAvailability] = [
-      .cpu: cpu.totalUsage == nil ? .unavailable(code: "cpuUnavailable") : .fresh(capturedAt: date),
+      .cpu: cpuResult.availability,
       .memory: memory.usedBytes == nil
         ? .unavailable(code: "memoryUnavailable") : .fresh(capturedAt: date),
       .disk: disks.isEmpty ? .unavailable(code: "diskUnavailable") : .fresh(capturedAt: date),
@@ -39,7 +53,9 @@ public actor MacSystemMetricsCollector: SystemMetricsCollecting {
     )
   }
 
-  private func collectCPU() -> SystemMetricsSnapshot.CPU {
+  private func collectCPU(
+    hardware: CPUHardwareInfo?, capturedAt: Date
+  ) -> (snapshot: SystemMetricsSnapshot.CPU, availability: MetricAvailability) {
     var numberOfCPUs: natural_t = 0
     var cpuInfo: processor_info_array_t?
     var numberOfCPUInfo: mach_msg_type_number_t = 0
@@ -51,7 +67,10 @@ public actor MacSystemMetricsCollector: SystemMetricsCollecting {
       &numberOfCPUInfo
     )
     guard result == KERN_SUCCESS, let cpuInfo else {
-      return .init(totalUsage: nil, perCoreUsage: [])
+      return (
+        .init(totalUsage: nil, perCoreUsage: [], hardware: hardware),
+        .unavailable(code: "cpuUnavailable")
+      )
     }
     defer {
       let address = vm_address_t(bitPattern: cpuInfo)
@@ -76,6 +95,7 @@ public actor MacSystemMetricsCollector: SystemMetricsCollecting {
       totalTicks += total
     }
 
+    let hadPreviousCPUTicks = previousCPUTicks != nil
     let perCore = currentPerCore.enumerated().compactMap { index, value -> MetricPercentage? in
       guard let previous = previousCPUTicks else { return nil }
       let previousPerCore = previous.perCore[index]
@@ -96,7 +116,18 @@ public actor MacSystemMetricsCollector: SystemMetricsCollecting {
       totalUsage = nil
     }
     previousCPUTicks = CPUTicks(active: totalActive, total: totalTicks, perCore: currentPerCore)
-    return .init(totalUsage: totalUsage, perCoreUsage: perCore)
+    let availability: MetricAvailability
+    if totalUsage != nil {
+      availability = .fresh(capturedAt: capturedAt)
+    } else if hadPreviousCPUTicks {
+      availability = .unavailable(code: "cpuUnavailable")
+    } else {
+      availability = .unavailable(code: "cpuWarmingUp")
+    }
+    return (
+      .init(totalUsage: totalUsage, perCoreUsage: perCore, hardware: hardware),
+      availability
+    )
   }
 
   private func collectMemory() -> SystemMetricsSnapshot.Memory {

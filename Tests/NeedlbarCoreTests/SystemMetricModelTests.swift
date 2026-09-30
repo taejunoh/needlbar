@@ -41,6 +41,14 @@ import Testing
     #expect(snapshot.network.publicIPAddress == nil)
 }
 
+@Test func existingCPUInitializerDoesNotRequireHardware() {
+    let cpu = SystemMetricsSnapshot.CPU(totalUsage: MetricPercentage(25),
+        perCoreUsage: [MetricPercentage(25)!])
+
+    #expect(cpu.hardware == nil)
+    #expect(cpu.totalUsage?.value == 25)
+}
+
 private func freshDefaults() -> UserDefaults {
     let suiteName = "SystemMetricModelTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suiteName)!
