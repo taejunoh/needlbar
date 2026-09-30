@@ -1,6 +1,6 @@
 # Needlbar Development Status
 
-## 2026-09-30 Disk Settings information — scope chosen, written review next
+## 2026-09-30 Disk Settings information — approved, implementation starting
 
 The user selected approach 1: system-volume capacity plus backing-device
 read/write activity, following CPU and RAM's read-only information cards.
@@ -16,8 +16,11 @@ Local branch `codex/disk-settings-information` starts at RAM head `7546602`
 in the existing attached worktree. CPU PR #10 and RAM PR #11, production code,
 installed v0.3.6, and public releases are unchanged. This step adds design
 documentation only; no tests, build, push, merge, or installation is claimed.
-Next is the user's written-spec review, then a test-first Disk implementation
-plan and delegated Core/Settings tasks with independent reviews.
+The user approved the written spec. Implementation plan:
+`docs/superpowers/plans/2026-09-30-disk-settings-information.md`.
+Pre-implementation `make test` exited 0; log:
+`/tmp/needlbar-disk-settings-baseline-test.log`. Next: delegated Core Task 1,
+independent spec/quality reviews, then Settings Task 2 and final verification.
 
 Read-only design analysis also noted existing shared transfer-rate rounding
 and fallback stale-date limitations. These are not newly caused or repaired

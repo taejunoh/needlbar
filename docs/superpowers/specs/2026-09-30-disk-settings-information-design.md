@@ -2,7 +2,7 @@
 
 Date: 2026-09-30
 Scope: Settings → SYSTEM → Disk only
-State: User selected approach 1 (capacity + read/write). Written-spec review pending.
+State: User approved the written design (capacity + read/write).
 
 ## Intent and approved scope
 
