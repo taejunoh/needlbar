@@ -72,6 +72,9 @@ import Testing
   let stale = try #require(await service.currentSnapshot())
 
   #expect(stale.cpu.totalUsage == fresh.cpu.totalUsage)
+  #expect(stale.memory.totalBytes == 32_000)
+  #expect(stale.memory.compressedBytes == 4_096)
+  #expect(stale.memory.wiredBytes == 8_192)
   #expect(stale.availability[.cpu] == .stale(lastSuccessfulAt: start))
   #expect(stale.availability[.memory] == .stale(lastSuccessfulAt: start))
   #expect(await collector.calls == 2)
@@ -132,7 +135,9 @@ private func fixtureSnapshot(capturedAt: Date = Date(timeIntervalSince1970: 10_0
   SystemMetricsSnapshot(
     capturedAt: capturedAt,
     cpu: .init(totalUsage: MetricPercentage(24.5), perCoreUsage: [MetricPercentage(24.5)!]),
-    memory: .init(usedBytes: 4_000, freeBytes: 6_000, swapUsedBytes: 0, pressure: "normal"),
+    memory: .init(
+      usedBytes: 4_000, freeBytes: 6_000, swapUsedBytes: 0, pressure: "normal",
+      totalBytes: 32_000, compressedBytes: 4_096, wiredBytes: 8_192),
     disks: [
       .init(
         name: "Macintosh HD", usedBytes: 8_000, freeBytes: 2_000, readBytesPerSecond: 10,

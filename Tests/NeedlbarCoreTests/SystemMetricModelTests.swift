@@ -49,6 +49,15 @@ import Testing
     #expect(cpu.totalUsage?.value == 25)
 }
 
+@Test func existingMemoryInitializerDefaultsNewCapacityDetailsToUnknown() {
+    let memory = SystemMetricsSnapshot.Memory(
+        usedBytes: 10, freeBytes: 20, swapUsedBytes: 0, pressure: "normal")
+
+    #expect(memory.totalBytes == nil)
+    #expect(memory.compressedBytes == nil)
+    #expect(memory.wiredBytes == nil)
+}
+
 private func freshDefaults() -> UserDefaults {
     let suiteName = "SystemMetricModelTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suiteName)!

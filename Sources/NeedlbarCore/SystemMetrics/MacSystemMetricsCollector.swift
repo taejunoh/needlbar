@@ -131,6 +131,7 @@ public actor MacSystemMetricsCollector: SystemMetricsCollecting {
   }
 
   private func collectMemory() -> SystemMetricsSnapshot.Memory {
+    let physicalMemory = ProcessInfo.processInfo.physicalMemory
     var statistics = vm_statistics64()
     var count = mach_msg_type_number_t(
       MemoryLayout<vm_statistics64_data_t>.stride / MemoryLayout<natural_t>.stride)
@@ -140,31 +141,33 @@ public actor MacSystemMetricsCollector: SystemMetricsCollecting {
       }
     }
     guard result == KERN_SUCCESS else {
-      return .init(usedBytes: nil, freeBytes: nil, swapUsedBytes: nil, pressure: nil)
+      return MemorySnapshotBuilder.make(physicalMemory: physicalMemory, pageSize: nil, counters: nil)
     }
     var pageSizeValue: vm_size_t = 0
     guard host_page_size(mach_host_self(), &pageSizeValue) == KERN_SUCCESS else {
-      return .init(usedBytes: nil, freeBytes: nil, swapUsedBytes: nil, pressure: nil)
+      return MemorySnapshotBuilder.make(physicalMemory: physicalMemory, pageSize: nil, counters: nil)
     }
-    guard
-      let memory = SystemMetricConversions.memoryUsage(
-        physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory,
-        pageSize: UInt64(pageSizeValue),
-        activePages: UInt64(statistics.active_count),
-        inactivePages: UInt64(statistics.inactive_count),
-        wiredPages: UInt64(statistics.wire_count),
-        compressedPages: UInt64(statistics.compressor_page_count),
-        purgeablePages: UInt64(statistics.purgeable_count),
-        fileBackedPages: UInt64(statistics.external_page_count)
+    let memory = MemorySnapshotBuilder.make(
+      physicalMemory: physicalMemory,
+      pageSize: UInt64(pageSizeValue),
+      counters: .init(
+        active: UInt64(statistics.active_count),
+        inactive: UInt64(statistics.inactive_count),
+        wired: UInt64(statistics.wire_count),
+        compressed: UInt64(statistics.compressor_page_count),
+        purgeable: UInt64(statistics.purgeable_count),
+        fileBacked: UInt64(statistics.external_page_count)
       )
-    else {
-      return .init(usedBytes: nil, freeBytes: nil, swapUsedBytes: nil, pressure: nil)
-    }
+    )
+    guard memory.usedBytes != nil else { return memory }
     return .init(
       usedBytes: memory.usedBytes,
-      freeBytes: memory.availableBytes,
+      freeBytes: memory.freeBytes,
       swapUsedBytes: collectSwapUsedBytes(),
-      pressure: collectMemoryPressure()
+      pressure: collectMemoryPressure(),
+      totalBytes: memory.totalBytes,
+      compressedBytes: memory.compressedBytes,
+      wiredBytes: memory.wiredBytes
     )
   }
 
