@@ -38,15 +38,15 @@ Ownership:
 - Modify `Tests/NeedlbarCoreTests/SystemMetricModelTests.swift`.
 - Modify `Tests/NeedlbarCoreTests/SystemMetricsServiceTests.swift` (Disk retention assertions).
 
-- [ ] Write failing tests for optional `totalBytes` and old initializer
+- [x] Write failing tests for optional `totalBytes` and old initializer
   compatibility. Add builder tests: nil total/available, zero/negative total,
   negative or excessive available, positive Int.max, zero Used, zero Available.
   Literal valid case total 32768, available 8192 → Used 24576, Available 8192,
   actual Total 32768; independent rates initially nil.
-- [ ] Run builder/model tests and capture expected missing-symbol RED.
-- [ ] Add `public let totalBytes: UInt64?` and trailing initializer argument
+- [x] Run builder/model tests and capture expected missing-symbol RED.
+- [x] Add `public let totalBytes: UInt64?` and trailing initializer argument
   `totalBytes: UInt64? = nil`, preserving existing arguments and assignments.
-- [ ] Implement the exact small pure seam:
+- [x] Implement the exact small pure seam:
 
 ```swift
 enum DiskSnapshotBuilder {
@@ -62,17 +62,17 @@ enum DiskSnapshotBuilder {
 }
 ```
 
-- [ ] In collectDisks, pass existing resource values into builder; nil → `[]`
+- [x] In collectDisks, pass existing resource values into builder; nil → `[]`
   before existing counter reads. Remove current clamping. Keep single query,
   original name fallback, IORegistry query, rate conversion and baseline logic.
   Forward builder Used/Available/Total into final record with existing rates.
   No service production changes or partial native capacity records.
-- [ ] Extend success→failure service fixture with Total 10000, Used 8000,
+- [x] Extend success→failure service fixture with Total 10000, Used 8000,
   Available 2000, Read 10, Write 5. Distinct failed-attempt time must preserve
   all fields and successful stale date. Use existing clock injection.
-- [ ] Run builder/model/conversion/service suites, full `make test`, self-review,
+- [x] Run builder/model/conversion/service suites, full `make test`, self-review,
   commit Task 1 only as `feat: retain and validate system volume capacity`.
-- [ ] Independent spec review, then quality review; resolve findings.
+- [x] Independent spec review, then quality review; resolve findings.
 
 ## Task 2: Disk card, presentation and native fixtures
 

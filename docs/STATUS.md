@@ -19,8 +19,16 @@ documentation only; no tests, build, push, merge, or installation is claimed.
 The user approved the written spec. Implementation plan:
 `docs/superpowers/plans/2026-09-30-disk-settings-information.md`.
 Pre-implementation `make test` exited 0; log:
-`/tmp/needlbar-disk-settings-baseline-test.log`. Next: delegated Core Task 1,
-independent spec/quality reviews, then Settings Task 2 and final verification.
+`/tmp/needlbar-disk-settings-baseline-test.log`. Core Task 1 committed at
+`3016a75`: actual optional Total, pure bounded signed-capacity builder,
+collector forwarding without clamping, full stale record retention tests.
+Focused Builder/model/conversion/service tests passed. Confirmed full
+`make test` exited 0 in `/tmp/needlbar-disk-core-task1-test-confirmed.log`
+(`MAKE_TEST_EXIT=0`): 646 Swift tests, Rust workspace, 1,379 vendor tests
+(1 ignored), all contracts. First run's shell exit was not retained, so only
+the explicit-marker repeat is claimed. Independent spec and quality reviews
+approved Task 1; native query failure injection remains unverified.
+Next: Settings Task 2 and final verification.
 
 Read-only design analysis also noted existing shared transfer-rate rounding
 and fallback stale-date limitations. These are not newly caused or repaired
