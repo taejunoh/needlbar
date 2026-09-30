@@ -18,6 +18,12 @@ Approved spec: `docs/superpowers/specs/2026-09-30-cpu-settings-information-desig
 The user has chosen delegated implementation through repository AGENTS rules.
 Do not create another worktree or app bundle, install, publish, or push.
 
+When direct `swift test` cannot link the fixture bridge after `make test`
+restores the production archive, use `source /Users/taejunoh/.cargo/env &&
+make swift-test SWIFT_TEST_FILTER='<suite-name-or-regex>'`. The repository
+target builds the test bridge and restores the production archive on exit.
+Do not treat missing bridge test symbols as a feature-test failure.
+
 Task 1 owns Core models/collector and its tests. Task 2 owns Settings
 presentation/view/controller wiring and its tests. Execute tasks sequentially,
 with spec compliance followed by quality review before starting the next task.
