@@ -1,5 +1,21 @@
 # Needlbar Development Status
 
+## 2026-09-30 RAM Settings PR published
+
+The user chose push and PR creation. RAM branch
+`codex/ram-settings-information` was pushed and PR
+<https://github.com/taejunoh/needlbar/pull/11> was created and attached to this
+chat. Its base is `codex/cpu-settings-information`, isolating RAM changes from
+the still-open CPU PR #10. Merge CPU #10 first, then retarget RAM #11 to main
+and verify the combined checks before considering a merge. No merge,
+installation, or release was performed. The worktree is retained for review.
+
+Fresh pre-PR `make test` on `6556945` exited 0 (`MAKE_TEST_EXIT=0`), again
+covering 641 Swift tests, the Rust workspace, 1,379 vendor tests (1 ignored),
+and all contracts. Log: `/tmp/needlbar-ram-settings-pre-pr-test.log`.
+Next continuation is PR review/CI and a separately authorized integration
+choice; local verification does not establish remote CI completion.
+
 ## 2026-09-30 RAM Settings information — implementation verified
 
 The user approved the recommended RAM summary, including compressed and
