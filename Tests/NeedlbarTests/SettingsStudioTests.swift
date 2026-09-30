@@ -126,6 +126,32 @@ struct SettingsStudioTests {
         #expect(controller.cpuInformationState.idlePercent == 75)
     }
 
+    @Test func settingsControllerUpdatesRAMInformationWithBothVisibilityPreferencesOff() throws {
+        let name = "SettingsStudio.ram-information.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let configuration = ModuleConfiguration(defaults: defaults)
+        var monitor = configuration.systemMonitor
+        monitor.menuBarVisibleModules.remove(.memory)
+        monitor.dashboardVisibleModules.remove(.memory)
+        configuration.setSystemMonitor(monitor)
+        let preferences = QuotaNotificationPreferences(defaults: defaults)
+        let controller = SettingsWindowController(
+            configuration: configuration, actions: SettingsActions(),
+            notificationPreferences: preferences,
+            notificationService: QuotaNotificationService(store: ProviderSnapshotStore(), preferences: preferences),
+            openCursorSpending: {}
+        )
+        controller.update(snapshot: SettingsStudioReviewFixtures.cpuSnapshot(), configuration: monitor)
+        #expect(controller.ramInformationState.totalBytes == 51_539_607_552)
+        #expect(controller.ramInformationState.usedPercent == 75)
+        #expect(controller.ramInformationState.pressure == "normal")
+        controller.update(snapshot: SettingsRAMInformationTests.snapshot(availability: .unavailable(code: "memoryUnavailable")), configuration: monitor)
+        #expect(controller.ramInformationState.usedBytes == nil)
+        #expect(controller.ramInformationState.successfulAt == nil)
+        #expect(controller.ramInformationState.totalBytes == 51_539_607_552)
+    }
+
     @Test func claudeStatusLineDisconnectInvokesImmediateClearCallback() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("Needlbar-settings-disconnect-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }

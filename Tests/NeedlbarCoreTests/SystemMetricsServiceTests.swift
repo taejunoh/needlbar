@@ -59,15 +59,17 @@ import Testing
   let start = Date(timeIntervalSince1970: 10_000)
   let collector = FakeSystemCollector(
     snapshot: fixtureSnapshot(), then: .failure(TestFailure.collector))
+  let clock = TestClock(start: start)
   let service = SystemMetricsService(
     collector: collector,
     publicIPProvider: FakePublicIPProvider(result: .success("203.0.113.8")),
-    clock: TestClock(start: start)
+    clock: clock
   )
 
   await service.start(publicIPEnabled: false)
   await service.tickForTesting()
   let fresh = try #require(await service.currentSnapshot())
+  clock.advance(by: 60)
   await service.tickForTesting()
   let stale = try #require(await service.currentSnapshot())
 
@@ -77,6 +79,7 @@ import Testing
   #expect(stale.memory.wiredBytes == 8_192)
   #expect(stale.availability[.cpu] == .stale(lastSuccessfulAt: start))
   #expect(stale.availability[.memory] == .stale(lastSuccessfulAt: start))
+  #expect(stale.availability[.memory] != .stale(lastSuccessfulAt: start.addingTimeInterval(60)))
   #expect(await collector.calls == 2)
 }
 

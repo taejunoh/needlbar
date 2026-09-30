@@ -57,6 +57,7 @@ public struct SettingsView: View {
     @ObservedObject private var preview: SettingsPreviewModel
     @ObservedObject private var claudeQuotaPresentation: SettingsClaudeQuotaPresentation
     @ObservedObject private var cpuInformationPresentation: SettingsCPUInformationPresentation
+    @ObservedObject private var ramInformationPresentation: SettingsRAMInformationPresentation
 
     public init(
         configuration: ModuleConfiguration,
@@ -69,7 +70,8 @@ public struct SettingsView: View {
         onClaudeStatusLineDisconnected: @escaping @MainActor () -> Void = {},
         preview: SettingsPreviewModel? = nil,
         claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil,
-        cpuInformationPresentation: SettingsCPUInformationPresentation? = nil
+        cpuInformationPresentation: SettingsCPUInformationPresentation? = nil,
+        ramInformationPresentation: SettingsRAMInformationPresentation? = nil
     ) {
         self.configuration = configuration
         self.openCursorSpending = openCursorSpending
@@ -79,6 +81,7 @@ public struct SettingsView: View {
         _preview = ObservedObject(wrappedValue: preview ?? SettingsPreviewModel())
         _claudeQuotaPresentation = ObservedObject(wrappedValue: claudeQuotaPresentation ?? SettingsClaudeQuotaPresentation())
         _cpuInformationPresentation = ObservedObject(wrappedValue: cpuInformationPresentation ?? SettingsCPUInformationPresentation())
+        _ramInformationPresentation = ObservedObject(wrappedValue: ramInformationPresentation ?? SettingsRAMInformationPresentation())
         _systemMonitorModel = StateObject(wrappedValue: SystemMonitorSettingsModel(configuration: configuration))
         _actions = ObservedObject(wrappedValue: actions)
         _notificationPreferences = ObservedObject(wrappedValue: notificationPreferences)
@@ -97,7 +100,8 @@ public struct SettingsView: View {
         onClaudeStatusLineDisconnected: @escaping @MainActor () -> Void = {},
         preview: SettingsPreviewModel? = nil,
         claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil,
-        cpuInformationPresentation: SettingsCPUInformationPresentation? = nil
+        cpuInformationPresentation: SettingsCPUInformationPresentation? = nil,
+        ramInformationPresentation: SettingsRAMInformationPresentation? = nil
     ) {
         self.init(
             configuration: configuration,
@@ -113,7 +117,8 @@ public struct SettingsView: View {
             onClaudeStatusLineDisconnected: onClaudeStatusLineDisconnected,
             preview: preview,
             claudeQuotaPresentation: claudeQuotaPresentation,
-            cpuInformationPresentation: cpuInformationPresentation
+            cpuInformationPresentation: cpuInformationPresentation,
+            ramInformationPresentation: ramInformationPresentation
         )
     }
 
@@ -135,6 +140,9 @@ public struct SettingsView: View {
                     }
                     if selectedPage == .module(.cpu) {
                         SettingsCPUInformationView(presentation: cpuInformationPresentation)
+                    }
+                    if selectedPage == .module(.memory) {
+                        SettingsRAMInformationView(presentation: ramInformationPresentation)
                     }
                     if selectedPage == .layout { SettingsPreviewView(model: preview) }
                     detailPane
