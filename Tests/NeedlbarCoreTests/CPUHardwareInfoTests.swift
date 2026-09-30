@@ -40,6 +40,17 @@ import Testing
         name: "Apple M5 Pro", physicalCoreCount: nil, logicalCoreCount: 15, coreGroups: []))
 }
 
+@Test func hardwareReaderKeepsBothCoreCountsWhenCPUNameIsBlank() {
+    let reader = MacCPUHardwareReader(
+        stringQuery: { key, _ in key == "machdep.cpu.brand_string" ? " \n " : nil },
+        integerQuery: { key, _ in
+            ["hw.physicalcpu": 15, "hw.logicalcpu": 15][key]
+        })
+
+    #expect(reader.read() == CPUHardwareInfo(
+        name: nil, physicalCoreCount: 15, logicalCoreCount: 15, coreGroups: []))
+}
+
 @Test func hardwareReaderReturnsNilWhenEveryQueryIsUnsupported() {
     let reader = MacCPUHardwareReader(stringQuery: { _, _ in nil }, integerQuery: { _, _ in nil })
 
