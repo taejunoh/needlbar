@@ -85,7 +85,7 @@ Ownership:
 - Modify `Sources/NeedlbarSettingsStudioReviewSupport/SettingsStudioReviewFixtures.swift`.
 - Modify `Sources/NeedlbarSettingsStudioReview/main.swift` only if fixture wiring requires it.
 
-- [ ] Write RED presentation/controller tests, using RAM/CPU pattern. Fixture
+- [x] Write RED presentation/controller tests, using RAM/CPU pattern. Fixture
   Total 1 TiB, Used 768 GiB, Available 256 GiB →75%; Read 12 MiB/s, Write
   3 MiB/s, Macintosh HD, successful T. Assert all literal values/date.
   Cover stale T vs attempt T+60 and cross-day formatted date; missing system,
@@ -93,8 +93,8 @@ Ownership:
   Total vs explicit zero; nil Used, Used>Total, Available>Total, mismatch,
   overflow, all-zero denominator; zero/nil/one-sided rates; trimmed/empty/
   control-character/long names; disabled surface toggles still update card.
-- [ ] Capture missing presentation/view RED before implementation.
-- [ ] Add MainActor ObservableObject presentation with one published derived
+- [x] Capture missing presentation/view RED before implementation.
+- [x] Add MainActor ObservableObject presentation with one published derived
   DTO, default-compatible initializers; update only from controller's existing
   CombinedUsageSnapshot stream. Use disks.first, never infer Total or cache.
   Name trims whitespace; empty/control characters →System volume. Missing
@@ -106,7 +106,7 @@ Ownership:
   requires bounds and exact sum. Missing Total may yield percent but not Total.
   Dates come only from fresh capturedAt/stale lastSuccessfulAt after usable
   data guard, not snapshot date. Unavailable clears all dynamic fields/date.
-- [ ] Add Disk-only card below picker and above controls on all tabs. Native
+- [x] Add Disk-only card below picker and above controls on all tabs. Native
   section styling, System volume (/), wrapped display name, labeled Total,
   cyan prominent percent and compact capacity bar with Used/Available labels,
   Read blue/Write orange compact labeled rates, monospaced binary units,
@@ -114,24 +114,24 @@ Ownership:
   successful full localized date/time. Short backing-device scope help.
   Explicit accessibility labels/values; preserve Alerts explanation, CPU/RAM
   cards and controls. No space-based health warning or unrelated refactor.
-- [ ] Add deterministic Disk to existing inert CPU/RAM review snapshot with
+- [x] Add deterministic Disk to existing inert CPU/RAM review snapshot with
   fresh Disk availability; keep guarded executable and isolated defaults.
   Add attached native rendering tests/helpers following existing RAM tests,
   writing ephemeral PNGs under `/tmp/needlbar-disk-settings-review` only.
-- [ ] Run Disk/Settings Studio/CPU/RAM focused suites, all Swift tests and
+- [x] Run Disk/Settings Studio/CPU/RAM focused suites, all Swift tests and
   full `make test`. Inspect light/dark, stale/unavailable, narrow long-name
   PNGs. Self-review and commit Task 2 as `feat: add Disk information to Settings`.
-- [ ] Independent spec review followed by cumulative quality review; fix and
+- [x] Independent spec review followed by cumulative quality review; fix and
   re-review Important findings before final verification.
 
 ## Final verification and handoff (main)
 
-- [ ] Native guarded review only: light 960×720 and dark 760×560 content
+- [x] Native guarded review only: light 960×720 and dark 760×560 content
   windows, all Disk tabs, visibility off, wrapping, CPU/RAM negative placement,
   available accessibility tree. Close review process before builds. Report
   tool/VoiceOver/macOS14/native failure-injection limits without overclaiming.
-- [ ] Root fresh full `make test` exit 0; `git diff --check`; confirm bounded
+- [x] Root fresh full `make test` exit 0; `git diff --check`; confirm bounded
   diff and independent review conclusions. Preserve unrelated shared-rate
   boundary and stale-service limitations; no opportunistic fix.
-- [ ] Update STATUS and checkboxes with commits/logs/evidence, commit docs,
+- [x] Update STATUS and checkboxes with commits/logs/evidence, commit docs,
   offer integration choice. Installed v0.3.6 and public releases untouched.
