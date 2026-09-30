@@ -1,17 +1,53 @@
 # Needlbar Development Status
 
-## 2026-09-30 CPU Settings information — design review
+## 2026-09-30 CPU Settings information — implementation verified
 
-The user approved adding CPU hardware summary, live total/idle and per-core
-usage, and sample freshness above the existing surface controls. The scoped
-design is recorded in
-`docs/superpowers/specs/2026-09-30-cpu-settings-information-design.md`.
-The written spec was approved. The CPU-only test-first implementation plan is
-`docs/superpowers/plans/2026-09-30-cpu-settings-information.md`; implementation
-and focused tests plus `make test` are the next continuation point. Production
-code and the installed v0.3.6 app are unchanged at this checkpoint.
-Other SYSTEM pages, provider behavior, and release/install work remain outside
-this step.
+Branch `codex/cpu-settings-information` implements the approved CPU-only spec
+and plan in `docs/superpowers/specs/2026-09-30-cpu-settings-information-design.md`
+and `docs/superpowers/plans/2026-09-30-cpu-settings-information.md`.
+CPU Settings now shows detected chip name, independently validated physical
+and logical counts and native core groups, total Usage/Idle, per-core activity,
+and successful sample date/time above the existing controls on all three tabs.
+Warmup, unavailable, and Last known are distinct; unavailable or missing
+availability clears orphan activity values without hiding known hardware.
+Metadata discovery is bounded and cached once per collector lifetime. The
+existing update stream and one-second collection loop are reused; there are
+no new timers, collectors, provider requests, or authentication changes.
+
+Core implementation is at `8d0302d` with additional fixture coverage at
+`d0bc13d`; Settings implementation is at `32c46c5`, with review fixes at
+`e99299b`. Test-first work reproduced missing hardware/presentation behavior
+before implementation. A later cross-day stale-render regression failed
+before the date fix and passed after it; missing availability/state transitions
+and long group names also have focused coverage. Independent spec and quality
+reviews approved the implementation after those fixes.
+
+Final `source /Users/taejunoh/.cargo/env && make test` exited 0 on the final
+implementation tree. It passed the Rust workspace, 1,379 vendor tests
+(1 ignored), 624 Swift tests, and public bridge, brand, widget, package, and
+notarization contracts. Full output: `/tmp/needlbar-cpu-settings-final-test.log`.
+`git diff --check` passed. Focused Swift verification used `make swift-test`
+to supply the fixture bridge; direct `swift test` against a restored production
+archive cannot link the test-only ABI and is not a feature failure.
+
+Native visual checks used the existing opt-in Settings review executable with
+isolated defaults and inert deterministic CPU/provider fixtures, not the
+installed app. Light 960×720 and dark 760×560 windows displayed the CPU card
+without clipping. The dark window retained the card across Menu bar,
+Dashboard, and Alerts tabs and after visibility was disabled; RAM did not
+show the CPU card. Updated 677px light and 477px dark card captures, including
+wrapped long groups, were inspected under `/tmp/needlbar-cpu-settings-review`.
+Initial detached bitmap captures were invalid; attaching a real native window
+corrected the test-only rendering helper without changing production layout.
+
+Actual VoiceOver reading of individual core labels, Increase Contrast,
+quantitative contrast, and macOS 14 hardware execution remain unverified.
+Existing per-core accessibility labels were statically reviewed; the native
+inspection tool did not expose them, so runtime accessibility is not claimed.
+The deployment target remains macOS 14. The installed v0.3.6 app and public
+release are unchanged; no new app bundle was installed. Next continuation:
+choose branch integration, then separately authorize packaged installation or
+release work. Other SYSTEM pages remain outside this step.
 
 ## 2026-09-29 v0.3.6 public release
 

@@ -43,7 +43,7 @@ initializer parameter; do not add serialization solely for this feature.
 - Create: `Tests/NeedlbarCoreTests/CPUHardwareInfoTests.swift`
 - Modify: `Tests/NeedlbarCoreTests/SystemMetricModelTests.swift`
 
-- [ ] Write failing tests for consumer-visible hardware normalization, query
+- [x] Write failing tests for consumer-visible hardware normalization, query
   discovery, bounded queries, one-time collector discovery, and existing CPU
   initializer compatibility. Use injected sysctl values rather than host-specific
   assertions. Required fixtures: Apple M5 Pro / 15 / 15 / Super 5 / Performance
@@ -68,11 +68,11 @@ initializer parameter; do not add serialization solely for this feature.
 }
 ```
 
-- [ ] Run `swift test --filter CPUHardwareInfoTests` and
+- [x] Run `swift test --filter CPUHardwareInfoTests` and
   `swift test --filter SystemMetricModelTests`. Record RED output showing the
   missing new behavior before implementation; fix incidental syntax errors
   before treating a failure as evidence.
-- [ ] Implement `CPUHardwareInfo: Equatable, Sendable` with independently
+- [x] Implement `CPUHardwareInfo: Equatable, Sendable` with independently
   optional trimmed `name`, positive `physicalCoreCount`, positive
   `logicalCoreCount`, and validated `CoreGroup(name:physicalCoreCount:)` values.
   Group entries require both a nonblank name and positive count. Add this
@@ -89,7 +89,7 @@ public init(totalUsage: MetricPercentage?, perCoreUsage: [MetricPercentage],
 }
 ```
 
-- [ ] Implement `MacCPUHardwareReader` with small injectable string/integer
+- [x] Implement `MacCPUHardwareReader` with small injectable string/integer
   query closures and `read() -> CPUHardwareInfo?`. Use native `sysctlbyname`,
   cap string allocation at 4096 bytes, require expected integer byte size,
   and query exactly `machdep.cpu.brand_string`, `hw.physicalcpu`,
@@ -108,7 +108,7 @@ let groups = indexes.compactMap { index in
 }
 ```
 
-- [ ] In the collector, discover hardware once on the first collection,
+- [x] In the collector, discover hardware once on the first collection,
   cache the result including unsupported/partial results for its lifetime,
   and attach it to every CPU result, including tick failures and initial
   warmup. Keep default public initialization unchanged. Do not query on the
@@ -116,11 +116,11 @@ let groups = indexes.compactMap { index in
   Distinguish initial lack of tick baseline with availability code
   `cpuWarmingUp`; actual `host_processor_info` failure remains
   `cpuUnavailable`. Do not fabricate a fresh percentage for either case.
-- [ ] Run the focused tests and `swift test --filter SystemMetricsServiceTests`.
+- [x] Run the focused tests and `swift test --filter SystemMetricsServiceTests`.
   Verify metadata survives the existing successful and failed snapshot copying
   paths; only repair a copying path if this addition exposes a loss. Leave
   the one-second service loop and visibility behavior unchanged.
-- [ ] Self-review and commit only Task 1 files with
+- [x] Self-review and commit only Task 1 files with
   `git commit -m "feat: collect cached CPU hardware information"`.
   Report RED/GREEN commands, commit, and any deviations. Request independent
   spec review then quality review before Task 2.
@@ -139,7 +139,7 @@ let groups = indexes.compactMap { index in
 - Reuse without unnecessary edits: `SettingsStudioComponents.swift`,
   `SystemDashboardDisplayComponents.swift` (`PerCoreActivityBars`).
 
-- [ ] Write RED tests for a pure CPU display value plus observable
+- [x] Write RED tests for a pure CPU display value plus observable
   `SettingsCPUInformationPresentation`, constructed/updated from
   `CombinedUsageSnapshot?`. Fixture expectations: fresh 25 → Usage 25%, Idle
   75%, original per-core values and availability timestamp; stale with last
@@ -148,13 +148,13 @@ let groups = indexes.compactMap { index in
   `cpuWarmingUp` → warming up / no fabricated 0%; missing system → unavailable;
   hardware still shows when load is missing. Use existing snapshot test
   factories and hand-derived literal expectations.
-- [ ] Write controller integration RED test: `update(snapshot:configuration:)`
+- [x] Write controller integration RED test: `update(snapshot:configuration:)`
   changes the CPU presentation as well as existing preview/provider state.
   Test snapshot updates remain independent of CPU visibility. Build the CPU
   info view into an NSHostingView to test accessible content at normal/minimum
   sizes and ensure existing controls/Alerts remain usable.
-- [ ] Run `swift test --filter SettingsCPUInformationTests`, record expected RED.
-- [ ] Implement the pure display derivation and `@MainActor ObservableObject`.
+- [x] Run `swift test --filter SettingsCPUInformationTests`, record expected RED.
+- [x] Implement the pure display derivation and `@MainActor ObservableObject`.
   Expose read-only display values (hardware, optional total/idle, core values,
   state label, optional successful time, reason). State is fresh only with
   valid usage plus `.fresh`; stale values require `.stale(lastSuccessfulAt:)`.
@@ -176,14 +176,14 @@ default:
 }
 ```
 
-- [ ] Implement `SettingsCPUInformationView` using existing native section
+- [x] Implement `SettingsCPUInformationView` using existing native section
   styling. The hardware header shows chip name (CPU fallback) and labeled
   physical/logical counts plus optional detected group line. Activity has
   prominent blue Usage, secondary Idle, accessible per-core bars, then a compact
   freshness/status line. No group labels on bars. Wrap hardware/metadata at
   narrow widths using vertical layout or `ViewThatFits`; unknown counts are
   omitted, not zero. Use semantic light/dark colors and monospaced digits.
-- [ ] Own one presentation in `SettingsWindowController`, forward it through
+- [x] Own one presentation in `SettingsWindowController`, forward it through
   both `SettingsView` initializers using default-compatible optional arguments,
   and update it beside existing `preview.update` and quota update. In the
   shared scroll content, render only when `selectedPage == .module(.cpu)`:
@@ -199,15 +199,15 @@ detailPane
   `SettingsStudioConfigurationPane`: Alerts has no display surface, and must
   still show the CPU summary. Preserve existing controls/Alerts copy and
   provider timer; add no CPU timers, tasks, collectors, or network calls.
-- [ ] Run focused tests, `swift test --filter SettingsStudioTests`,
+- [x] Run focused tests, `swift test --filter SettingsStudioTests`,
   `swift test --filter SystemMonitorSettingsViewTests`, and
   `swift test --filter SystemDashboardPopoverTests`.
-- [ ] Render/capture normal (960×720) and minimum (760×560) CPU content in
+- [x] Render/capture normal (960×720) and minimum (760×560) CPU content in
   light/dark via native NSHostingView test rendering if no real window is
   accessible. Keep rendering helpers/test fixtures in tests; do not add app
   launch flags solely for screenshots or install another app. Clearly label
   fixture render versus installed-app inspection.
-- [ ] Extend the existing, exact-argument-guarded Settings review target with
+- [x] Extend the existing, exact-argument-guarded Settings review target with
   an inert CPU fixture (M5 Pro, 15 physical/logical, Super 5 / Performance 10,
   usage 25%, fifteen per-core samples, fresh fixture timestamp). Use the same
   fixture for initial and configuration-change updates so toggling visibility
@@ -216,20 +216,42 @@ detailPane
   launch flags, initial-page APIs, or live collectors. Run
   `swift run NeedlbarSettingsStudioReview --settings-studio-review` and select
   CPU in the existing sidebar through native UI inspection when available.
-- [ ] Self-review and commit Task 2 files with
+- [x] Self-review and commit Task 2 files with
   `git commit -m "feat: show live CPU information in settings"`.
   Report tests and visual artifacts; request spec then quality review.
 
 ## Task 3: Final verification and handoff (main)
 
-- [ ] Apply all important review fixes, with reproducing tests where needed.
-- [ ] Run `source /Users/taejunoh/.cargo/env && make test`, logging output to
+- [x] Apply all important review fixes, with reproducing tests where needed.
+- [x] Run `source /Users/taejunoh/.cargo/env && make test`, logging output to
   `/tmp/needlbar-cpu-settings-final-test.log`; require exit 0. Run
   `git diff --check`; require no whitespace errors.
-- [ ] Inspect rendered images and actual native CPU Settings if accessible;
+- [x] Inspect rendered images and actual native CPU Settings if accessible;
   list unperformed real-device checks explicitly. A preview fixture is not
   proof of the installed public application's state.
-- [ ] Update `docs/STATUS.md`, mark this plan's completed checkboxes, and record
+- [x] Update `docs/STATUS.md`, mark this plan's completed checkboxes, and record
   exact results/limits and continuation point. Final full-change independent
   review must pass. Keep branch ready for integration; no release or reinstall
   in this request.
+
+## Completion evidence — 2026-09-30
+
+Implementation commits: `8d0302d`, `d0bc13d`, `32c46c5`, `e99299b`.
+Independent spec and quality reviews passed after the stale-date fix. Final
+`source /Users/taejunoh/.cargo/env && make test` exited 0; log:
+`/tmp/needlbar-cpu-settings-final-test.log`. It includes 624 Swift tests,
+1,379 passing vendor tests (1 ignored), Rust workspace and shell contracts.
+Focused tests used the repository `make swift-test` fixture-bridge setup instead
+of direct `swift test`. The final filtered CPU presentation suite passed 10/10.
+
+Native review fixture windows were inspected at 960×720 light and 760×560 dark.
+CPU stayed visible across all three tabs and with visibility off; RAM excluded
+it. Updated light/dark card and long-metadata images were inspected. Bitmap
+helpers required an attached native window, not detached cache rendering.
+These checks do not establish the installed public application's state.
+
+Runtime VoiceOver core labels, Increase Contrast, quantitative contrast and
+macOS 14 device execution remain unverified; the accessibility portion of the
+render/inspection step is therefore partial, not a full accessibility pass.
+No installation, merge, push, PR, tag, or release was performed. The branch is
+ready for an integration choice; the installed app remains v0.3.6.
