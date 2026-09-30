@@ -2,7 +2,7 @@
 
 Date: 2026-09-30
 Scope: Settings → SYSTEM → CPU only
-State: Proposed layout approved in conversation; written-spec review pending.
+State: Layout and written specification approved by the user.
 
 ## Problem and approved direction
 
