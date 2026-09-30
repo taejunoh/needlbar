@@ -1,5 +1,29 @@
 # Needlbar Development Status
 
+## 2026-09-30 Disk Settings information — scope chosen, written review next
+
+The user selected approach 1: system-volume capacity plus backing-device
+read/write activity, following CPU and RAM's read-only information cards.
+Written design: `docs/superpowers/specs/2026-09-30-disk-settings-information-design.md`.
+It reuses the existing root-volume URL resource read and IORegistry counters;
+only optional actual Total retention and bounded capacity normalization are
+proposed. It distinguishes volume capacity from physical SSD size, backing
+device I/O from volume-only I/O, real zero from missing/clamped values, and
+successful sample dates from failed attempts. No SMART, lifetime, external
+selection, extra collector/timer/permissions, or provider changes are included.
+
+Local branch `codex/disk-settings-information` starts at RAM head `7546602`
+in the existing attached worktree. CPU PR #10 and RAM PR #11, production code,
+installed v0.3.6, and public releases are unchanged. This step adds design
+documentation only; no tests, build, push, merge, or installation is claimed.
+Next is the user's written-spec review, then a test-first Disk implementation
+plan and delegated Core/Settings tasks with independent reviews.
+
+Read-only design analysis also noted existing shared transfer-rate rounding
+and fallback stale-date limitations. These are not newly caused or repaired
+by this documentation. Disk presentation will guard data-less stale dates;
+broader counter conversion/identity and service changes remain out of scope.
+
 ## 2026-09-30 RAM Settings PR published
 
 The user chose push and PR creation. RAM branch
