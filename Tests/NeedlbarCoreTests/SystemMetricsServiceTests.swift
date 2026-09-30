@@ -17,6 +17,7 @@ import Testing
 
   #expect(await publicIP.calls == 0)
   #expect(await collector.calls == 1)
+  #expect(await service.currentSnapshot()?.network.interfaceNames == ["en0", "utun3"])
 }
 
 @Test func publicIPToggleUpdatesAStartedServiceWithoutRestartingTheLoop() async throws {
@@ -33,7 +34,23 @@ import Testing
   let snapshot = try #require(await service.currentSnapshot())
 
   #expect(snapshot.network.publicIPAddress == "203.0.113.8")
+  #expect(snapshot.network.interfaceNames == ["en0", "utun3"])
   #expect(await publicIP.calls == 1)
+}
+
+@Test func failedPublicIPLookupPreservesReportedInterfaceNames() async throws {
+  let service = SystemMetricsService(
+    collector: FakeSystemCollector(snapshot: fixtureSnapshot()),
+    publicIPProvider: FakePublicIPProvider(result: .failure(TestFailure.publicIP)),
+    clock: TestClock(start: Date(timeIntervalSince1970: 10_000))
+  )
+
+  await service.start(publicIPEnabled: true)
+  await service.tickForTesting()
+  let snapshot = try #require(await service.currentSnapshot())
+
+  #expect(snapshot.network.publicIPAddress == nil)
+  #expect(snapshot.network.interfaceNames == ["en0", "utun3"])
 }
 
 @Test func publicIPUsesFiveMinuteCacheAndDoesNotAmplifyTheOneSecondTick() async {
@@ -88,6 +105,8 @@ import Testing
   #expect(stale.availability[.cpu] == .stale(lastSuccessfulAt: start))
   #expect(stale.availability[.memory] == .stale(lastSuccessfulAt: start))
   #expect(stale.availability[.memory] != .stale(lastSuccessfulAt: start.addingTimeInterval(60)))
+  #expect(stale.network.interfaceNames == ["en0", "utun3"])
+  #expect(stale.availability[.network] == .stale(lastSuccessfulAt: start))
   #expect(await collector.calls == 2)
 }
 
@@ -156,7 +175,7 @@ private func fixtureSnapshot(capturedAt: Date = Date(timeIntervalSince1970: 10_0
     ],
     network: .init(
       uploadBytesPerSecond: 100, downloadBytesPerSecond: 200, localIPAddresses: ["192.0.2.4"],
-      publicIPAddress: nil),
+      publicIPAddress: nil, interfaceNames: ["en0", "utun3"]),
     battery: .init(level: MetricPercentage(100), isCharging: true, health: MetricPercentage(96)),
     availability: Dictionary(
       uniqueKeysWithValues: MonitorModuleID.allCases.map { ($0, .fresh(capturedAt: capturedAt)) })

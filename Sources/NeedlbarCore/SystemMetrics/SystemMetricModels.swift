@@ -157,17 +157,20 @@ public struct SystemMetricsSnapshot: Equatable, Sendable {
         public let downloadBytesPerSecond: UInt64?
         public let localIPAddresses: [String]
         public let publicIPAddress: String?
+        public let interfaceNames: [String]?
 
         public init(
             uploadBytesPerSecond: UInt64?,
             downloadBytesPerSecond: UInt64?,
             localIPAddresses: [String],
-            publicIPAddress: String?
+            publicIPAddress: String?,
+            interfaceNames: [String]? = nil
         ) {
             self.uploadBytesPerSecond = uploadBytesPerSecond
             self.downloadBytesPerSecond = downloadBytesPerSecond
             self.localIPAddresses = localIPAddresses
             self.publicIPAddress = publicIPAddress
+            self.interfaceNames = interfaceNames
         }
     }
 
