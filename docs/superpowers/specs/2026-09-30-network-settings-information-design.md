@@ -2,8 +2,8 @@
 
 Date: 2026-09-30
 Scope: Settings → SYSTEM → Network
-State: User approved speeds, reported interface names and opted-in IP display;
-written-spec review pending. Cumulative traffic and per-interface speeds excluded.
+State: Written specification approved by the user. Cumulative traffic and
+per-interface speeds excluded.
 
 ## Intent and chosen approach
 

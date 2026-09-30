@@ -1,6 +1,6 @@
 # Needlbar Development Status
 
-## 2026-09-30 Network Settings information — scope approved, written review next
+## 2026-09-30 Network Settings information — approved, implementation starting
 
 The user approved speeds + reported interface list + opted-in IP display,
 excluding cumulative traffic and per-interface speeds. Written design:
@@ -16,10 +16,14 @@ No extra collector, lookup, timer, endpoint or permission is introduced.
 Local `codex/network-settings-information` branches from Disk `b138836` in
 the same attached worktree. CPU #10, RAM #11 and Disk #12 are unchanged
 dependencies. Read-only UI/privacy and native semantic analyses informed the
-spec; no production edits, tests, build, push, install or release occurred.
+spec. The user approved the written specification. Implementation plan:
+`docs/superpowers/plans/2026-09-30-network-settings-information.md`.
+Pre-implementation `make test` exited 0 (`MAKE_TEST_EXIT=0`), log:
+`/tmp/needlbar-network-settings-baseline-test.log`. No production edits, push,
+install or release have occurred in this implementation step yet.
 Existing counter-width/wrap, empty-source-set, shared rate-boundary and stale
-fallback limitations are recorded, not repaired. Next: user's written-spec
-review, then a test-first delegated Core/Settings plan and verification.
+fallback limitations are recorded, not repaired. Next: delegated test-first
+Core name retention, Settings card, independent reviews and native/final tests.
 
 ## 2026-09-30 Disk Settings PR published
 
