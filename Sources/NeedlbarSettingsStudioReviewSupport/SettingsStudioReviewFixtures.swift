@@ -25,17 +25,19 @@ public enum SettingsStudioReviewFixtures {
                           swapUsedBytes: 2_147_483_648, pressure: "normal",
                           totalBytes: 51_539_607_552, compressedBytes: 8_589_934_592,
                           wiredBytes: 6_442_450_944),
-            disks: [],
+            disks: [.init(name: "Macintosh HD", usedBytes: 824_633_720_832,
+                          freeBytes: 274_877_906_944, readBytesPerSecond: 12_582_912,
+                          writeBytesPerSecond: 3_145_728, totalBytes: 1_099_511_627_776)],
             network: .init(uploadBytesPerSecond: nil, downloadBytesPerSecond: nil,
                            localIPAddresses: [], publicIPAddress: nil),
             battery: .init(level: nil, isCharging: nil, health: nil),
-            availability: [.cpu: .fresh(capturedAt: capturedAt), .memory: .fresh(capturedAt: capturedAt)]
+            availability: [.cpu: .fresh(capturedAt: capturedAt), .memory: .fresh(capturedAt: capturedAt), .disk: .fresh(capturedAt: capturedAt)]
         )
         return CombinedUsageSnapshot(
             system: system,
             providers: [],
             capturedAt: capturedAt,
-            systemAvailability: [.cpu: .fresh(capturedAt: capturedAt), .memory: .fresh(capturedAt: capturedAt)]
+            systemAvailability: [.cpu: .fresh(capturedAt: capturedAt), .memory: .fresh(capturedAt: capturedAt), .disk: .fresh(capturedAt: capturedAt)]
         )
     }
 }
