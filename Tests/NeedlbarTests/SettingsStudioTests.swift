@@ -181,6 +181,56 @@ struct SettingsStudioTests {
         #expect(controller.diskInformationState.totalBytes == nil)
     }
 
+    @Test func settingsControllerUpdatesNetworkInformationWithVisibilityOffAndClearsMissingSystem() throws {
+        let name = "SettingsStudio.network-information.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let configuration = ModuleConfiguration(defaults: defaults)
+        var monitor = configuration.systemMonitor
+        monitor.menuBarVisibleModules.remove(.network)
+        monitor.dashboardVisibleModules.remove(.network)
+        monitor.localIPEnabled = true
+        monitor.publicIPEnabled = true
+        configuration.setSystemMonitor(monitor)
+        let preferences = QuotaNotificationPreferences(defaults: defaults)
+        let controller = SettingsWindowController(configuration: configuration, actions: SettingsActions(),
+            notificationPreferences: preferences,
+            notificationService: QuotaNotificationService(store: ProviderSnapshotStore(), preferences: preferences),
+            openCursorSpending: {})
+
+        let fresh = SettingsStudioReviewFixtures.freshNetworkSnapshot()
+        controller.update(snapshot: fresh, configuration: monitor)
+        #expect(!configuration.systemMonitor.menuBarVisibleModules.contains(.network))
+        #expect(!configuration.systemMonitor.dashboardVisibleModules.contains(.network))
+        #expect(controller.networkInformationState.downloadBytesPerSecond == 1_048_576)
+        #expect(controller.networkInformationState.uploadBytesPerSecond == 131_072)
+        #expect(controller.networkInformationState.interfaceNames == ["en0", "lo0", "utun3"])
+
+        let system = try #require(fresh.system)
+        let lastSuccess = Date(timeIntervalSince1970: 1_790_668_800)
+        let staleAvailability: [MonitorModuleID: MetricAvailability] = [.network: .stale(lastSuccessfulAt: lastSuccess)]
+        let staleSystem = SystemMetricsSnapshot(capturedAt: fresh.capturedAt.addingTimeInterval(86_400),
+            cpu: system.cpu, memory: system.memory, disks: system.disks, network: system.network,
+            battery: system.battery, availability: staleAvailability)
+        let stale = CombinedUsageSnapshot(system: staleSystem, providers: [],
+            capturedAt: fresh.capturedAt.addingTimeInterval(86_400), systemAvailability: staleAvailability)
+        controller.update(snapshot: stale, configuration: monitor)
+        #expect(controller.networkInformationState.status == .stale(lastSuccessfulAt: lastSuccess))
+        #expect(controller.networkInformationState.successfulAt == lastSuccess)
+        #expect(controller.networkInformationState.metadataIsStale)
+        #expect(controller.networkInformationState.downloadBytesPerSecond == 1_048_576)
+
+        controller.update(snapshot: CombinedUsageSnapshot(system: nil, providers: [],
+            capturedAt: stale.capturedAt.addingTimeInterval(1), systemAvailability: staleAvailability),
+            configuration: monitor)
+        #expect(controller.networkInformationState.downloadBytesPerSecond == nil)
+        #expect(controller.networkInformationState.uploadBytesPerSecond == nil)
+        #expect(controller.networkInformationState.successfulAt == nil)
+        #expect(controller.networkInformationState.interfaceNames == nil)
+        #expect(controller.networkInformationState.localIPAddresses.isEmpty)
+        #expect(controller.networkInformationState.publicIPAddress == nil)
+    }
+
     @Test func claudeStatusLineDisconnectInvokesImmediateClearCallback() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("Needlbar-settings-disconnect-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
