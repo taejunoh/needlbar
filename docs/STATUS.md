@@ -1,5 +1,23 @@
 # Needlbar Development Status
 
+## 2026-10-01 v0.3.7 protected validation awaiting approval
+
+Candidate PR #14 was merged after independent candidate reviews and successful
+CI run [36847874615](https://github.com/taejunoh/needlbar/actions/runs/36847874615).
+The frozen release candidate is G=`b63ecabf150490d07b38ffa5d39daab12f01b94d`;
+its tree is identical to pre-merge candidate `6df275c9b6998c4a6d6d3ce9a2aafa4995cd5ed9`.
+Tagless Release workflow-dispatch run
+[36850134338](https://github.com/taejunoh/needlbar/actions/runs/36850134338)
+has event `workflow_dispatch` and head SHA G. Its `validate` job is waiting for
+the protected `release` environment approval. This is a documentation-only
+checkpoint after frozen G and does not advance or redefine that candidate.
+
+No tag or public release has been created, no tap update or app installation
+has occurred, and no tag/publication approval is recorded. Current public
+download and Homebrew references remain v0.3.6. Native macOS 14 arm64
+acceptance and the previously recorded native interaction limitations remain
+pending external evidence.
+
 ## 2026-10-01 v0.3.7 SYSTEM Settings release candidate prepared
 
 CPU #10, RAM #11, Disk #12, and Network #13 are merged into main, respectively
@@ -29,9 +47,9 @@ Logs: `/tmp/needlbar-v037-task1-contracts.log`,
 it is not protected signing or public-artifact evidence. Existing macOS 27
 Rust-object/macOS 14 linker and unused/nonmutated-variable warnings remain.
 
-Next: obtain independent candidate review and green CI, then follow the
-separate protected tagless and public release gates
-in `docs/superpowers/plans/2026-10-01-v0.3.7-release.md`.
+Next: complete the pending protected-environment approval for tagless run
+36850134338, then follow the separate tag and public-release gates in
+`docs/superpowers/plans/2026-10-01-v0.3.7-release.md`.
 
 ## 2026-10-01 Network Settings PR published
 
