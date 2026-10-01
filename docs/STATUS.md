@@ -1,5 +1,91 @@
 # Needlbar Development Status
 
+## 2026-10-01 Network Settings PR published
+
+The user selected push and PR creation. Branch
+`codex/network-settings-information` was pushed and PR
+<https://github.com/taejunoh/needlbar/pull/13> was created and attached to this
+chat. Its base is `codex/disk-settings-information` at `b138836`, isolating
+Network changes from Disk #12, RAM #11 and CPU #10. Disk CI was SUCCESS when
+checked; all three dependency PRs remain OPEN and unchanged. Merge CPU, RAM,
+then Disk before retargeting Network to main and verifying the combined checks.
+No merge, installation, release or worktree cleanup was performed.
+
+Fresh pre-PR `make test` on `8276c75` exited 0 (`MAKE_TEST_EXIT=0`): 670 Swift
+tests, Rust workspace, 1,379 vendor tests (1 ignored), all contracts. Log:
+`/tmp/needlbar-network-settings-pre-pr-test.log`. Diff check passed; the tested
+tree was clean. This publication record is documentation-only and does not
+change the tested implementation. Local test success does not establish
+Network remote CI completion. Next: PR review/CI and a separately authorized
+integration or installation decision. The existing attached worktree remains.
+
+## 2026-09-30 Network Settings information — implementation verified
+
+The user approved speeds + reported interface list + opted-in IP display,
+excluding cumulative traffic and per-interface speeds. Written design:
+`docs/superpowers/specs/2026-09-30-network-settings-information-design.md`.
+It preserves the existing all-interface rate semantics, adds only optional
+name retention from the existing native set and service IP reconstruction,
+and separates usable traffic timestamps from interface/address metadata.
+IP rows are a narrow user-approved exception to phase-1 Settings restrictions:
+Network Dashboard only, independently gated by current existing options,
+immediately hidden on opt-out, never logged/exported or sent to providers.
+No extra collector, lookup, timer, endpoint or permission is introduced.
+
+Local `codex/network-settings-information` branches from Disk `b138836` in
+the same attached worktree. CPU #10, RAM #11 and Disk #12 are unchanged
+dependencies. Read-only UI/privacy and native semantic analyses informed the
+spec. The user approved the written specification. Implementation plan:
+`docs/superpowers/plans/2026-09-30-network-settings-information.md`.
+Pre-implementation `make test` exited 0 (`MAKE_TEST_EXIT=0`), log:
+`/tmp/needlbar-network-settings-baseline-test.log`. No push, installation or
+release occurred in this implementation step.
+Existing counter-width/wrap, empty-source-set, shared rate-boundary and stale
+fallback limitations are recorded, not repaired. Core Task 1 committed at
+`1144484`: compatible optional names, existing collector-set forwarding and
+service preservation. Model/IP/conversion focused tests and full `make test`
+exited 0; log `/tmp/needlbar-network-core-task1-test.log` (658 Swift tests,
+1,379 vendor tests with 1 ignored, Rust workspace and contracts).
+Independent spec and quality reviews approved without Critical/Important
+findings. Native getifaddrs failures/interface changes are not injected.
+Settings Task 2 committed at `da08144`: independent optional Download/Upload,
+bounded reported names and validated numeric IP metadata, traffic-specific
+successful dates, explicit Last known and render-time Dashboard-only IP gates.
+Network 11, Settings Studio 34 across two suites, CPU 10, RAM 8 and Disk 9
+focused tests passed. Full Task 2 `make test` exited 0; log
+`/tmp/needlbar-network-settings-task2-test.log` (670 Swift tests).
+Spec review found and repaired stale rate accessibility wording and an unused
+review fixture. The guarded launcher now selects the populated inert Network
+fixture while preserving CPU/RAM/Disk data. Spec re-review and cumulative
+quality review approved without remaining Critical/Important findings.
+
+Root inspected supplemental light 677px, dark 477px with 16 long names/IPv6,
+and unavailable card PNGs under `/tmp/needlbar-network-settings-review`.
+The isolated native review host displayed light 960×720 and dark 760×560
+content windows. Both themes retained the Network card on all three tabs;
+with both address flags on, Menu bar and Alerts displayed no addresses.
+In the dark window, each IP flag was toggled independently: current flags
+read back and only the matching address appeared/disappeared immediately
+with the same inert snapshot. Both Network surface-visibility switches were
+cycled on/off and the card retained rates/names. CPU/RAM/Disk showed their
+own cards and no Network card. Alerts' unsupported-threshold text remained.
+Native accessibility output included labeled rates, names and full test
+addresses. Review windows closed and process exited 0 before final tests.
+The final close returned an accessibility-tool error after the process exited;
+this did not establish a missing user permission. Synthetic scroll commands
+did not provide a changed scroll-offset read-back, so scroll-gesture acceptance
+is not claimed. Full-window long-name injection, actual VoiceOver, measured
+contrast, macOS 14 hardware and native query-failure injection are unverified;
+long-name layout and stale/unavailable semantics have card-fixture/test evidence.
+No real user IP was read/captured. Installed app, public releases and existing
+PRs are unchanged. Root final `make test` on `da08144` exited 0 with explicit
+`MAKE_TEST_EXIT=0`: 670 Swift tests, Rust workspace, 1,379 vendor tests
+(1 ignored), brand/widget/package/notarization contracts. Log:
+`/tmp/needlbar-network-settings-final-test.log`. `git diff --check` passed.
+Next: user integration choice — local merge into the Disk branch, push with
+stacked PR based on Disk, or retain this local branch. No push, PR, merge,
+installation or release is authorized yet.
+
 ## 2026-09-30 Disk Settings PR published
 
 The user chose push and PR creation. Branch

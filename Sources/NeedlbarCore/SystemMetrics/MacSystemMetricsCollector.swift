@@ -276,7 +276,8 @@ public actor MacSystemMetricsCollector: SystemMetricsCollecting {
       uploadBytesPerSecond: rates?.writeBytesPerSecond,
       downloadBytesPerSecond: rates?.readBytesPerSecond,
       localIPAddresses: SystemMetricConversions.orderedLocalAddresses(addresses, primaryInterface: primaryInterface),
-      publicIPAddress: nil
+      publicIPAddress: nil,
+      interfaceNames: trafficInterfaces.sorted()
     )
   }
 

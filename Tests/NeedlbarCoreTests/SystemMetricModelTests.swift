@@ -66,6 +66,22 @@ import Testing
     #expect(disk.totalBytes == nil)
 }
 
+@Test func networkInterfaceNamesDefaultToUnknownAndPreserveReportedValues() {
+    let compatible = SystemMetricsSnapshot.Network(
+        uploadBytesPerSecond: nil, downloadBytesPerSecond: nil,
+        localIPAddresses: [], publicIPAddress: nil)
+    let noneReported = SystemMetricsSnapshot.Network(
+        uploadBytesPerSecond: nil, downloadBytesPerSecond: nil,
+        localIPAddresses: [], publicIPAddress: nil, interfaceNames: [])
+    let reported = SystemMetricsSnapshot.Network(
+        uploadBytesPerSecond: 1, downloadBytesPerSecond: 2,
+        localIPAddresses: [], publicIPAddress: nil, interfaceNames: ["en0", "utun3"])
+
+    #expect(compatible.interfaceNames == nil)
+    #expect(noneReported.interfaceNames == [])
+    #expect(reported.interfaceNames == ["en0", "utun3"])
+}
+
 private func freshDefaults() -> UserDefaults {
     let suiteName = "SystemMetricModelTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suiteName)!

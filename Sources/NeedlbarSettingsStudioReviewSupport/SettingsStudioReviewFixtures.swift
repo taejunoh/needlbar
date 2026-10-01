@@ -40,6 +40,31 @@ public enum SettingsStudioReviewFixtures {
             systemAvailability: [.cpu: .fresh(capturedAt: capturedAt), .memory: .fresh(capturedAt: capturedAt), .disk: .fresh(capturedAt: capturedAt)]
         )
     }
+
+    public static func freshNetworkSnapshot() -> CombinedUsageSnapshot {
+        let base = cpuSnapshot()
+        let capturedAt = base.capturedAt
+        let system = base.system!
+        let availability: [MonitorModuleID: MetricAvailability] = [
+            .cpu: .fresh(capturedAt: capturedAt),
+            .memory: .fresh(capturedAt: capturedAt),
+            .disk: .fresh(capturedAt: capturedAt),
+            .network: .fresh(capturedAt: capturedAt),
+        ]
+        return CombinedUsageSnapshot(
+            system: SystemMetricsSnapshot(
+                capturedAt: capturedAt, cpu: system.cpu, memory: system.memory,
+                disks: system.disks,
+                network: .init(uploadBytesPerSecond: 131_072, downloadBytesPerSecond: 1_048_576,
+                    localIPAddresses: ["192.0.2.10", "2001:db8::10"],
+                    publicIPAddress: "198.51.100.10", interfaceNames: ["en0", "lo0", "utun3"]),
+                battery: system.battery, availability: availability
+            ),
+            providers: base.providers,
+            capturedAt: capturedAt,
+            systemAvailability: availability
+        )
+    }
 }
 
 public enum SettingsStudioReviewLaunch {

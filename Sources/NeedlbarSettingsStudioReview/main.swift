@@ -19,7 +19,7 @@ fileprivate final class SettingsStudioReviewHost: NSObject, NSApplicationDelegat
     private var preferences: QuotaNotificationPreferences?
     private var notificationService: QuotaNotificationService?
     private var actions: SettingsActions?
-    private let systemSnapshot = SettingsStudioReviewFixtures.cpuSnapshot()
+    private let systemSnapshot = SettingsStudioReviewFixtures.freshNetworkSnapshot()
     private var controllers: [SettingsWindowController] = []
     private var configurationObserver: NSObjectProtocol?
     private var timeoutTimer: Timer?

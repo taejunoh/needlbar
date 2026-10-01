@@ -9,6 +9,7 @@ public final class SettingsWindowController: NSWindowController {
     private let cpuInformationPresentation: SettingsCPUInformationPresentation
     private let ramInformationPresentation: SettingsRAMInformationPresentation
     private let diskInformationPresentation: SettingsDiskInformationPresentation
+    private let networkInformationPresentation: SettingsNetworkInformationPresentation
     private var screenObservation: SettingsScreenObservation?
 
     var previewResult: MenuBarDashboardRenderResult { preview.result }
@@ -16,6 +17,7 @@ public final class SettingsWindowController: NSWindowController {
     var cpuInformationState: SettingsCPUInformationValue { cpuInformationPresentation.value }
     var ramInformationState: SettingsRAMInformationValue { ramInformationPresentation.value }
     var diskInformationState: SettingsDiskInformationValue { diskInformationPresentation.value }
+    var networkInformationState: SettingsNetworkInformationValue { networkInformationPresentation.value }
 
     public init(
         configuration: ModuleConfiguration,
@@ -32,11 +34,13 @@ public final class SettingsWindowController: NSWindowController {
         let cpuInformationPresentation = SettingsCPUInformationPresentation()
         let ramInformationPresentation = SettingsRAMInformationPresentation()
         let diskInformationPresentation = SettingsDiskInformationPresentation()
+        let networkInformationPresentation = SettingsNetworkInformationPresentation()
         self.preview = preview
         self.claudeQuotaPresentation = claudeQuotaPresentation
         self.cpuInformationPresentation = cpuInformationPresentation
         self.ramInformationPresentation = ramInformationPresentation
         self.diskInformationPresentation = diskInformationPresentation
+        self.networkInformationPresentation = networkInformationPresentation
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -57,7 +61,8 @@ public final class SettingsWindowController: NSWindowController {
             claudeQuotaPresentation: claudeQuotaPresentation,
             cpuInformationPresentation: cpuInformationPresentation,
             ramInformationPresentation: ramInformationPresentation,
-            diskInformationPresentation: diskInformationPresentation
+            diskInformationPresentation: diskInformationPresentation,
+            networkInformationPresentation: networkInformationPresentation
         ))
         // AppKit owns the screen-safe limits; intrinsic SwiftUI sizing must not
         // overwrite them when a detail pane or its content changes.
@@ -121,6 +126,7 @@ public final class SettingsWindowController: NSWindowController {
         cpuInformationPresentation.update(snapshot: snapshot)
         ramInformationPresentation.update(snapshot: snapshot)
         diskInformationPresentation.update(snapshot: snapshot)
+        networkInformationPresentation.update(snapshot: snapshot)
     }
 
     static func fittedFrame(_ desired: NSRect, in screen: NSRect) -> NSRect {

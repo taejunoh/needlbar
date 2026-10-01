@@ -59,6 +59,7 @@ public struct SettingsView: View {
     @ObservedObject private var cpuInformationPresentation: SettingsCPUInformationPresentation
     @ObservedObject private var ramInformationPresentation: SettingsRAMInformationPresentation
     @ObservedObject private var diskInformationPresentation: SettingsDiskInformationPresentation
+    @ObservedObject private var networkInformationPresentation: SettingsNetworkInformationPresentation
 
     public init(
         configuration: ModuleConfiguration,
@@ -73,7 +74,8 @@ public struct SettingsView: View {
         claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil,
         cpuInformationPresentation: SettingsCPUInformationPresentation? = nil,
         ramInformationPresentation: SettingsRAMInformationPresentation? = nil,
-        diskInformationPresentation: SettingsDiskInformationPresentation? = nil
+        diskInformationPresentation: SettingsDiskInformationPresentation? = nil,
+        networkInformationPresentation: SettingsNetworkInformationPresentation? = nil
     ) {
         self.configuration = configuration
         self.openCursorSpending = openCursorSpending
@@ -85,6 +87,7 @@ public struct SettingsView: View {
         _cpuInformationPresentation = ObservedObject(wrappedValue: cpuInformationPresentation ?? SettingsCPUInformationPresentation())
         _ramInformationPresentation = ObservedObject(wrappedValue: ramInformationPresentation ?? SettingsRAMInformationPresentation())
         _diskInformationPresentation = ObservedObject(wrappedValue: diskInformationPresentation ?? SettingsDiskInformationPresentation())
+        _networkInformationPresentation = ObservedObject(wrappedValue: networkInformationPresentation ?? SettingsNetworkInformationPresentation())
         _systemMonitorModel = StateObject(wrappedValue: SystemMonitorSettingsModel(configuration: configuration))
         _actions = ObservedObject(wrappedValue: actions)
         _notificationPreferences = ObservedObject(wrappedValue: notificationPreferences)
@@ -105,7 +108,8 @@ public struct SettingsView: View {
         claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil,
         cpuInformationPresentation: SettingsCPUInformationPresentation? = nil,
         ramInformationPresentation: SettingsRAMInformationPresentation? = nil,
-        diskInformationPresentation: SettingsDiskInformationPresentation? = nil
+        diskInformationPresentation: SettingsDiskInformationPresentation? = nil,
+        networkInformationPresentation: SettingsNetworkInformationPresentation? = nil
     ) {
         self.init(
             configuration: configuration,
@@ -123,7 +127,8 @@ public struct SettingsView: View {
             claudeQuotaPresentation: claudeQuotaPresentation,
             cpuInformationPresentation: cpuInformationPresentation,
             ramInformationPresentation: ramInformationPresentation,
-            diskInformationPresentation: diskInformationPresentation
+            diskInformationPresentation: diskInformationPresentation,
+            networkInformationPresentation: networkInformationPresentation
         )
     }
 
@@ -151,6 +156,16 @@ public struct SettingsView: View {
                     }
                     if selectedPage == .module(.disk) {
                         SettingsDiskInformationView(presentation: diskInformationPresentation)
+                    }
+                    if selectedPage == .module(.network) {
+                        SettingsNetworkInformationView(
+                            presentation: networkInformationPresentation,
+                            ipVisibility: SettingsNetworkIPVisibility(
+                                tab: selectedTab,
+                                localEnabled: systemMonitorModel.value.localIPEnabled,
+                                publicEnabled: systemMonitorModel.value.publicIPEnabled
+                            )
+                        )
                     }
                     if selectedPage == .layout { SettingsPreviewView(model: preview) }
                     detailPane

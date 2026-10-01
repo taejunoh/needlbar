@@ -217,7 +217,8 @@ public actor SystemMetricsService {
         uploadBytesPerSecond: snapshot.network.uploadBytesPerSecond,
         downloadBytesPerSecond: snapshot.network.downloadBytesPerSecond,
         localIPAddresses: snapshot.network.localIPAddresses,
-        publicIPAddress: address
+        publicIPAddress: address,
+        interfaceNames: snapshot.network.interfaceNames
       ),
       battery: snapshot.battery,
       availability: snapshot.availability
