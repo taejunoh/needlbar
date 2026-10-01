@@ -1,5 +1,24 @@
 # Needlbar Development Status
 
+## 2026-10-01 Network Settings PR published
+
+The user selected push and PR creation. Branch
+`codex/network-settings-information` was pushed and PR
+<https://github.com/taejunoh/needlbar/pull/13> was created and attached to this
+chat. Its base is `codex/disk-settings-information` at `b138836`, isolating
+Network changes from Disk #12, RAM #11 and CPU #10. Disk CI was SUCCESS when
+checked; all three dependency PRs remain OPEN and unchanged. Merge CPU, RAM,
+then Disk before retargeting Network to main and verifying the combined checks.
+No merge, installation, release or worktree cleanup was performed.
+
+Fresh pre-PR `make test` on `8276c75` exited 0 (`MAKE_TEST_EXIT=0`): 670 Swift
+tests, Rust workspace, 1,379 vendor tests (1 ignored), all contracts. Log:
+`/tmp/needlbar-network-settings-pre-pr-test.log`. Diff check passed; the tested
+tree was clean. This publication record is documentation-only and does not
+change the tested implementation. Local test success does not establish
+Network remote CI completion. Next: PR review/CI and a separately authorized
+integration or installation decision. The existing attached worktree remains.
+
 ## 2026-09-30 Network Settings information — implementation verified
 
 The user approved speeds + reported interface list + opted-in IP display,
