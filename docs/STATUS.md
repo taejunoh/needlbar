@@ -1,22 +1,37 @@
 # Needlbar Development Status
 
-## 2026-10-01 v0.3.7 protected validation awaiting approval
+## 2026-10-01 v0.3.7 tag-triggered validation awaiting approval
+
+Frozen candidate G=`b63ecabf150490d07b38ffa5d39daab12f01b94d` passed tagless
+Release workflow-dispatch run
+[36850134338](https://github.com/taejunoh/needlbar/actions/runs/36850134338)
+with event `workflow_dispatch` and head SHA G. Its test, package, smoke,
+signing, notarization, stapling, Gatekeeper, and validation-artifact steps all
+succeeded. Publication was correctly skipped for the tagless event.
+
+Annotated tag `v0.3.7` now points to G; remote tag object
+`0278740c8725e9b32854c81f4bcbe1a5457aceb7` peels to G. Its distinct tag-push
+run [36875103808](https://github.com/taejunoh/needlbar/actions/runs/36875103808)
+has event `push`, branch `v0.3.7`, and head SHA G. The `validate` job is
+waiting for protected `release` environment approval. No public release asset
+has been verified or tapped; README download/install references and Homebrew
+remain at v0.3.6, and no app installation has occurred. Public asset
+verification and tap update remain pending.
+
+## 2026-10-01 v0.3.7 tagless validation approved and passed — prior checkpoint
 
 Candidate PR #14 was merged after independent candidate reviews and successful
 CI run [36847874615](https://github.com/taejunoh/needlbar/actions/runs/36847874615).
 The frozen release candidate is G=`b63ecabf150490d07b38ffa5d39daab12f01b94d`;
 its tree is identical to pre-merge candidate `6df275c9b6998c4a6d6d3ce9a2aafa4995cd5ed9`.
-Tagless Release workflow-dispatch run
+At this checkpoint, tagless Release workflow-dispatch run
 [36850134338](https://github.com/taejunoh/needlbar/actions/runs/36850134338)
 has event `workflow_dispatch` and head SHA G. Its `validate` job is waiting for
 the protected `release` environment approval. This is a documentation-only
 checkpoint after frozen G and does not advance or redefine that candidate.
 
-No tag or public release has been created, no tap update or app installation
-has occurred, and no tag/publication approval is recorded. Current public
-download and Homebrew references remain v0.3.6. Native macOS 14 arm64
-acceptance and the previously recorded native interaction limitations remain
-pending external evidence.
+At that point, no tag had been created. This checkpoint was documentation-only
+and did not advance or redefine G.
 
 ## 2026-10-01 v0.3.7 SYSTEM Settings release candidate prepared
 
@@ -47,9 +62,9 @@ Logs: `/tmp/needlbar-v037-task1-contracts.log`,
 it is not protected signing or public-artifact evidence. Existing macOS 27
 Rust-object/macOS 14 linker and unused/nonmutated-variable warnings remain.
 
-Next: complete the pending protected-environment approval for tagless run
-36850134338, then follow the separate tag and public-release gates in
-`docs/superpowers/plans/2026-10-01-v0.3.7-release.md`.
+Next: complete the pending protected-environment approval for tag-triggered run
+36875103808, then verify its public artifact and proceed with the distribution
+gates in `docs/superpowers/plans/2026-10-01-v0.3.7-release.md`.
 
 ## 2026-10-01 Network Settings PR published
 
