@@ -76,7 +76,7 @@ has been verified or tapped; README download/install references and Homebrew
 remain at v0.3.6, and no app installation has occurred. Public asset
 verification and tap update remain pending.
 
-## 2026-10-01 v0.3.7 tagless validation approved and passed — prior checkpoint
+## 2026-10-01 v0.3.7 tagless validation awaiting approval — prior checkpoint
 
 Candidate PR #14 was merged after independent candidate reviews and successful
 CI run [36847874615](https://github.com/taejunoh/needlbar/actions/runs/36847874615).

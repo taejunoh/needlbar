@@ -224,7 +224,7 @@ The released app includes one medium Overview widget backed by a sanitized local
 
 ## Native macOS 14 acceptance (maintainer-only)
 
-The public v0.3.6 ZIP is the production artifact for Gallery and entitlement
+The public v0.3.7 ZIP is the production artifact for Gallery and entitlement
 acceptance checks. The
 separately signed fixture-driven artifact is acceptance-only and is not a
 release or notarization substitute. It uses no provider account, credential,
@@ -263,7 +263,7 @@ Analytics is manual and local-only: there is no startup scan, timer, watcher, ba
 
 The v0.3.1 refinement remains the historical compact-readability release
 record for macOS 14 or later on Apple Silicon. The current supported public
-distribution is v0.3.6 above. The refinement keeps the existing data semantics while adding:
+distribution is v0.3.7 above. The refinement keeps the existing data semantics while adding:
 
 - colored summary cards;
 - full-width, aligned repository rows for name, estimated cost, and tokens;
