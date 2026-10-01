@@ -51,6 +51,25 @@ The Cask has no `zap` stanza; uninstalling it does not remove Needlbar settings 
 
 ## Current features
 
+### SYSTEM Settings information (prepared v0.3.7)
+
+Needlbar v0.3.7 is prepared for public release. The public download and Homebrew
+installation above remain v0.3.6 until the new public artifact is verified.
+The candidate adds read-only information cards for CPU hardware and live
+utilization; RAM Used, Available, Total, Compressed, Wired, Swap, and OS pressure;
+root-volume Disk capacity and backing-device read/write I/O; and aggregate
+Network rates with reported interface names. RAM categories can overlap,
+Disk I/O is backing-device activity, and interface names do not identify
+individual contributions to aggregate Network traffic.
+
+The cards reuse the existing snapshot stream above controls on all three
+surface tabs, with successful sample times and explicit Last known or
+unavailable readings. Network's IP rows appear only on its Dashboard tab,
+independently gated by the existing local/public IP options. IP values retain
+the existing privacy boundaries. Provider authentication and quota refresh
+are unchanged, and no extra collector or timer is introduced. Native macOS 14
+arm64 acceptance remains pending external evidence.
+
 ### Usage and quota monitoring
 
 Needlbar presents locally aggregated token usage and estimated cost together with provider quota windows and reset times. Overview combines today’s tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status, and Settings. Provider views show today’s usage/cost, input/output/cache token detail, quota/reset information, freshness, and safe recovery states. Usage and quota are independent refresh streams; a failure in one does not replace a previously valid value with zero.
