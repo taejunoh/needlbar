@@ -1,5 +1,22 @@
 # Needlbar Development Status
 
+## 2026-10-01 v0.3.7 remote distribution checkpoint
+
+Public v0.3.7 verification is complete. The immutable tag still points to
+frozen candidate G=`b63ecabf150490d07b38ffa5d39daab12f01b94d`; public ZIP and
+sidecar asset IDs are `603492595` and `603492597`, and the verified ZIP SHA-256
+is recorded below. The source documentation checkpoint is remotely published
+on both `main` and `codex/v037-system-settings-release` at
+`5263f92554eaebec65f54c09d24706282a327973`. Homebrew tap `main` is remotely
+published at `49d847d5099d9ed714e18a600b402caada87c2c6`.
+
+The Homebrew strict online audit remains unverified because the installed
+Command Line Tools do not support macOS 27; no setting or security check was
+bypassed. Native macOS 14 arm64 acceptance and the listed VoiceOver, contrast,
+scroll, long-name, and query-failure checks remain pending. The canonical
+installed Needlbar app was not replaced. Frozen G, the tag, and release assets
+were not changed by the documentation publication.
+
 ## 2026-10-01 v0.3.7 public release
 
 Tag: `v0.3.7`
@@ -26,7 +43,7 @@ scroll-gesture acceptance, full-window long-name injection, and native query
 failure injection remain unverified as previously recorded. Public distribution
 does not establish these interaction checks or provider compatibility guarantees.
 
-Homebrew Cask update is committed locally at
+Homebrew Cask update is published at
 `49d847d5099d9ed714e18a600b402caada87c2c6`, changing only version and measured
 public ZIP SHA. Ruby syntax and Homebrew style passed. Strict online audit
 could not run because the installed CLT does not support macOS 27; no security,
@@ -55,8 +72,11 @@ Logs: `/tmp/needlbar-v037-task2-red.log`, `/tmp/needlbar-v037-task2-green.log`,
 `/tmp/needlbar-v037-tap-audit.log`, and
 `/tmp/needlbar-v037-public.iOrTR3/brew-verification.log`.
 The existing macOS 27 Rust-object/macOS 14 linker and Swift variable warnings
-remain. Final remote documentation/tap publication and verification are pending.
-The tag remains on frozen G, independently of later documentation commits.
+remain. Remote verification confirms the documentation source at commit
+`5263f92554eaebec65f54c09d24706282a327973` on both `main` and
+`codex/v037-system-settings-release`, and tap commit
+`49d847d5099d9ed714e18a600b402caada87c2c6` on tap `main`. The tag remains on
+frozen G, independently of later documentation commits.
 
 ## 2026-10-01 v0.3.7 tag-triggered validation awaiting approval — prior checkpoint
 
