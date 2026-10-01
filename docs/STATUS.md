@@ -1,5 +1,38 @@
 # Needlbar Development Status
 
+## 2026-10-01 v0.3.7 SYSTEM Settings release candidate prepared
+
+CPU #10, RAM #11, Disk #12, and Network #13 are merged into main, respectively
+at `30ba00e`, `e7dde79`, `4fedc3c`, and `f73e58e`. The release plan is recorded
+at `c974309`. Candidate branch `codex/v037-system-settings-release` prepares
+host and widget version `0.3.7`, build `10`, and version-specific notes at
+`docs/releases/v0.3.7.md`. Historical release notes and verification evidence
+below are retained; earlier open-PR statements describe their recorded time.
+
+The scope is the approved read-only CPU, RAM, Disk, and Network Settings cards,
+with Dashboard-only independently opted-in Network IP rows. It reuses existing
+snapshots and preserves provider authentication/quota refresh, collection
+timers, privacy, macOS 14 arm64 packaging, identifiers, and signing boundaries.
+Public download/install references and the Homebrew artifact remain v0.3.6.
+No v0.3.7 publication, protected validation, tag, tap update, or installed-app
+replacement is claimed. Native macOS 14 arm64 acceptance and the previously
+recorded native interaction limitations remain pending external evidence.
+
+Local Task 1 verification passed sequentially: notarization shell contracts,
+`PATH=/Users/taejunoh/.cargo/bin:$PATH make test`, `make package`, `make smoke`,
+and `git diff --check` each exited 0. The full suite passed 670 Swift tests,
+the Rust workspace, 1,379 vendor tests (1 ignored), and all shell contracts.
+Logs: `/tmp/needlbar-v037-task1-contracts.log`,
+`/tmp/needlbar-v037-task1-test.log`, `/tmp/needlbar-v037-task1-package.log`, and
+`/tmp/needlbar-v037-task1-smoke.log`. The packaged host/widget both read back
+`0.3.7`/`10`. Packaging is local ad-hoc signing with a synthetic App Group;
+it is not protected signing or public-artifact evidence. Existing macOS 27
+Rust-object/macOS 14 linker and unused/nonmutated-variable warnings remain.
+
+Next: obtain independent candidate review and green CI, then follow the
+separate protected tagless and public release gates
+in `docs/superpowers/plans/2026-10-01-v0.3.7-release.md`.
+
 ## 2026-10-01 Network Settings PR published
 
 The user selected push and PR creation. Branch
