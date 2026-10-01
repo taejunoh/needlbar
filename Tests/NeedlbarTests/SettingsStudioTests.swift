@@ -152,6 +152,35 @@ struct SettingsStudioTests {
         #expect(controller.ramInformationState.totalBytes == 51_539_607_552)
     }
 
+    @Test func settingsControllerUpdatesDiskInformationWithBothVisibilityPreferencesOff() throws {
+        let name = "SettingsStudio.disk-information.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let configuration = ModuleConfiguration(defaults: defaults)
+        var monitor = configuration.systemMonitor
+        monitor.menuBarVisibleModules.remove(.disk)
+        monitor.dashboardVisibleModules.remove(.disk)
+        configuration.setSystemMonitor(monitor)
+        let preferences = QuotaNotificationPreferences(defaults: defaults)
+        let controller = SettingsWindowController(configuration: configuration, actions: SettingsActions(),
+            notificationPreferences: preferences,
+            notificationService: QuotaNotificationService(store: ProviderSnapshotStore(), preferences: preferences), openCursorSpending: {})
+        controller.update(snapshot: SettingsStudioReviewFixtures.cpuSnapshot(), configuration: monitor)
+        #expect(!configuration.systemMonitor.menuBarVisibleModules.contains(.disk))
+        #expect(!configuration.systemMonitor.dashboardVisibleModules.contains(.disk))
+        #expect(controller.diskInformationState.name == "Macintosh HD")
+        #expect(controller.diskInformationState.totalBytes == 1_099_511_627_776)
+        #expect(controller.diskInformationState.usedPercent == 75)
+        controller.update(snapshot: SettingsDiskInformationTests.snapshot(availability: .unavailable(code: "diskUnavailable")), configuration: monitor)
+        #expect(controller.diskInformationState.usedBytes == nil)
+        #expect(controller.diskInformationState.readBytesPerSecond == nil)
+        #expect(controller.diskInformationState.successfulAt == nil)
+        #expect(controller.diskInformationState.totalBytes == 1_099_511_627_776)
+        controller.update(snapshot: SettingsDiskInformationTests.snapshot(hasDisk: false), configuration: monitor)
+        #expect(controller.diskInformationState.name == nil)
+        #expect(controller.diskInformationState.totalBytes == nil)
+    }
+
     @Test func claudeStatusLineDisconnectInvokesImmediateClearCallback() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("Needlbar-settings-disconnect-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }

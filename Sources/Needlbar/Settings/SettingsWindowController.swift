@@ -8,12 +8,14 @@ public final class SettingsWindowController: NSWindowController {
     private let claudeQuotaPresentation: SettingsClaudeQuotaPresentation
     private let cpuInformationPresentation: SettingsCPUInformationPresentation
     private let ramInformationPresentation: SettingsRAMInformationPresentation
+    private let diskInformationPresentation: SettingsDiskInformationPresentation
     private var screenObservation: SettingsScreenObservation?
 
     var previewResult: MenuBarDashboardRenderResult { preview.result }
     var claudeQuotaState: ProviderPopoverPresentation { claudeQuotaPresentation.value }
     var cpuInformationState: SettingsCPUInformationValue { cpuInformationPresentation.value }
     var ramInformationState: SettingsRAMInformationValue { ramInformationPresentation.value }
+    var diskInformationState: SettingsDiskInformationValue { diskInformationPresentation.value }
 
     public init(
         configuration: ModuleConfiguration,
@@ -29,10 +31,12 @@ public final class SettingsWindowController: NSWindowController {
         let claudeQuotaPresentation = SettingsClaudeQuotaPresentation()
         let cpuInformationPresentation = SettingsCPUInformationPresentation()
         let ramInformationPresentation = SettingsRAMInformationPresentation()
+        let diskInformationPresentation = SettingsDiskInformationPresentation()
         self.preview = preview
         self.claudeQuotaPresentation = claudeQuotaPresentation
         self.cpuInformationPresentation = cpuInformationPresentation
         self.ramInformationPresentation = ramInformationPresentation
+        self.diskInformationPresentation = diskInformationPresentation
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -52,7 +56,8 @@ public final class SettingsWindowController: NSWindowController {
             preview: preview,
             claudeQuotaPresentation: claudeQuotaPresentation,
             cpuInformationPresentation: cpuInformationPresentation,
-            ramInformationPresentation: ramInformationPresentation
+            ramInformationPresentation: ramInformationPresentation,
+            diskInformationPresentation: diskInformationPresentation
         ))
         // AppKit owns the screen-safe limits; intrinsic SwiftUI sizing must not
         // overwrite them when a detail pane or its content changes.
@@ -115,6 +120,7 @@ public final class SettingsWindowController: NSWindowController {
         claudeQuotaPresentation.update(snapshot: snapshot)
         cpuInformationPresentation.update(snapshot: snapshot)
         ramInformationPresentation.update(snapshot: snapshot)
+        diskInformationPresentation.update(snapshot: snapshot)
     }
 
     static func fittedFrame(_ desired: NSRect, in screen: NSRect) -> NSRect {

@@ -77,6 +77,14 @@ import Testing
   #expect(stale.memory.totalBytes == 32_000)
   #expect(stale.memory.compressedBytes == 4_096)
   #expect(stale.memory.wiredBytes == 8_192)
+  #expect(stale.disks.first?.usedBytes == 8_000)
+  #expect(stale.disks.first?.freeBytes == 2_000)
+  #expect(stale.disks.first?.totalBytes == 10_000)
+  #expect(stale.disks.first?.readBytesPerSecond == 10)
+  #expect(stale.disks.first?.writeBytesPerSecond == 5)
+  #expect(stale.capturedAt == start.addingTimeInterval(60))
+  #expect(stale.availability[.disk] == .stale(lastSuccessfulAt: start))
+  #expect(stale.availability[.disk] != .stale(lastSuccessfulAt: stale.capturedAt))
   #expect(stale.availability[.cpu] == .stale(lastSuccessfulAt: start))
   #expect(stale.availability[.memory] == .stale(lastSuccessfulAt: start))
   #expect(stale.availability[.memory] != .stale(lastSuccessfulAt: start.addingTimeInterval(60)))
@@ -144,7 +152,7 @@ private func fixtureSnapshot(capturedAt: Date = Date(timeIntervalSince1970: 10_0
     disks: [
       .init(
         name: "Macintosh HD", usedBytes: 8_000, freeBytes: 2_000, readBytesPerSecond: 10,
-        writeBytesPerSecond: 5)
+        writeBytesPerSecond: 5, totalBytes: 10_000)
     ],
     network: .init(
       uploadBytesPerSecond: 100, downloadBytesPerSecond: 200, localIPAddresses: ["192.0.2.4"],

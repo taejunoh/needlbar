@@ -196,8 +196,10 @@ public actor MacSystemMetricsCollector: SystemMetricsCollecting {
     ]
     let systemVolume = URL(fileURLWithPath: "/", isDirectory: true)
     guard let values = try? systemVolume.resourceValues(forKeys: keys),
-      let total = values.volumeTotalCapacity,
-      let available = values.volumeAvailableCapacity
+      let disk = DiskSnapshotBuilder.make(
+        name: values.volumeName ?? "System disk",
+        totalCapacity: values.volumeTotalCapacity,
+        availableCapacity: values.volumeAvailableCapacity)
     else { return [] }
 
     let counters = collectSystemDiskCounters(at: date)
@@ -207,15 +209,14 @@ public actor MacSystemMetricsCollector: SystemMetricsCollecting {
     if let counters {
       previousSystemDiskCounters = counters
     }
-    let totalBytes = UInt64(max(total, 0))
-    let freeBytes = UInt64(max(available, 0))
     return [
       .init(
-        name: values.volumeName ?? "System disk",
-        usedBytes: totalBytes >= freeBytes ? totalBytes - freeBytes : 0,
-        freeBytes: freeBytes,
+        name: disk.name,
+        usedBytes: disk.usedBytes,
+        freeBytes: disk.freeBytes,
         readBytesPerSecond: rates?.readBytesPerSecond,
-        writeBytesPerSecond: rates?.writeBytesPerSecond
+        writeBytesPerSecond: rates?.writeBytesPerSecond,
+        totalBytes: disk.totalBytes
       )
     ]
   }

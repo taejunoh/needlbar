@@ -1,5 +1,91 @@
 # Needlbar Development Status
 
+## 2026-09-30 Disk Settings PR published
+
+The user chose push and PR creation. Branch
+`codex/disk-settings-information` was pushed and PR
+<https://github.com/taejunoh/needlbar/pull/12> was created and attached to this
+chat. Its base is `codex/ram-settings-information`, isolating Disk changes
+from RAM #11 and CPU #10. Merge CPU, then RAM before retargeting Disk to main
+and verifying combined checks. Those prerequisite PRs are unchanged.
+No merge, installation or release was performed; the worktree is retained.
+
+Fresh pre-PR `make test` on `ef38fac` exited 0 (`MAKE_TEST_EXIT=0`):
+656 Swift tests, Rust workspace, 1,379 vendor tests (1 ignored), all contracts.
+Log: `/tmp/needlbar-disk-settings-pre-pr-test.log`. Local test success does
+not establish remote CI completion. Next: PR review/CI and a separately
+authorized integration choice.
+
+## 2026-09-30 Disk Settings information — implementation verified
+
+The user selected approach 1: system-volume capacity plus backing-device
+read/write activity, following CPU and RAM's read-only information cards.
+Written design: `docs/superpowers/specs/2026-09-30-disk-settings-information-design.md`.
+It reuses the existing root-volume URL resource read and IORegistry counters;
+only optional actual Total retention and bounded capacity normalization are
+added. It distinguishes volume capacity from physical SSD size, backing
+device I/O from volume-only I/O, real zero from missing/clamped values, and
+successful sample dates from failed attempts. No SMART, lifetime, external
+selection, extra collector/timer/permissions, or provider changes are included.
+
+Local branch `codex/disk-settings-information` starts at RAM head `7546602`
+in the existing attached worktree. CPU PR #10 and RAM PR #11,
+installed v0.3.6, and public releases are unchanged. No push, merge,
+release, installation or new persistent app bundle was performed.
+The user approved the written spec. Implementation plan:
+`docs/superpowers/plans/2026-09-30-disk-settings-information.md`.
+Pre-implementation `make test` exited 0; log:
+`/tmp/needlbar-disk-settings-baseline-test.log`. Core Task 1 committed at
+`3016a75`: actual optional Total, pure bounded signed-capacity builder,
+collector forwarding without clamping, full stale record retention tests.
+Focused Builder/model/conversion/service tests passed. Confirmed full
+`make test` exited 0 in `/tmp/needlbar-disk-core-task1-test-confirmed.log`
+(`MAKE_TEST_EXIT=0`): 646 Swift tests, Rust workspace, 1,379 vendor tests
+(1 ignored), all contracts. First run's shell exit was not retained, so only
+the explicit-marker repeat is claimed. Independent spec and quality reviews
+approved Task 1; native query failure injection remains unverified.
+Settings Task 2 committed at `b33d033`: cyan Used/Available capacity card,
+actual Total, independently optional blue Read/orange Write, full successful
+sample date/time, explicit Last known, and truthful unavailable states.
+The card appears only on Disk above controls on all three tabs and uses the
+existing snapshot stream. No extra collector, timer, cache or provider access.
+Focused Disk 9, Settings Studio 33, CPU 10 and RAM 8 tests passed. All Swift
+tests passed 656/656 (`SWIFT_TEST_EXIT=0`), and full Task 2 `make test` exited 0
+in `/tmp/needlbar-disk-settings-task2-test.log` (`MAKE_TEST_EXIT=0`).
+Independent Task 2 spec review and cumulative quality review approved with no
+outstanding Critical/Important findings.
+
+Root inspected attached native card PNGs at 677px light and 477px dark,
+including long-name wrapping, stale and unavailable states, under
+`/tmp/needlbar-disk-settings-review`. Then the existing opt-in Settings review
+executable displayed inert fixtures with isolated defaults in light 960×720
+and dark minimum 760×560 content windows. Disk card retained its values on
+Menu bar, Dashboard and Alerts; both visibility toggles were cycled on/off,
+and their read-back values plus unchanged card confirmed retention. Alerts'
+unsupported-threshold explanation remained. CPU and RAM showed their own
+cards and no Disk card. Review windows were closed; process exited 0 before
+final tests. The last close action reported a tool accessibility error after
+the process had exited, not an unresolved permission prerequisite.
+
+Orca's accessibility tree exposed Disk's volume name, percent, date and scope
+help but not individual byte/rate values. Source labels/values were reviewed;
+actual VoiceOver, Increase Contrast, quantitative contrast and macOS 14
+hardware execution remain unverified. Pure builder tests do not inject native
+URL/IORegistry failures. Existing macOS 27 Rust-link warnings remain; target
+stays macOS 14. No live collection or installed-app verification is claimed.
+Root final full `source /Users/taejunoh/.cargo/env && make test` on the
+committed implementation tree exited 0 (`MAKE_TEST_EXIT=0`). Log:
+`/tmp/needlbar-disk-settings-final-test.log`. It passed 656 Swift tests, the
+Rust workspace, 1,379 vendor tests (1 ignored), and all public bridge, brand,
+widget, package and notarization contracts. `git diff --check` passed.
+Next: user's integration choice against `codex/ram-settings-information`.
+Do not silently merge CPU/RAM prerequisites or retarget their open PRs.
+
+Read-only design analysis also noted existing shared transfer-rate rounding
+and fallback stale-date limitations. These are not newly caused or repaired
+by this documentation. Disk presentation will guard data-less stale dates;
+broader counter conversion/identity and service changes remain out of scope.
+
 ## 2026-09-30 RAM Settings PR published
 
 The user chose push and PR creation. RAM branch

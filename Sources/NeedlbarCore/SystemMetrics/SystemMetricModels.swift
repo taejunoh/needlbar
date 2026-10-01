@@ -133,19 +133,22 @@ public struct SystemMetricsSnapshot: Equatable, Sendable {
         public let freeBytes: UInt64?
         public let readBytesPerSecond: UInt64?
         public let writeBytesPerSecond: UInt64?
+        public let totalBytes: UInt64?
 
         public init(
             name: String,
             usedBytes: UInt64?,
             freeBytes: UInt64?,
             readBytesPerSecond: UInt64?,
-            writeBytesPerSecond: UInt64?
+            writeBytesPerSecond: UInt64?,
+            totalBytes: UInt64? = nil
         ) {
             self.name = name
             self.usedBytes = usedBytes
             self.freeBytes = freeBytes
             self.readBytesPerSecond = readBytesPerSecond
             self.writeBytesPerSecond = writeBytesPerSecond
+            self.totalBytes = totalBytes
         }
     }
 
