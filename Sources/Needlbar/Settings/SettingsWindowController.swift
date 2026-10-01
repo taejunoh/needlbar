@@ -6,10 +6,12 @@ import SwiftUI
 public final class SettingsWindowController: NSWindowController {
     private let preview: SettingsPreviewModel
     private let claudeQuotaPresentation: SettingsClaudeQuotaPresentation
+    private let cpuInformationPresentation: SettingsCPUInformationPresentation
     private var screenObservation: SettingsScreenObservation?
 
     var previewResult: MenuBarDashboardRenderResult { preview.result }
     var claudeQuotaState: ProviderPopoverPresentation { claudeQuotaPresentation.value }
+    var cpuInformationState: SettingsCPUInformationValue { cpuInformationPresentation.value }
 
     public init(
         configuration: ModuleConfiguration,
@@ -23,8 +25,10 @@ public final class SettingsWindowController: NSWindowController {
     ) {
         let preview = SettingsPreviewModel()
         let claudeQuotaPresentation = SettingsClaudeQuotaPresentation()
+        let cpuInformationPresentation = SettingsCPUInformationPresentation()
         self.preview = preview
         self.claudeQuotaPresentation = claudeQuotaPresentation
+        self.cpuInformationPresentation = cpuInformationPresentation
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -42,7 +46,8 @@ public final class SettingsWindowController: NSWindowController {
             claudeStatusLineManager: claudeStatusLineManager,
             onClaudeStatusLineDisconnected: onClaudeStatusLineDisconnected,
             preview: preview,
-            claudeQuotaPresentation: claudeQuotaPresentation
+            claudeQuotaPresentation: claudeQuotaPresentation,
+            cpuInformationPresentation: cpuInformationPresentation
         ))
         // AppKit owns the screen-safe limits; intrinsic SwiftUI sizing must not
         // overwrite them when a detail pane or its content changes.
@@ -103,6 +108,7 @@ public final class SettingsWindowController: NSWindowController {
     public func update(snapshot: CombinedUsageSnapshot, configuration: SystemMonitorConfiguration) {
         preview.update(snapshot: snapshot, configuration: configuration)
         claudeQuotaPresentation.update(snapshot: snapshot)
+        cpuInformationPresentation.update(snapshot: snapshot)
     }
 
     static func fittedFrame(_ desired: NSRect, in screen: NSRect) -> NSRect {

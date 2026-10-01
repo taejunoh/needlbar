@@ -56,6 +56,7 @@ public struct SettingsView: View {
     @State private var claudeStatusLineTimer = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
     @ObservedObject private var preview: SettingsPreviewModel
     @ObservedObject private var claudeQuotaPresentation: SettingsClaudeQuotaPresentation
+    @ObservedObject private var cpuInformationPresentation: SettingsCPUInformationPresentation
 
     public init(
         configuration: ModuleConfiguration,
@@ -67,7 +68,8 @@ public struct SettingsView: View {
         claudeStatusLineManager: ClaudeStatusLineConnectionManager = ClaudeStatusLineConnectionManager(),
         onClaudeStatusLineDisconnected: @escaping @MainActor () -> Void = {},
         preview: SettingsPreviewModel? = nil,
-        claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil
+        claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil,
+        cpuInformationPresentation: SettingsCPUInformationPresentation? = nil
     ) {
         self.configuration = configuration
         self.openCursorSpending = openCursorSpending
@@ -76,6 +78,7 @@ public struct SettingsView: View {
         self.onClaudeStatusLineDisconnected = onClaudeStatusLineDisconnected
         _preview = ObservedObject(wrappedValue: preview ?? SettingsPreviewModel())
         _claudeQuotaPresentation = ObservedObject(wrappedValue: claudeQuotaPresentation ?? SettingsClaudeQuotaPresentation())
+        _cpuInformationPresentation = ObservedObject(wrappedValue: cpuInformationPresentation ?? SettingsCPUInformationPresentation())
         _systemMonitorModel = StateObject(wrappedValue: SystemMonitorSettingsModel(configuration: configuration))
         _actions = ObservedObject(wrappedValue: actions)
         _notificationPreferences = ObservedObject(wrappedValue: notificationPreferences)
@@ -93,7 +96,8 @@ public struct SettingsView: View {
         claudeStatusLineManager: ClaudeStatusLineConnectionManager = ClaudeStatusLineConnectionManager(),
         onClaudeStatusLineDisconnected: @escaping @MainActor () -> Void = {},
         preview: SettingsPreviewModel? = nil,
-        claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil
+        claudeQuotaPresentation: SettingsClaudeQuotaPresentation? = nil,
+        cpuInformationPresentation: SettingsCPUInformationPresentation? = nil
     ) {
         self.init(
             configuration: configuration,
@@ -108,7 +112,8 @@ public struct SettingsView: View {
             claudeStatusLineManager: claudeStatusLineManager,
             onClaudeStatusLineDisconnected: onClaudeStatusLineDisconnected,
             preview: preview,
-            claudeQuotaPresentation: claudeQuotaPresentation
+            claudeQuotaPresentation: claudeQuotaPresentation,
+            cpuInformationPresentation: cpuInformationPresentation
         )
     }
 
@@ -127,6 +132,9 @@ public struct SettingsView: View {
                         Picker("Settings surface", selection: $selectedTab) {
                             ForEach(selectedPage.tabs) { Text($0.rawValue).tag($0) }
                         }.pickerStyle(.segmented)
+                    }
+                    if selectedPage == .module(.cpu) {
+                        SettingsCPUInformationView(presentation: cpuInformationPresentation)
                     }
                     if selectedPage == .layout { SettingsPreviewView(model: preview) }
                     detailPane

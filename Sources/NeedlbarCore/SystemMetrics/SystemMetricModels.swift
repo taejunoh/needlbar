@@ -91,10 +91,16 @@ public struct SystemMetricsSnapshot: Equatable, Sendable {
     public struct CPU: Equatable, Sendable {
         public let totalUsage: MetricPercentage?
         public let perCoreUsage: [MetricPercentage]
+        public let hardware: CPUHardwareInfo?
 
-        public init(totalUsage: MetricPercentage?, perCoreUsage: [MetricPercentage]) {
+        public init(
+            totalUsage: MetricPercentage?,
+            perCoreUsage: [MetricPercentage],
+            hardware: CPUHardwareInfo? = nil
+        ) {
             self.totalUsage = totalUsage
             self.perCoreUsage = perCoreUsage
+            self.hardware = hardware
         }
     }
 

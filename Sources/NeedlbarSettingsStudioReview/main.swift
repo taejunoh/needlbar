@@ -19,6 +19,7 @@ fileprivate final class SettingsStudioReviewHost: NSObject, NSApplicationDelegat
     private var preferences: QuotaNotificationPreferences?
     private var notificationService: QuotaNotificationService?
     private var actions: SettingsActions?
+    private let cpuSnapshot = SettingsStudioReviewFixtures.cpuSnapshot()
     private var controllers: [SettingsWindowController] = []
     private var configurationObserver: NSObjectProtocol?
     private var timeoutTimer: Timer?
@@ -51,13 +52,6 @@ fileprivate final class SettingsStudioReviewHost: NSObject, NSApplicationDelegat
             client: SettingsStudioInertNotificationClient()
         )
         let actions = settingsStudioReviewActions(delay: .seconds(8))
-        let emptySnapshot = CombinedUsageSnapshot(
-            system: nil,
-            providers: [],
-            capturedAt: .distantPast,
-            systemAvailability: [:]
-        )
-
         self.defaults = defaults
         self.configuration = configuration
         self.preferences = preferences
@@ -87,7 +81,7 @@ fileprivate final class SettingsStudioReviewHost: NSObject, NSApplicationDelegat
             window.appearance = NSAppearance(named: appearance)
             window.setContentSize(size)
             window.center()
-            controller.update(snapshot: emptySnapshot, configuration: configuration.systemMonitor)
+            controller.update(snapshot: cpuSnapshot, configuration: configuration.systemMonitor)
             controller.showSettings()
             controllers.append(controller)
             print("SETTINGS_REVIEW pid=\(ProcessInfo.processInfo.processIdentifier) content=\(window.contentLayoutRect.size) minimum=\(window.contentMinSize) title=\(window.title)")
@@ -137,14 +131,8 @@ fileprivate final class SettingsStudioReviewHost: NSObject, NSApplicationDelegat
 
     private func updatePreviews() {
         guard let configuration else { return }
-        let snapshot = CombinedUsageSnapshot(
-            system: nil,
-            providers: [],
-            capturedAt: .distantPast,
-            systemAvailability: [:]
-        )
         for controller in controllers {
-            controller.update(snapshot: snapshot, configuration: configuration.systemMonitor)
+            controller.update(snapshot: cpuSnapshot, configuration: configuration.systemMonitor)
         }
         printConfiguration(configuration)
     }
