@@ -1,6 +1,64 @@
 # Needlbar Development Status
 
-## 2026-10-01 v0.3.7 tag-triggered validation awaiting approval
+## 2026-10-01 v0.3.7 public release
+
+Tag: `v0.3.7`
+Candidate commit: `b63ecabf150490d07b38ffa5d39daab12f01b94d`
+Public release URL: <https://github.com/taejunoh/needlbar/releases/tag/v0.3.7>
+Public ZIP SHA-256: `0dfd3365181a60fe5fd428020105c6c21d69bf72e4b1ba5d1885ebbde4660537`
+Tagless validation run: [36850134338](https://github.com/taejunoh/needlbar/actions/runs/36850134338)
+Tag-triggered validation/publication run: [36875103808](https://github.com/taejunoh/needlbar/actions/runs/36875103808)
+
+Both validation runs succeeded at the exact candidate above. The public Release
+contains exactly the ZIP and checksum sidecar. A fresh public download matched
+the one-record, exact-filename sidecar and GitHub asset digest. Host and widget
+identify as v0.3.7/build 10; host, helper, and widget are arm64 and signed by
+Developer ID Application: Taejun Oh, team `3BMF4LM6TM`, with hardened runtime.
+Strict deep code-signature verification, fixture/review-host exclusion, stapler
+validation, Gatekeeper assessment, and smoke against that downloaded app passed.
+The ZIP checksum and extracted app signature were rechecked after smoke; the
+canonical installed app/process was preserved. Public verification evidence:
+`/tmp/needlbar-v037-public.iOrTR3/verification.log` and `release.json`.
+
+Native macOS 14 arm64 acceptance remains pending external evidence. Widget
+Gallery/App Group, notification permission, actual VoiceOver, measured contrast,
+scroll-gesture acceptance, full-window long-name injection, and native query
+failure injection remain unverified as previously recorded. Public distribution
+does not establish these interaction checks or provider compatibility guarantees.
+
+Homebrew Cask update is committed locally at
+`49d847d5099d9ed714e18a600b402caada87c2c6`, changing only version and measured
+public ZIP SHA. Ruby syntax and Homebrew style passed. Strict online audit
+could not run because the installed CLT does not support macOS 27; no security,
+privacy, or Gatekeeper setting was changed to bypass it.
+
+Homebrew 7 rejected an absolute local Cask path, so the committed Cask was
+cloned into the temporary `needlbar-verification/local` tap. Its actual install
+into `/tmp/needlbar-v037-brew-install.xUmLyE` succeeded. Installed metadata
+confirmed the immutable public URL/SHA, arm64, macOS 14, isolated appdir and
+no zap; the app payload matched the fresh public bundle recursively and passed
+signature, staple and Gatekeeper checks. The test app and receipt were removed
+without zap. Normal untap failed while loading the temporary tap's unrelated
+ClaudeBeat Cask, whose token matches an existing installed Cask. The exact
+clean, owned temporary tap checkout was moved recoverably to
+`/tmp/needlbar-v037-public.iOrTR3/removed-verification-tap`; it is absent from
+`brew tap`. The existing ClaudeBeat receipt, actual taejunoh/tap checkout and
+canonical running Needlbar PID 45384 remained intact.
+
+Public contracts passed RED/GREEN with prepared wording, stale ZIP/sidecar,
+stale install-source and wrong-SHA decoys; v0.3.6 historical records/notes and
+decoys remain checked via an explicit historical distribution fixture.
+Sequential `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` exited 0: 670 Swift
+tests, Rust workspace, 1,379 vendor tests (1 ignored), and shell contracts.
+Logs: `/tmp/needlbar-v037-task2-red.log`, `/tmp/needlbar-v037-task2-green.log`,
+`/tmp/needlbar-v037-task2-test.log`, `/tmp/needlbar-v037-tap-style.log`,
+`/tmp/needlbar-v037-tap-audit.log`, and
+`/tmp/needlbar-v037-public.iOrTR3/brew-verification.log`.
+The existing macOS 27 Rust-object/macOS 14 linker and Swift variable warnings
+remain. Final remote documentation/tap publication and verification are pending.
+The tag remains on frozen G, independently of later documentation commits.
+
+## 2026-10-01 v0.3.7 tag-triggered validation awaiting approval — prior checkpoint
 
 Frozen candidate G=`b63ecabf150490d07b38ffa5d39daab12f01b94d` passed tagless
 Release workflow-dispatch run

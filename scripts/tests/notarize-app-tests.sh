@@ -1544,6 +1544,90 @@ test_v037_release_metadata_contract() {
 
 test_v037_release_metadata_contract
 
+v037_public_release_contract_is_valid() {
+  ruby - "$1" "$2" <<'RUBY'
+readme, status = ARGV.map { |path| File.read(path) }
+[
+  'Needlbar v0.3.7 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.7 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.7/Needlbar-macos-arm64.zip)',
+  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.7/Needlbar-macos-arm64.zip.sha256)',
+  'To install the public v0.3.7 release:',
+  'from the v0.3.7 GitHub Release.',
+  '### SYSTEM Settings information (v0.3.7)',
+  'Native macOS 14',
+  'arm64 acceptance remains pending external evidence.'
+].each { |fact| abort "v0.3.7 README missing #{fact.inspect}" unless readme.include?(fact) }
+abort 'v0.3.7 README retains preparation wording' if readme.match?(/prepared v0\.3\.7|v0\.3\.7 is prepared for public release/)
+abort 'v0.3.7 README retains stale distribution' if readme.match?(/releases\/download\/v0\.3\.6\/|install the public v0\.3\.6|from the v0\.3\.6 GitHub Release|Needlbar v0\.3\.6 is publicly available/)
+record = status.match(/^## 2026-10-01 v0\.3\.7 public release\n(.*?)(?=^## |\z)/m)
+abort 'v0.3.7 public record missing' unless record
+[
+  'Candidate commit: `b63ecabf150490d07b38ffa5d39daab12f01b94d`',
+  'Public ZIP SHA-256: `0dfd3365181a60fe5fd428020105c6c21d69bf72e4b1ba5d1885ebbde4660537`',
+  'https://github.com/taejunoh/needlbar/actions/runs/36850134338',
+  'https://github.com/taejunoh/needlbar/actions/runs/36875103808',
+  'Both validation runs succeeded at the exact candidate above.',
+  'Native macOS 14 arm64 acceptance remains pending external evidence.'
+].each { |fact| abort "v0.3.7 public record missing #{fact.inspect}" unless record[1].include?(fact) }
+RUBY
+}
+
+test_v037_public_release_contract() {
+  local readme="$ROOT/README.md" status="$ROOT/docs/STATUS.md"
+  local decoy="$temp_root/v037-public-decoy.md" output rc mutation
+  v037_public_release_contract_is_valid "$readme" "$status" || fail 'current v0.3.7 public contract invalid'
+  for mutation in prepared stale-zip stale-sidecar stale-install; do
+    ruby - "$readme" "$decoy" "$mutation" <<'RUBY'
+source, destination, mutation = ARGV
+document = File.read(source)
+from, to = case mutation
+when 'prepared' then ['v0.3.7 is publicly available', 'v0.3.7 is prepared for public release']
+when 'stale-zip' then ['download/v0.3.7/Needlbar-macos-arm64.zip)', 'download/v0.3.6/Needlbar-macos-arm64.zip)']
+when 'stale-sidecar' then ['download/v0.3.7/Needlbar-macos-arm64.zip.sha256)', 'download/v0.3.6/Needlbar-macos-arm64.zip.sha256)']
+when 'stale-install' then ['from the v0.3.7 GitHub Release.', 'from the v0.3.6 GitHub Release.']
+end
+abort 'decoy source missing' unless document.sub!(from, to)
+File.write(destination, document)
+RUBY
+    set +e
+    output="$(v037_public_release_contract_is_valid "$decoy" "$status" 2>&1)"; rc=$?
+    set -e
+    [[ "$rc" -ne 0 && "$output" == *'v0.3.7 README missing'* ]] || fail "v0.3.7 $mutation decoy was not rejected correctly"
+  done
+  ruby - "$status" "$decoy" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+abort 'public SHA missing' unless document.sub!('0dfd3365181a60fe5fd428020105c6c21d69bf72e4b1ba5d1885ebbde4660537', '0' * 64)
+File.write(destination, document)
+RUBY
+  set +e
+  output="$(v037_public_release_contract_is_valid "$readme" "$decoy" 2>&1)"; rc=$?
+  set -e
+  [[ "$rc" -ne 0 && "$output" == *'Public ZIP SHA-256'* ]] || fail 'v0.3.7 wrong SHA decoy was not rejected correctly'
+}
+
+test_v037_public_release_contract
+
+# Historical contracts consume an explicit v0.3.6 distribution fixture; they
+# continue checking the original version-specific notes and STATUS records.
+historical_v036_readme="$temp_root/v036-historical-public-readme.md"
+ruby - "$ROOT/README.md" "$historical_v036_readme" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+{
+  'Needlbar v0.3.7 is publicly available' => 'Needlbar v0.3.6 is publicly available',
+  '[Download Needlbar v0.3.7 for Apple Silicon]' => '[Download Needlbar v0.3.6 for Apple Silicon]',
+  'releases/download/v0.3.7/' => 'releases/download/v0.3.6/',
+  'To install the public v0.3.7 release:' => 'To install the public v0.3.6 release:',
+  'from the v0.3.7 GitHub Release.' => 'from the v0.3.6 GitHub Release.'
+}.each do |from, to|
+  abort "historical fixture: missing #{from.inspect}" unless document.include?(from)
+  document = document.gsub(from, to)
+end
+abort 'historical fixture: SYSTEM section missing' unless document.sub!(/^### SYSTEM Settings information \(v0\.3\.7\)\n.*?(?=^### |\z)/m, '')
+File.write(destination, document)
+RUBY
+
 v035_historical_readme_contract_is_valid() {
   local readme_file="$1"
 
@@ -1579,7 +1663,7 @@ RUBY
 }
 
 test_v035_historical_readme_contract() {
-  local readme_file="$ROOT/README.md"
+  local readme_file="$historical_v036_readme"
   local stale_readme="$temp_root/v035-stale-readme.md"
   local historical_readme="$temp_root/v035-historical-readme.md"
   local decoy_output decoy_status
@@ -1653,7 +1737,7 @@ RUBY
 }
 
 test_v036_public_readme_contract() {
-  local readme_file="$ROOT/README.md"
+  local readme_file="$historical_v036_readme"
   local stale_readme="$temp_root/v036-stale-v035-readme.md"
   local candidate_readme="$temp_root/v036-candidate-readme.md"
   local decoy_output decoy_status
@@ -1750,7 +1834,7 @@ RUBY
 }
 
 test_v031_release_source_contract() {
-  local readme_file="$ROOT/README.md"
+  local readme_file="$historical_v036_readme"
   local status_file="$ROOT/docs/STATUS.md"
   local release_notes_file="$ROOT/.github/release-notes/v0.3.1.md"
   local historical_readme="$temp_root/v031-historical-public-readme.md"
@@ -1958,7 +2042,7 @@ RUBY
 }
 
 test_v032_release_source_contract() {
-  local readme_file="$ROOT/README.md"
+  local readme_file="$historical_v036_readme"
   local status_file="$ROOT/docs/STATUS.md"
   local release_notes_file="$ROOT/.github/release-notes/v0.3.2.md"
   local historical_readme="$temp_root/v032-historical-public-readme.md"
@@ -2076,7 +2160,7 @@ RUBY
 }
 
 test_v033_release_source_contract() {
-  local readme_file="$ROOT/README.md"
+  local readme_file="$historical_v036_readme"
   local historical_readme="$temp_root/v033-historical-public-readme.md"
   local status_file="$ROOT/docs/STATUS.md"
   local release_notes_file="$ROOT/.github/release-notes/v0.3.3.md"
@@ -2170,7 +2254,7 @@ RUBY
 }
 
 test_v036_public_release_source_contract() {
-  local readme_file="$ROOT/README.md"
+  local readme_file="$historical_v036_readme"
   local status_file="$ROOT/docs/STATUS.md"
   local release_notes_file="$ROOT/docs/releases/v0.3.6.md"
   local prepared_readme="$temp_root/v036-prepared-public-readme.md"
