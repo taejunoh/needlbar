@@ -21,18 +21,21 @@ public enum SettingsStudioReviewFixtures {
         let system = SystemMetricsSnapshot(
             capturedAt: capturedAt,
             cpu: cpu,
-            memory: .init(usedBytes: nil, freeBytes: nil, swapUsedBytes: nil, pressure: nil),
+            memory: .init(usedBytes: 38_654_705_664, freeBytes: 12_884_901_888,
+                          swapUsedBytes: 2_147_483_648, pressure: "normal",
+                          totalBytes: 51_539_607_552, compressedBytes: 8_589_934_592,
+                          wiredBytes: 6_442_450_944),
             disks: [],
             network: .init(uploadBytesPerSecond: nil, downloadBytesPerSecond: nil,
                            localIPAddresses: [], publicIPAddress: nil),
             battery: .init(level: nil, isCharging: nil, health: nil),
-            availability: [.cpu: .fresh(capturedAt: capturedAt)]
+            availability: [.cpu: .fresh(capturedAt: capturedAt), .memory: .fresh(capturedAt: capturedAt)]
         )
         return CombinedUsageSnapshot(
             system: system,
             providers: [],
             capturedAt: capturedAt,
-            systemAvailability: [.cpu: .fresh(capturedAt: capturedAt)]
+            systemAvailability: [.cpu: .fresh(capturedAt: capturedAt), .memory: .fresh(capturedAt: capturedAt)]
         )
     }
 }

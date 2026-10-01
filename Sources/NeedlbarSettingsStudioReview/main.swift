@@ -19,7 +19,7 @@ fileprivate final class SettingsStudioReviewHost: NSObject, NSApplicationDelegat
     private var preferences: QuotaNotificationPreferences?
     private var notificationService: QuotaNotificationService?
     private var actions: SettingsActions?
-    private let cpuSnapshot = SettingsStudioReviewFixtures.cpuSnapshot()
+    private let systemSnapshot = SettingsStudioReviewFixtures.cpuSnapshot()
     private var controllers: [SettingsWindowController] = []
     private var configurationObserver: NSObjectProtocol?
     private var timeoutTimer: Timer?
@@ -81,7 +81,7 @@ fileprivate final class SettingsStudioReviewHost: NSObject, NSApplicationDelegat
             window.appearance = NSAppearance(named: appearance)
             window.setContentSize(size)
             window.center()
-            controller.update(snapshot: cpuSnapshot, configuration: configuration.systemMonitor)
+            controller.update(snapshot: systemSnapshot, configuration: configuration.systemMonitor)
             controller.showSettings()
             controllers.append(controller)
             print("SETTINGS_REVIEW pid=\(ProcessInfo.processInfo.processIdentifier) content=\(window.contentLayoutRect.size) minimum=\(window.contentMinSize) title=\(window.title)")
@@ -132,7 +132,7 @@ fileprivate final class SettingsStudioReviewHost: NSObject, NSApplicationDelegat
     private func updatePreviews() {
         guard let configuration else { return }
         for controller in controllers {
-            controller.update(snapshot: cpuSnapshot, configuration: configuration.systemMonitor)
+            controller.update(snapshot: systemSnapshot, configuration: configuration.systemMonitor)
         }
         printConfiguration(configuration)
     }

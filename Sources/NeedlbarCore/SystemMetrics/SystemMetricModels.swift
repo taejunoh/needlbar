@@ -109,12 +109,21 @@ public struct SystemMetricsSnapshot: Equatable, Sendable {
         public let freeBytes: UInt64?
         public let swapUsedBytes: UInt64?
         public let pressure: String?
+        public let totalBytes: UInt64?
+        public let compressedBytes: UInt64?
+        public let wiredBytes: UInt64?
 
-        public init(usedBytes: UInt64?, freeBytes: UInt64?, swapUsedBytes: UInt64?, pressure: String?) {
+        public init(
+            usedBytes: UInt64?, freeBytes: UInt64?, swapUsedBytes: UInt64?, pressure: String?,
+            totalBytes: UInt64? = nil, compressedBytes: UInt64? = nil, wiredBytes: UInt64? = nil
+        ) {
             self.usedBytes = usedBytes
             self.freeBytes = freeBytes
             self.swapUsedBytes = swapUsedBytes
             self.pressure = pressure
+            self.totalBytes = totalBytes
+            self.compressedBytes = compressedBytes
+            self.wiredBytes = wiredBytes
         }
     }
 
