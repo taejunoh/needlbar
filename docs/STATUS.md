@@ -1,5 +1,107 @@
 # Needlbar Development Status
 
+## 2026-10-05 v0.3.8 public artifact verified
+
+The human approved the independent tagged Release run `37354386798`.
+Both validate and publish completed SUCCESS at frozen release G
+`be944ed2bf689925071959d2489a8a90ef33c746`. Tagless run `37351518970`
+previously completed validation SUCCESS with publish SKIPPED. No agent
+submitted either protected approval or changed the environment policy.
+Annotated tag object `15fae729dc9c18e9e68b23025712cbfacb5e25e4`
+peels exactly to G and must never be retargeted.
+
+Public release: https://github.com/taejunoh/needlbar/releases/tag/v0.3.8
+Release ID: `404011606`; published `2026-10-05T18:34:25Z`, not draft or prerelease.
+Public ZIP asset ID: `613362571`; checksum sidecar asset ID: `613362574`.
+Public ZIP SHA-256:
+`e2278209aaceeabe42cc8e21cdc4f8de24d6dadec1b8bfbdf5e08c50b7571102`.
+Public checksum sidecar SHA-256:
+`16ac71cff06b14cd058679ffc1c804d26a4da22e60c7e6b7e23b291c51892dbd`.
+The public checksum is distinct from the earlier tagless validation ZIP.
+
+Root downloaded exactly the ZIP and its single-record checksum sidecar to
+`/tmp/needlbar-v038-public.vVSkFl`. Both measured file hashes match the
+GitHub asset digests. The sidecar names `Needlbar-macos-arm64.zip` exactly.
+Extracted host and widget report 0.3.8 / 11; host, status-line helper, and
+widget are arm64. Strict deep Developer ID signature, team `3BMF4LM6TM`,
+hardened runtime, stapled ticket, and Gatekeeper acceptance passed. No
+review, feasibility, acceptance, or fixture files were bundled.
+
+The unchanged smoke and brand-verifier scripts ran against this actual
+public download in an isolated `smoke-layout/dist/Needlbar.app`; smoke
+passed. The signature and public ZIP checksum passed again afterward.
+This is public-distribution validation, not manual macOS 14 native acceptance
+or a Claude authentication/quota recovery claim.
+
+Next: update current README and public-distribution contracts with this
+measured evidence, review/test/merge them, update the Homebrew Cask using
+the public SHA above, then replace the canonical laptop bundle. The laptop
+still has 0.3.7 build 10 at this checkpoint; settings/authentication are intact.
+
+## 2026-10-05 v0.3.8 release — tagged publication approval pending
+
+The human approved tagless validation run `37351518970`. It completed
+SUCCESS at frozen G `be944ed2bf689925071959d2489a8a90ef33c746`;
+validation passed complete tests, package, smoke, Developer ID signing,
+notarization, staple, extracted-archive checks, and upload. Publish was
+SKIPPED, as required for workflow_dispatch.
+
+Root independently downloaded Actions artifact `11362944124` to
+`/tmp/needlbar-v038-tagless.3ovK9h` and verified its single-record checksum
+sidecar and ZIP SHA-256:
+`84c16a64aba63350b83469232051a0629e31a602720b796e91484f50cdcded0c`.
+Extracted host/widget are 0.3.8 / 11; host/helper/widget slices are arm64.
+Strict deep signature, exact Developer ID/team `3BMF4LM6TM`, hardened
+runtime, stapled ticket, and Gatekeeper acceptance passed. No review,
+feasibility or acceptance fixture was bundled. This is validation evidence
+only, not the future public ZIP or its checksum; it was not installed.
+
+After confirming local/remote tag and public release absence and a clean
+checkout at G, root created and pushed annotated tag `v0.3.8`.
+Tag object: `15fae729dc9c18e9e68b23025712cbfacb5e25e4`.
+The remote tag peels exactly to G. Independent tagged Release run:
+https://github.com/taejunoh/needlbar/actions/runs/37354386798
+Its event is push, ref v0.3.8, and headSha exactly G. It is waiting for the
+human's second protected `release` environment approval; no approval was
+submitted by the agent and no protection policy was changed.
+
+Next: approve this tagged run, require fresh validation and publication,
+then download and independently verify the actual public ZIP before current
+README/tap references or the canonical laptop bundle change. The canonical
+installed app remains v0.3.7 build 10. Settings/authentication data is intact.
+The frozen release branch/tag must remain at G; evidence commits on this
+separate branch must never replace or retarget the release commit.
+
+## 2026-10-05 v0.3.8 release — first protected validation pending
+
+Candidate PR #16 is merged at frozen release commit
+`be944ed2bf689925071959d2489a8a90ef33c746` (G).
+Its reviewed head `b4b6812868098cf9fff0d45e3899b11c7d3ec97b` passed
+macOS 14 CI run `37348820664`, including complete tests, package, smoke-cleanup
+regression, packaged-app smoke, and artifact upload. Merge tree matches the
+tested candidate exactly. Frozen checkout `codex/v038-frozen-release` is
+preserved; this continuation evidence lives separately on
+`codex/v038-release-evidence` and must not replace G for tagging.
+
+Tagless protected Release validation was dispatched once on `main`:
+https://github.com/taejunoh/needlbar/actions/runs/37351518970
+Its headSha is exactly G. The protected environment allows only branch
+`main` and tags `v*`, so the plan's initial arbitrary-SHA dispatch command was
+corrected to main dispatch plus an exact G check. No environment policy was
+changed and no approval was submitted by the agent.
+
+Next is the human's first `release` environment approval. Require this run's
+validation SUCCESS and publish skipped before creating the annotated v0.3.8
+tag at G. The tagged run needs separate approval and fresh validation before
+public distribution. No v0.3.8 tag/public asset, README public-link update,
+tap update, or laptop replacement has occurred. Canonical app remains
+v0.3.7 build 10. Settings and authentication data remain untouched.
+
+The smoke script's target is fixed to `dist/Needlbar.app`; passing a path
+argument does not select another bundle. Task 1 tested the actual local dist
+bundle. Future public smoke must use an isolated scratch dist layout with
+the measured public app, never claim a path argument tested that download.
+
 ## 2026-10-05 v0.3.8 release — candidate locally verified
 
 The user authorized continuing after PR #15 merged. Settings card-spacing
