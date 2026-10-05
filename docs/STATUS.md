@@ -1,5 +1,35 @@
 # Needlbar Development Status
 
+## 2026-10-05 v0.3.8 release — first protected validation pending
+
+Candidate PR #16 is merged at frozen release commit
+`be944ed2bf689925071959d2489a8a90ef33c746` (G).
+Its reviewed head `b4b6812868098cf9fff0d45e3899b11c7d3ec97b` passed
+macOS 14 CI run `37348820664`, including complete tests, package, smoke-cleanup
+regression, packaged-app smoke, and artifact upload. Merge tree matches the
+tested candidate exactly. Frozen checkout `codex/v038-frozen-release` is
+preserved; this continuation evidence lives separately on
+`codex/v038-release-evidence` and must not replace G for tagging.
+
+Tagless protected Release validation was dispatched once on `main`:
+https://github.com/taejunoh/needlbar/actions/runs/37351518970
+Its headSha is exactly G. The protected environment allows only branch
+`main` and tags `v*`, so the plan's initial arbitrary-SHA dispatch command was
+corrected to main dispatch plus an exact G check. No environment policy was
+changed and no approval was submitted by the agent.
+
+Next is the human's first `release` environment approval. Require this run's
+validation SUCCESS and publish skipped before creating the annotated v0.3.8
+tag at G. The tagged run needs separate approval and fresh validation before
+public distribution. No v0.3.8 tag/public asset, README public-link update,
+tap update, or laptop replacement has occurred. Canonical app remains
+v0.3.7 build 10. Settings and authentication data remain untouched.
+
+The smoke script's target is fixed to `dist/Needlbar.app`; passing a path
+argument does not select another bundle. Task 1 tested the actual local dist
+bundle. Future public smoke must use an isolated scratch dist layout with
+the measured public app, never claim a path argument tested that download.
+
 ## 2026-10-05 v0.3.8 release — candidate locally verified
 
 The user authorized continuing after PR #15 merged. Settings card-spacing
