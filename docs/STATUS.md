@@ -1,5 +1,24 @@
 # Needlbar Development Status
 
+## 2026-10-05 v0.3.8 release — preparation started
+
+The user authorized continuing after PR #15 merged. Settings card-spacing
+changes are on main at `36a10720785b684c1b81678ac54ba3c4fb3fed82`;
+PR CI run `37332382122` succeeded. Main CI run `37345852634` remains in
+progress at the complete-project test stage; no success is assumed yet.
+
+The continuation plan is
+`docs/superpowers/plans/2026-10-05-v0.3.8-release.md`. Reuse the attached
+isolated checkout on `codex/v038-settings-spacing-release`. Prepare host and
+widget v0.3.8 build 11, preserving the two protected release runs and fresh
+public-artifact verification. Public README/tap distribution remains v0.3.7
+until publication is verified. The canonical installed app remains v0.3.7
+build 10; settings and authentication data must be preserved. No new release,
+tag, signing run, or laptop replacement has occurred at this checkpoint.
+
+The earlier local-only audit entries below are historical checkpoints:
+PR #15 now supersedes their then-pending push/merge continuation.
+
 ## 2026-10-05 Settings-wide card spacing audit — locally verified
 
 The user requested inspection and correction of the other Settings screens.
