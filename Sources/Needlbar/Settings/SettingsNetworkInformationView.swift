@@ -46,7 +46,6 @@ struct SettingsNetworkInformationView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel(Self.trafficAccessibilityText(status: value.status))
             }
-            .padding(.vertical, 13)
         }
     }
 

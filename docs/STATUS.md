@@ -1,5 +1,62 @@
 # Needlbar Development Status
 
+## 2026-10-05 Settings-wide card spacing audit — locally verified
+
+The user requested inspection and correction of the other Settings screens.
+The chosen repair extends the previously approved 24pt horizontal / 20pt
+vertical Claude card clearance to the shared shell, removing duplicated child
+gutters while preserving internal row spacing and all behavior. The design and
+one-task plan are `docs/superpowers/specs/2026-10-05-settings-card-spacing-audit-design.md`
+and `docs/superpowers/plans/2026-10-05-settings-card-spacing-audit.md`.
+
+The unchanged baseline `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` exited 0
+(`/tmp/needlbar-settings-spacing-baseline.log`): 673 Swift tests, Rust workspace,
+1,379 vendor tests (1 ignored), and shell contracts passed. Existing linker and
+Swift variable warnings remain. A first draft layout assertion incorrectly
+included the external section title/gap; it was corrected before the fix.
+The isolated production-used card surface RED now correctly shows 32pt total
+horizontal / 0pt vertical clearance versus required 48pt / 40pt.
+
+The shared production-used card shell now owns 24pt horizontal / 20pt vertical
+gutters. Claude, Cursor and CPU/RAM/Disk/Network content no longer duplicate
+outer padding; caption 6pt, separator-following 12pt and control minimum 54pt
+remain. Export success/failure did not reproduce a spacing problem, so no extra
+feedback gap was added. Page selection remains internal, with real bindings,
+actions and timer ownership preserved.
+
+Synthetic hosting produced 112 viewport captures (28 page/tab states at
+960×720 and 760×560, in aqua and dark aqua), four contact sheets, and 29 focused
+full-height/long/missing/export captures. Root inspected all four contact sheets
+and representative full-resolution bodies, including lower Claude status-line
+and billing cards, Codex/Cursor, system metrics, IP controls, long CPU/disk/
+network labels, missing data, ordering lists and export feedback. Artifacts:
+`/tmp/needlbar-settings-spacing-review/{baseline,final}/`. These are synthetic
+production-view renders, not screenshots of the installed app; automated
+geometry assertions do not independently prove every pixel is unclipped.
+
+Independent specification and quality reviews passed after strengthening the
+Claude total-clearance test's raw-content baseline and fully isolating the
+render fixture's config/private store/helper/environment with cleanup. An
+initial capture-background defect and unescaped filter-pipe invocation were
+corrected before using their results. No live provider action or credential
+read was requested. A temporary config path alone initially allowed recovery
+to consult the real private status-line store; the final harness no longer
+falls back to that store.
+
+Final `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` exited 0 on the final
+isolated harness: 677 Swift tests, Rust workspace, 1,379 vendor tests (1 ignored),
+and shell contracts passed. Log:
+`/tmp/needlbar-settings-spacing-isolated-final-test.log`. Related GREEN was 63
+tests / 7 suites; a separate strengthened Claude regression recheck passed
+3 tests. `git diff --check` passed. Existing linker/Swift warnings remain;
+the introduced unused-local warning was removed. Live interaction, VoiceOver
+and native macOS 14 acceptance are not claimed.
+
+Changes remain local on `codex/claude-connection-card-padding`; next is a
+separate integration/deployment choice. The canonical installed app remains
+v0.3.7 build 10. No install, push, merge, tag or release was performed. The
+primary checkout's existing STATUS change and `.logs/` were preserved.
+
 ## 2026-10-05 Claude Settings connection-card padding — locally verified
 
 The user approved 20pt vertical and total 24pt horizontal card clearance.

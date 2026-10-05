@@ -14,16 +14,10 @@ struct ClaudeUsageConnectionRowLayoutTests {
         let (settings, defaultsName, defaults) = try Self.settings(snapshot: Self.lastKnownSnapshot())
         defer { defaults.removePersistentDomain(forName: defaultsName) }
 
-        let contentCard = SettingsStudioSection(title: "Connection") {
-            settings.claudeUsageRowContent
-        }
-        let renderedCard = SettingsStudioSection(title: "Connection") {
-            settings.claudeUsageRow
-        }
-        let contentSize = Self.fittingSize(of: contentCard)
-        let renderedSize = Self.fittingSize(of: renderedCard)
+        let contentSize = Self.fittingSize(of: settings.claudeUsageRowContent)
+        let renderedSize = Self.fittingSize(of: SettingsStudioCard { settings.claudeUsageRow })
 
-        #expect(abs((renderedSize.width - contentSize.width) - 16) < 1)
+        #expect(abs((renderedSize.width - contentSize.width) - 48) < 1)
         #expect(abs((renderedSize.height - contentSize.height) - 40) < 1)
     }
 

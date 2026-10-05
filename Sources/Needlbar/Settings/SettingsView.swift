@@ -133,46 +133,7 @@ public struct SettingsView: View {
     }
 
     public var body: some View {
-        HStack(spacing: 0) {
-            SettingsStudioSidebar(selection: $selectedPage)
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(pageEyebrow).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        Text(selectedPage.title).font(.system(size: 24, weight: .bold))
-                        Text(pageDescription).font(.callout).foregroundStyle(.secondary)
-                    }
-                    if !selectedPage.tabs.isEmpty {
-                        Picker("Settings surface", selection: $selectedTab) {
-                            ForEach(selectedPage.tabs) { Text($0.rawValue).tag($0) }
-                        }.pickerStyle(.segmented)
-                    }
-                    if selectedPage == .module(.cpu) {
-                        SettingsCPUInformationView(presentation: cpuInformationPresentation)
-                    }
-                    if selectedPage == .module(.memory) {
-                        SettingsRAMInformationView(presentation: ramInformationPresentation)
-                    }
-                    if selectedPage == .module(.disk) {
-                        SettingsDiskInformationView(presentation: diskInformationPresentation)
-                    }
-                    if selectedPage == .module(.network) {
-                        SettingsNetworkInformationView(
-                            presentation: networkInformationPresentation,
-                            ipVisibility: SettingsNetworkIPVisibility(
-                                tab: selectedTab,
-                                localEnabled: systemMonitorModel.value.localIPEnabled,
-                                publicEnabled: systemMonitorModel.value.publicIPEnabled
-                            )
-                        )
-                    }
-                    if selectedPage == .layout { SettingsPreviewView(model: preview) }
-                    detailPane
-                    Spacer(minLength: 0)
-                }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
+        settingsWindowContent(page: $selectedPage, tab: $selectedTab)
         .onChange(of: selectedPage) { _, page in
             if !page.tabs.contains(selectedTab) { selectedTab = page.tabs.first ?? .menuBar }
         }
@@ -183,8 +144,60 @@ public struct SettingsView: View {
         }
     }
 
-    @ViewBuilder private var detailPane: some View {
-        switch selectedPage {
+    @ViewBuilder
+    func settingsWindowContent(
+        page: Binding<SettingsStudioPage>,
+        tab: Binding<SettingsStudioTab>
+    ) -> some View {
+        let selectedPage = page.wrappedValue
+        HStack(spacing: 0) {
+            SettingsStudioSidebar(selection: page)
+            Divider()
+            ScrollView { settingsDetailContent(page: selectedPage, tab: tab) }
+        }
+    }
+
+    @ViewBuilder
+    func settingsDetailContent(page: SettingsStudioPage, tab: Binding<SettingsStudioTab>) -> some View {
+        let selectedTab = tab.wrappedValue
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(pageEyebrow(for: page)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(page.title).font(.system(size: 24, weight: .bold))
+                Text(pageDescription(for: page)).font(.callout).foregroundStyle(.secondary)
+            }
+            if !page.tabs.isEmpty {
+                Picker("Settings surface", selection: tab) {
+                    ForEach(page.tabs) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.segmented)
+            }
+            if page == .module(.cpu) {
+                SettingsCPUInformationView(presentation: cpuInformationPresentation)
+            }
+            if page == .module(.memory) {
+                SettingsRAMInformationView(presentation: ramInformationPresentation)
+            }
+            if page == .module(.disk) {
+                SettingsDiskInformationView(presentation: diskInformationPresentation)
+            }
+            if page == .module(.network) {
+                SettingsNetworkInformationView(
+                    presentation: networkInformationPresentation,
+                    ipVisibility: SettingsNetworkIPVisibility(
+                        tab: selectedTab,
+                        localEnabled: systemMonitorModel.value.localIPEnabled,
+                        publicEnabled: systemMonitorModel.value.publicIPEnabled
+                    )
+                )
+            }
+            if page == .layout { SettingsPreviewView(model: preview) }
+            detailPane(page: page, tab: selectedTab)
+            Spacer(minLength: 0)
+        }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder private func detailPane(page: SettingsStudioPage, tab: SettingsStudioTab) -> some View {
+        switch page {
         case .notifications:
             SettingsStudioSection(title: "Quota reminders") {
                 SettingsStudioToggle(title: "Quota threshold alerts", value: Binding(
@@ -200,16 +213,16 @@ public struct SettingsView: View {
             }
             Text("IP addresses and credentials are not included in snapshot exports.").foregroundStyle(.secondary)
         case .layout, .module, .provider:
-            if let surface = selectedTab.surface {
-                SettingsStudioConfigurationPane(model: systemMonitorModel, page: selectedPage, surface: surface)
-                if case let .provider(provider) = selectedPage {
+            if let surface = tab.surface {
+                SettingsStudioConfigurationPane(model: systemMonitorModel, page: page, surface: surface)
+                if case let .provider(provider) = page {
                     connectionPane(provider)
                     if provider == .claude { claudeStatusLinePane }
                     apiBillingPane(provider)
                 }
-            } else if case .module = selectedPage {
+            } else if case .module = page {
                 Text("System threshold alerts are not available yet.").foregroundStyle(.secondary)
-            } else if case .provider = selectedPage {
+            } else if case .provider = page {
                 Text("Quota reminders use the global Notifications setting.").foregroundStyle(.secondary)
                 Button("Open Notifications") { selectedPage = .notifications }
             }
@@ -227,15 +240,13 @@ public struct SettingsView: View {
                     Text("Usage comes from an existing local cache. Quota is available in Cursor Spending.")
                     Spacer()
                     Button("Open Cursor Spending", action: openCursorSpending)
-                }.padding(.vertical, 12)
+                }
             }
         }
     }
 
     var claudeUsageRow: some View {
         claudeUsageRowContent
-            .padding(.horizontal, 8)
-            .padding(.vertical, 20)
     }
 
     var claudeUsageRowContent: some View {
@@ -328,7 +339,7 @@ public struct SettingsView: View {
                         .font(.caption).foregroundStyle(.orange)
                 }
             }
-            .padding(.vertical, 12)
+            .padding(.top, 12)
         }
         .onAppear { claudeStatusLineState = claudeStatusLineManager.recover() }
         .onReceive(claudeStatusLineTimer) { _ in
@@ -374,13 +385,13 @@ public struct SettingsView: View {
                 Text("\(action.providerLabel) · \(action.destination.absoluteString)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .padding(.vertical, 12)
+                    .padding(.top, 12)
             }
         }
     }
 
-    private var pageEyebrow: String {
-        switch selectedPage {
+    private func pageEyebrow(for page: SettingsStudioPage) -> String {
+        switch page {
         case .layout: "LAYOUT"
         case .module: "SYSTEM"
         case .provider: "AI PROVIDERS"
@@ -388,8 +399,8 @@ public struct SettingsView: View {
         }
     }
 
-    private var pageDescription: String {
-        switch selectedPage {
+    private func pageDescription(for page: SettingsStudioPage) -> String {
+        switch page {
         case .layout: "Choose what appears on each surface and arrange the shared display order."
         case .module: "Control visibility without interrupting background collection."
         case .provider: "Choose where this provider appears and manage its existing connection."

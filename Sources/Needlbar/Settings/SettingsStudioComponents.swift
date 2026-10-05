@@ -7,11 +7,20 @@ struct SettingsStudioSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title).font(.headline)
-            VStack(alignment: .leading, spacing: 0, content: content)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+            SettingsStudioCard(content: content)
         }
+    }
+}
+
+struct SettingsStudioCard<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0, content: content)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 struct SettingsStudioToggle: View {
