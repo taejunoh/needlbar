@@ -94,5 +94,5 @@ jobs:
           files: |
             dist/Needlbar-macos-arm64.zip
             dist/Needlbar-macos-arm64.zip.sha256
-          body_path: docs/releases/v0.3.7.md
+          body_path: docs/releases/v0.3.8.md
           generate_release_notes: false
