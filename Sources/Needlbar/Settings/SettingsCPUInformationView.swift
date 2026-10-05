@@ -22,7 +22,6 @@ struct SettingsCPUInformationView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            .padding(.vertical, 11)
         }
     }
 

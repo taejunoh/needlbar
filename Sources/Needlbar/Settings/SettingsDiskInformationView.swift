@@ -44,7 +44,7 @@ struct SettingsDiskInformationView: View {
                 Text(freshnessText).font(.caption).foregroundStyle(.secondary)
                 Text("Capacity is for the system volume. I/O is for its backing device and may include other volumes.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }.padding(.vertical, 11)
+            }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(value.status.isStale ? "Disk information, Last known" : "Disk information")
         }

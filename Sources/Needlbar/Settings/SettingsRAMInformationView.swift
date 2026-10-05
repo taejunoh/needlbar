@@ -45,7 +45,7 @@ struct SettingsRAMInformationView: View {
                 Text(freshnessText).font(.caption).foregroundStyle(.secondary)
                 Text("Compressed and Wired are included in Used. Swap uses disk space.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }.padding(.vertical, 11)
+            }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(value.status.isStale ? "RAM information, Last known" : "RAM information")
         }
