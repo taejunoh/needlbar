@@ -1,5 +1,58 @@
 # Needlbar Development Status
 
+## 2026-10-05 v0.3.8 release continuation — canonical laptop replacement verified
+
+Documentation PR #17 passed macOS 14 CI run `37359896437` at reviewed
+head `927c9d6c8ef1f0b9892ee83ba3c1bbbbad9e7a07` and was merged with an
+exact head match at `a1f6c78cb553628c0548f41375172e06c00f8124`.
+The local complete `make test` also exited 0; narrow public-distribution
+contracts passed after the intended RED against the old README. Independent
+specification and quality/security reviews found no blocking issues. Current
+README public download/install references are v0.3.8; older release evidence
+and fixtures are preserved. Release tag and frozen commit remain unchanged.
+
+Homebrew Cask main was updated at
+`ef69168d6e1cff7b41d25dffd5decae1baf028b3` with only the version and verified
+public ZIP checksum changed. Editable and registered tap checkouts are clean
+at that commit. Ruby syntax, named-Cask style (no offenses), and fetch passed;
+the actual Homebrew cache download matched the measured public ZIP digest.
+Strict online audit exited 1 because the installed Command Line Tools do not
+support macOS 27. No CLT deletion, compatibility override, OS spoofing, or
+security-policy bypass was attempted. Online audit remains unverified.
+
+Canonical installed bundle:
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app`.
+Host and widget report 0.3.8 / 11. The verified public bundle was staged and
+rechecked for arm64 host/helper/widget, exact Developer ID/team, hardened
+runtime, strict deep signature, stapled ticket, and Gatekeeper acceptance.
+The same checks passed at the canonical path after replacement. One stable
+host process, PID `1656` at this checkpoint, runs from the exact canonical
+executable; no second host is running. Preferences, keychain entries, Claude
+configuration and unrelated runtime/source directories were not modified by
+the deployment operations.
+
+Recoverable old-app backup:
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-v038.1jk3wHML/Needlbar-v0.3.7.zip`.
+Backup SHA-256:
+`2bf4f79f834c4d75adc541cb09fc64d6aecdcbda6c8591e1d6c233744ecdc6bf`.
+The ZIP was extracted and its 0.3.7 / 10 metadata, signature, identity,
+architecture, staple, and Gatekeeper acceptance were verified before relying
+on it. Initial shutdown waiting observed a process-exit race and stopped
+before any bundle rename. Read-only checks confirmed the old host had exited
+and the canonical old bundle was intact; guarded replacement then succeeded.
+No rollback was needed. The two verified transient old-app copies were moved
+to `/Users/taejunoh/.Trash/needlbar-v038-staging.3bJR76J3`, not permanently
+deleted. Empty staging directories were removed. Runtime now contains only
+the canonical `.app`; the compressed backup is retained.
+
+The known cache-only Overview URL was opened, but computer-use found no
+accessibility window for the running app. Actual installed Settings pixels
+were therefore not inspected; no screenshot or live-layout success is claimed.
+Manual macOS 14 native acceptance and live Claude quota recovery remain
+separate, unverified work. The authorized v0.3.8 publication, current README
+merge, tap update and canonical replacement are complete. This machine-local
+receipt is maintained separately from the immutable release commit/tag.
+
 ## 2026-10-05 v0.3.8 public artifact verified
 
 The human approved the independent tagged Release run `37354386798`.
