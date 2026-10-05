@@ -1,11 +1,10 @@
 # Needlbar Development Status
 
-## 2026-10-05 v0.3.8 release — preparation started
+## 2026-10-05 v0.3.8 release — candidate locally verified
 
 The user authorized continuing after PR #15 merged. Settings card-spacing
 changes are on main at `36a10720785b684c1b81678ac54ba3c4fb3fed82`;
-PR CI run `37332382122` succeeded. Main CI run `37345852634` remains in
-progress at the complete-project test stage; no success is assumed yet.
+PR CI run `37332382122` and main CI run `37345852634` both succeeded.
 
 The continuation plan is
 `docs/superpowers/plans/2026-10-05-v0.3.8-release.md`. Reuse the attached
@@ -15,6 +14,28 @@ public-artifact verification. Public README/tap distribution remains v0.3.7
 until publication is verified. The canonical installed app remains v0.3.7
 build 10; settings and authentication data must be preserved. No new release,
 tag, signing run, or laptop replacement has occurred at this checkpoint.
+
+Task 1 is locally verified: unchanged notarization-contract baseline passed;
+the new current metadata test failed against the old host version (0.3.7,
+expected 0.3.8), then passed with both host/widget at 0.3.8 / 11 and the
+v0.3.8 notes path. Wrong host-version, widget-build and notes-path decoys are
+rejected. v0.3.7 metadata tests now use explicit historical fixtures; the
+v0.3.7 public-distribution and older historical contracts remain intact.
+README adds only prepared feature scope; new release notes describe spacing,
+not provider recovery. Workflow protection/signing/publish behavior is intact.
+
+`PATH=/Users/taejunoh/.cargo/bin:$PATH make test` exited 0: 677 Swift tests,
+Rust workspace, 1,379 vendor tests (1 ignored), and shell contracts passed.
+`make package` without that PATH first failed because Cargo was not found;
+the same target with the test PATH exited 0. Packaged host/widget report
+0.3.8 / 11. Packaged-app smoke and `git diff --check` passed. Logs:
+`/tmp/needlbar-v038-task1-{baseline,red,green,make-test,package-with-path,smoke}.log`.
+Independent specification and quality/security reviews found no issues.
+Existing compiler/linker warnings remain. These local checks are not
+Developer ID/notarization or manual native acceptance evidence.
+
+Next: push the candidate PR, require its CI, merge with exact head match,
+freeze the final main commit, and begin protected tagless Release validation.
 
 The earlier local-only audit entries below are historical checkpoints:
 PR #15 now supersedes their then-pending push/merge continuation.

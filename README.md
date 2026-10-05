@@ -68,6 +68,17 @@ the existing privacy boundaries. Provider authentication and quota refresh
 are unchanged, and no extra collector or timer is introduced. Native macOS 14
 arm64 acceptance remains pending external evidence.
 
+### Settings card spacing (v0.3.8 prepared for public release)
+
+The prepared v0.3.8 release gives provider, system information, and general
+Settings cards 24pt horizontal and 20pt vertical clearance through the shared
+card shell. It covers Claude, Codex, Cursor, CPU, RAM, Disk, Network, Layout,
+Notifications, and Data while preserving internal row spacing. Authentication,
+quota retrieval and refresh, collectors, and refresh timers are unchanged.
+
+Public availability, download links, and installation instructions above
+remain at v0.3.7 until publication is verified.
+
 ### Usage and quota monitoring
 
 Needlbar presents locally aggregated token usage and estimated cost together with provider quota windows and reset times. Overview combines today’s tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status, and Settings. Provider views show today’s usage/cost, input/output/cache token detail, quota/reset information, freshness, and safe recovery states. Usage and quota are independent refresh streams; a failure in one does not replace a previously valid value with zero.
