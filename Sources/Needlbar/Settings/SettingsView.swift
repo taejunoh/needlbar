@@ -232,7 +232,13 @@ public struct SettingsView: View {
         }
     }
 
-    private var claudeUsageRow: some View {
+    var claudeUsageRow: some View {
+        claudeUsageRowContent
+            .padding(.horizontal, 8)
+            .padding(.vertical, 20)
+    }
+
+    var claudeUsageRowContent: some View {
         HStack(alignment: .top, spacing: 8) {
             ProviderBrandIcon(provider: .claude, accessibility: .decorative)
             VStack(alignment: .leading, spacing: 2) {
@@ -240,6 +246,7 @@ public struct SettingsView: View {
                 Text("Quota uses your existing Claude sign-in. Browser authentication remains provider-owned.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .padding(.bottom, 6)
                 if let remaining = claudeQuotaPresentation.value.headlineQuotaRemaining {
                     Text("Quota \(remaining)")
                         .font(.caption)

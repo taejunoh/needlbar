@@ -1,5 +1,49 @@
 # Needlbar Development Status
 
+## 2026-10-05 Claude Settings connection-card padding — locally verified
+
+The user approved 20pt vertical and total 24pt horizontal card clearance.
+Only the Claude connection row changes: it adds 8pt horizontal padding to
+the section's existing 16pt, 20pt vertical padding, and 6pt below its
+explanatory caption. All quota/Fable metadata, action/state ownership,
+authentication, collection, and unrelated card layouts remain unchanged.
+The row/content split is internal and used by real SwiftUI hosting tests.
+Design and plan are `docs/superpowers/specs/2026-10-05-claude-connection-card-padding-design.md`
+and `docs/superpowers/plans/2026-10-05-claude-connection-card-padding.md`.
+
+Focused layout RED/GREEN used `make swift-test
+SWIFT_TEST_FILTER=ClaudeUsageConnectionRowLayoutTests`: before padding,
+real hosted card clearance deltas were 0 instead of the required 16pt width
+and 40pt height; after padding all three tests passed. Root visually inspected
+synthetic fresh/light and last-known/dark cards. The minimum-window 491pt
+card and a 390pt narrow card retain the full button and metadata. The separate
+320pt stress render retains the existing button-title ellipsis limitation;
+no supported-window redesign or live provider recovery is claimed.
+Images are in `/tmp/needlbar-claude-connection-card-review/`, with RED/GREEN
+logs `/tmp/needlbar-claude-connection-card-red.log` and
+`/tmp/needlbar-claude-connection-card-green.log`.
+
+Initial unchanged baseline `make test` failed in
+`processRunnerSignalsOnlyTheDirectFixtureWhenItHasADescendant` with
+`.readyTimedOut`; read-only diagnosis identified a fixture ready-file
+publication race before production signaling. Its untouched focused rerun
+passed. The two leaked, exact test-owned fixture PIDs were terminated; the
+running installed Needlbar was not touched. Baseline and recheck logs are
+`/tmp/needlbar-connection-card-baseline-test.log` and
+`/tmp/needlbar-connection-card-baseline-timeout-recheck.log`.
+
+Final `PATH=/Users/taejunoh/.cargo/bin:$PATH make test` exited 0:
+673 Swift tests, Rust workspace, 1,379 vendor tests (1 ignored), and shell
+contracts passed. Final log: `/tmp/needlbar-connection-card-final-test.log`.
+`git diff --check` and independent scope/quality reviews passed. Existing
+macOS 27-object/macOS 14 linker and Swift variable warnings remain. Geometry
+tests protect aggregate clearance; individual-edge and caption-gap pixel
+assertions are not added. Native macOS 14 acceptance remains unverified.
+
+Changes are local on `codex/claude-connection-card-padding`. No push, merge,
+release, user preference/authentication change, or installed-app replacement
+was performed. Next: separately choose integration and local deployment.
+
 ## 2026-10-01 v0.3.7 remote distribution checkpoint
 
 Public v0.3.7 verification is complete. The immutable tag still points to
