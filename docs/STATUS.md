@@ -1,5 +1,43 @@
 # Needlbar Development Status
 
+## 2026-10-05 v0.3.8 public artifact verified
+
+The human approved the independent tagged Release run `37354386798`.
+Both validate and publish completed SUCCESS at frozen release G
+`be944ed2bf689925071959d2489a8a90ef33c746`. Tagless run `37351518970`
+previously completed validation SUCCESS with publish SKIPPED. No agent
+submitted either protected approval or changed the environment policy.
+Annotated tag object `15fae729dc9c18e9e68b23025712cbfacb5e25e4`
+peels exactly to G and must never be retargeted.
+
+Public release: https://github.com/taejunoh/needlbar/releases/tag/v0.3.8
+Release ID: `404011606`; published `2026-10-05T18:34:25Z`, not draft or prerelease.
+Public ZIP asset ID: `613362571`; checksum sidecar asset ID: `613362574`.
+Public ZIP SHA-256:
+`e2278209aaceeabe42cc8e21cdc4f8de24d6dadec1b8bfbdf5e08c50b7571102`.
+Public checksum sidecar SHA-256:
+`16ac71cff06b14cd058679ffc1c804d26a4da22e60c7e6b7e23b291c51892dbd`.
+The public checksum is distinct from the earlier tagless validation ZIP.
+
+Root downloaded exactly the ZIP and its single-record checksum sidecar to
+`/tmp/needlbar-v038-public.vVSkFl`. Both measured file hashes match the
+GitHub asset digests. The sidecar names `Needlbar-macos-arm64.zip` exactly.
+Extracted host and widget report 0.3.8 / 11; host, status-line helper, and
+widget are arm64. Strict deep Developer ID signature, team `3BMF4LM6TM`,
+hardened runtime, stapled ticket, and Gatekeeper acceptance passed. No
+review, feasibility, acceptance, or fixture files were bundled.
+
+The unchanged smoke and brand-verifier scripts ran against this actual
+public download in an isolated `smoke-layout/dist/Needlbar.app`; smoke
+passed. The signature and public ZIP checksum passed again afterward.
+This is public-distribution validation, not manual macOS 14 native acceptance
+or a Claude authentication/quota recovery claim.
+
+Next: update current README and public-distribution contracts with this
+measured evidence, review/test/merge them, update the Homebrew Cask using
+the public SHA above, then replace the canonical laptop bundle. The laptop
+still has 0.3.7 build 10 at this checkpoint; settings/authentication are intact.
+
 ## 2026-10-05 v0.3.8 release — tagged publication approval pending
 
 The human approved tagless validation run `37351518970`. It completed

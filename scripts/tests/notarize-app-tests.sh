@@ -1510,6 +1510,109 @@ test_v038_release_metadata_contract() {
 
 test_v038_release_metadata_contract
 
+v038_public_release_contract_is_valid() {
+  ruby - "$1" "$2" <<'RUBY'
+readme, status = ARGV.map { |path| File.read(path) }
+[
+  'Needlbar v0.3.8 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.8 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.8/Needlbar-macos-arm64.zip)',
+  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.8/Needlbar-macos-arm64.zip.sha256)',
+  'To install the public v0.3.8 release:',
+  'from the v0.3.8 GitHub Release.',
+  'distribution is v0.3.8 above.',
+  '### Settings card spacing (v0.3.8)',
+  'The v0.3.8 release gives provider, system information, and general',
+  '24pt horizontal and 20pt vertical clearance through the shared',
+  'Native macOS 14',
+  'arm64 acceptance remains pending external evidence.'
+].each { |fact| abort "v0.3.8 README missing #{fact.inspect}" unless readme.include?(fact) }
+abort 'v0.3.8 README retains preparation wording' if readme.match?(/prepared v0\.3\.8|v0\.3\.8 is prepared for public release|remain at v0\.3\.7 until publication/)
+abort 'v0.3.8 README retains stale distribution' if readme.match?(/releases\/download\/v0\.3\.7\/|install the public v0\.3\.7|from the v0\.3\.7 GitHub Release|Needlbar v0\.3\.7 is publicly available|distribution is v0\.3\.7 above/)
+abort 'v0.3.8 README claims Claude authentication recovery' if readme.match?(/Claude.{0,80}(?:auth(?:entication)? recovery|reauthentication|automatic(?:ally)? renew)/i)
+
+record = status.match(/^## 2026-10-05 v0\.3\.8 public artifact verified\n(.*?)(?=^## |\z)/m)
+abort 'v0.3.8 public record missing' unless record
+evidence = record[1].gsub(/\s+/, ' ')
+[
+  'Both validate and publish completed SUCCESS at frozen release G `be944ed2bf689925071959d2489a8a90ef33c746`.',
+  'Annotated tag object `15fae729dc9c18e9e68b23025712cbfacb5e25e4`',
+  'Public release: https://github.com/taejunoh/needlbar/releases/tag/v0.3.8',
+  'Release ID: `404011606`',
+  'Public ZIP asset ID: `613362571`; checksum sidecar asset ID: `613362574`.',
+  'e2278209aaceeabe42cc8e21cdc4f8de24d6dadec1b8bfbdf5e08c50b7571102',
+  '16ac71cff06b14cd058679ffc1c804d26a4da22e60c7e6b7e23b291c51892dbd',
+  'tagged Release run `37354386798`',
+  'Tagless run `37351518970` previously completed validation SUCCESS with publish SKIPPED.',
+  'Both measured file hashes match the GitHub asset digests.',
+  'The sidecar names `Needlbar-macos-arm64.zip` exactly.',
+  'host, status-line helper, and widget are arm64.',
+  'Strict deep Developer ID signature, team `3BMF4LM6TM`, hardened runtime, stapled ticket, and Gatekeeper acceptance passed.'
+].each { |fact| abort "v0.3.8 public record missing #{fact.inspect}" unless evidence.include?(fact) }
+RUBY
+}
+
+test_v038_public_release_contract() {
+  local readme="$ROOT/README.md" status="$ROOT/docs/STATUS.md"
+  local decoy_readme="$temp_root/v038-public-readme-decoy.md"
+  local decoy_status="$temp_root/v038-public-status-decoy.md"
+  local output rc mutation
+
+  v038_public_release_contract_is_valid "$readme" "$status" || fail 'current v0.3.8 public contract is invalid'
+  for mutation in stale-zip stale-sidecar stale-install prepared; do
+    ruby - "$readme" "$decoy_readme" "$mutation" <<'RUBY'
+source, destination, mutation = ARGV
+document = File.read(source)
+from, to = case mutation
+when 'stale-zip' then ['download/v0.3.8/Needlbar-macos-arm64.zip)', 'download/v0.3.7/Needlbar-macos-arm64.zip)']
+when 'stale-sidecar' then ['download/v0.3.8/Needlbar-macos-arm64.zip.sha256)', 'download/v0.3.7/Needlbar-macos-arm64.zip.sha256)']
+when 'stale-install' then ['from the v0.3.8 GitHub Release.', 'from the v0.3.7 GitHub Release.']
+when 'prepared' then ['The v0.3.8 release gives', 'The prepared v0.3.8 release gives']
+end
+abort 'decoy source missing' unless document.sub!(from, to)
+File.write(destination, document)
+RUBY
+    set +e
+    output="$(v038_public_release_contract_is_valid "$decoy_readme" "$status" 2>&1)"; rc=$?
+    set -e
+    [[ "$rc" -ne 0 && "$output" == *'v0.3.8 README'* ]] || fail "v0.3.8 $mutation README decoy was not rejected correctly"
+  done
+
+  ruby - "$status" "$decoy_status" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+abort 'public SHA missing' unless document.sub!('e2278209aaceeabe42cc8e21cdc4f8de24d6dadec1b8bfbdf5e08c50b7571102', '0' * 64)
+File.write(destination, document)
+RUBY
+  set +e
+  output="$(v038_public_release_contract_is_valid "$readme" "$decoy_status" 2>&1)"; rc=$?
+  set -e
+  [[ "$rc" -ne 0 && "$output" == *'v0.3.8 public record missing'* ]] || fail 'v0.3.8 incorrect public ZIP SHA decoy was not rejected correctly'
+
+  ruby - "$status" "$decoy_status" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+abort 'sidecar SHA missing' unless document.sub!('16ac71cff06b14cd058679ffc1c804d26a4da22e60c7e6b7e23b291c51892dbd', '0' * 64)
+File.write(destination, document)
+RUBY
+  set +e
+  output="$(v038_public_release_contract_is_valid "$readme" "$decoy_status" 2>&1)"; rc=$?
+  set -e
+  [[ "$rc" -ne 0 && "$output" == *'v0.3.8 public record missing'* ]] || fail 'v0.3.8 incorrect checksum-sidecar SHA decoy was not rejected correctly'
+
+  ruby - "$status" "$decoy_status" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+abort 'tagged run missing' unless document.sub!('37354386798', '37354386797')
+File.write(destination, document)
+RUBY
+  set +e
+  output="$(v038_public_release_contract_is_valid "$readme" "$decoy_status" 2>&1)"; rc=$?
+  set -e
+  [[ "$rc" -ne 0 && "$output" == *'v0.3.8 public record missing'* ]] || fail 'v0.3.8 incorrect tagged-run decoy was not rejected correctly'
+}
+
+test_v038_public_release_contract
+
 v037_release_metadata_contract_is_valid() {
   assert_plist_value "$1" CFBundleShortVersionString 0.3.7
   assert_plist_value "$1" CFBundleVersion 10
@@ -1634,7 +1737,7 @@ RUBY
 }
 
 test_v037_public_release_contract() {
-  local readme="$ROOT/README.md" status="$ROOT/docs/STATUS.md"
+  local readme="$historical_v037_readme" status="$ROOT/docs/STATUS.md"
   local decoy="$temp_root/v037-public-decoy.md" output rc mutation
   v037_public_release_contract_is_valid "$readme" "$status" || fail 'current v0.3.7 public contract invalid'
   for mutation in prepared stale-zip stale-sidecar stale-install; do
@@ -1667,12 +1770,32 @@ RUBY
   [[ "$rc" -ne 0 && "$output" == *'Public ZIP SHA-256'* ]] || fail 'v0.3.7 wrong SHA decoy was not rejected correctly'
 }
 
+historical_v037_readme="$temp_root/v037-historical-public-readme.md"
+ruby - "$ROOT/README.md" "$historical_v037_readme" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+{
+  'Needlbar v0.3.8 is publicly available' => 'Needlbar v0.3.7 is publicly available',
+  '[Download Needlbar v0.3.8 for Apple Silicon]' => '[Download Needlbar v0.3.7 for Apple Silicon]',
+  'releases/download/v0.3.8/' => 'releases/download/v0.3.7/',
+  'To install the public v0.3.8 release:' => 'To install the public v0.3.7 release:',
+  'from the v0.3.8 GitHub Release.' => 'from the v0.3.7 GitHub Release.',
+  'distribution is v0.3.8 above.' => 'distribution is v0.3.7 above.'
+}.each do |from, to|
+  abort "historical fixture: missing #{from.inspect}" unless document.include?(from)
+  document = document.gsub(from, to)
+end
+abort 'historical fixture: v0.3.8 spacing section missing' unless document.sub!(/^### Settings card spacing \(v0\.3\.8\)\n.*?(?=^### |\z)/m, '')
+abort 'historical fixture: public ZIP reference missing' unless document.sub!('The public v0.3.8 ZIP', 'The public v0.3.7 ZIP')
+File.write(destination, document)
+RUBY
+
 test_v037_public_release_contract
 
-# Historical contracts consume an explicit v0.3.6 distribution fixture; they
+# Historical contracts consume an explicit v0.3.7 distribution fixture; they
 # continue checking the original version-specific notes and STATUS records.
 historical_v036_readme="$temp_root/v036-historical-public-readme.md"
-ruby - "$ROOT/README.md" "$historical_v036_readme" <<'RUBY'
+ruby - "$historical_v037_readme" "$historical_v036_readme" <<'RUBY'
 source, destination = ARGV
 document = File.read(source)
 {
