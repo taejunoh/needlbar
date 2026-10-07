@@ -227,7 +227,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
             let providerSnapshot = snapshot.providers.first { $0.provider == provider }
             let popover = ProviderPopoverPresentation(snapshot: providerSnapshot ?? .unavailable(for: provider), now: now)
             let usageStatus = PresentationFreshness(providerSnapshot?.usageStatus ?? .unavailable)
-            let quotaStatus = PresentationFreshness(providerSnapshot?.quotaStatus ?? .unavailable)
+            let quotaStatus = popover.quotaFreshness
             let statusText = provider == .claude && (popover.quotaFailureReasonText != nil
                 || popover.quotaSourceText == "Reported by Claude Code")
                 ? DashboardReadabilityPolicy.providerStatus(usage: usageStatus, quota: .fresh)
@@ -331,7 +331,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
             isLastKnown: window.isLastKnown,
             statusText: hasSafeClaudeFallbackReason ? nil : Self.fableStatus(freshness),
             lastCheckedText: window.isLastKnown
-                ? DateFormatter.localizedString(from: window.observedAt, dateStyle: .medium, timeStyle: .short)
+                ? window.observedAt.map { DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .short) }
                 : nil
         )
     }
