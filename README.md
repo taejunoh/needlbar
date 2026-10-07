@@ -6,11 +6,11 @@ Needlbar is local-first: it has no Needlbar account, backend, hosted sync, cloud
 
 ## Availability and download
 
-Needlbar v0.3.8 is publicly available for macOS 14 or later on Apple Silicon.
+Needlbar v0.3.9 is publicly available for macOS 14 or later on Apple Silicon.
 
-[Download Needlbar v0.3.8 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.8/Needlbar-macos-arm64.zip)
+[Download Needlbar v0.3.9 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.9/Needlbar-macos-arm64.zip)
 
-[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.8/Needlbar-macos-arm64.zip.sha256)
+[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.9/Needlbar-macos-arm64.zip.sha256)
 
 The `Needlbar-macos-arm64.zip.sha256` file is the SHA-256 checksum sidecar for the ZIP. Verify both downloaded files from the same directory:
 
@@ -20,9 +20,9 @@ shasum -a 256 -c Needlbar-macos-arm64.zip.sha256
 
 The public artifact is Developer ID-signed and notarized.
 
-To install the public v0.3.8 release:
+To install the public v0.3.9 release:
 
-1. Download the ZIP and checksum sidecar from the v0.3.8 GitHub Release.
+1. Download the ZIP and checksum sidecar from the v0.3.9 GitHub Release.
 2. Run the checksum command from the directory containing both files.
 3. Open the verified ZIP and drag `Needlbar.app` into `/Applications`.
 4. Launch Needlbar from `/Applications`; it appears in the macOS menu bar.
@@ -76,9 +76,9 @@ card shell. It covers Claude, Codex, Cursor, CPU, RAM, Disk, Network, Layout,
 Notifications, and Data while preserving internal row spacing. Authentication,
 quota retrieval and refresh, collectors, and refresh timers are unchanged.
 
-### Claude refresh reliability (v0.3.9 prepared)
+### Claude refresh reliability (v0.3.9)
 
-The prepared v0.3.9 changes classify Claude quota freshness from the actual
+The v0.3.9 changes classify Claude quota freshness from the actual
 successful observation time, retain last-known values when that time is
 unknown, and distinguish direct quota from Claude Code status-line evidence.
 Wake and network recovery signals share scheduling with periodic refreshes,
@@ -248,7 +248,7 @@ The released app includes one medium Overview widget backed by a sanitized local
 
 ## Native macOS 14 acceptance (maintainer-only)
 
-The public v0.3.8 ZIP is the production artifact for Gallery and entitlement
+The public v0.3.9 ZIP is the production artifact for Gallery and entitlement
 acceptance checks. The
 separately signed fixture-driven artifact is acceptance-only and is not a
 release or notarization substitute. It uses no provider account, credential,
@@ -287,7 +287,7 @@ Analytics is manual and local-only: there is no startup scan, timer, watcher, ba
 
 The v0.3.1 refinement remains the historical compact-readability release
 record for macOS 14 or later on Apple Silicon. The current supported public
-distribution is v0.3.8 above. The refinement keeps the existing data semantics while adding:
+distribution is v0.3.9 above. The refinement keeps the existing data semantics while adding:
 
 - colored summary cards;
 - full-width, aligned repository rows for name, estimated cost, and tokens;
