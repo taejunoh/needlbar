@@ -38,6 +38,7 @@ public actor RefreshCoordinator {
     private let claudeQuotaOperationCompleted: (@Sendable () async -> Void)?
     private let widgetUsageDayCapture: any WidgetUsageDayCapturing
     private let statusLineRepository: (any ClaudeStatusLineCacheReading)?
+    private let backgroundAttemptClock = BackgroundQuotaAttemptClock()
 
     private struct UserQuotaWaiter {
         let generation: UInt64
@@ -67,6 +68,7 @@ public actor RefreshCoordinator {
     private var usageTask: Task<Void, Never>?
     private var quotaTask: Task<Void, Never>?
     private var statusLineTask: Task<Void, Never>?
+    private var statusLineReadRequestedWhileInFlight = false
     private var usageSafetyTask: Task<Void, Never>?
     private var quotaSafetyTask: Task<Void, Never>?
     private var lastBackgroundQuotaSuccessfulAt: Date?
@@ -82,6 +84,8 @@ public actor RefreshCoordinator {
     private var queuedUserInitiatedProvidersAheadOfBackground: Set<ProviderID>?
     private var queuedUserInitiatedProvidersAfterBackground: Set<ProviderID> = []
     private var queuedBackgroundTicket: UInt64?
+    private var pendingBackgroundTrigger: QuotaRefreshTrigger?
+    private var pendingScheduledDueAt: Date?
     private var nextQueuedBackgroundTicket: UInt64 = 0
     private var userQuotaWaiters: [ProviderID: [UserQuotaWaiter]] = [:]
     private var completingUserQuotaWaiters: [ProviderID: [UserQuotaWaiter]] = [:]
@@ -155,6 +159,10 @@ public actor RefreshCoordinator {
     public func start() async {
         guard !isRunning else { return }
         resumeAllUserQuotaWaiters(with: false)
+        // A popover may have started a cache read before scheduling began.
+        statusLineTask?.cancel()
+        statusLineTask = nil
+        statusLineReadRequestedWhileInFlight = false
         runGeneration &+= 1
         isRunning = true
         let generation = runGeneration
@@ -165,7 +173,8 @@ public actor RefreshCoordinator {
             }
         }
         requestUsageRefresh()
-        requestQuotaRefresh()
+        requestStatusLineRead()
+        requestQuotaRefresh(trigger: .startup)
         scheduleSafetyRefreshes()
     }
 
@@ -180,16 +189,36 @@ public actor RefreshCoordinator {
         beginUsageRefresh()
     }
 
+    public func recoveryRequestToken() -> QuotaRecoveryRequestToken {
+        let generation = runGeneration
+        return QuotaRecoveryRequestToken { [weak self] trigger in
+            await self?.recoverQuota(trigger: trigger, generation: generation)
+        }
+    }
+
+    private func recoveryIsDue() -> Bool {
+        guard let last = backgroundAttemptClock.latest else { return false }
+        let age = clock.now.timeIntervalSince(last)
+        return age.isFinite && age >= 300
+    }
+
+    private func recoverQuota(trigger: QuotaRefreshTrigger, generation: UInt64) {
+        guard isRunning, generation == runGeneration else { return }
+        requestStatusLineRead()
+        guard recoveryIsDue() else { return }
+        requestQuotaRefresh(trigger: trigger, generation: generation)
+    }
+
     public func popoverOpened() {
         requestStatusLineRead()
         guard let lastBackgroundQuotaSuccessfulAt else {
-            requestQuotaRefresh()
+            requestQuotaRefresh(trigger: .popover)
             return
         }
         guard clock.now.timeIntervalSince(lastBackgroundQuotaSuccessfulAt) > Self.popoverQuotaRefreshThreshold else {
             return
         }
-        requestQuotaRefresh()
+        requestQuotaRefresh(trigger: .popover)
     }
 
     public func manualRefresh() async {
@@ -202,12 +231,13 @@ public actor RefreshCoordinator {
             beginUsageRefresh()
         }
 
+        requestStatusLineRead()
         if let quotaTask {
-            requestQuotaRefresh()
+            requestQuotaRefresh(trigger: .manual)
             await quotaTask.value
             guard generation == runGeneration, isRunning else { return }
         } else {
-            requestQuotaRefresh()
+            requestQuotaRefresh(trigger: .manual)
         }
     }
 
@@ -240,7 +270,7 @@ public actor RefreshCoordinator {
             quotaIntentRegistered?(intent)
             switch activeQuotaIntent {
             case nil:
-                beginQuotaRefresh(intent: intent)
+                beginQuotaRefresh(intent: intent, trigger: .manual)
             case .userInitiated(let activeProvider) where activeProvider == provider && hadWaiter:
                 break
             default:
@@ -269,7 +299,7 @@ public actor RefreshCoordinator {
             claudePreflightWaiters.append(waiter)
             quotaIntentRegistered?(.claudePreflight)
             if quotaTask == nil {
-                beginQuotaRefresh(intent: .claudePreflight)
+                beginQuotaRefresh(intent: .claudePreflight, trigger: .manual)
             } else {
                 queuedClaudePreflight = true
             }
@@ -284,6 +314,7 @@ public actor RefreshCoordinator {
         quotaTask?.cancel()
         statusLineTask?.cancel()
         statusLineTask = nil
+        statusLineReadRequestedWhileInFlight = false
         usageSafetyTask?.cancel()
         quotaSafetyTask?.cancel()
         usageSafetyTask = nil
@@ -296,6 +327,8 @@ public actor RefreshCoordinator {
         queuedUserInitiatedProvidersAheadOfBackground = nil
         queuedUserInitiatedProvidersAfterBackground.removeAll()
         queuedBackgroundTicket = nil
+        pendingBackgroundTrigger = nil
+        pendingScheduledDueAt = nil
         resumeAllUserQuotaWaiters(with: false)
         resumeAllClaudePreflightWaiters(with: .verificationFailed)
         if let usageFileWatcher {
@@ -322,6 +355,7 @@ public actor RefreshCoordinator {
 
         quotaSafetyTask = Task { [weak self, clock, generation] in
             while !Task.isCancelled {
+                let dueAt = clock.now.addingTimeInterval(300)
                 do {
                     try await clock.sleep(for: Self.safetyInterval)
                 } catch is CancellationError {
@@ -330,7 +364,7 @@ public actor RefreshCoordinator {
                     break
                 }
                 guard !Task.isCancelled else { break }
-                await self?.requestQuotaRefresh(generation: generation)
+                await self?.requestScheduledQuotaRefresh(dueAt: dueAt, generation: generation)
             }
         }
     }
@@ -341,21 +375,50 @@ public actor RefreshCoordinator {
         }
     }
 
-    private func requestQuotaRefresh(generation: UInt64? = nil) {
-        if let generation, (!isRunning || generation != runGeneration) { return }
+    private func requestScheduledQuotaRefresh(dueAt: Date, generation: UInt64) {
+        guard isRunning, generation == runGeneration else { return }
         requestStatusLineRead()
+        requestQuotaRefresh(trigger: .scheduled, generation: generation, scheduledDueAt: dueAt)
+    }
+
+    private func backgroundRequestIsDue(trigger: QuotaRefreshTrigger, scheduledDueAt: Date?) -> Bool {
+        switch trigger {
+        case .wake, .connectivity:
+            return recoveryIsDue()
+        case .scheduled:
+            guard let scheduledDueAt, let last = backgroundAttemptClock.latest else { return true }
+            return last < scheduledDueAt
+        case .startup, .manual, .popover:
+            return true
+        }
+    }
+
+    private func requestQuotaRefresh(
+        trigger: QuotaRefreshTrigger,
+        generation: UInt64? = nil,
+        scheduledDueAt: Date? = nil
+    ) {
+        if let generation, (!isRunning || generation != runGeneration) { return }
+        guard backgroundRequestIsDue(trigger: trigger, scheduledDueAt: scheduledDueAt) else { return }
         guard quotaTask == nil else {
             if !queuedBackgroundQuotaRefresh {
                 queuedBackgroundQuotaRefresh = true
+                pendingBackgroundTrigger = trigger
+                pendingScheduledDueAt = scheduledDueAt
                 nextQueuedBackgroundTicket &+= 1
                 queuedBackgroundTicket = nextQueuedBackgroundTicket
                 queuedUserInitiatedProvidersAheadOfBackground = queuedUserInitiatedProviders
                 queuedUserInitiatedProviders.removeAll()
                 quotaIntentRegistered?(.backgroundAll)
+            } else if trigger == .startup || trigger == .manual || trigger == .popover {
+                if pendingBackgroundTrigger == .scheduled || pendingBackgroundTrigger == .wake || pendingBackgroundTrigger == .connectivity {
+                    pendingBackgroundTrigger = trigger
+                    pendingScheduledDueAt = nil
+                }
             }
             return
         }
-        beginQuotaRefresh(intent: .backgroundAll)
+        beginQuotaRefresh(intent: .backgroundAll, trigger: trigger)
     }
 
     private func beginUsageRefresh() {
@@ -381,6 +444,7 @@ public actor RefreshCoordinator {
 
     private func beginQuotaRefresh(
         intent: QuotaRefreshIntent,
+        trigger: QuotaRefreshTrigger,
         userWaiterBatch: UserQuotaWaiterBatch = .all
     ) {
         guard quotaTask == nil else { return }
@@ -392,14 +456,23 @@ public actor RefreshCoordinator {
         }
         let repository = quotaRepository
         let generation = runGeneration
-        quotaTask = Task { [weak self, repository, intent] in
+        let clock = clock
+        let backgroundAttemptClock = backgroundAttemptClock
+        quotaTask = Task { [weak self, repository, intent, clock, backgroundAttemptClock] in
+            if intent == .backgroundAll {
+                backgroundAttemptClock.record(clock.now)
+            }
             let result = Result { try repository.refresh(intent: intent) }
             await self?.finishQuotaRefresh(result, intent: intent, applyResult: !Task.isCancelled, generation: generation)
         }
     }
 
     private func requestStatusLineRead() {
-        guard statusLineTask == nil, let repository = statusLineRepository else { return }
+        guard let repository = statusLineRepository else { return }
+        guard statusLineTask == nil else {
+            statusLineReadRequestedWhileInFlight = true
+            return
+        }
         let generation = runGeneration
         statusLineTask = Task { [weak self, repository] in
             let connectionGeneration = repository.activeGeneration()
@@ -413,6 +486,11 @@ public actor RefreshCoordinator {
     private func finishStatusLineRead(generation: UInt64) {
         guard generation == runGeneration else { return }
         statusLineTask = nil
+        let requested = statusLineReadRequestedWhileInFlight
+        statusLineReadRequestedWhileInFlight = false
+        if isRunning, requested {
+            requestStatusLineRead()
+        }
     }
 
     private func applyStatusLineRecord(
@@ -601,7 +679,7 @@ public actor RefreshCoordinator {
         guard isRunning else { return }
         if queuedClaudePreflight {
             queuedClaudePreflight = false
-            beginQuotaRefresh(intent: .claudePreflight)
+            beginQuotaRefresh(intent: .claudePreflight, trigger: .manual)
             return
         }
         if let ticket = queuedBackgroundTicket {
@@ -611,6 +689,7 @@ public actor RefreshCoordinator {
                 queuedUserInitiatedProvidersAheadOfBackground?.remove(provider)
                 beginQuotaRefresh(
                     intent: .userInitiated(provider: provider),
+                    trigger: .manual,
                     userWaiterBatch: .beforeBackgroundTicket(ticket)
                 )
                 return
@@ -620,17 +699,29 @@ public actor RefreshCoordinator {
             queuedBackgroundQuotaRefresh = false
             queuedUserInitiatedProviders.formUnion(queuedUserInitiatedProvidersAfterBackground)
             queuedUserInitiatedProvidersAfterBackground.removeAll()
-            beginQuotaRefresh(intent: .backgroundAll)
-            return
+            let trigger = pendingBackgroundTrigger
+            let dueAt = pendingScheduledDueAt
+            pendingBackgroundTrigger = nil
+            pendingScheduledDueAt = nil
+            if let trigger, backgroundRequestIsDue(trigger: trigger, scheduledDueAt: dueAt) {
+                beginQuotaRefresh(intent: .backgroundAll, trigger: trigger)
+                return
+            }
         }
         if let provider = ProviderID.allCases.first(where: { queuedUserInitiatedProviders.contains($0) }) {
             queuedUserInitiatedProviders.remove(provider)
-            beginQuotaRefresh(intent: .userInitiated(provider: provider))
+            beginQuotaRefresh(intent: .userInitiated(provider: provider), trigger: .manual)
             return
         }
         if queuedBackgroundQuotaRefresh {
             queuedBackgroundQuotaRefresh = false
-            beginQuotaRefresh(intent: .backgroundAll)
+            let trigger = pendingBackgroundTrigger
+            let dueAt = pendingScheduledDueAt
+            pendingBackgroundTrigger = nil
+            pendingScheduledDueAt = nil
+            if let trigger, backgroundRequestIsDue(trigger: trigger, scheduledDueAt: dueAt) {
+                beginQuotaRefresh(intent: .backgroundAll, trigger: trigger)
+            }
         }
     }
 

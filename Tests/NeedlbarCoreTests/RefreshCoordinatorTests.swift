@@ -9,6 +9,333 @@ import NeedlbarClaudeStatusLineSupport
 @Suite(.serialized)
 struct RefreshCoordinatorTests {
 
+@Test func wakeReadsCacheImmediatelyButOnlyFetchesAtFiveMinutes() async throws {
+    let now = Date(timeIntervalSince1970: 0)
+    let clock = ManualClock(now: now)
+    let quota = BlockingIntentQuotaRepository()
+    let generation = UUID()
+    let cache = StatusLineCacheSpy(generation: generation, record: .init(
+        schemaVersion: 1, generation: generation, fiveHour: nil, sevenDay: nil))
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        statusLineRepository: cache)
+    await coordinator.start()
+    await quota.waitUntilCallCount(1)
+    try quota.releaseNext(with: quotaResult(for: .claude))
+    let token = await coordinator.recoveryRequestToken()
+    await eventually({ cache.readCount == 1 }, yields: 10_000)
+    clock.setNowWithoutWakingSleepers(now.addingTimeInterval(299))
+    await token.submit(.wake)
+    await eventually({ cache.readCount == 2 }, yields: 10_000)
+    #expect(cache.readCount == 2)
+    #expect(quota.callCount == 1)
+    clock.setNowWithoutWakingSleepers(now.addingTimeInterval(300))
+    await token.submit(.connectivity)
+    await eventually({ quota.callCount == 2 }, yields: 10_000)
+    #expect(quota.callCount == 2)
+    quota.forbidAdditionalCalls()
+    if quota.callCount == 2 { try quota.releaseNext(with: quotaResult(for: .claude)) }
+    await coordinator.stop()
+}
+
+@Test func recoveryUsesFreshPopoverAttemptRatherThanStartupAttempt() async throws {
+    let now = Date(timeIntervalSince1970: 0)
+    let clock = ManualClock(now: now)
+    let quota = BlockingIntentQuotaRepository()
+    let completed = ClaudeQuotaCompletionRecorder()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        claudeQuotaOperationCompleted: { await completed.record() })
+    await coordinator.start()
+    await quota.waitUntilCallCount(1)
+    try quota.releaseNext(with: quotaResult(for: .claude))
+    await eventuallyAsync({ await completed.count == 1 }, yields: 10_000)
+    clock.setNowWithoutWakingSleepers(now.addingTimeInterval(100))
+    await coordinator.popoverOpened()
+    await quota.waitUntilCallCount(2)
+    try quota.releaseNext(with: quotaResult(for: .claude))
+    await eventuallyAsync({ await completed.count == 2 }, yields: 10_000)
+    let token = await coordinator.recoveryRequestToken()
+    clock.setNowWithoutWakingSleepers(now.addingTimeInterval(399))
+    await token.submit(.wake)
+    await eventually { quota.callCount == 3 }
+    #expect(quota.callCount == 2)
+    clock.setNowWithoutWakingSleepers(now.addingTimeInterval(400))
+    await token.submit(.connectivity)
+    await eventually({ quota.callCount == 3 }, yields: 10_000)
+    #expect(quota.callCount == 3)
+    quota.forbidAdditionalCalls()
+    if quota.callCount == 3 { try quota.releaseNext(with: quotaResult(for: .claude)) }
+    await coordinator.stop()
+}
+
+@Test func recoveryBeforeAndImmediatelyAfterStartDoesNotDuplicateStartup() async throws {
+    let quota = BlockingIntentQuotaRepository()
+    let completed = ClaudeQuotaCompletionRecorder()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota, store: ProviderSnapshotStore(),
+        clock: ManualClock(now: Date(timeIntervalSince1970: 0)),
+        claudeQuotaOperationCompleted: { await completed.record() })
+    let oldToken = await coordinator.recoveryRequestToken()
+    await oldToken.submit(.wake)
+    #expect(quota.callCount == 0)
+    await coordinator.start()
+    let token = await coordinator.recoveryRequestToken()
+    await token.submit(.connectivity)
+    await quota.waitUntilCallCount(1)
+    quota.forbidAdditionalCalls()
+    try quota.releaseNext(with: quotaResult(for: .claude))
+    await eventuallyAsync({ await completed.count == 1 }, yields: 10_000)
+    await eventually { !quota.unexpectedIntents.isEmpty }
+    #expect(quota.callCount == 1)
+    #expect(quota.unexpectedIntents.isEmpty)
+    await coordinator.stop()
+}
+
+@Test(arguments: [false, true])
+func recoveryBurstQueuesOneAggregateFollowUp(includesPopover: Bool) async throws {
+    let clock = ManualClock(now: Date(timeIntervalSince1970: 0))
+    let quota = BlockingIntentQuotaRepository()
+    let completed = ClaudeQuotaCompletionRecorder()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        claudeQuotaOperationCompleted: { await completed.record() })
+    await coordinator.start()
+    await quota.waitUntilCallCount(1)
+    let token = await coordinator.recoveryRequestToken()
+    clock.setNowWithoutWakingSleepers(Date(timeIntervalSince1970: 300))
+    for _ in 0 ..< 3 {
+        await token.submit(.wake)
+        await token.submit(.connectivity)
+        if includesPopover { await coordinator.popoverOpened() }
+    }
+    #expect(quota.callCount == 1)
+    try quota.releaseNext(with: quotaResult(for: .claude))
+    await eventually({ quota.callCount == 2 }, yields: 10_000)
+    #expect(quota.callCount == 2)
+    quota.forbidAdditionalCalls()
+    if quota.callCount == 2 { try quota.releaseNext(with: quotaResult(for: .claude)) }
+    await eventuallyAsync({ await completed.count == 2 }, yields: 10_000)
+    #expect(await completed.count == 2)
+    await eventually { !quota.unexpectedIntents.isEmpty }
+    #expect(quota.intents == [.backgroundAll, .backgroundAll])
+    #expect(quota.unexpectedIntents.isEmpty)
+    await coordinator.stop()
+}
+
+@Test func forcedAggregateUpgradesPendingRecoveryWithoutAnotherTicket() async throws {
+    let clock = ManualClock(now: Date(timeIntervalSince1970: 0))
+    let quota = BlockingIntentQuotaRepository()
+    let gate = QuotaApplicationGate()
+    let completed = ClaudeQuotaCompletionRecorder()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        quotaApplicationWillApply: { await gate.pause() },
+        claudeQuotaOperationCompleted: { await completed.record() })
+    await coordinator.start()
+    await quota.waitUntilCallCount(1)
+    try quota.releaseNext(with: quotaResult(for: .claude))
+    await gate.waitUntilEntered()
+    let token = await coordinator.recoveryRequestToken()
+    clock.setNowWithoutWakingSleepers(Date(timeIntervalSince1970: 300))
+    await token.submit(.wake)
+    await coordinator.popoverOpened()
+    await gate.resume()
+    await eventually({ quota.callCount == 2 }, yields: 10_000)
+    #expect(quota.callCount == 2)
+    await token.submit(.connectivity)
+    quota.forbidAdditionalCalls()
+    if quota.callCount == 2 { try quota.releaseNext(with: quotaResult(for: .claude)) }
+    await eventuallyAsync({ await completed.count == 2 }, yields: 10_000)
+    #expect(await completed.count == 2)
+    await eventually { !quota.unexpectedIntents.isEmpty }
+    #expect(quota.unexpectedIntents.isEmpty)
+    await coordinator.stop()
+}
+
+@Test(arguments: [true, false])
+func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) async throws {
+    let clock = ManualClock(now: Date(timeIntervalSince1970: 0))
+    let quota = BlockingIntentQuotaRepository()
+    let completed = ClaudeQuotaCompletionRecorder()
+    let generation = UUID()
+    let cache = StatusLineCacheSpy(generation: generation, record: .init(
+        schemaVersion: 1, generation: generation, fiveHour: nil, sevenDay: nil))
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        statusLineRepository: cache,
+        claudeQuotaOperationCompleted: { await completed.record() })
+    await coordinator.start()
+    await quota.waitUntilCallCount(1)
+    try quota.releaseNext(with: quotaResult(for: .claude))
+    await eventuallyAsync({ await completed.count == 1 }, yields: 10_000)
+    #expect(await completed.count == 1)
+    await eventually({ cache.readCount == 1 }, yields: 10_000)
+    await eventually({ clock.sleeperCount == 2 }, yields: 10_000)
+    let token = await coordinator.recoveryRequestToken()
+    if periodicFirst {
+        clock.advance(by: 300)
+    } else {
+        clock.setNowWithoutWakingSleepers(Date(timeIntervalSince1970: 300))
+        await token.submit(.wake)
+    }
+    await eventually({ quota.callCount == 2 }, yields: 10_000)
+    #expect(quota.callCount == 2)
+    if periodicFirst {
+        await token.submit(.wake)
+        await token.submit(.connectivity)
+    } else {
+        await eventually({ cache.readCount == 2 }, yields: 10_000)
+        clock.advance(by: 0)
+        await eventually({ clock.sleeperCount == 2 }, yields: 10_000)
+        await eventually({ cache.readCount == 3 }, yields: 10_000)
+        #expect(cache.readCount == 3)
+    }
+    quota.forbidAdditionalCalls()
+    if quota.callCount == 2 { try quota.releaseNext(with: quotaResult(for: .claude)) }
+    await eventuallyAsync({ await completed.count == 2 }, yields: 10_000)
+    #expect(await completed.count == 2)
+    await eventually { !quota.unexpectedIntents.isEmpty }
+    #expect(quota.intents == [.backgroundAll, .backgroundAll])
+    #expect(quota.unexpectedIntents.isEmpty)
+    await coordinator.stop()
+}
+
+@Test func recoveryTokenCannotCrossStopRestartOrOverlapOldPhysicalCall() async throws {
+    let clock = ManualClock(now: Date(timeIntervalSince1970: 0))
+    let quota = BlockingIntentQuotaRepository()
+    let store = ProviderSnapshotStore()
+    let gate = QuotaApplicationGate()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota, store: store, clock: clock,
+        quotaApplicationWillApply: { await gate.pause() })
+    await coordinator.start()
+    await quota.waitUntilCallCount(1)
+    let oldToken = await coordinator.recoveryRequestToken()
+    clock.setNowWithoutWakingSleepers(Date(timeIntervalSince1970: 300))
+    await coordinator.stop()
+    await coordinator.start()
+    await oldToken.submit(.wake)
+    await eventually { quota.callCount == 2 }
+    #expect(quota.callCount == 1)
+    try quota.releaseNext(with: quotaResult(for: .claude, usedPercent: 10))
+    await eventually({ quota.callCount == 2 }, yields: 10_000)
+    #expect(quota.callCount == 2)
+    #expect(await store.snapshot(for: .claude).quota == nil)
+    quota.forbidAdditionalCalls()
+    if quota.callCount == 2 { try quota.releaseNext(with: quotaResult(for: .claude, usedPercent: 60)) }
+    if quota.callCount == 2 {
+        await gate.waitUntilEntered()
+        #expect(await store.snapshot(for: .claude).quota == nil)
+    }
+    await gate.resume()
+    await eventuallyAsync({ await store.snapshot(for: .claude).quota?.windows.first?.usedPercent == 60 }, yields: 10_000)
+    #expect(await store.snapshot(for: .claude).quota?.windows.first?.usedPercent == 60)
+    await eventually { !quota.unexpectedIntents.isEmpty }
+    #expect(quota.unexpectedIntents.isEmpty)
+    await coordinator.stop()
+}
+
+@Test func recoveryTicketRechecksClockAndStillDrainsAfterTicketUserWaiter() async throws {
+    let clock = ManualClock(now: Date(timeIntervalSince1970: 0))
+    let quota = BlockingIntentQuotaRepository()
+    let gate = QuotaApplicationGate()
+    let registrations = QuotaIntentRegistrationGate()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        quotaApplicationWillApply: { await gate.pause() },
+        quotaIntentRegistered: { registrations.record($0) })
+    await coordinator.start()
+    await quota.waitUntilCallCount(1)
+    try quota.releaseNext(with: quotaResult(for: .claude))
+    await gate.waitUntilEntered()
+    let token = await coordinator.recoveryRequestToken()
+    clock.setNowWithoutWakingSleepers(Date(timeIntervalSince1970: 300))
+    await token.submit(.wake)
+    let user = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .codex) }
+    await eventually({ registrations.intents == [.backgroundAll, .userInitiated(provider: .codex)] }, yields: 10_000)
+    #expect(registrations.intents == [.backgroundAll, .userInitiated(provider: .codex)])
+    // A wall-clock adjustment makes the already queued automatic ticket no
+    // longer due. It must still release the user waiter queued after it.
+    clock.setNowWithoutWakingSleepers(Date(timeIntervalSince1970: 299))
+    await gate.resume()
+    await eventually({ quota.callCount == 2 }, yields: 10_000)
+    #expect(quota.intents == [.backgroundAll, .userInitiated(provider: .codex)])
+    quota.forbidAdditionalCalls()
+    if quota.callCount == 2 { try quota.releaseNext(with: quotaResult(for: .codex)) }
+    if quota.callCount < 2 { await coordinator.stop() }
+    #expect(await user.value)
+    #expect(quota.unexpectedIntents.isEmpty)
+    await coordinator.stop()
+}
+
+@Test func preStartCacheReadCannotBlockTheNewRunCacheRead() async {
+    let now = Date(timeIntervalSince1970: 0)
+    let generation = UUID()
+    let cache = StatusLineCacheSpy(generation: generation, record: .init(
+        schemaVersion: 1, generation: generation,
+        fiveHour: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(3600), receivedAt: now),
+        sevenDay: nil))
+    let gate = QuotaApplicationGate()
+    let applications = ClaudeQuotaCompletionRecorder()
+    let store = ProviderSnapshotStore(now: { now })
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        store: store, clock: ManualClock(now: now), lastQuotaSuccessfulAt: now,
+        statusLineApplicationWillApply: {
+            await applications.record()
+            if await applications.count == 1 { await gate.pause() }
+        }, statusLineRepository: cache)
+    await coordinator.popoverOpened()
+    await gate.waitUntilEntered()
+    await coordinator.start()
+    await gate.resume()
+    await eventuallyAsync({ await store.snapshot(for: .claude).claudeStatusLineQuota != nil }, yields: 10_000)
+    #expect(cache.readCount == 2)
+    #expect(await store.snapshot(for: .claude).claudeStatusLineQuota?.fiveHour?.usedPercent == 25)
+    await coordinator.stop()
+}
+
+@Test func recoveryDuringCacheApplicationReadsActiveConnectionOnceMore() async throws {
+    let now = Date(timeIntervalSince1970: 0)
+    let generation = UUID()
+    let cache = StatusLineCacheSpy(generation: generation, record: .init(
+        schemaVersion: 1, generation: generation,
+        fiveHour: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(3600), receivedAt: now),
+        sevenDay: nil))
+    let gate = QuotaApplicationGate()
+    let store = ProviderSnapshotStore(now: { now })
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        store: store, clock: ManualClock(now: now),
+        statusLineApplicationWillApply: { await gate.pause() }, statusLineRepository: cache)
+    await coordinator.start()
+    await gate.waitUntilEntered()
+    let token = await coordinator.recoveryRequestToken()
+    await token.submit(.wake)
+    await token.submit(.connectivity)
+    let active = UUID()
+    cache.connect(generation: active, record: .init(
+        schemaVersion: 1, generation: active,
+        fiveHour: .init(usedPercent: 60, resetsAt: now.addingTimeInterval(3600), receivedAt: now),
+        sevenDay: nil))
+    await gate.resume()
+    await eventuallyAsync({ await store.snapshot(for: .claude).claudeStatusLineQuota?.generation == active }, yields: 10_000)
+    #expect(cache.readCount == 2)
+    #expect(await store.snapshot(for: .claude).claudeStatusLineQuota?.fiveHour?.usedPercent == 60)
+    await coordinator.stop()
+}
+
 @Test func localStatusLineReadSurvivesDirectFailureAndClearsAfterDisconnectOnNextCadence() async throws {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     let generation = UUID()
@@ -1354,6 +1681,8 @@ private final class QuotaIntentRegistrationGate: @unchecked Sendable {
     private var events: [QuotaRefreshIntent] = []
     private var waiters: [Waiter] = []
 
+    var intents: [QuotaRefreshIntent] { lock.withLock { events } }
+
     func record(_ intent: QuotaRefreshIntent) {
         let ready = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
             events.append(intent)
@@ -1510,6 +1839,10 @@ private final class ManualClock: ClockLike, @unchecked Sendable {
 
     var sleeperCount: Int {
         lock.withLock { continuations.count }
+    }
+
+    func setNowWithoutWakingSleepers(_ value: Date) {
+        lock.withLock { date = value }
     }
 
     func sleep(for duration: Duration) async throws {
