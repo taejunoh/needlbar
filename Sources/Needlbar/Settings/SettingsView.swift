@@ -6,13 +6,20 @@ import SwiftUI
 @MainActor
 public final class SettingsClaudeQuotaPresentation: ObservableObject {
     @Published private(set) var value: ProviderPopoverPresentation
+    private var latestSnapshot: CombinedUsageSnapshot?
 
     init(snapshot: CombinedUsageSnapshot? = nil, now: Date = .now) {
+        latestSnapshot = snapshot
         value = Self.presentation(for: snapshot, now: now)
     }
 
     func update(snapshot: CombinedUsageSnapshot, now: Date = .now) {
+        latestSnapshot = snapshot
         value = Self.presentation(for: snapshot, now: now)
+    }
+
+    func reproject(at now: Date) {
+        value = Self.presentation(for: latestSnapshot, now: now)
     }
 
     private static func presentation(for snapshot: CombinedUsageSnapshot?, now: Date) -> ProviderPopoverPresentation {
@@ -134,6 +141,7 @@ public struct SettingsView: View {
 
     public var body: some View {
         settingsWindowContent(page: $selectedPage, tab: $selectedTab)
+        .task { await QuotaPresentationTicker.run { claudeQuotaPresentation.reproject(at: $0) } }
         .onChange(of: selectedPage) { _, page in
             if !page.tabs.contains(selectedTab) { selectedTab = page.tabs.first ?? .menuBar }
         }

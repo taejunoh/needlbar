@@ -414,8 +414,12 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
 public final class SystemDashboardModel: ObservableObject {
     @Published public private(set) var presentation: SystemDashboardPresentation
     @Published public private(set) var history: SystemDashboardHistory
+    private var latestSnapshot: CombinedUsageSnapshot
+    private var latestConfiguration: SystemMonitorConfiguration
 
     public init(snapshot: CombinedUsageSnapshot, configuration: SystemMonitorConfiguration) {
+        latestSnapshot = snapshot
+        latestConfiguration = configuration
         presentation = SystemDashboardPresentation(snapshot: snapshot, configuration: configuration)
         var initialHistory = SystemDashboardHistory()
         initialHistory.append(snapshot.system)
@@ -423,8 +427,15 @@ public final class SystemDashboardModel: ObservableObject {
     }
 
     public func update(snapshot: CombinedUsageSnapshot, configuration: SystemMonitorConfiguration) {
+        latestSnapshot = snapshot
+        latestConfiguration = configuration
         presentation = SystemDashboardPresentation(snapshot: snapshot, configuration: configuration)
         history.append(snapshot.system)
+    }
+
+    public func reproject(at now: Date) {
+        presentation = SystemDashboardPresentation(
+            snapshot: latestSnapshot, configuration: latestConfiguration, now: now)
     }
 }
 

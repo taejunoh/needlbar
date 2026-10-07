@@ -186,6 +186,10 @@ public struct SystemDashboardPopoverView: View {
                 ScrollView { dashboardSections }
             }
             .frame(width: SystemDashboardPanelSizing.width, height: layout.height)
+            .task {
+                guard !isMeasuring else { return }
+                await QuotaPresentationTicker.run { model.reproject(at: $0) }
+            }
         }
     }
 

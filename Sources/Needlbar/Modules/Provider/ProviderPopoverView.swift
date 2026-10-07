@@ -166,7 +166,11 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
 }
 
 public struct ProviderPopoverView: View {
-    private let presentation: ProviderPopoverPresentation
+    private let snapshot: ProviderSnapshot
+    @State private var presentationNow = Date()
+    private var presentation: ProviderPopoverPresentation {
+        ProviderPopoverPresentation(snapshot: snapshot, now: presentationNow)
+    }
     private let onRetry: () -> Void
     private let onAuthenticationAction: (ProviderAuthenticationAction) -> Bool
     @State private var claudeUsageOpenFailed = false
@@ -176,7 +180,7 @@ public struct ProviderPopoverView: View {
         onRetry: @escaping () -> Void = {},
         onAuthenticationAction: @escaping (ProviderAuthenticationAction) -> Bool = { _ in false }
     ) {
-        presentation = ProviderPopoverPresentation(snapshot: snapshot)
+        self.snapshot = snapshot
         self.onRetry = onRetry
         self.onAuthenticationAction = onAuthenticationAction
     }
@@ -273,6 +277,7 @@ public struct ProviderPopoverView: View {
         }
         .padding()
         .frame(width: 300)
+        .task { await QuotaPresentationTicker.run { presentationNow = $0 } }
     }
 
     @ViewBuilder

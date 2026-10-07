@@ -56,16 +56,17 @@ public struct OverviewPopoverPresentation: Equatable, Sendable {
     public init(
         snapshots: [ProviderSnapshot],
         dailyUsage: [OverviewDailyUsagePoint],
-        enabledProviders: Set<ProviderID> = Set(ProviderID.allCases)
+        enabledProviders: Set<ProviderID> = Set(ProviderID.allCases),
+        now: Date = .now
     ) {
         providerRows = ProviderID.allCases.map { provider in
-            ProviderPopoverPresentation(snapshot: snapshots.first { $0.provider == provider } ?? .unavailable(for: provider))
+            ProviderPopoverPresentation(snapshot: snapshots.first { $0.provider == provider } ?? .unavailable(for: provider), now: now)
         }
         let usages = snapshots.compactMap(\.usage)
         tokensToday = Self.checkedTokenTotal(usages.map(\.today.totalTokens)).map(MetricFormatter.tokens)
         estimatedCostToday = usages.isEmpty ? nil : MetricFormatter.costUSD(usages.reduce(Decimal.zero) { $0 + $1.today.estimatedCostUSD })
         headlineQuotaRemaining = HeadlineQuotaSelector.mostConstrained(
-            snapshots.filter { enabledProviders.contains($0.provider) }
+            snapshots.filter { enabledProviders.contains($0.provider) }, now: now
         ).map { MetricFormatter.quotaRemaining($0.remainingPercent) }
         sevenDayTokens = Self.dailyTotals(dailyUsage)
     }
@@ -93,7 +94,14 @@ public struct OverviewPopoverPresentation: Equatable, Sendable {
 }
 
 public struct OverviewPopoverView: View {
-    private let presentation: OverviewPopoverPresentation
+    private let snapshots: [ProviderSnapshot]
+    private let dailyUsage: [OverviewDailyUsagePoint]
+    private let enabledProviders: Set<ProviderID>
+    @State private var presentationNow = Date()
+    private var presentation: OverviewPopoverPresentation {
+        OverviewPopoverPresentation(snapshots: snapshots, dailyUsage: dailyUsage,
+                                    enabledProviders: enabledProviders, now: presentationNow)
+    }
     private let onShowSettings: () -> Void
     private let onShowAnalytics: () -> Void
 
@@ -103,18 +111,14 @@ public struct OverviewPopoverView: View {
         onShowSettings: @escaping () -> Void = {},
         onShowAnalytics: @escaping () -> Void = {}
     ) {
-        let dailyUsage = snapshots.flatMap { snapshot in
+        self.snapshots = snapshots
+        dailyUsage = snapshots.flatMap { snapshot in
             snapshot.usage?.last7DaysDaily.map {
                 OverviewDailyUsagePoint(provider: snapshot.provider, date: $0.date, totalTokens: $0.totalTokens)
             } ?? []
         }
-        let enabledProviders = Set(
+        enabledProviders = Set(
             configuration.enabledModuleIDs.compactMap(\.provider)
-        )
-        presentation = OverviewPopoverPresentation(
-            snapshots: snapshots,
-            dailyUsage: dailyUsage,
-            enabledProviders: enabledProviders
         )
         self.onShowSettings = onShowSettings
         self.onShowAnalytics = onShowAnalytics
@@ -172,6 +176,7 @@ public struct OverviewPopoverView: View {
         }
         .padding()
         .frame(width: 300)
+        .task { await QuotaPresentationTicker.run { presentationNow = $0 } }
     }
 
     @ViewBuilder
