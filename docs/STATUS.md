@@ -1,5 +1,29 @@
 # Needlbar Development Status
 
+## 2026-10-07 v0.3.9 preparation — product CI repair pushed
+
+The user authorized merge, release, and canonical laptop replacement. The
+release plan is `docs/superpowers/plans/2026-10-07-v0.3.9-release.md`.
+Candidate `c773f61` prepares host/widget 0.3.9 build 12, release notes and
+historical metadata contracts; public README distribution remains v0.3.8.
+Local full tests, packaging, smoke and independent candidate security/spec/
+quality reviews passed. No new public release or installed-app replacement
+has occurred.
+
+PR #18 CI `37656463453` failed a callback-count assertion because its test-only
+fixed-yield waiter could return before callbacks arrived. Independent diagnosis
+reproduced the premature return; completion-based test repair `f325c0b` passed
+deterministic RED/GREEN, focused 4/4 and full `make test` (726 Swift tests and
+all required contracts). Independent focused review approved it; product logic
+was unchanged. The identical test-only diff was backported and pushed as PR
+head `b5d502adb2e33ce30e7d48447e16c9f845e062cb`; exact-head CI
+`37660771426` is pending. Merge remains gated on success. Continuation:
+merge this reviewed green head, integrate the candidate, then require separate
+protected tagless and tagged workflow approvals and public artifact validation
+before documentation/tap changes or installation. Existing dirty runtime notes
+and research are preserved. Overnight/reset acceptance and credential renewal
+remain unverified/out of scope respectively.
+
 ## 2026-10-07 Claude refresh reliability — implementation verified
 
 The user approved pursuing Claude refresh reliability, compact presentation,
