@@ -39,6 +39,7 @@ public actor RefreshCoordinator {
     private let widgetUsageDayCapture: any WidgetUsageDayCapturing
     private let statusLineRepository: (any ClaudeStatusLineCacheReading)?
     private let backgroundAttemptClock = BackgroundQuotaAttemptClock()
+    private let quotaAttemptLedger: QuotaAttemptLedger
 
     private struct UserQuotaWaiter {
         let generation: UInt64
@@ -101,7 +102,8 @@ public actor RefreshCoordinator {
         usageFileWatcher: (any UsageFileWatching)? = nil,
         widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture(),
         statusLineRepository: (any ClaudeStatusLineCacheReading)? = nil,
-        claudeQuotaOperationCompleted: (@Sendable () async -> Void)? = nil
+        claudeQuotaOperationCompleted: (@Sendable () async -> Void)? = nil,
+        quotaAttemptObserver: (@Sendable (QuotaAttemptEvent) -> Void)? = nil
     ) {
         self.init(
             usageRepository: usageRepository,
@@ -115,7 +117,8 @@ public actor RefreshCoordinator {
             statusLineApplicationWillApply: nil,
             widgetUsageDayCapture: widgetUsageDayCapture,
             statusLineRepository: statusLineRepository,
-            claudeQuotaOperationCompleted: claudeQuotaOperationCompleted
+            claudeQuotaOperationCompleted: claudeQuotaOperationCompleted,
+            quotaAttemptObserver: quotaAttemptObserver
         )
     }
 
@@ -131,7 +134,8 @@ public actor RefreshCoordinator {
         statusLineApplicationWillApply: (@Sendable () async -> Void)? = nil,
         widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture(),
         statusLineRepository: (any ClaudeStatusLineCacheReading)? = nil,
-        claudeQuotaOperationCompleted: (@Sendable () async -> Void)? = nil
+        claudeQuotaOperationCompleted: (@Sendable () async -> Void)? = nil,
+        quotaAttemptObserver: (@Sendable (QuotaAttemptEvent) -> Void)? = nil
     ) {
         self.usageRepository = usageRepository
         self.quotaRepository = quotaRepository
@@ -145,6 +149,7 @@ public actor RefreshCoordinator {
         self.widgetUsageDayCapture = widgetUsageDayCapture
         self.statusLineRepository = statusLineRepository
         self.claudeQuotaOperationCompleted = claudeQuotaOperationCompleted
+        self.quotaAttemptLedger = QuotaAttemptLedger(observer: quotaAttemptObserver)
     }
 
     deinit {
@@ -164,6 +169,7 @@ public actor RefreshCoordinator {
         statusLineTask = nil
         statusLineReadRequestedWhileInFlight = false
         runGeneration &+= 1
+        quotaAttemptLedger.advance(to: runGeneration)
         isRunning = true
         let generation = runGeneration
         if let usageFileWatcher {
@@ -309,6 +315,7 @@ public actor RefreshCoordinator {
     /// Stops timers and invalidates the installed watcher receiver before a later restart.
     public func stop() async {
         runGeneration &+= 1
+        quotaAttemptLedger.advance(to: runGeneration)
         isRunning = false
         usageTask?.cancel()
         quotaTask?.cancel()
@@ -458,12 +465,21 @@ public actor RefreshCoordinator {
         let generation = runGeneration
         let clock = clock
         let backgroundAttemptClock = backgroundAttemptClock
-        quotaTask = Task { [weak self, repository, intent, clock, backgroundAttemptClock] in
-            if intent == .backgroundAll {
-                backgroundAttemptClock.record(clock.now)
+        let ledger = quotaAttemptLedger
+        let id = UUID()
+        ledger.reserve(id: id, generation: generation, trigger: trigger)
+        quotaTask = Task { [weak self, repository, intent, clock, backgroundAttemptClock, ledger] in
+            guard !Task.isCancelled, let attempt = ledger.claim(
+                id: id, generation: generation, at: clock.now,
+                backgroundClock: intent == .backgroundAll ? backgroundAttemptClock : nil
+            ) else {
+                await self?.finishQuotaRefresh(.failure(CancellationError()), intent: intent,
+                                              applyResult: false, generation: generation, attempt: nil)
+                return
             }
             let result = Result { try repository.refresh(intent: intent) }
-            await self?.finishQuotaRefresh(result, intent: intent, applyResult: !Task.isCancelled, generation: generation)
+            await self?.finishQuotaRefresh(result, intent: intent, applyResult: !Task.isCancelled,
+                                          generation: generation, attempt: attempt)
         }
     }
 
@@ -552,7 +568,8 @@ public actor RefreshCoordinator {
         _ result: Result<QuotaRefreshResult, Error>,
         intent: QuotaRefreshIntent,
         applyResult: Bool,
-        generation: UInt64
+        generation: UInt64,
+        attempt: QuotaAttemptEvent?
     ) async {
         var verificationSucceeded = false
         var preflightOutcome: ClaudeLoginPreflightOutcome = .verificationFailed
@@ -671,8 +688,44 @@ public actor RefreshCoordinator {
                 )
             }
         }
-        guard applyResult, generation == runGeneration, intent.includesClaude else { return }
-        await claudeQuotaOperationCompleted?()
+        guard applyResult, generation == runGeneration else { return }
+        if intent.includesClaude { await claudeQuotaOperationCompleted?() }
+        guard generation == runGeneration, isRunning, !Task.isCancelled, let attempt else { return }
+        let snapshot = await store.snapshot(for: .claude)
+        guard generation == runGeneration, isRunning, !Task.isCancelled else { return }
+        let completedAt = clock.now
+        let selection = ClaudeQuotaPresentationSelector.select(snapshot: snapshot, now: completedAt)
+        let outcome = quotaAttemptOutcome(for: result, intent: intent)
+        quotaAttemptLedger.complete(QuotaAttemptEvent(
+            id: attempt.id, generation: generation, trigger: attempt.trigger, phase: .completed,
+            startedAt: attempt.startedAt, completedAt: completedAt, outcome: outcome,
+            directLastSuccessfulAt: intent.includesClaude ? snapshot.quotaLastSuccessfulAt : attempt.directLastSuccessfulAt,
+            failureAttemptAt: intent.includesClaude ? (outcome == .success ? nil : attempt.startedAt) : attempt.failureAttemptAt,
+            fiveHourSource: intent.includesClaude ? observationSource(selection.fiveHour) : attempt.fiveHourSource,
+            sevenDaySource: intent.includesClaude ? observationSource(selection.sevenDay) : attempt.sevenDaySource,
+            fableSource: intent.includesClaude ? observationSource(selection.fable) : attempt.fableSource,
+            fiveHourReceiptAt: intent.includesClaude ? snapshot.claudeStatusLineQuota?.fiveHour?.receivedAt : attempt.fiveHourReceiptAt,
+            sevenDayReceiptAt: intent.includesClaude ? snapshot.claudeStatusLineQuota?.sevenDay?.receivedAt : attempt.sevenDayReceiptAt))
+    }
+
+    private func quotaAttemptOutcome(for result: Result<QuotaRefreshResult, Error>,
+                                     intent: QuotaRefreshIntent) -> QuotaAttemptOutcome {
+        let provider: ProviderID
+        if case .userInitiated(let requested) = intent { provider = requested } else { provider = .claude }
+        switch result {
+        case .failure: return .failure
+        case .success(let refresh):
+            if refresh.errors[provider] != nil { return .failure }
+            return refresh.snapshots[provider] == nil ? .unavailable : .success
+        }
+    }
+
+    private func observationSource(_ window: DisplayedClaudeWindow?) -> QuotaObservationSource {
+        switch window?.source {
+        case .direct: .direct
+        case .claudeCodeStatusLine: .statusLine
+        case nil: .unavailable
+        }
     }
 
     private func drainQueuedQuotaRefreshes() {

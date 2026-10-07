@@ -1,4 +1,5 @@
 import AppKit
+import NeedlbarCore
 import Testing
 @testable import NeedlbarApp
 
@@ -11,11 +12,13 @@ struct AppDelegateLifecycleTests {
     let lifecycle = ProductionLifecycleController(services: services)
 
     await lifecycle.start()
+    await lifecycle.start()
+    await lifecycle.stop()
     await lifecycle.stop()
 
     #expect(await services.events == [
-        "menu.start", "system.start", "notifications.start", "publisher.start", "refresh.start",
-        "refresh.stop", "publisher.stop", "notifications.stop", "system.stop", "menu.stop",
+        "menu.start", "system.start", "notifications.start", "publisher.start", "refresh.start", "recovery.start",
+        "recovery.stop", "refresh.stop", "publisher.stop", "notifications.stop", "system.stop", "menu.stop",
     ])
 }
 #endif
@@ -34,6 +37,8 @@ struct AppDelegateLifecycleTests {
 #endif
 
 @Test func terminationStopsNotificationsBeforeLoginAndRefreshCleanup() async {
+    let recovery = RecordingTerminationRecoveryMonitor()
+    recovery.start(using: QuotaRecoveryRequestToken { _ in })
     let loginShutdown = TerminationShutdownGate()
     let refreshShutdown = TerminationShutdownGate()
     let termination = AccessoryTerminationController()
@@ -58,6 +63,7 @@ struct AppDelegateLifecycleTests {
                 return .complete
             },
             stopRefreshCoordinator: {
+                recovery.stop()
                 events.append("refreshStop")
                 await refreshShutdown.waitForRelease()
             },
@@ -81,10 +87,12 @@ struct AppDelegateLifecycleTests {
     #expect(notificationStopCount == 1)
     #expect(observationStopCount == 1)
     await loginShutdown.waitForEntry()
+    #expect(recovery.stops == 0)
     #expect(await refreshShutdown.entryCount() == 0)
 
     await loginShutdown.release()
     await refreshShutdown.waitForEntry()
+    #expect(recovery.stops == 1)
     #expect(replies.values.isEmpty)
 
     await refreshShutdown.release()
@@ -95,6 +103,8 @@ struct AppDelegateLifecycleTests {
 }
 
 @Test func pendingReapResumesNotificationsAndResetsSynchronousCleanupForLaterRetry() async {
+    let recovery = RecordingTerminationRecoveryMonitor()
+    recovery.start(using: QuotaRecoveryRequestToken { _ in })
     let loginShutdown = LoginTerminationGate(results: [.pendingReap, .complete])
     let refreshShutdown = TerminationShutdownGate()
     let termination = AccessoryTerminationController()
@@ -119,6 +129,7 @@ struct AppDelegateLifecycleTests {
                 return result
             },
             stopRefreshCoordinator: {
+                recovery.stop()
                 events.append("refreshStop")
                 await refreshShutdown.waitForRelease()
             },
@@ -147,11 +158,14 @@ struct AppDelegateLifecycleTests {
     #expect(replies.values == [false])
     #expect(events == ["notificationStop", "loginStop", "reply:false", "resumeLoginAdmission", "resumeNotifications"])
     #expect(notificationResumeCount == 1)
+    #expect(recovery.stops == 0)
+    #expect(recovery.starts == 1)
 
     #expect(requestTermination() == .terminateLater)
     await loginShutdown.waitForEntry(count: 2)
     await loginShutdown.releaseNext()
     await refreshShutdown.waitForEntry()
+    #expect(recovery.stops == 1)
     #expect(replies.values == [false])
 
     await refreshShutdown.release()
@@ -195,6 +209,8 @@ private final class RecordingProductionLifecycleServices: ProductionLifecycleSer
     func startProductionNotifications() async { events.append("notifications.start") }
     func startProductionPublisher() async { events.append("publisher.start") }
     func startProductionRefresh() async { events.append("refresh.start") }
+    func startProductionRecovery() async { events.append("recovery.start") }
+    func stopProductionRecovery() { events.append("recovery.stop") }
     func stopProductionRefresh() async { events.append("refresh.stop") }
     func stopProductionPublisher() async { events.append("publisher.stop") }
     func stopProductionNotifications() async { events.append("notifications.stop") }
@@ -202,6 +218,14 @@ private final class RecordingProductionLifecycleServices: ProductionLifecycleSer
     func stopProductionMenu() async { events.append("menu.stop") }
 }
 #endif
+}
+
+@MainActor
+private final class RecordingTerminationRecoveryMonitor: QuotaRecoveryMonitoring {
+    private(set) var starts = 0
+    private(set) var stops = 0
+    func start(using token: QuotaRecoveryRequestToken) { starts += 1 }
+    func stop() { stops += 1 }
 }
 
 @MainActor
