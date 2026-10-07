@@ -21,6 +21,67 @@ struct AppDelegateLifecycleTests {
         "recovery.stop", "refresh.stop", "publisher.stop", "notifications.stop", "system.stop", "menu.stop",
     ])
 }
+
+@Test(arguments: [false, true])
+func recoveryTokenAcquisitionCannotRegisterAfterStop(restartBeforeOldToken: Bool) async {
+    let tokenGate = LifecycleStartGate()
+    let monitor = RecordingTerminationRecoveryMonitor()
+    let recovery = QuotaRecoveryLifecycleController(monitor: monitor, requestToken: {
+        await tokenGate.pause()
+        return QuotaRecoveryRequestToken { _ in }
+    })
+    let services = RecordingProductionLifecycleServices(recovery: recovery)
+    let lifecycle = ProductionLifecycleController(services: services)
+    let oldStart = Task { await lifecycle.start() }
+    await tokenGate.waitForEntry(1)
+    await lifecycle.stop()
+    #expect(monitor.starts == 0)
+    #expect(monitor.stops == 1)
+    #expect(!monitor.isRegistered)
+    if restartBeforeOldToken {
+        let newStart = Task { await lifecycle.start() }
+        await tokenGate.waitForEntry(2)
+        tokenGate.resume(2)
+        await newStart.value
+        #expect(monitor.starts == 1)
+        #expect(monitor.isRegistered)
+    }
+    tokenGate.resume(1)
+    await oldStart.value
+    #expect(monitor.starts == (restartBeforeOldToken ? 1 : 0))
+    #expect(monitor.stops == 1)
+    #expect(monitor.isRegistered == restartBeforeOldToken)
+    if restartBeforeOldToken { await lifecycle.stop() }
+}
+
+@Test(arguments: [false, true])
+func stoppedRefreshStartupCannotAdmitLateRecovery(restartBeforeOldRefresh: Bool) async {
+    let refreshGate = LifecycleStartGate()
+    let monitor = RecordingTerminationRecoveryMonitor()
+    let recovery = QuotaRecoveryLifecycleController(monitor: monitor, requestToken: {
+        QuotaRecoveryRequestToken { _ in }
+    })
+    let services = RecordingProductionLifecycleServices(recovery: recovery, startRefresh: { await refreshGate.pause() })
+    let lifecycle = ProductionLifecycleController(services: services)
+    let oldStart = Task { await lifecycle.start() }
+    await refreshGate.waitForEntry(1)
+    await lifecycle.stop()
+    if restartBeforeOldRefresh {
+        let newStart = Task { await lifecycle.start() }
+        await refreshGate.waitForEntry(2)
+        refreshGate.resume(2)
+        await newStart.value
+        #expect(monitor.starts == 1)
+        #expect(monitor.isRegistered)
+    }
+    refreshGate.resume(1)
+    await oldStart.value
+    #expect(services.events.filter { $0 == "recovery.start" }.count == (restartBeforeOldRefresh ? 1 : 0))
+    #expect(monitor.starts == (restartBeforeOldRefresh ? 1 : 0))
+    #expect(monitor.stops == 1)
+    #expect(monitor.isRegistered == restartBeforeOldRefresh)
+    if restartBeforeOldRefresh { await lifecycle.stop() }
+}
 #endif
 
 #if NEEDLBAR_ACCEPTANCE_DRIVER
@@ -203,14 +264,22 @@ private final class RecordingAcceptanceLifecycleServices: AcceptanceLifecycleSer
 @MainActor
 private final class RecordingProductionLifecycleServices: ProductionLifecycleServing {
     private(set) var events: [String] = []
+    private let recovery: QuotaRecoveryLifecycleController?
+    private let startRefresh: @MainActor () async -> Void
+
+    init(recovery: QuotaRecoveryLifecycleController? = nil,
+         startRefresh: @escaping @MainActor () async -> Void = {}) {
+        self.recovery = recovery
+        self.startRefresh = startRefresh
+    }
 
     func startProductionMenu() async { events.append("menu.start") }
     func startProductionSystem() async { events.append("system.start") }
     func startProductionNotifications() async { events.append("notifications.start") }
     func startProductionPublisher() async { events.append("publisher.start") }
-    func startProductionRefresh() async { events.append("refresh.start") }
-    func startProductionRecovery() async { events.append("recovery.start") }
-    func stopProductionRecovery() { events.append("recovery.stop") }
+    func startProductionRefresh() async { events.append("refresh.start"); await startRefresh() }
+    func startProductionRecovery() async { events.append("recovery.start"); await recovery?.start() }
+    func stopProductionRecovery() { events.append("recovery.stop"); recovery?.stop() }
     func stopProductionRefresh() async { events.append("refresh.stop") }
     func stopProductionPublisher() async { events.append("publisher.stop") }
     func stopProductionNotifications() async { events.append("notifications.stop") }
@@ -224,8 +293,34 @@ private final class RecordingProductionLifecycleServices: ProductionLifecycleSer
 private final class RecordingTerminationRecoveryMonitor: QuotaRecoveryMonitoring {
     private(set) var starts = 0
     private(set) var stops = 0
-    func start(using token: QuotaRecoveryRequestToken) { starts += 1 }
-    func stop() { stops += 1 }
+    private(set) var isRegistered = false
+    func start(using token: QuotaRecoveryRequestToken) { starts += 1; isRegistered = true }
+    func stop() { stops += 1; isRegistered = false }
+}
+
+@MainActor
+private final class LifecycleStartGate {
+    private var entries = 0
+    private var pending: [Int: CheckedContinuation<Void, Never>] = [:]
+    private var entryWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+
+    func pause() async {
+        entries += 1
+        let entry = entries
+        await withCheckedContinuation { continuation in
+            pending[entry] = continuation
+            let ready = entryWaiters.filter { $0.0 <= entries }
+            entryWaiters.removeAll { $0.0 <= entries }
+            ready.forEach { $0.1.resume() }
+        }
+    }
+
+    func waitForEntry(_ count: Int) async {
+        guard entries < count else { return }
+        await withCheckedContinuation { entryWaiters.append((count, $0)) }
+    }
+
+    func resume(_ entry: Int) { pending.removeValue(forKey: entry)?.resume() }
 }
 
 @MainActor
