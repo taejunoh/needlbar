@@ -76,6 +76,22 @@ card shell. It covers Claude, Codex, Cursor, CPU, RAM, Disk, Network, Layout,
 Notifications, and Data while preserving internal row spacing. Authentication,
 quota retrieval and refresh, collectors, and refresh timers are unchanged.
 
+### Claude refresh reliability (v0.3.9 prepared)
+
+The prepared v0.3.9 changes classify Claude quota freshness from the actual
+successful observation time, retain last-known values when that time is
+unknown, and distinguish direct quota from Claude Code status-line evidence.
+Wake and network recovery signals share scheduling with periodic refreshes,
+deduplicating overlapping attempts while preserving single-flight execution
+and user-request ordering. Generation checks fence lifecycle callbacks and
+local attempt diagnostics across stop and restart.
+
+Open provider, Overview, dashboard, and Settings views age cached quota
+readings without extra provider requests or dashboard history samples.
+Credential renewal and cancellation of blocked synchronous calls are not
+implemented; expired credentials may still prevent quota retrieval. Native
+overnight, quota-reset, and sustained unattended acceptance remain unverified.
+
 ### Usage and quota monitoring
 
 Needlbar presents locally aggregated token usage and estimated cost together with provider quota windows and reset times. Overview combines today’s tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status, and Settings. Provider views show today’s usage/cost, input/output/cache token detail, quota/reset information, freshness, and safe recovery states. Usage and quota are independent refresh streams; a failure in one does not replace a previously valid value with zero.
