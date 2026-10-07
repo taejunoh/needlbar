@@ -334,7 +334,7 @@ additional test path and stage it explicitly after diff review; no production
 rule relaxation or entire-directory staging is allowed.
 
 ```bash
-env PATH=/Users/taejunoh/.cargo/bin:"$PATH" MACOSX_DEPLOYMENT_TARGET=14.0 make swift-test SWIFT_TEST_FILTER='ClaudeQuotaPresentationSelectorTests|ClaudeQuotaFreshnessPresentationTests|ClaudeStatusLineFallbackIntegrationTests'
+env PATH=/Users/taejunoh/.cargo/bin:"$PATH" MACOSX_DEPLOYMENT_TARGET=14.0 make swift-test SWIFT_TEST_FILTER='ClaudeQuotaPresentationSelectorTests\|ClaudeQuotaFreshnessPresentationTests\|ClaudeStatusLineFallbackIntegrationTests'
 env PATH=/Users/taejunoh/.cargo/bin:"$PATH" MACOSX_DEPLOYMENT_TARGET=14.0 make test
 git diff --check
 git add Sources/NeedlbarCore/Presentation/ClaudeQuotaPresentationSelector.swift Sources/Needlbar/Modules/Provider/ProviderPopoverView.swift Sources/Needlbar/Modules/Overview/SystemDashboardModel.swift Tests/NeedlbarCoreTests/ClaudeQuotaPresentationSelectorTests.swift Tests/NeedlbarTests/ClaudeStatusLineFallbackIntegrationTests.swift Tests/NeedlbarTests/ClaudeQuotaFreshnessPresentationTests.swift
@@ -736,7 +736,7 @@ with zero repository/auth/config actions.
 - [ ] **Verify and commit.**
 
 ```bash
-env PATH=/Users/taejunoh/.cargo/bin:"$PATH" MACOSX_DEPLOYMENT_TARGET=14.0 make swift-test SWIFT_TEST_FILTER='QuotaRecoveryMonitorTests|QuotaRefreshDiagnosticsReporterTests|RefreshCoordinatorTests|AppDelegateLifecycleTests|reporter'
+env PATH=/Users/taejunoh/.cargo/bin:"$PATH" MACOSX_DEPLOYMENT_TARGET=14.0 make swift-test SWIFT_TEST_FILTER='QuotaRecoveryMonitorTests\|QuotaRefreshDiagnosticsReporterTests\|RefreshCoordinatorTests\|AppDelegateLifecycleTests\|reporter'
 env PATH=/Users/taejunoh/.cargo/bin:"$PATH" MACOSX_DEPLOYMENT_TARGET=14.0 make test
 git diff --check
 git add Sources/NeedlbarCore/Refresh/QuotaRefreshActivity.swift Sources/NeedlbarCore/Refresh/RefreshCoordinator.swift Sources/Needlbar/App/QuotaRecoveryMonitor.swift Sources/Needlbar/Diagnostics/QuotaRefreshDiagnosticsReporter.swift Sources/Needlbar/App/AppDelegate.swift Tests/NeedlbarTests/QuotaRecoveryMonitorTests.swift Tests/NeedlbarTests/QuotaRefreshDiagnosticsReporterTests.swift Tests/NeedlbarCoreTests/RefreshCoordinatorTests.swift Tests/NeedlbarTests/AppDelegateLifecycleTests.swift
@@ -886,7 +886,7 @@ after reviewing its diff; do not stage an entire test directory.
 - [ ] **Verify, commit, and hand off evidence with limits.**
 
 ```bash
-env PATH=/Users/taejunoh/.cargo/bin:"$PATH" MACOSX_DEPLOYMENT_TARGET=14.0 make swift-test SWIFT_TEST_FILTER='ClaudeQuotaFreshnessPresentationTests|ClaudeStatusLineFallbackIntegrationTests|SystemDashboardPopoverTests|ClaudeUsageConnectionRowLayoutTests|MenuBarControllerTests'
+env PATH=/Users/taejunoh/.cargo/bin:"$PATH" MACOSX_DEPLOYMENT_TARGET=14.0 make swift-test SWIFT_TEST_FILTER='ClaudeQuotaFreshnessPresentationTests\|ClaudeStatusLineFallbackIntegrationTests\|SystemDashboardPopoverTests\|ClaudeUsageConnectionRowLayoutTests\|MenuBarControllerTests'
 env PATH=/Users/taejunoh/.cargo/bin:"$PATH" MACOSX_DEPLOYMENT_TARGET=14.0 make test
 git diff --check
 git add Sources/Needlbar/Modules/Provider/QuotaPresentationTicker.swift Sources/Needlbar/Modules/Provider/ProviderPopoverView.swift Sources/Needlbar/Modules/Overview/OverviewPopoverView.swift Sources/Needlbar/Modules/Overview/SystemDashboardModel.swift Sources/Needlbar/Modules/Overview/SystemDashboardPopoverView.swift Sources/Needlbar/Settings/SettingsView.swift Tests/NeedlbarTests/ClaudeQuotaFreshnessPresentationTests.swift
