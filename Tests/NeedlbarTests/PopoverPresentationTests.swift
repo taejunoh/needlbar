@@ -5,13 +5,16 @@ import Testing
 import NeedlbarClaudeStatusLineSupport
 
 @Test func freshUsageAndQuotaRenderKnownValues() throws {
+    let now = Date()
     let presentation = ProviderPopoverPresentation(snapshot: snapshot(
         provider: .claude,
         usage: usage(totalTokens: 1_420, cacheWriteTokens: 80),
         quota: quota(usedPercent: 35),
         usageStatus: .fresh,
-        quotaStatus: .fresh
-    ))
+        quotaStatus: .fresh,
+        updatedAt: now,
+        quotaLastSuccessfulAt: now
+    ), now: now)
 
     #expect(presentation.tokensToday == "1.42K")
     #expect(presentation.estimatedCostToday == "$2.50")

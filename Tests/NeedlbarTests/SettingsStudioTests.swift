@@ -63,8 +63,8 @@ struct SettingsStudioTests {
             notificationService: QuotaNotificationService(store: ProviderSnapshotStore(), preferences: preferences),
             openCursorSpending: {}
         )
-        let lastSuccess = Date(timeIntervalSince1970: 10_000)
-        let failedAttempt = Date(timeIntervalSince1970: 20_000)
+        let lastSuccess = Date()
+        let failedAttempt = lastSuccess.addingTimeInterval(10_000)
         let quota = QuotaSnapshot(windows: [
             try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil),
         ])

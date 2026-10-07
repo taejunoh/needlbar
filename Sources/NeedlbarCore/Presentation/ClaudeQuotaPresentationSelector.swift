@@ -9,11 +9,11 @@ public enum ClaudeWindowSource: Equatable, Sendable {
 public struct DisplayedClaudeWindow: Equatable, Sendable {
     public let remainingPercent: Double
     public let source: ClaudeWindowSource
-    public let observedAt: Date
+    public let observedAt: Date?
     public let resetsAt: Date?
     public let isLastKnown: Bool
 
-    public init(remainingPercent: Double, source: ClaudeWindowSource, observedAt: Date, resetsAt: Date?, isLastKnown: Bool) {
+    public init(remainingPercent: Double, source: ClaudeWindowSource, observedAt: Date?, resetsAt: Date?, isLastKnown: Bool) {
         self.remainingPercent = remainingPercent
         self.source = source
         self.observedAt = observedAt
@@ -30,6 +30,7 @@ public struct ClaudeQuotaSelection: Equatable, Sendable {
 
 public enum ClaudeQuotaPresentationSelector {
     public static let recentStatusLineInterval: TimeInterval = 15 * 60
+    public static let recentDirectInterval: TimeInterval = 15 * 60
 
     public static func select(snapshot: ProviderSnapshot, now: Date) -> ClaudeQuotaSelection {
         guard snapshot.provider == .claude else {
@@ -57,36 +58,54 @@ public enum ClaudeQuotaPresentationSelector {
         if let directDisplay, !directDisplay.isLastKnown { return directDisplay }
         if let statusDisplay, !statusDisplay.isLastKnown { return statusDisplay }
         switch (directDisplay, statusDisplay) {
-        case let (.some(lhs), .some(rhs)):
-            return lhs.observedAt >= rhs.observedAt ? lhs : rhs
-        case let (.some(lhs), nil): return lhs
-        case let (nil, .some(rhs)): return rhs
+        case let (.some(direct), .some(bridge)):
+            switch (direct.observedAt, bridge.observedAt) {
+            case let (.some(a), .some(b)): return a >= b ? direct : bridge
+            case (.some, nil): return direct
+            case (nil, .some): return bridge
+            case (nil, nil): return direct
+            }
+        case let (.some(direct), nil): return direct
+        case let (nil, .some(bridge)): return bridge
         case (nil, nil): return nil
         }
     }
 
-    private static func directWindow(_ window: QuotaWindow, snapshot: ProviderSnapshot, now: Date) -> DisplayedClaudeWindow {
-        let observedAt = snapshot.quotaLastSuccessfulAt ?? snapshot.updatedAt
+    private static func usableTime(_ date: Date?, now: Date) -> Date? {
+        guard now.timeIntervalSince1970.isFinite, let date,
+              date.timeIntervalSince1970.isFinite, date <= now else { return nil }
+        return date
+    }
+
+    public static func directWindow(
+        _ window: QuotaWindow, snapshot: ProviderSnapshot, now: Date
+    ) -> DisplayedClaudeWindow {
+        let observed = usableTime(snapshot.quotaLastSuccessfulAt, now: now)
+        let recent = observed.map { now.timeIntervalSince($0) < recentDirectInterval } ?? false
+        let resetValid = window.resetsAt.map {
+            $0.timeIntervalSince1970.isFinite && $0 > now
+        } ?? true
         return DisplayedClaudeWindow(
             remainingPercent: window.remainingPercent,
             source: .direct,
-            observedAt: observedAt,
-            resetsAt: window.resetsAt,
-            isLastKnown: snapshot.quotaStatus != .fresh || (window.resetsAt.map { now >= $0 } ?? false)
+            observedAt: observed,
+            resetsAt: window.resetsAt.flatMap { $0.timeIntervalSince1970.isFinite ? $0 : nil },
+            isLastKnown: snapshot.quotaStatus != .fresh || !recent || !resetValid
         )
     }
 
     private static func statusLineWindow(_ window: StatusLineWindowObservation, now: Date) -> DisplayedClaudeWindow? {
         guard window.usedPercent.isFinite, (0...100).contains(window.usedPercent),
-              window.receivedAt.timeIntervalSince1970.isFinite,
               window.resetsAt?.timeIntervalSince1970.isFinite ?? true else { return nil }
-        let age = now.timeIntervalSince(window.receivedAt)
-        let recentlyReported = age >= 0 && age <= recentStatusLineInterval && (window.resetsAt.map { now < $0 } ?? true)
+        let observed = usableTime(window.receivedAt, now: now)
+        let age = observed.map { now.timeIntervalSince($0) }
+        let recentlyReported = age.map { $0 <= recentStatusLineInterval } == true
+            && (window.resetsAt.map { $0 > now } ?? true)
         return DisplayedClaudeWindow(
             remainingPercent: 100 - window.usedPercent,
             source: .claudeCodeStatusLine,
-            observedAt: window.receivedAt,
-            resetsAt: window.resetsAt,
+            observedAt: observed,
+            resetsAt: window.resetsAt.flatMap { $0.timeIntervalSince1970.isFinite ? $0 : nil },
             isLastKnown: !recentlyReported
         )
     }

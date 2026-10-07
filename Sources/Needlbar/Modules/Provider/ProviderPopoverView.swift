@@ -15,7 +15,7 @@ public struct ClaudePopoverQuotaDetail: Equatable, Sendable, Identifiable {
     public let isLastKnown: Bool
     public let sourceLabel: String
     public let observationLabel: String
-    public let observedAt: Date
+    public let observedAt: Date?
 
     init(id: String, title: String, window: DisplayedClaudeWindow) {
         self.id = id
@@ -25,7 +25,7 @@ public struct ClaudePopoverQuotaDetail: Equatable, Sendable, Identifiable {
         sourceLabel = window.source == .claudeCodeStatusLine ? "Reported by Claude Code" : "Claude usage"
         observationLabel = window.source == .claudeCodeStatusLine ? "Received locally" : "Last checked"
         observedAt = window.observedAt
-        resetCaption = window.isLastKnown ? nil : MetricFormatter.reset(window.resetsAt).map { "Resets \($0)" }
+        resetCaption = window.isLastKnown ? nil : MetricFormatter.reset(window.resetsAt).map { "Resets \($0)" } ?? "Reset unavailable"
     }
 }
 
@@ -67,46 +67,48 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
         cacheWriteTokens = snapshot.usage.map { MetricFormatter.tokens($0.today.cacheWriteTokens) }
         quotaWindows = snapshot.quota?.windows ?? []
         usageFreshness = PresentationFreshness(snapshot.usageStatus)
-        quotaFreshness = PresentationFreshness(snapshot.quotaStatus)
+        var resolvedQuotaFreshness = PresentationFreshness(snapshot.quotaStatus)
         if snapshot.provider == .claude {
             let selected = ClaudeQuotaPresentationSelector.select(snapshot: snapshot, now: now)
             claudeFiveHour = selected.fiveHour.map { .init(id: "claude.session", title: "Session", window: $0) }
             claudeSevenDay = selected.sevenDay.map { .init(id: "claude.weekly", title: "Weekly", window: $0) }
             claudeFable = selected.fable.map { .init(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", window: $0) }
             fableIsLastKnown = selected.fable?.isLastKnown ?? false
-            fableLastCheckedText = selected.fable.flatMap { $0.isLastKnown ? Self.localizedDateTime($0.observedAt) : nil }
+            fableLastCheckedText = selected.fable.flatMap { window in
+                window.isLastKnown ? window.observedAt.map(Self.localizedDateTime) : nil
+            }
 
             let main = [selected.fiveHour, selected.sevenDay].compactMap { $0 }
             let fallback = quotaWindows.filter { !["claude.session", "claude.weekly", QuotaWindow.claudeFableWeeklyID].contains($0.id) }
-            claudeOtherWindows = main.isEmpty ? fallback.map { window in
-                .init(id: window.id, title: window.title, window: .init(
-                    remainingPercent: window.remainingPercent, source: .direct,
-                    observedAt: snapshot.quotaLastSuccessfulAt ?? snapshot.updatedAt,
-                    resetsAt: window.resetsAt,
-                    isLastKnown: snapshot.quotaStatus != .fresh || (window.resetsAt.map { now >= $0 } ?? false)
-                ))
-            } : []
-            let recent = main.filter { !$0.isLastKnown }
-            let directFallback = main.isEmpty && snapshot.quotaStatus == .fresh
-                ? fallback.filter { $0.resetsAt.map { now < $0 } ?? true }
+            let projectedFallback: [DisplayedClaudeWindow] = main.isEmpty
+                ? fallback.map { ClaudeQuotaPresentationSelector.directWindow($0, snapshot: snapshot, now: now) }
                 : []
-            hasRecentClaudeQuota = !recent.isEmpty || !directFallback.isEmpty
-            headlineQuotaRemaining = (recent.map(\.remainingPercent) + directFallback.map(\.remainingPercent))
+            claudeOtherWindows = zip(fallback, projectedFallback).map { window, display in
+                ClaudePopoverQuotaDetail(id: window.id, title: window.title, window: display)
+            }
+            let recent = main.filter { !$0.isLastKnown }
+            let recentFallback = projectedFallback.filter { !$0.isLastKnown }
+            hasRecentClaudeQuota = !recent.isEmpty || !recentFallback.isEmpty
+            headlineQuotaRemaining = (recent.map(\.remainingPercent) + recentFallback.map(\.remainingPercent))
                 .min().map(MetricFormatter.quotaRemaining)
             lastKnownQuotaRemaining = hasRecentClaudeQuota ? nil :
-                (main.map(\.remainingPercent) + fallback.map(\.remainingPercent))
+                (main.map(\.remainingPercent) + projectedFallback.map(\.remainingPercent))
                     .min().map(MetricFormatter.quotaRemaining)
 
-            let primary = recent.min { $0.remainingPercent < $1.remainingPercent }
-                ?? main.min { $0.remainingPercent < $1.remainingPercent }
+            let primary = (recent + recentFallback).min { $0.remainingPercent < $1.remainingPercent }
+                ?? (main + projectedFallback).min { $0.remainingPercent < $1.remainingPercent }
             quotaSourceText = primary.map { $0.source == .claudeCodeStatusLine ? "Reported by Claude Code" : "Claude usage" }
                 ?? (!fallback.isEmpty ? "Claude usage" : nil)
             quotaObservationLabel = primary?.source == .claudeCodeStatusLine ? "Received locally" : "Last checked"
-            quotaLastCheckedText = primary.map { Self.localizedDateTime($0.observedAt) }
-                ?? (snapshot.quotaStatus != .fresh ? snapshot.quotaLastSuccessfulAt.map(Self.localizedDateTime) : nil)
-            quotaIsLastKnown = !hasRecentClaudeQuota && (!main.isEmpty || !fallback.isEmpty)
-            quotaUnavailable = !hasRecentClaudeQuota && main.isEmpty && fallback.isEmpty
+            quotaLastCheckedText = primary?.observedAt.map(Self.localizedDateTime)
+            quotaIsLastKnown = !hasRecentClaudeQuota && (!main.isEmpty || !projectedFallback.isEmpty)
+            quotaUnavailable = !hasRecentClaudeQuota && main.isEmpty && projectedFallback.isEmpty
             quotaFailureReasonText = hasRecentClaudeQuota ? nil : snapshot.claudeQuotaFailureReason?.displayText
+            if hasRecentClaudeQuota {
+                resolvedQuotaFreshness = .fresh
+            } else if (!main.isEmpty || !projectedFallback.isEmpty), snapshot.quotaStatus == .fresh {
+                resolvedQuotaFreshness = .stale
+            }
         } else {
             claudeFiveHour = nil
             claudeSevenDay = nil
@@ -125,6 +127,7 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
             quotaFailureReasonText = nil
             quotaLastCheckedText = nil
         }
+        quotaFreshness = resolvedQuotaFreshness
     }
 
     public var requiresProviderSignIn: Bool {
@@ -163,7 +166,11 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
 }
 
 public struct ProviderPopoverView: View {
-    private let presentation: ProviderPopoverPresentation
+    private let snapshot: ProviderSnapshot
+    @State private var presentationNow = Date()
+    private var presentation: ProviderPopoverPresentation {
+        ProviderPopoverPresentation(snapshot: snapshot, now: presentationNow)
+    }
     private let onRetry: () -> Void
     private let onAuthenticationAction: (ProviderAuthenticationAction) -> Bool
     @State private var claudeUsageOpenFailed = false
@@ -173,7 +180,7 @@ public struct ProviderPopoverView: View {
         onRetry: @escaping () -> Void = {},
         onAuthenticationAction: @escaping (ProviderAuthenticationAction) -> Bool = { _ in false }
     ) {
-        presentation = ProviderPopoverPresentation(snapshot: snapshot)
+        self.snapshot = snapshot
         self.onRetry = onRetry
         self.onAuthenticationAction = onAuthenticationAction
     }
@@ -270,6 +277,7 @@ public struct ProviderPopoverView: View {
         }
         .padding()
         .frame(width: 300)
+        .task { await QuotaPresentationTicker.run { presentationNow = $0 } }
     }
 
     @ViewBuilder
@@ -296,8 +304,10 @@ public struct ProviderPopoverView: View {
                 Text(detail.sourceLabel).font(.caption).foregroundStyle(.secondary)
                     .accessibilityLabel(detail.sourceLabel)
                 if showObservation {
-                    Text("\(detail.observationLabel) \(DateFormatter.localizedString(from: detail.observedAt, dateStyle: .medium, timeStyle: .short))")
-                        .font(.caption).foregroundStyle(.secondary)
+                    if let observedAt = detail.observedAt {
+                        Text("\(detail.observationLabel) \(DateFormatter.localizedString(from: observedAt, dateStyle: .medium, timeStyle: .short))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 if detail.isLastKnown {
                     Text("Last known").font(.caption).foregroundStyle(.secondary)

@@ -149,8 +149,9 @@ import NeedlbarClaudeStatusLineSupport
 }
 
 @Test func dashboardPresentationDefaultsToRemainingEvenWhenTokenUsageExists() {
+    let now = Date(timeIntervalSince1970: 10_000)
     let presentation = SystemDashboardPresentation(
-        snapshot: dashboardFixtureSnapshot(), configuration: SystemMonitorConfiguration()
+        snapshot: dashboardFixtureSnapshot(), configuration: SystemMonitorConfiguration(), now: now
     )
 
     #expect(presentation.ai.first(where: { $0.provider == .claude })?.value == "32%")
@@ -294,8 +295,9 @@ import NeedlbarClaudeStatusLineSupport
 }
 
 @Test func dashboardFableDetailHandlesMissingAndResetlessWindowsWithoutActions() throws {
+    let now = Date(timeIntervalSince1970: 10_000)
     let defaultPresentation = SystemDashboardPresentation(
-        snapshot: dashboardFixtureSnapshot(), configuration: SystemMonitorConfiguration()
+        snapshot: dashboardFixtureSnapshot(), configuration: SystemMonitorConfiguration(), now: now
     )
     let defaultClaude = try #require(defaultPresentation.ai.first { $0.provider == .claude })
     #expect(defaultClaude.fable?.remaining == "—")
@@ -311,7 +313,7 @@ import NeedlbarClaudeStatusLineSupport
     )
     let resetlessPresentation = SystemDashboardPresentation(
         snapshot: dashboardFixtureSnapshot(claudeQuotaWindows: [fableOnly]),
-        configuration: SystemMonitorConfiguration()
+        configuration: SystemMonitorConfiguration(), now: now
     )
     let resetlessClaude = try #require(resetlessPresentation.ai.first { $0.provider == .claude })
     #expect(resetlessClaude.fable?.remaining == "75%")
@@ -540,13 +542,14 @@ import NeedlbarClaudeStatusLineSupport
 }
 
 @Test func dashboardReadabilityPreservesSeparateFableSemantics() throws {
+    let now = Date(timeIntervalSince1970: 10_000)
     let windows = [
         try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 68, resetsAt: nil),
         try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", usedPercent: 100, resetsAt: Date(timeIntervalSince1970: 20_000))
     ]
     let presentation = SystemDashboardPresentation(
         snapshot: dashboardFixtureSnapshot(claudeQuotaWindows: windows),
-        configuration: SystemMonitorConfiguration()
+        configuration: SystemMonitorConfiguration(), now: now
     )
     let claude = try #require(presentation.ai.first { $0.provider == .claude })
 
@@ -637,12 +640,13 @@ import NeedlbarClaudeStatusLineSupport
 }
 
 @Test func dashboardCompactClaudeQuotaLabelsFreshMissingAndRetainedValues() throws {
+    let now = Date(timeIntervalSince1970: 10_000)
     let fresh = try #require(SystemDashboardPresentation(
-        snapshot: dashboardFixtureSnapshot(), configuration: .init()
+        snapshot: dashboardFixtureSnapshot(), configuration: .init(), now: now
     ).ai.first { $0.provider == .claude })
     let missing = try #require(SystemDashboardPresentation(
         snapshot: dashboardFixtureSnapshot(claudeQuotaStatus: .requiresAuthentication, claudeHasQuota: false),
-        configuration: .init()
+        configuration: .init(), now: now
     ).ai.first { $0.provider == .claude })
 
     #expect(fresh.compactQuotaValue == "32%")
@@ -876,7 +880,8 @@ private func dashboardFixtureSnapshot(
                         : .fresh,
             updatedAt: providerUpdatedAt ?? date,
             claudeQuotaFailureReason: provider == .claude ? claudeQuotaFailureReason : nil,
-            quotaLastSuccessfulAt: provider == .claude && claudeQuotaFailureReason != nil ? date : nil,
+            quotaLastSuccessfulAt: provider == .claude && quota != nil
+                && (claudeQuotaFailureReason != nil || (claudeQuotaStatus ?? .fresh) == .fresh) ? date : nil,
             claudeStatusLineQuota: provider == .claude ? claudeStatusLineQuota : nil
         )
     }

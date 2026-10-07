@@ -9,6 +9,8 @@ protocol ProductionLifecycleServing: AnyObject {
     func startProductionNotifications() async
     func startProductionPublisher() async
     func startProductionRefresh() async
+    func startProductionRecovery() async
+    func stopProductionRecovery()
     func stopProductionRefresh() async
     func stopProductionPublisher() async
     func stopProductionNotifications() async
@@ -17,9 +19,36 @@ protocol ProductionLifecycleServing: AnyObject {
 }
 
 @MainActor
+final class QuotaRecoveryLifecycleController {
+    private let monitor: any QuotaRecoveryMonitoring
+    private let requestToken: @MainActor () async -> QuotaRecoveryRequestToken
+    private var generation: UInt64 = 0
+
+    init(monitor: any QuotaRecoveryMonitoring,
+         requestToken: @escaping @MainActor () async -> QuotaRecoveryRequestToken) {
+        self.monitor = monitor
+        self.requestToken = requestToken
+    }
+
+    func start() async {
+        guard !Task.isCancelled else { return }
+        let generation = generation
+        let token = await requestToken()
+        guard generation == self.generation, !Task.isCancelled else { return }
+        monitor.start(using: token)
+    }
+
+    func stop() {
+        generation &+= 1
+        monitor.stop()
+    }
+}
+
+@MainActor
 final class ProductionLifecycleController {
     private let services: any ProductionLifecycleServing
     private var running = false
+    private var generation: UInt64 = 0
 
     init(services: any ProductionLifecycleServing) {
         self.services = services
@@ -28,20 +57,26 @@ final class ProductionLifecycleController {
     func start() async {
         guard !running else { return }
         running = true
+        generation &+= 1
+        let generation = generation
         await services.startProductionMenu()
-        guard running else { return }
+        guard running, generation == self.generation else { return }
         await services.startProductionSystem()
-        guard running else { return }
+        guard running, generation == self.generation else { return }
         await services.startProductionNotifications()
-        guard running else { return }
+        guard running, generation == self.generation else { return }
         await services.startProductionPublisher()
-        guard running else { return }
+        guard running, generation == self.generation else { return }
         await services.startProductionRefresh()
+        guard running, generation == self.generation else { return }
+        await services.startProductionRecovery()
     }
 
     func stop() async {
         guard running else { return }
+        generation &+= 1
         running = false
+        services.stopProductionRecovery()
         await services.stopProductionRefresh()
         await services.stopProductionPublisher()
         await services.stopProductionNotifications()
@@ -50,6 +85,7 @@ final class ProductionLifecycleController {
     }
 
     func cancelStart() {
+        generation &+= 1
         running = false
     }
 }
@@ -112,6 +148,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let terminationController = AccessoryTerminationController()
     private let launch: AppLaunchConfiguration
     private var refreshCoordinator: RefreshCoordinator?
+    private var quotaRecoveryLifecycle: QuotaRecoveryLifecycleController?
+    private var quotaRefreshDiagnosticsReporter: QuotaRefreshDiagnosticsReporter?
     private var loginCoordinator: ProviderLoginCoordinator?
     private var snapshotExportController: SnapshotExportController?
     private var analyticsSnapshotStore: AnalyticsSnapshotStore?
@@ -149,6 +187,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             let usageFileWatcher = UsageFileWatcher()
             let bridge = RustBridge()
             let claudeFailureDiagnosticsReporter = ClaudeQuotaFailureDiagnosticsReporter(bridge: bridge)
+            let quotaRefreshDiagnosticsReporter = QuotaRefreshDiagnosticsReporter()
             let refreshCoordinator = RefreshCoordinator(
                 usageRepository: RustUsageRepository(bridge: bridge),
                 quotaRepository: RustQuotaRepository(bridge: bridge),
@@ -157,7 +196,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 statusLineRepository: ClaudeStatusLineCacheRepository(),
                 claudeQuotaOperationCompleted: {
                     claudeFailureDiagnosticsReporter.reportLatestClaudeQuotaFailure()
-                }
+                },
+                quotaAttemptObserver: { quotaRefreshDiagnosticsReporter.record($0) }
             )
             let loginCoordinator = ProviderLoginCoordinator(
                 refreshQuota: { provider in
@@ -184,6 +224,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 snapshotExportController: snapshotExportController
             )
             self.refreshCoordinator = refreshCoordinator
+            self.quotaRecoveryLifecycle = QuotaRecoveryLifecycleController(
+                monitor: QuotaRecoveryMonitor(), requestToken: { await refreshCoordinator.recoveryRequestToken() })
+            self.quotaRefreshDiagnosticsReporter = quotaRefreshDiagnosticsReporter
             self.loginCoordinator = loginCoordinator
             self.snapshotExportController = snapshotExportController
             self.analyticsSnapshotStore = analyticsSnapshotStore
@@ -307,6 +350,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             stopRefreshCoordinator: { [weak self] in
                 guard let self else { return }
+                self.stopProductionRecovery()
                 await self.widgetPublisher?.stop()
                 await self.refreshCoordinator?.stop()
             },
@@ -390,6 +434,12 @@ extension AppDelegate: ProductionLifecycleServing {
     func startProductionRefresh() async {
         await refreshCoordinator?.start()
     }
+
+    func startProductionRecovery() async {
+        await quotaRecoveryLifecycle?.start()
+    }
+
+    func stopProductionRecovery() { quotaRecoveryLifecycle?.stop() }
 
     func stopProductionRefresh() async {
         await refreshCoordinator?.stop()

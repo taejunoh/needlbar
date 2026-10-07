@@ -1,5 +1,106 @@
 # Needlbar Development Status
 
+## 2026-10-07 Claude refresh reliability — implementation verified
+
+The user approved pursuing Claude refresh reliability, compact presentation,
+and clearer AI cost/quota distinctions, selecting option A: name the single
+most-constrained quota window in the summary and retain other windows in details.
+Work is separated into sequential specification/plan/implementation increments.
+The first written specification is
+`docs/superpowers/specs/2026-10-07-claude-refresh-reliability-design.md`;
+the user approved the written specification. The implementation plan is committed
+at `d86d042`, and Task 1 is complete at `e79eadc` on
+`codex/claude-refresh-reliability` in the existing linked worktree. Source-aware
+freshness now uses actual success time, preserves unknown-time last-known
+values, and shares policy across legacy/popover/dashboard/Settings paths.
+Focused tests, the full `make test` gate, and `git diff --check` passed;
+independent spec/quality review is approved. Existing synthetic fresh fixtures
+were corrected without relaxing the production rule. Task 2 is complete at
+`3fa634a`: actual background-attempt timing, generation-fenced recovery inputs,
+periodic/recovery deduplication, and drain-time rechecking retain the existing
+physical single-flight and user-waiter ordering. The 47-test coordinator suite,
+full `make test` (702 Swift tests and all required contracts), and diff check
+passed; independent concurrency/spec/quality review is approved. Task 3 is
+complete at `57506d0`/`c47ed94`: production wake/path signals, typed local attempt
+evidence, and stop/restart claim fencing are implemented. Review caught delayed
+monitor startup after normal teardown; a gated regression and host-generation
+fix closed it. Scoped re-review is approved and the root full amended-tree gate
+exited 0 (718 Swift tests and all required contracts). No live wake/network or
+real blocked-Keychain claim is made. Task 4 is complete at `4338b81`: open
+provider, overview, dashboard, and Settings views age cached quota without
+additional provider requests or dashboard history samples. Cancellation,
+disconnection, source changes, and direct/bridge boundaries are covered.
+Independent Task 4 review is approved. Root final `make test` exited 0 with
+725 Swift tests, 1549 Rust tests passed / 1 ignored, and all required bridge,
+brand, widget, package, and notarization contracts. Whole-increment review of
+`b7ef436..cc5f488` is approved with no actionable findings. Integration awaits
+the user's choice; compact presentation and cost/quota workflows remain later
+increments. Installation, overnight/reset behavior, and sustained unattended
+recovery are unverified; credential renewal and blocked-call cancellation remain
+outside this increment.
+The pre-change baseline `env PATH=/Users/taejunoh/.cargo/bin:"$PATH"
+MACOSX_DEPLOYMENT_TARGET=14.0 make test` completed with exit 0, including the
+widget metadata contract. An earlier environment-only run omitted `rg` from
+PATH and is not the accepted baseline. Existing Swift unused-variable/result
+and unnecessary-await warnings remain; no new warnings are claimed resolved.
+Product changes remain local. No authentication state,
+installed bundle, or release was changed.
+The observed expired-credential failure remains unresolved; freshness
+and lifecycle improvements must not be presented as credential renewal.
+
+## 2026-10-05 v0.3.8 release continuation — canonical laptop replacement verified
+
+Documentation PR #17 passed macOS 14 CI run `37359896437` at reviewed
+head `927c9d6c8ef1f0b9892ee83ba3c1bbbbad9e7a07` and was merged with an
+exact head match at `a1f6c78cb553628c0548f41375172e06c00f8124`.
+The local complete `make test` also exited 0; narrow public-distribution
+contracts passed after the intended RED against the old README. Independent
+specification and quality/security reviews found no blocking issues. Current
+README public download/install references are v0.3.8; older release evidence
+and fixtures are preserved. Release tag and frozen commit remain unchanged.
+
+Homebrew Cask main was updated at
+`ef69168d6e1cff7b41d25dffd5decae1baf028b3` with only the version and verified
+public ZIP checksum changed. Editable and registered tap checkouts are clean
+at that commit. Ruby syntax, named-Cask style (no offenses), and fetch passed;
+the actual Homebrew cache download matched the measured public ZIP digest.
+Strict online audit exited 1 because the installed Command Line Tools do not
+support macOS 27. No CLT deletion, compatibility override, OS spoofing, or
+security-policy bypass was attempted. Online audit remains unverified.
+
+Canonical installed bundle:
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/latest/Needlbar.app`.
+Host and widget report 0.3.8 / 11. The verified public bundle was staged and
+rechecked for arm64 host/helper/widget, exact Developer ID/team, hardened
+runtime, strict deep signature, stapled ticket, and Gatekeeper acceptance.
+The same checks passed at the canonical path after replacement. One stable
+host process, PID `1656` at this checkpoint, runs from the exact canonical
+executable; no second host is running. Preferences, keychain entries, Claude
+configuration and unrelated runtime/source directories were not modified by
+the deployment operations.
+
+Recoverable old-app backup:
+`/Users/taejunoh/Developer/LFG/needlbar-runtime/backups/pre-v038.1jk3wHML/Needlbar-v0.3.7.zip`.
+Backup SHA-256:
+`2bf4f79f834c4d75adc541cb09fc64d6aecdcbda6c8591e1d6c233744ecdc6bf`.
+The ZIP was extracted and its 0.3.7 / 10 metadata, signature, identity,
+architecture, staple, and Gatekeeper acceptance were verified before relying
+on it. Initial shutdown waiting observed a process-exit race and stopped
+before any bundle rename. Read-only checks confirmed the old host had exited
+and the canonical old bundle was intact; guarded replacement then succeeded.
+No rollback was needed. The two verified transient old-app copies were moved
+to `/Users/taejunoh/.Trash/needlbar-v038-staging.3bJR76J3`, not permanently
+deleted. Empty staging directories were removed. Runtime now contains only
+the canonical `.app`; the compressed backup is retained.
+
+The known cache-only Overview URL was opened, but computer-use found no
+accessibility window for the running app. Actual installed Settings pixels
+were therefore not inspected; no screenshot or live-layout success is claimed.
+Manual macOS 14 native acceptance and live Claude quota recovery remain
+separate, unverified work. The authorized v0.3.8 publication, current README
+merge, tap update and canonical replacement are complete. This machine-local
+receipt is maintained separately from the immutable release commit/tag.
+
 ## 2026-10-05 v0.3.8 public artifact verified
 
 The human approved the independent tagged Release run `37354386798`.
