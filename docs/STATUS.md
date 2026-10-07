@@ -32,8 +32,12 @@ additional provider requests or dashboard history samples. Cancellation,
 disconnection, source changes, and direct/bridge boundaries are covered.
 Independent Task 4 review is approved. Root final `make test` exited 0 with
 725 Swift tests, 1549 Rust tests passed / 1 ignored, and all required bridge,
-brand, widget, package, and notarization contracts. Whole-increment review is
-the next verification step; integration awaits the user's choice.
+brand, widget, package, and notarization contracts. Whole-increment review of
+`b7ef436..cc5f488` is approved with no actionable findings. Integration awaits
+the user's choice; compact presentation and cost/quota workflows remain later
+increments. Installation, overnight/reset behavior, and sustained unattended
+recovery are unverified; credential renewal and blocked-call cancellation remain
+outside this increment.
 The pre-change baseline `env PATH=/Users/taejunoh/.cargo/bin:"$PATH"
 MACOSX_DEPLOYMENT_TARGET=14.0 make test` completed with exit 0, including the
 widget metadata contract. An earlier environment-only run omitted `rg` from
