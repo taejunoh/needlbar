@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-07
 
-**Status:** Design direction approved; written specification awaiting user review.
+**Status:** Written specification approved by the user on 2026-10-07.
 
 **Scope:** Make Claude quota freshness source-aware and improve recovery/liveness
 after lifecycle or connectivity changes, without changing authentication
