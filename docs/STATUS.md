@@ -1,5 +1,84 @@
 # Needlbar Development Status
 
+## 2026-10-07 v0.3.9 public artifact verified
+
+The human approved the independent tagged Release run `37673671189`.
+Both validate and publish completed SUCCESS at frozen release G
+`8eed3c5ffd1c554edf26498b91d3f806d10a9255`. Tagless run `37670706751`
+previously completed validation SUCCESS with publish SKIPPED. No agent
+submitted either protected approval or changed the environment policy.
+Annotated tag object `53fbfbc43fdcb94d4c66486d16d7ba566343c120`
+peels exactly to G and must never be retargeted.
+
+Public release: https://github.com/taejunoh/needlbar/releases/tag/v0.3.9
+Release ID: `406099202`; published `2026-10-07T19:38:12Z`, not draft or prerelease.
+Public ZIP asset ID: `619616780`; checksum sidecar asset ID: `619616774`.
+Public ZIP SHA-256:
+`fc0ce3a9bb7f01ba52b9054120b47539ea0a9176529767ed98b355f12b857047`.
+Public checksum sidecar SHA-256:
+`357f4fafb82cd3e5efacbcf16da2d28ee6c7112b8abe45ecfb6f15eccd130b9d`.
+The public checksum is distinct from the earlier tagless validation ZIP.
+
+Root downloaded exactly the ZIP and its single-record checksum sidecar to
+`/tmp/needlbar-v039-public.sEcPSN4T`. Both measured file hashes match the
+GitHub asset digests. The sidecar names `Needlbar-macos-arm64.zip` exactly.
+Extracted host and widget report 0.3.9 / 12; host, status-line helper, and
+widget are arm64. Strict deep Developer ID signature, team `3BMF4LM6TM`,
+hardened runtime, stapled ticket, and Gatekeeper acceptance passed. Archive
+inventory contains the production host/helper/widget/resources only, with no
+review, feasibility, acceptance, or fixture files.
+
+Unchanged smoke and brand-verifier scripts ran against the public download in
+`/tmp/needlbar-v039-public-smoke.F0u92rKg/dist/Needlbar.app`; smoke passed.
+Strict signature and public ZIP checksum passed again afterward. The smoke
+child exited; the sole canonical host remained the existing v0.3.8 app.
+The tagged workflow used same-run artifact `11506073489` (container digest
+`60e45499483c3031eb0b376f4b1f6f585f34f390c50180011acf56828c201998`).
+Its 726 Swift tests passed in 57.281 seconds; checkout and recursive vendor
+revision match G. The pre-existing missing-`rg` lexical-check limitation was
+independently completed against G as recorded below, not credited to CI.
+Public verification does not establish native macOS 14, overnight/reset,
+authentication renewal or sustained unattended recovery acceptance.
+
+Next: review/test/merge current public documentation and contracts, update the
+Homebrew Cask to this measured public SHA, then replace the canonical laptop
+bundle with rollback backup. Existing settings/authentication remain intact.
+
+## 2026-10-07 v0.3.9 release — tagged-run approval checkpoint (19:23 UTC)
+
+PR #18 merged after exact-head CI `37660771426` passed. Candidate PR #19
+merged at `8eed3c5ffd1c554edf26498b91d3f806d10a9255` after CI
+`37663392220` attempt 2 passed every test, package and smoke gate; Swift
+726 tests passed in 60.980 seconds. Attempt 1 was cancelled after its test
+log stopped progressing for about 14 minutes, with no assertion/crash failure
+recorded. One unchanged-head retry was approved after independent diagnosis;
+the original stall's cause remains unproven and both logs are retained locally.
+
+Frozen source G is `8eed3c5ffd1c554edf26498b91d3f806d10a9255`. Its committed
+tree equals the tested candidate's tree `9634827d4c24edf11adb14a0aaff4bfa47b03c49`.
+Tagless Release run `37670706751` completed successfully at exact G; its fresh
+artifact passed checksum, host/widget 0.3.9/build 12, arm64, strict signature,
+staple and Gatekeeper checks. That artifact is not a public distribution.
+Annotated tag `v0.3.9`, object `53fbfbc43fdcb94d4c66486d16d7ba566343c120`,
+was pushed and its remote peeled commit equals G. Tagged push run `37673671189`
+has exact G; its separate human `release` environment approval was received
+and validation resumed at 19:23:45 UTC.
+At this checkpoint, no approval was automated; public artifact, tap update or
+laptop replacement was not yet claimed. The canonical laptop app remained v0.3.8.
+The next gate was tagged validation/publication success and fresh public asset
+verification before documentation/tap advancement and installation.
+Existing dirty runtime notes, research, settings and authentication are preserved.
+
+Validation limitation: the runner lacks `rg`, and the existing widget contract's
+negated search incorrectly accepts a tool error. That CI lexical-exclusion
+subcheck is not credited. An independent fresh check of G's three widget/support
+Git blobs used the identical forbidden-dependency pattern: each Git read
+succeeded and each `rg` returned 1 (no matches). Those sources are unchanged
+from the locally tested candidate. Independent review accepted this narrow
+source-invariant completion; signing, notarization and archive gates are not
+replaced. Follow-up maintenance must add a fail-closed search-tool guard and a
+missing-`rg` regression. Original CI/log and exact-G check evidence are retained.
+
 ## 2026-10-07 v0.3.9 preparation — product CI repair pushed
 
 The user authorized merge, release, and canonical laptop replacement. The
