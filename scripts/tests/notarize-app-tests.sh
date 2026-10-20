@@ -32,6 +32,22 @@ fail() {
   exit 1
 }
 
+# Inline Ruby programs contain non-ASCII text (for example an em dash) and read
+# UTF-8 documents. Without a UTF-8 locale Ruby parses stdin scripts as US-ASCII,
+# so pin source and external encodings to UTF-8 for every invocation (-Ku).
+ruby() {
+  command ruby -Ku "$@"
+}
+
+# Regression guard: the same invocation path must work with the locale unset.
+(
+  unset LANG LC_ALL LC_CTYPE
+  ruby - "$ROOT/README.md" <<'RUBY'
+abort 'ruby must parse non-ASCII source as UTF-8' unless "\u2014" == "—"
+abort 'ruby must read external files as UTF-8' unless File.read(ARGV.fetch(0)).encoding == Encoding::UTF_8
+RUBY
+) || fail "ruby does not use UTF-8 source and external encodings when the locale is unset"
+
 mkdir -p "$fake_bin"
 
 cat > "$fake_bin/security" <<'EOF'
