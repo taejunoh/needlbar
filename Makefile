@@ -1,4 +1,4 @@
-.PHONY: rust swift swift-test acceptance-test acceptance-build-test native-acceptance-harness-test provider-brand-assets-test install-ci-ripgrep-test widget-extension-test package-test notarize-test test run package smoke settings-native-review
+.PHONY: rust swift swift-test acceptance-test acceptance-build-test native-acceptance-harness-test provider-brand-assets-test install-ci-ripgrep-test rust-release-profile-test widget-extension-test package-test notarize-test test run package smoke settings-native-review
 
 rust:
 	./scripts/build-rust.sh
@@ -72,6 +72,9 @@ bridge-archive-test:
 provider-brand-assets-test:
 	./scripts/tests/provider-brand-assets-tests.sh
 
+rust-release-profile-test:
+	./scripts/tests/rust-release-profile-tests.sh
+
 install-ci-ripgrep-test:
 	./scripts/tests/install-ci-ripgrep-tests.sh
 
@@ -86,6 +89,7 @@ notarize-test:
 	./scripts/tests/notarize-app-tests.sh
 
 test:
+	$(MAKE) rust-release-profile-test
 	cargo test --workspace --features bridge-test-runtime
 	sh ./scripts/tests/vendor-tokscale-test.sh
 	$(MAKE) bridge-archive-test

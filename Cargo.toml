@@ -27,3 +27,10 @@ core-foundation = "0.10"
 core-foundation-sys = "0.8.7"
 zeroize = "1.8"
 libc = "0.2"
+
+# Proc macros and build scripts run only on the build host. Rust before 1.98
+# strips macOS release dylibs with rust-objcopy, which can misalign the
+# __LINKEDIT string pool so macOS 27 dyld refuses to load the proc macro
+# (rust-lang/rust#157750). Shipped target artifacts keep the default profile.
+[profile.release.build-override]
+strip = false
