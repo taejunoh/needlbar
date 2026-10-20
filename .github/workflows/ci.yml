@@ -53,6 +53,10 @@ jobs:
       - name: Lint vendored tokscale-core
         run: cargo clippy --manifest-path vendor/tokscale-core/Cargo.toml --all-targets --all-features -- -D warnings
 
+      - name: Install pinned ripgrep
+        shell: bash
+        run: ./scripts/install-ci-ripgrep.sh
+
       - name: Test complete project
         run: make test
 

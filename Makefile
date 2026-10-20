@@ -1,4 +1,4 @@
-.PHONY: rust swift swift-test acceptance-test acceptance-build-test native-acceptance-harness-test provider-brand-assets-test widget-extension-test package-test notarize-test test run package smoke settings-native-review
+.PHONY: rust swift swift-test acceptance-test acceptance-build-test native-acceptance-harness-test provider-brand-assets-test install-ci-ripgrep-test widget-extension-test package-test notarize-test test run package smoke settings-native-review
 
 rust:
 	./scripts/build-rust.sh
@@ -72,6 +72,9 @@ bridge-archive-test:
 provider-brand-assets-test:
 	./scripts/tests/provider-brand-assets-tests.sh
 
+install-ci-ripgrep-test:
+	./scripts/tests/install-ci-ripgrep-tests.sh
+
 widget-extension-test:
 	./scripts/tests/widget-extension-search-guard-tests.sh
 	./scripts/tests/widget-extension-tests.sh
@@ -88,6 +91,7 @@ test:
 	$(MAKE) bridge-archive-test
 	$(MAKE) swift-test
 	$(MAKE) provider-brand-assets-test
+	$(MAKE) install-ci-ripgrep-test
 	$(MAKE) widget-extension-test
 	$(MAKE) package-test
 	$(MAKE) notarize-test

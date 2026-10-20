@@ -42,6 +42,10 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Install pinned ripgrep
+        shell: bash
+        run: ./scripts/install-ci-ripgrep.sh
+
       - name: Verify complete project
         run: make test
 
