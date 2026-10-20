@@ -8,7 +8,7 @@ installed bundle were inspected or changed.
 
 - **Fail-closed widget lexical check.** The negated `rg` search accepted a
   missing tool (127) or tool error (2) as "no forbidden match"; CI run
-  `39470502625` and Release run `37673671189` both logged
+  `39470502625` and the v0.3.9 tagged Release run both logged
   `rg: command not found` and then passed. The check now requires `rg` and
   accepts only exit 1. `widget-extension-search-guard-tests.sh` covers missing
   `rg`, `rg` error, and forbidden match (RED on the old script, GREEN now).
