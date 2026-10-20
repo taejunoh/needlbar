@@ -311,14 +311,17 @@ mod tests {
 
     // The runner's process deadline is deliberately tight. Keep independent
     // shell fixtures out of libtest's parallel scheduler while preserving the
-    // lifecycle test's two concurrent calls below.
+    // lifecycle test's two concurrent calls below. The guard only serializes;
+    // it protects no data, so a panicking holder leaves nothing inconsistent.
+    // Recover from poisoning so one failing fixture test reports alone instead
+    // of failing every later fixture test with a PoisonError.
     static PROCESS_FIXTURE_GUARD: OnceLock<TestMutex<()>> = OnceLock::new();
 
     fn process_fixture_guard() -> MutexGuard<'static, ()> {
         PROCESS_FIXTURE_GUARD
             .get_or_init(|| TestMutex::new(()))
             .lock()
-            .expect("process fixture guard is not poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     #[test]
@@ -413,13 +416,69 @@ mod tests {
         }
     }
 
+    const PREWARM_ARGUMENT: &str = "--needlbar-fixture-prewarm";
+
+    // macOS can hold the first exec of a newly written executable for up to
+    // ~3 s after spawn() has returned (exec policy assessment), which is longer
+    // than the runner's 2 s PROCESS_TIMEOUT. Pay that one-time cost here,
+    // outside the runner, so the timed run starts the fixture promptly and the
+    // fixture reaches its intended state before the deadline. The file is
+    // never modified after this exec.
     fn executable(script: &str) -> (tempfile::TempDir, PathBuf) {
+        let body = script
+            .strip_prefix("#!/bin/sh\n")
+            .expect("fixture scripts start with #!/bin/sh");
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("fixture-command");
-        fs::write(&path, script).unwrap();
+        fs::write(
+            &path,
+            format!("#!/bin/sh\nif [ \"$1\" = '{PREWARM_ARGUMENT}' ]; then exit 0; fi\n{body}"),
+        )
+        .unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(
+            TestCommand::new(&path)
+                .arg(PREWARM_ARGUMENT)
+                .status()
+                .unwrap()
+                .success(),
+            "fixture prewarm exec must succeed"
+        );
         (directory, path)
     }
+
+    // A fixture writes its pid with `echo ... > file`; the file can exist
+    // (pre-created or truncated) before the line is written. Only a complete
+    // newline-terminated pid proves the fixture reached that point.
+    fn complete_pid(path: &std::path::Path) -> Option<libc::pid_t> {
+        let text = fs::read_to_string(path).ok()?;
+        let line = text.strip_suffix('\n')?;
+        line.trim()
+            .parse()
+            .ok()
+            .filter(|pid: &libc::pid_t| *pid > 0)
+    }
+
+    // A SIGKILLed descendant is reparented to launchd and remains a zombie
+    // (kill(pid, 0) still succeeds on macOS) until reaped. Wait for that
+    // explicit condition; the bound is only a safety net and stays far below
+    // the fixtures' 30 s sleep, so a surviving descendant still fails.
+    fn process_is_gone_within(pid: libc::pid_t, bound: Duration) -> bool {
+        let deadline = Instant::now() + bound;
+        loop {
+            if unsafe { libc::kill(pid, 0) } != 0
+                && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+            {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    const REAP_SAFETY_BOUND: Duration = Duration::from_secs(5);
 
     #[test]
     fn test_only_executable_observes_closed_arguments_and_allowlisted_environment() {
@@ -458,12 +517,9 @@ mod tests {
         let result = runner.run(GitRequest::discover(std::env::temp_dir()));
         assert!(matches!(result, Err(GitRunnerError::TimedOut)));
         assert!(started.elapsed() >= PROCESS_TIMEOUT);
-        let child = fs::read_to_string(pid.path()).unwrap();
-        assert!(!TestCommand::new("/bin/kill")
-            .args(["-0", child.trim()])
-            .status()
-            .unwrap()
-            .success());
+        let child =
+            complete_pid(pid.path()).expect("fixture recorded its pid before the runner deadline");
+        assert!(process_is_gone_within(child, REAP_SAFETY_BOUND));
     }
 
     #[test]
@@ -482,12 +538,9 @@ mod tests {
             Err(GitRunnerError::TimedOut)
         ));
         assert!(started.elapsed() < Duration::from_secs(3));
-        let pid = fs::read_to_string(child.path()).unwrap();
-        assert!(!TestCommand::new("/bin/kill")
-            .args(["-0", pid.trim()])
-            .status()
-            .unwrap()
-            .success());
+        let pid = complete_pid(child.path())
+            .expect("fixture recorded the descendant pid before the runner deadline");
+        assert!(process_is_gone_within(pid, REAP_SAFETY_BOUND));
     }
 
     #[test]
@@ -496,8 +549,10 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let marker = directory.path().join("already-ran");
         let child = directory.path().join("descendant-pid");
+        // `: >` instead of `touch` keeps the descendant's fork as the only
+        // process creation before the parent exits, well before the deadline.
         let script = format!(
-            "#!/bin/sh\nif [ -e '{}' ]; then\n  exit 0\nfi\ntouch '{}'\n/bin/sleep 30 &\necho $! > '{}'\nexit 0\n",
+            "#!/bin/sh\nif [ -e '{}' ]; then\n  exit 0\nfi\n: > '{}'\n/bin/sleep 30 &\necho $! > '{}'\nexit 0\n",
             marker.display(),
             marker.display(),
             child.display(),
@@ -510,12 +565,12 @@ mod tests {
             Err(GitRunnerError::TimedOut)
         ));
         assert!(started.elapsed() < Duration::from_secs(3));
-        let pid = fs::read_to_string(child).unwrap();
-        assert!(!TestCommand::new("/bin/kill")
-            .args(["-0", pid.trim()])
-            .status()
-            .unwrap()
-            .success());
+        // The pid line is the fixture's last act before `exit 0`; without it the
+        // runner timed out a still-running parent and this test's exited-parent
+        // precondition was never reached.
+        let pid = complete_pid(&child)
+            .expect("fixture parent exited (descendant pid recorded) before the runner deadline");
+        assert!(process_is_gone_within(pid, REAP_SAFETY_BOUND));
         assert!(runner
             .run(GitRequest::discover(std::env::temp_dir()))
             .is_ok());

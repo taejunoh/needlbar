@@ -1989,7 +1989,7 @@ private struct SignalFixture {
             const char *ready = getenv("NEEDLBAR_FIXTURE_READY");
             if (ready) {
                 int fd = open(ready, O_WRONLY | O_CREAT, 0600);
-                if (fd >= 0) { if (descendant_mode) dprintf(fd, "%d %d", (int)getpid(), (int)descendant); else write(fd, "1", 1); close(fd); }
+                if (fd >= 0) { if (descendant_mode) dprintf(fd, "%d %d\\n", (int)getpid(), (int)descendant); else write(fd, "1", 1); close(fd); }
             }
             if (exit_mode) return 0;
             for (;;) sleep(1);
@@ -2005,6 +2005,24 @@ private struct SignalFixture {
             try compiler.run()
             compiler.waitUntilExit()
             guard compiler.terminationStatus == 0 else { throw SignalFixtureError.compilationFailed }
+
+            // macOS can hold the first exec of a freshly linked executable for
+            // ~1-3 s after spawn returns (exec policy assessment). Pay that once
+            // here, outside every timed path, using the fixture's exit mode with
+            // no ready/term files, so runs under test start it promptly. The
+            // binary is never modified after this exec.
+            let prewarm = Process()
+            prewarm.executableURL = executable
+            prewarm.arguments = ["exit"]
+            prewarm.environment = [:]
+            prewarm.standardInput = FileHandle.nullDevice
+            prewarm.standardOutput = FileHandle.nullDevice
+            prewarm.standardError = FileHandle.nullDevice
+            try prewarm.run()
+            prewarm.waitUntilExit()
+            guard prewarm.terminationReason == .exit, prewarm.terminationStatus == 0 else {
+                throw SignalFixtureError.prewarmFailed
+            }
             return SignalFixture(directory: directory, executable: executable)
         } catch {
             try? FileManager.default.removeItem(at: directory)
@@ -2024,23 +2042,38 @@ private struct SignalFixture {
     }
 
     func pids(at url: URL) async throws -> (parent: Int32, child: Int32) {
-        try await waitForFixtureReady(at: url)
-        let parts = try String(contentsOf: url, encoding: .utf8).split(separator: " ").map { Int32($0) }
-        guard parts.count == 2, let parent = parts[0], let child = parts[1] else { throw SignalFixtureError.readyTimedOut }
-        return (parent, child)
+        // The fixture writes the pids after open(O_CREAT), so wait for the
+        // complete newline-terminated line rather than the file's existence.
+        try await waitForFixtureFile(at: url) { text in
+            guard text.hasSuffix("\n") else { return nil }
+            let parts = text.dropLast().split(separator: " ").compactMap { Int32($0) }
+            return parts.count == 2 ? (parent: parts[0], child: parts[1]) : nil
+        }
     }
 }
 
+// Readiness handshake: the fixture creates its ready file only after installing
+// its SIGTERM disposition, so the file's existence is the condition. The runner
+// under test has no readiness deadline of its own, so the bound is only a
+// safety net, not a startup budget.
 private func waitForFixtureReady(at url: URL) async throws {
-    for _ in 0..<1_000 {
-        if FileManager.default.fileExists(atPath: url.path) { return }
+    try await waitForFixtureFile(at: url) { _ in () }
+}
+
+private func waitForFixtureFile<Value>(
+    at url: URL, timeout: Duration = .seconds(10), _ parse: (String) -> Value?
+) async throws -> Value {
+    let deadline = ContinuousClock.now.advanced(by: timeout)
+    while true {
+        if let text = try? String(contentsOf: url, encoding: .utf8), let value = parse(text) { return value }
+        guard ContinuousClock.now < deadline else { throw SignalFixtureError.readyTimedOut }
         try await Task.sleep(for: .milliseconds(1))
     }
-    throw SignalFixtureError.readyTimedOut
 }
 
 private enum SignalFixtureError: Error {
     case compilationFailed
+    case prewarmFailed
     case readyTimedOut
 }
 

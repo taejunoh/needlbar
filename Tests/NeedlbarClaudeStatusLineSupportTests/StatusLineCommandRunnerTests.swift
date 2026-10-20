@@ -207,12 +207,25 @@ private func builtStatusLineHelper() throws -> URL {
     throw CocoaError(.fileNoSuchFile)
 }
 
-private func waitForPath(_ path: String, timeout: TimeInterval = 3) -> Bool {
+private func completePID(at url: URL) -> pid_t? {
+    guard let text = try? String(contentsOf: url, encoding: .utf8), text.hasSuffix("\n"),
+          let pid = pid_t(text.dropLast()), pid > 0 else { return nil }
+    return pid
+}
+
+// Readiness handshake: the original command publishes its pid with
+// `echo ... > file`, which creates the file before writing the line, so only a
+// complete newline-terminated pid counts. No product deadline races this wait
+// (the helper keeps pumping stdin until signalled), so the bound is only a
+// safety net; macOS can hold the first exec of a freshly linked helper ~3 s.
+private func waitForPublishedPID(at url: URL, from helper: Process, timeout: TimeInterval = 30) -> pid_t? {
     let deadline = Date().addingTimeInterval(timeout)
-    while !FileManager.default.fileExists(atPath: path) && Date() < deadline {
+    while true {
+        let helperRunning = helper.isRunning
+        if let pid = completePID(at: url) { return pid }
+        if !helperRunning || Date() >= deadline { return nil }
         Thread.sleep(forTimeInterval: 0.01)
     }
-    return FileManager.default.fileExists(atPath: path)
 }
 
 private func waitForExit(_ process: Process, timeout: TimeInterval = 3) -> Bool {
@@ -241,8 +254,8 @@ private func waitForExit(_ process: Process, timeout: TimeInterval = 3) -> Bool 
         if helper.isRunning { kill(helper.processIdentifier, SIGKILL); try? input.fileHandleForWriting.close(); helper.waitUntilExit() }
         if let text = try? String(contentsOf: childPID, encoding: .utf8), let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) { kill(pid, SIGKILL) }
     }
-    #expect(waitForPath(childPID.path))
-    let child = Int32((try String(contentsOf: childPID, encoding: .utf8)).trimmingCharacters(in: .whitespacesAndNewlines))!
+    let child = try #require(waitForPublishedPID(at: childPID, from: helper),
+                             "original command must publish its pid while the helper runs")
     kill(helper.processIdentifier, SIGTERM)
     #expect(waitForExit(helper, timeout: 2), "helper must stop while parent still holds stdin open")
     #expect(helper.terminationStatus == 143)
@@ -271,8 +284,8 @@ private func waitForExit(_ process: Process, timeout: TimeInterval = 3) -> Bool 
         if helper.isRunning { kill(helper.processIdentifier, SIGKILL); helper.waitUntilExit() }
         if let text = try? String(contentsOf: descendantPID, encoding: .utf8), let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) { kill(pid, SIGKILL) }
     }
-    #expect(waitForPath(descendantPID.path))
-    let child = Int32((try String(contentsOf: descendantPID, encoding: .utf8)).trimmingCharacters(in: .whitespacesAndNewlines))!
+    let child = try #require(waitForPublishedPID(at: descendantPID, from: helper),
+                             "original command must publish its descendant pid while the helper runs")
     Thread.sleep(forTimeInterval: 0.1)
     kill(helper.processIdentifier, SIGTERM)
     #expect(waitForExit(helper, timeout: 2), "helper must stop while child refuses stdin")
