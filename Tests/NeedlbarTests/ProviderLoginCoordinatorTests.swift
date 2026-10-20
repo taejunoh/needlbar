@@ -639,7 +639,7 @@ import Testing
 private struct ProviderLoginProcessRunnerTests {
 @Test func processRunnerPreventsALateLaunchWhenStoppedDuringPrelaunchRegistration() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let prelaunch = SuspensionGate()
     let starts = ProcessSignalRecorder()
@@ -662,7 +662,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerSendsOnlyTERMToACompliantExactFixturePIDAndReapsIt() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let recorder = ProcessSignalRecorder()
     let runner = ProviderLoginProcessRunner(
@@ -687,7 +687,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerStopsACompliantFixtureWithoutLifecycleObservers() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let runner = ProviderLoginProcessRunner(
         timeout: .seconds(30),
@@ -703,7 +703,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerEscalatesOnlyTheTermIgnoringExactFixturePIDThenReapsIt() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let recorder = ProcessSignalRecorder(holdAfterTERM: true)
     let runner = ProviderLoginProcessRunner(
@@ -733,7 +733,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerSharesOneTerminationSequenceAcrossConcurrentCancellationAndStop() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let recorder = ProcessSignalRecorder(holdAfterTERM: true)
     let runner = ProviderLoginProcessRunner(
@@ -765,7 +765,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerTaskCancellationTerminatesAndReapsADirectChild() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let recorder = ProcessSignalRecorder()
     let runner = ProviderLoginProcessRunner(
@@ -791,7 +791,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerTimeoutTerminatesAndReapsADirectChild() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let recorder = ProcessSignalRecorder()
     let runner = ProviderLoginProcessRunner(
@@ -1062,7 +1062,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerReapsAHarmlessDirectChildThatExitsNormally() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
     let recorder = ProcessSignalRecorder()
     let runner = ProviderLoginProcessRunner(processStarted: { pid in await recorder.recordStart(pid) }, processFinished: { pid in await recorder.recordFinish(pid) })
     let task = Task.detached { await runner.run(fixture.command(arguments: ["exit"], readyFile: fixture.directory.appendingPathComponent("ready"))) }
@@ -1076,7 +1076,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerSignalsOnlyTheDirectFixtureWhenItHasADescendant() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
     let recorder = ProcessSignalRecorder()
     let ready = fixture.directory.appendingPathComponent("descendant-ready")
     let runner = ProviderLoginProcessRunner(terminationGrace: .milliseconds(100), signalObserved: { pid, signal in await recorder.send(pid, signal) }, processStarted: { pid in await recorder.recordStart(pid) })
@@ -2027,6 +2027,41 @@ private struct SignalFixture {
         } catch {
             try? FileManager.default.removeItem(at: directory)
             throw error
+        }
+    }
+
+    /// Test-exit cleanup: SIGKILLs every process still running this fixture's
+    /// executable (the direct child and any forked descendant), then removes the
+    /// fixture directory. Fixtures loop forever and some ignore SIGTERM, so a
+    /// failed readiness wait or assertion before `runner.stop()` would otherwise
+    /// orphan them. Processes are matched by exact resolved executable path, which
+    /// is unique to this fixture (UUID directory), so a reused pid belonging to
+    /// anything else is never signalled. Nothing is waited on here: a still-running
+    /// runner reaps its own direct child, and launchd reaps orphaned descendants.
+    func cleanUp() {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        guard let target = realpath(executable.path, nil) else { return }
+        defer { free(target) }
+        let path = String(cString: target)
+
+        for _ in 0..<100 {
+            let owned = Self.livePIDs(runningExecutableAt: path)
+            if owned.isEmpty { return }
+            for pid in owned { _ = Darwin.kill(pid, SIGKILL) }
+            usleep(10_000)
+        }
+    }
+
+    private static func livePIDs(runningExecutableAt path: String) -> [pid_t] {
+        let capacity = Int(proc_listallpids(nil, 0)) + 64
+        guard capacity > 64 else { return [] }
+        var pids = [pid_t](repeating: 0, count: capacity)
+        let count = Int(proc_listallpids(&pids, Int32(capacity * MemoryLayout<pid_t>.size)))
+        guard count > 0 else { return [] }
+        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        return pids.prefix(count).filter { pid in
+            guard pid > 0, proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return false }
+            return String(cString: buffer) == path
         }
     }
 
