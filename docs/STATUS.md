@@ -1,5 +1,15 @@
 # Needlbar Development Status
 
+## 2026-10-20 continuation checkpoint
+
+Current Claude continuation guidance is in [docs/HANDOFF.md](HANDOFF.md).
+Public v0.3.9/build 12 release evidence below is dated October 7. Any
+machine-specific installation/runtime receipts retained in this local working
+copy are historical private notes, are not current-state claims, and are not
+included in the public handoff. No fresh runtime or installation check is
+claimed here. The known narrow follow-up is a fail-closed missing-`rg` guard
+and regression for `scripts/tests/widget-extension-tests.sh`.
+
 ## 2026-10-07 v0.3.9 public artifact verified
 
 The human approved the independent tagged Release run `37673671189`.
