@@ -1,5 +1,67 @@
 # Needlbar Development Status
 
+## 2026-10-20 Claude continuation — test gate hardening and two runner fixes
+
+Local commits on `codex/claude-handoff-2026-10-20`; nothing has been pushed,
+merged, released, or installed. No authentication state, credentials, or
+installed bundle were inspected or changed.
+
+- **Fail-closed widget lexical check.** The negated `rg` search accepted a
+  missing tool (127) or tool error (2) as "no forbidden match"; CI run
+  `39470502625` and Release run `37673671189` both logged
+  `rg: command not found` and then passed. The check now requires `rg` and
+  accepts only exit 1. `widget-extension-search-guard-tests.sh` covers missing
+  `rg`, `rg` error, and forbidden match (RED on the old script, GREEN now).
+- **CI ripgrep.** `scripts/install-ci-ripgrep.sh` runs before `make test` in
+  `ci.yml` and `release.yml`: pinned ripgrep 14.1.1 arm64 verified against the
+  upstream SHA-256; Homebrew (unpinned) only when the download itself fails; a
+  checksum mismatch fails without fallback. Covered by
+  `install-ci-ripgrep-tests.sh`. Not yet exercised on a real runner.
+- **Release build on macOS 27.** rustc 1.97's bundled `rust-objcopy` strips
+  release proc-macro dylibs with a misaligned `__LINKEDIT` string pool that
+  macOS 27 dyld rejects (rust-lang/rust#157750; LLVM fix pulled into 1.98 via
+  rust-lang/rust#158410). `[profile.release.build-override] strip = false`
+  keeps host-only build units unstripped; `rust-release-profile-tests.sh`
+  guards it. The shipped bridge archive is functionally equivalent (same
+  members and C exports) but its symbol hashes differ from v0.3.9 because
+  crate metadata changes. Drop the override once the toolchain is ≥ 1.98.
+- **Locale-independent notarize contracts.** Inline Ruby runs with `-Ku`, with
+  a guard that the unset-locale path parses UTF-8 source and reads UTF-8 files.
+- **Load-sensitive process tests.** macOS can hold the first exec of a freshly
+  written executable for ~1–3 s after spawn returns, exhausting fixed
+  1–3 s budgets. Fixtures in `git.rs`, `codex.rs`,
+  `StatusLineCommandRunnerTests` and `ProviderLoginCoordinatorTests` are now
+  prewarmed outside timed paths, waits use complete-line handshakes, and the
+  Rust fixture guard recovers from poisoning. Two tests that previously passed
+  vacuously now require recorded pids. Repo-wide sweep found no other site.
+- **Product fix: bounded git reader joins.** `BoundedGitRunner` joined its
+  pipe readers without a bound after the deadline kill; a descendant that left
+  the process group while holding the pipes kept `run()` blocked ~35 s past the
+  2 s deadline. Readers now poll with a stop flag and close their pipes within
+  ~10 ms of the deadline path. Real-world trigger is unconfirmed.
+- **Product fix: status-line signal window.** The helper installed its signal
+  forwarder after spawning the original command; SIGTERM in that window killed
+  the helper and orphaned the command (184/200 in a spawn-timed race before,
+  0/200 after). Sources are now registered before `SIG_IGN` and before spawn,
+  and a signal caught before forwarding is still delivered to the child's
+  group. A DEBUG-only gate supports the regression test.
+- **ProviderLogin fixture cleanup.** Fixture processes are killed by
+  executable path on every test exit, so failures no longer leak loops.
+
+Verification (local, macOS 27.0.1, Xcode 27.0, rustc 1.97.1): `make test`
+with `PATH` including cargo and an existing non-installed `rg`,
+`MACOSX_DEPLOYMENT_TARGET=14.0`, no locale and no strip override, exited 0:
+Rust 1552 passed / 1 ignored; Swift 728 (14 + 395 + 277 + 37 + 5); bridge,
+release-profile, brand, ripgrep-installer, widget, package and notarize
+contracts passed. Not verified: a real CI runner, native macOS 14,
+overnight/reset or sustained unattended recovery. Known remaining limits:
+unforwarded signals (SIGKILL/SIGQUIT/SIGUSR, group-wide signals) still orphan
+the status-line command; an escaped git descendant cannot be killed. The
+`docs/HANDOFF.md` "Current bounded follow-up" is now complete.
+
+Next: push the branch and confirm CI (first real run of the pinned ripgrep
+install), then review and merge only with the user's approval.
+
 ## 2026-10-20 continuation checkpoint
 
 Current Claude continuation guidance is in [docs/HANDOFF.md](HANDOFF.md).
