@@ -73,6 +73,7 @@ provider-brand-assets-test:
 	./scripts/tests/provider-brand-assets-tests.sh
 
 widget-extension-test:
+	./scripts/tests/widget-extension-search-guard-tests.sh
 	./scripts/tests/widget-extension-tests.sh
 
 package-test:
