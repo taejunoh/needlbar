@@ -6,7 +6,10 @@ import NeedlbarClaudeStatusLineSupport
 // These tests deliberately hold a synchronous repository call in flight to
 // exercise coordinator merge/restart races. Keep the suite serialized so those
 // bounded blocking test doubles cannot exhaust Swift's cooperative executor.
-@Suite(.serialized)
+// The time limit cancels a test whose condition never arrives; the call-count
+// and sleeper-count waiters end on cancellation, so a missed wakeup fails that
+// test instead of stalling the whole run.
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct RefreshCoordinatorTests {
 
 @Test func attemptIsInProgressUntilStoreAndLegacyCallbackComplete() async throws {
@@ -990,7 +993,12 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     )
 
     await coordinator.start()
-    await eventually { usage.callCount == 1 && quota.callCount == 1 && clock.sleeperCount == 2 }
+    // Advance only once both startup calls ran and both safety loops are asleep.
+    // A bounded wait could give up first; a loop that then sleeps from the
+    // advanced clock never reaches its deadline, so the waits below never return.
+    await usage.waitUntilCallCount(1)
+    await quota.waitUntilCallCount(1)
+    await clock.waitUntilSleeperCount(2)
 
     clock.advance(by: 5 * 60 - 1)
     await Task.yield()
@@ -1696,18 +1704,23 @@ private final class UsageRefreshSpy: UsageRepository, @unchecked Sendable {
     }
 
     func waitUntilCallCount(_ expectedCount: Int) async {
-        await withCheckedContinuation { continuation in
-            let ready = lock.withLock { () -> Bool in
-                guard calls < expectedCount else { return true }
-                callCountWaiters.append(.init(expectedCount: expectedCount, continuation: continuation))
+        await cancellableWait(register: { id, continuation in
+            lock.withLock { () -> Bool in
+                guard calls < expectedCount, !Task.isCancelled else { return true }
+                callCountWaiters.append(.init(id: id, expectedCount: expectedCount, continuation: continuation))
                 return false
             }
-            if ready { continuation.resume() }
-        }
+        }, remove: { id in
+            self.lock.withLock { () -> CheckedContinuation<Void, Never>? in
+                guard let index = self.callCountWaiters.firstIndex(where: { $0.id == id }) else { return nil }
+                return self.callCountWaiters.remove(at: index).continuation
+            }
+        })
     }
 }
 
 private struct QuotaCallCountWaiter {
+    var id = UUID()
     let expectedCount: Int
     let continuation: CheckedContinuation<Void, Never>
 }
@@ -1746,18 +1759,18 @@ private final class QuotaRefreshSpy: QuotaRepository, @unchecked Sendable {
     }
 
     func waitUntilCallCount(_ expectedCount: Int) async {
-        await withCheckedContinuation { continuation in
-            let resumeImmediately = lock.withLock { () -> Bool in
-                if calls >= expectedCount {
-                    return true
-                }
-                callCountWaiters.append(.init(expectedCount: expectedCount, continuation: continuation))
+        await cancellableWait(register: { id, continuation in
+            lock.withLock { () -> Bool in
+                guard calls < expectedCount, !Task.isCancelled else { return true }
+                callCountWaiters.append(.init(id: id, expectedCount: expectedCount, continuation: continuation))
                 return false
             }
-            if resumeImmediately {
-                continuation.resume()
+        }, remove: { id in
+            self.lock.withLock { () -> CheckedContinuation<Void, Never>? in
+                guard let index = self.callCountWaiters.firstIndex(where: { $0.id == id }) else { return nil }
+                return self.callCountWaiters.remove(at: index).continuation
             }
-        }
+        })
     }
 }
 
@@ -2075,9 +2088,16 @@ private final class ManualClock: ClockLike, @unchecked Sendable {
         let continuation: CheckedContinuation<Void, Error>
     }
 
+    private struct SleeperCountWaiter {
+        let id: UUID
+        let expectedCount: Int
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
     private let lock = NSLock()
     private var date: Date
     private var continuations: [UUID: Sleeper] = [:]
+    private var sleeperCountWaiters: [SleeperCountWaiter] = []
 
     init(now: Date) {
         date = now
@@ -2095,19 +2115,40 @@ private final class ManualClock: ClockLike, @unchecked Sendable {
         lock.withLock { date = value }
     }
 
+    /// Returns once at least `expectedCount` sleepers are registered, so a test
+    /// can advance the clock only after every loop has computed its deadline.
+    func waitUntilSleeperCount(_ expectedCount: Int) async {
+        await cancellableWait(register: { id, continuation in
+            lock.withLock { () -> Bool in
+                guard continuations.count < expectedCount, !Task.isCancelled else { return true }
+                sleeperCountWaiters.append(.init(id: id, expectedCount: expectedCount, continuation: continuation))
+                return false
+            }
+        }, remove: { id in
+            self.lock.withLock { () -> CheckedContinuation<Void, Never>? in
+                guard let index = self.sleeperCountWaiters.firstIndex(where: { $0.id == id }) else { return nil }
+                return self.sleeperCountWaiters.remove(at: index).continuation
+            }
+        })
+    }
+
     func sleep(for duration: Duration) async throws {
         try Task.checkCancellation()
         let id = UUID()
         try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
-                let cancelled = lock.withLock { () -> Bool in
-                    if Task.isCancelled { return true }
+                let (cancelled, ready) = lock.withLock { () -> (Bool, [CheckedContinuation<Void, Never>]) in
+                    if Task.isCancelled { return (true, []) }
                     continuations[id] = .init(
                         deadline: date.addingTimeInterval(timeInterval(for: duration)),
                         continuation: continuation
                     )
-                    return false
+                    let count = continuations.count
+                    let ready = sleeperCountWaiters.filter { count >= $0.expectedCount }.map(\.continuation)
+                    sleeperCountWaiters.removeAll { count >= $0.expectedCount }
+                    return (false, ready)
                 }
+                ready.forEach { $0.resume() }
                 if cancelled {
                     continuation.resume(throwing: CancellationError())
                 }
@@ -2152,4 +2193,23 @@ private func eventuallyAsync(
     }
 }
 
+}
+
+/// Suspends until `register` reports the condition met, or until a later
+/// resume of the registered continuation, or until the task is cancelled
+/// (for example by the suite time limit). `register` and `remove` must share
+/// one lock, and `register` must report a cancelled task as ready, so a
+/// cancellation that races registration still resumes the waiter.
+private func cancellableWait(
+    register: (UUID, CheckedContinuation<Void, Never>) -> Bool,
+    remove: @escaping @Sendable (UUID) -> CheckedContinuation<Void, Never>?
+) async {
+    let id = UUID()
+    await withTaskCancellationHandler {
+        await withCheckedContinuation { continuation in
+            if register(id, continuation) { continuation.resume() }
+        }
+    } onCancel: {
+        remove(id)?.resume()
+    }
 }
