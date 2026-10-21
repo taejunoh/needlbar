@@ -1,5 +1,61 @@
 # Needlbar Development Status
 
+## 2026-10-21 v0.3.10 public artifact verified
+
+The human approved the protected `release` environment for the independent
+tagged Release run `39659662330` (push of tag `v0.3.10`). Both validate and
+publish completed SUCCESS at frozen release G
+`9a41c1ef0265d987be001a63743e64548cce9319`, the PR #22 merge commit.
+Tagless run `39632982690` previously completed validation SUCCESS with publish
+SKIPPED; its `release` approval was also the human's. Annotated tag object
+`5a1ed576396f6c0174fb5e03e6b7a8be231d38eb` peels exactly to G and must never
+be retargeted.
+
+Public release: https://github.com/taejunoh/needlbar/releases/tag/v0.3.10
+Release ID: `419970091`; published `2026-10-21T19:29:11Z`, not draft or prerelease.
+Public ZIP asset ID: `663566048`; checksum sidecar asset ID: `663566051`.
+Public ZIP SHA-256:
+`40e8a3727e7eed2c7194188a9402a6c846f9aeef7243d688e47ea3e4cca8ee47`.
+Public checksum sidecar SHA-256:
+`126e35d8900cb22e6536edd3ffe2fac57e821052ed5ee3970ee8f3e151f69214`.
+The public checksum is distinct from the tagless validation ZIP SHA-256
+`687859344bb23bda7f3b54ceaf45b095b10a26d12a77dd7eae0cf0c8afac5615`. That
+validation ZIP passed checksum, host/widget 0.3.10 build 13, arm64, strict
+signature, team, hardened runtime, staple and Gatekeeper checks; it was not
+distributed or installed.
+
+Root downloaded exactly the public ZIP and its single-record checksum sidecar.
+Both measured file hashes match the GitHub asset digests. The sidecar names
+`Needlbar-macos-arm64.zip` exactly.
+Extracted host and widget report 0.3.10 / 13; host, status-line helper, and
+widget are arm64 executables.
+Strict deep Developer ID signature, team `3BMF4LM6TM`, hardened runtime,
+stapled ticket, and Gatekeeper acceptance passed; Gatekeeper assessed the
+source as Notarized Developer ID. The archive contains no review, acceptance,
+or fixture payloads.
+
+Unchanged smoke and brand-verifier scripts, identical to the tagged source,
+ran against the exact public bundle in an isolated `dist/Needlbar.app`
+layout; smoke passed. Strict signature and public ZIP checksum passed again
+afterward. The canonical installed app was still v0.3.9 at that time; this
+record does not claim installation.
+
+Candidate PR #22 exact-head CI `39620848868` passed at `456be24`, whose tree
+equals G's tree. The earlier candidate CI run `39536994003` at `827ddab`
+stalled in the Swift test bundle and was cancelled at GitHub's 6-hour job
+limit. It was diagnosed as a lost wakeup in the test-only
+`RefreshCoordinatorTests.safetyCadenceRefreshesUsageAndQuotaEveryFiveMinutes`;
+the test fix is pending on a separate branch, and CI now bounds the test job
+at 45 minutes. Public verification does not establish native macOS 14,
+overnight/reset, authentication renewal or sustained unattended recovery
+acceptance.
+
+Next: review/test/merge these public documentation contracts. The Homebrew
+Cask update to this measured public SHA and the canonical laptop replacement
+with rollback backup are being done separately; the installation receipt
+will be appended to this documentation PR before merge. Installation must
+preserve existing settings and authentication.
+
 ## 2026-10-20 Claude continuation — test gate hardening and two runner fixes
 
 Local commits on `codex/claude-handoff-2026-10-20`; nothing has been pushed,
