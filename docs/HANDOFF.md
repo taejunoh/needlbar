@@ -1,26 +1,28 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-10-20. This is a documentation handoff, not a new product
-approval or a claim of fresh installation/runtime verification.
+**Checkpoint:** 2026-10-21, updated after the v0.3.10 release (first written
+2026-10-20). This is a documentation handoff, not a new product approval or a
+claim of fresh installation/runtime verification.
 
 ## Repository state
 
-- Work from branch `codex/claude-handoff-2026-10-20`, based on `main`
-  `b270736e09803c18b0025ce1fd8321f78aa7729b` (the public documentation PR #20
-  merge). Do not assume other old branches have been merged.
-- For an isolated continuation, clone this branch into a new directory and
+- Work from `main`. The 2026-10-20 handoff branch merged in PR #21, the
+  v0.3.10 candidate in PR #22 and its public record in PR #23. Do not assume
+  other old branches have been merged.
+- For an isolated continuation, clone `main` into a new directory and
   initialize submodules as part of the clone:
 
   ```bash
-  git clone --branch codex/claude-handoff-2026-10-20 --recurse-submodules \
-    https://github.com/taejunoh/needlbar.git needlbar-claude-continuation-2026-10-20
+  git clone --recurse-submodules https://github.com/taejunoh/needlbar.git \
+    needlbar-continuation
   ```
 
   Keep the existing primary checkout (stale `main` at `7ab113d`, with local
   notes) untouched. Do not pull, reset, stash, or clean it as part of handoff.
-- The public release is v0.3.9, build 12, for macOS 14+ on Apple Silicon. The
-  October 7 release and distribution checks are historical evidence recorded
-  in `docs/STATUS.md`; they do not establish what is installed or running now.
+- The public release is v0.3.10, build 13, for macOS 14+ on Apple Silicon,
+  published 2026-10-21. Its release and distribution checks are evidence
+  recorded in `docs/STATUS.md`; they do not establish what is installed or
+  running later.
 - Treat prior local runtime receipts in STATUS as private machine history.
   They are not part of this handoff and must not be copied into public docs.
 
@@ -41,14 +43,27 @@ quota-reset, and sustained unattended acceptance remain unverified. The
 status-line values are not Fable, and a status-line receipt is not proof of a
 direct provider fetch. Keep these distinctions in any docs or claims.
 
+## What v0.3.10 adds
+
+v0.3.10 contains no new product features. The status-line helper registers
+its signal forwarding before it spawns the original command, so a terminate
+during startup no longer orphans that command. The git analytics runner's pipe
+readers stop at the deadline even if a descendant leaves the process group
+while holding the pipes. Build and test gates were hardened: a fail-closed
+widget dependency check with pinned CI ripgrep, unstripped host build units
+for macOS 27 release builds, locale-independent release contracts, and
+load-robust process fixtures. Signals the helper does not forward can still
+orphan the command, and an escaped git descendant is not itself killed.
+
 ## Current bounded follow-up
 
-The known CI limitation is in `scripts/tests/widget-extension-tests.sh`: its
-negated `rg` search treats a missing search executable like “no forbidden
-match.” Add a fail-closed tool-availability guard and a missing-`rg`
-regression. If the user asks to continue implementation, first inspect the
-script and its focused test contract, then make only this narrow test-first
-repair. Do not expand into widget redesign or provider behavior.
+The earlier `rg` fail-closed follow-up is complete (PR #21). The next bounded
+item is test-only: `RefreshCoordinatorTests.safetyCadenceRefreshesUsageAndQuotaEveryFiveMinutes`
+can lose a wakeup under load. It advances the manual clock after a bounded
+`eventually` that may give up before both safety timers register, and it
+stalled CI until the 6-hour job limit (see STATUS 2026-10-21). Wait for the
+startup calls and the registered sleepers before advancing the clock. Do not
+expand into product changes.
 
 Useful verified source locations:
 
@@ -66,7 +81,8 @@ Useful verified source locations:
 
 - The compact Claude quota overview released in v0.3.6 is existing behavior.
   The later refinement is only to name the most-constrained window explicitly
-  and retain the other windows in details; it is not part of v0.3.9. Use
+  and retain the other windows in details; it is not part of v0.3.9 or
+  v0.3.10. Use
   `docs/superpowers/specs/2026-10-07-claude-refresh-reliability-design.md`
   and `docs/superpowers/plans/2026-09-29-claude-compact-presentation.md` before
   touching it.
@@ -106,9 +122,8 @@ verification.
 ## Ready-to-use continuation prompt
 
 > Continue from `docs/HANDOFF.md` and obey `AGENTS.md`. First review the
-> fail-closed `rg` guard gap in `scripts/tests/widget-extension-tests.sh` and
-> its existing tests. If the narrow test-first fix is clear, implement only
-> that guard and missing-`rg` regression, run the focused widget contract and
+> `RefreshCoordinatorTests` lost-wakeup follow-up. If the narrow test-only fix
+> is clear, implement only that, run the focused suite under load and
 > `make test` with the documented PATH and macOS 14 target, and report the
 > exact diff and verification. Do not inspect credentials, make model
 > requests, install the app, or publish a release.
