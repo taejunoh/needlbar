@@ -176,7 +176,7 @@ import Testing
     #expect(await refresh.callCount(for: .claude) == 1)
 
     await refresh.complete(.claude, with: true)
-    await eventually { coordinator.state(for: .claude) == .connected }
+    #expect(await eventually { coordinator.state(for: .claude) == .connected })
 }
 
 @MainActor
@@ -1948,12 +1948,19 @@ private func scriptedCommand() -> ProviderLoginCommand {
 }
 
 @MainActor
-private func eventually(_ condition: @escaping @MainActor () async -> Bool) async -> Bool {
-    for _ in 0..<100 {
+// Polls until the condition holds. The bound is a safety net, not a budget:
+// a fixed number of yields can run out before the awaited work is scheduled
+// on a loaded runner.
+private func eventually(
+    timeout: Duration = .seconds(10),
+    _ condition: @escaping @MainActor () async -> Bool
+) async -> Bool {
+    let deadline = ContinuousClock.now.advanced(by: timeout)
+    while true {
         if await condition() { return true }
-        await Task.yield()
+        guard ContinuousClock.now < deadline, !Task.isCancelled else { return false }
+        try? await Task.sleep(for: .milliseconds(1))
     }
-    return false
 }
 
 private struct SignalFixture {
