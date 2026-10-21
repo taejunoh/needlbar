@@ -19,6 +19,15 @@ private func fileHandle(_ url: URL, data: Data = Data()) throws -> FileHandle {
     return try FileHandle(forUpdating: url)
 }
 
+// Each in-process run() ignores SIGINT, SIGTERM and SIGHUP while it forwards
+// them, then restores the dispositions it saved. Those dispositions belong to
+// the whole process: that suits the helper, which makes one run per process,
+// but overlapping runs can save one another's SIG_IGN and leave the test
+// process ignoring these signals. Run every in-process run() test serially.
+// (The helper tests below run the helper in its own process.)
+@Suite(.serialized)
+struct StatusLineCommandRunnerInProcessTests {
+
 @Test func runnerStreamsOversizedInputAndPreservesOutputErrorAndExit() throws {
     let (root, store, generation) = try runnerFixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -212,6 +221,8 @@ func runnerStartsOriginalCommandWithDefaultForwardedSignals(signal number: Int32
         shell: URL(fileURLWithPath: "/bin/sh"))
     #expect(exitCode == 128 + number)
     #expect(try Data(contentsOf: root.appendingPathComponent("out")).isEmpty)
+}
+
 }
 
 private func builtStatusLineHelper() throws -> URL {
