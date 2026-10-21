@@ -57,13 +57,26 @@ orphan the command, and an escaped git descendant is not itself killed.
 
 ## Current bounded follow-up
 
-The earlier `rg` fail-closed follow-up is complete (PR #21). The next bounded
-item is test-only: `RefreshCoordinatorTests.safetyCadenceRefreshesUsageAndQuotaEveryFiveMinutes`
-can lose a wakeup under load. It advances the manual clock after a bounded
-`eventually` that may give up before both safety timers register, and it
-stalled CI until the 6-hour job limit (see STATUS 2026-10-21). Wait for the
-startup calls and the registered sleepers before advancing the clock. Do not
-expand into product changes.
+The `rg` fail-closed follow-up (PR #21), the `RefreshCoordinatorTests` lost
+wakeup (PR #24) and the follow-up test hygiene (PR #25: explicit readiness and
+cancellation-aware waits, 30 s caps on the blocking fakes, serialized
+in-process status-line runner tests) are complete.
+
+Known open items, none started:
+
+- Direct Claude quota retrieval on the maintainer's machine has been failing
+  with origin `keychainCredentialExpired`; the display falls back to
+  status-line values. Credential renewal is still not implemented and needs
+  its own approved design before any work.
+- Native macOS 14 acceptance is not agent-automatable end to end. It needs a
+  provisioned macOS 14 guest with a logged-in GUI user, the Developer ID
+  acceptance build, network disabled in the guest, and GUI interaction for the
+  widget and notification cases (see the 2026-09-01 native acceptance driver
+  spec and `scripts/native-acceptance-run.sh`).
+- Test-only side finding: in debug builds `SignalForwarder.stop()` was seen
+  to leave SIGTERM/SIGHUP ignored after restoring a saved `SIG_IGN`; release
+  builds restore correctly and the shipped helper runs once per process.
+  Confirm and fix narrowly if pursued.
 
 Useful verified source locations:
 
@@ -121,9 +134,8 @@ verification.
 
 ## Ready-to-use continuation prompt
 
-> Continue from `docs/HANDOFF.md` and obey `AGENTS.md`. First review the
-> `RefreshCoordinatorTests` lost-wakeup follow-up. If the narrow test-only fix
-> is clear, implement only that, run the focused suite under load and
+> Continue from `docs/HANDOFF.md` and obey `AGENTS.md`. Pick one known open
+> item only with the user's agreement. Keep fixes narrow and test-first, run
 > `make test` with the documented PATH and macOS 14 target, and report the
 > exact diff and verification. Do not inspect credentials, make model
 > requests, install the app, or publish a release.
