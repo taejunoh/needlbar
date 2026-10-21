@@ -1673,6 +1673,117 @@ test_v038_release_metadata_contract() {
 
 test_v038_release_metadata_contract
 
+v0310_public_release_contract_is_valid() {
+  ruby - "$1" "$2" <<'RUBY'
+readme, status = ARGV.map { |path| File.read(path) }
+[
+  'Needlbar v0.3.10 is publicly available for macOS 14 or later on Apple Silicon.',
+  '[Download Needlbar v0.3.10 for Apple Silicon](https://github.com/taejunoh/needlbar/releases/download/v0.3.10/Needlbar-macos-arm64.zip)',
+  '[Download the SHA-256 checksum](https://github.com/taejunoh/needlbar/releases/download/v0.3.10/Needlbar-macos-arm64.zip.sha256)',
+  'To install the public v0.3.10 release:',
+  'from the v0.3.10 GitHub Release.',
+  'The public v0.3.10 ZIP is the production artifact',
+  'distribution is v0.3.10 above.',
+  '### Reliability fixes (v0.3.10)'
+].each { |fact| abort "v0.3.10 README missing #{fact.inspect}" unless readme.include?(fact) }
+abort 'v0.3.10 README retains preparation wording' if readme.match?(/prepared v0\.3\.10|v0\.3\.10 prepared|v0\.3\.10 is prepared for public release/)
+abort 'v0.3.10 README retains stale distribution' if readme.match?(/releases\/download\/v0\.3\.9\/|install the public v0\.3\.9 release|from the v0\.3\.9 GitHub Release|Needlbar v0\.3\.9 is publicly available|The public v0\.3\.9 ZIP|distribution is v0\.3\.9 above/)
+
+record = status.match(/^## 2026-10-21 v0\.3\.10 public artifact verified\n(.*?)(?=^## |\z)/m)
+abort 'v0.3.10 public record missing' unless record
+evidence = record[1].gsub(/\s+/, ' ')
+[
+  'Both validate and publish completed SUCCESS at frozen release G `9a41c1ef0265d987be001a63743e64548cce9319`',
+  'Annotated tag object `5a1ed576396f6c0174fb5e03e6b7a8be231d38eb` peels exactly to G',
+  'Public release: https://github.com/taejunoh/needlbar/releases/tag/v0.3.10',
+  'Release ID: `419970091`; published `2026-10-21T19:29:11Z`, not draft or prerelease.',
+  'Public ZIP asset ID: `663566048`; checksum sidecar asset ID: `663566051`.',
+  'Public ZIP SHA-256: `40e8a3727e7eed2c7194188a9402a6c846f9aeef7243d688e47ea3e4cca8ee47`.',
+  'Public checksum sidecar SHA-256: `126e35d8900cb22e6536edd3ffe2fac57e821052ed5ee3970ee8f3e151f69214`.',
+  'distinct from the tagless validation ZIP SHA-256 `687859344bb23bda7f3b54ceaf45b095b10a26d12a77dd7eae0cf0c8afac5615`.',
+  'tagged Release run `39659662330`',
+  'Tagless run `39632982690` previously completed validation SUCCESS with publish SKIPPED',
+  'Both measured file hashes match the GitHub asset digests.',
+  'The sidecar names `Needlbar-macos-arm64.zip` exactly.',
+  'Extracted host and widget report 0.3.10 / 13;',
+  'host, status-line helper, and widget are arm64',
+  'Strict deep Developer ID signature, team `3BMF4LM6TM`, hardened runtime, stapled ticket, and Gatekeeper acceptance passed',
+  'smoke passed.',
+  'this record does not claim installation.',
+  'Public verification does not establish native macOS 14, overnight/reset, authentication renewal or sustained unattended recovery acceptance.'
+].each { |fact| abort "v0.3.10 public record missing #{fact.inspect}" unless evidence.include?(fact) }
+RUBY
+}
+
+test_v0310_public_release_contract() {
+  local readme="$ROOT/README.md" status="$ROOT/docs/STATUS.md"
+  local decoy_readme="$temp_root/v0310-public-readme-decoy.md"
+  local decoy_status="$temp_root/v0310-public-status-decoy.md"
+  local output rc mutation
+
+  v0310_public_release_contract_is_valid "$readme" "$status" || fail 'current v0.3.10 public contract is invalid'
+  # 0.3.10 is the first two-digit patch: besides stale v0.3.9 text, a v0.3.1
+  # value that is only a prefix of the expected one must never satisfy it.
+  for mutation in stale-availability stale-zip stale-sidecar stale-install-heading stale-install stale-production-zip stale-distribution \
+    prepared prepared-heading prepared-copy \
+    prefix-availability prefix-zip prefix-sidecar prefix-install-heading prefix-install prefix-production-zip prefix-distribution prefix-heading; do
+    ruby - "$readme" "$decoy_readme" "$mutation" <<'RUBY'
+source, destination, mutation = ARGV
+document = File.read(source)
+from, to = case mutation
+when 'stale-availability' then ['Needlbar v0.3.10 is publicly available', 'Needlbar v0.3.9 is publicly available']
+when 'stale-zip' then ['download/v0.3.10/Needlbar-macos-arm64.zip)', 'download/v0.3.9/Needlbar-macos-arm64.zip)']
+when 'stale-sidecar' then ['download/v0.3.10/Needlbar-macos-arm64.zip.sha256)', 'download/v0.3.9/Needlbar-macos-arm64.zip.sha256)']
+when 'stale-install-heading' then ['To install the public v0.3.10 release:', 'To install the public v0.3.9 release:']
+when 'stale-install' then ['from the v0.3.10 GitHub Release.', 'from the v0.3.9 GitHub Release.']
+when 'stale-production-zip' then ['The public v0.3.10 ZIP', 'The public v0.3.9 ZIP']
+when 'stale-distribution' then ['distribution is v0.3.10 above.', 'distribution is v0.3.9 above.']
+when 'prepared' then ['v0.3.10 is publicly available', 'v0.3.10 is prepared for public release']
+when 'prepared-heading' then ['### Reliability fixes (v0.3.10)', '### Reliability fixes (v0.3.10 prepared)']
+when 'prepared-copy' then ['The v0.3.10 changes fix', 'The prepared v0.3.10 changes fix']
+when 'prefix-availability' then ['Needlbar v0.3.10 is publicly available', 'Needlbar v0.3.1 is publicly available']
+when 'prefix-zip' then ['download/v0.3.10/Needlbar-macos-arm64.zip)', 'download/v0.3.1/Needlbar-macos-arm64.zip)']
+when 'prefix-sidecar' then ['download/v0.3.10/Needlbar-macos-arm64.zip.sha256)', 'download/v0.3.1/Needlbar-macos-arm64.zip.sha256)']
+when 'prefix-install-heading' then ['To install the public v0.3.10 release:', 'To install the public v0.3.1 release:']
+when 'prefix-install' then ['from the v0.3.10 GitHub Release.', 'from the v0.3.1 GitHub Release.']
+when 'prefix-production-zip' then ['The public v0.3.10 ZIP', 'The public v0.3.1 ZIP']
+when 'prefix-distribution' then ['distribution is v0.3.10 above.', 'distribution is v0.3.1 above.']
+when 'prefix-heading' then ['### Reliability fixes (v0.3.10)', '### Reliability fixes (v0.3.1)']
+end
+abort 'decoy source missing' unless document.sub!(from, to)
+File.write(destination, document)
+RUBY
+    set +e
+    output="$(v0310_public_release_contract_is_valid "$decoy_readme" "$status" 2>&1)"; rc=$?
+    set -e
+    [[ "$rc" -ne 0 && "$output" == *'v0.3.10 README'* ]] || fail "v0.3.10 $mutation README decoy was not rejected correctly"
+  done
+
+  # Each decoy rewrites the first occurrence, so these values must first
+  # appear in the v0.3.10 record (keep them unique in STATUS).
+  for mutation in zip-sha sidecar-sha tagged-run prefix-release prefix-version; do
+    ruby - "$status" "$decoy_status" "$mutation" <<'RUBY'
+source, destination, mutation = ARGV
+document = File.read(source)
+from, to = case mutation
+when 'zip-sha' then ['40e8a3727e7eed2c7194188a9402a6c846f9aeef7243d688e47ea3e4cca8ee47', '0' * 64]
+when 'sidecar-sha' then ['126e35d8900cb22e6536edd3ffe2fac57e821052ed5ee3970ee8f3e151f69214', '0' * 64]
+when 'tagged-run' then ['39659662330', '39659662331']
+when 'prefix-release' then ['releases/tag/v0.3.10', 'releases/tag/v0.3.1']
+when 'prefix-version' then ['report 0.3.10 / 13;', 'report 0.3.1 / 13;']
+end
+abort 'decoy source missing' unless document.sub!(from, to)
+File.write(destination, document)
+RUBY
+    set +e
+    output="$(v0310_public_release_contract_is_valid "$readme" "$decoy_status" 2>&1)"; rc=$?
+    set -e
+    [[ "$rc" -ne 0 && "$output" == *'v0.3.10 public record missing'* ]] || fail "v0.3.10 incorrect $mutation decoy was not rejected correctly"
+  done
+}
+
+test_v0310_public_release_contract
+
 v039_public_release_contract_is_valid() {
   ruby - "$1" "$2" <<'RUBY'
 readme, status = ARGV.map { |path| File.read(path) }
@@ -1711,12 +1822,12 @@ RUBY
 }
 
 test_v039_public_release_contract() {
-  local readme="$ROOT/README.md" status="$ROOT/docs/STATUS.md"
+  local readme="$historical_v039_readme" status="$ROOT/docs/STATUS.md"
   local decoy_readme="$temp_root/v039-public-readme-decoy.md"
   local decoy_status="$temp_root/v039-public-status-decoy.md"
   local output rc mutation
 
-  v039_public_release_contract_is_valid "$readme" "$status" || fail 'current v0.3.9 public contract is invalid'
+  v039_public_release_contract_is_valid "$readme" "$status" || fail 'historical v0.3.9 public contract is invalid'
   for mutation in stale-availability stale-zip stale-sidecar stale-install-heading stale-install stale-production-zip stale-distribution prepared; do
     ruby - "$readme" "$decoy_readme" "$mutation" <<'RUBY'
 source, destination, mutation = ARGV
@@ -1758,6 +1869,28 @@ RUBY
     [[ "$rc" -ne 0 && "$output" == *'v0.3.9 public record missing'* ]] || fail "v0.3.9 incorrect $mutation decoy was not rejected correctly"
   done
 }
+
+historical_v039_readme="$temp_root/v039-historical-public-readme.md"
+ruby - "$ROOT/README.md" "$historical_v039_readme" <<'RUBY'
+source, destination = ARGV
+document = File.read(source)
+abort 'historical fixture: v0.3.10 reliability section missing' unless document.sub!(/^### Reliability fixes \(v0\.3\.10\)\n.*?(?=^### |\z)/m, '')
+{
+  'Needlbar v0.3.10 is publicly available' => 'Needlbar v0.3.9 is publicly available',
+  '[Download Needlbar v0.3.10 for Apple Silicon]' => '[Download Needlbar v0.3.9 for Apple Silicon]',
+  'releases/download/v0.3.10/' => 'releases/download/v0.3.9/',
+  'To install the public v0.3.10 release:' => 'To install the public v0.3.9 release:',
+  'from the v0.3.10 GitHub Release.' => 'from the v0.3.9 GitHub Release.',
+  'The public v0.3.10 ZIP' => 'The public v0.3.9 ZIP',
+  'distribution is v0.3.10 above.' => 'distribution is v0.3.9 above.'
+}.each do |from, to|
+  abort "historical fixture: missing #{from.inspect}" unless document.include?(from)
+  document = document.gsub(from, to)
+end
+# Older fixtures rewrite v0.3.1-era text; no two-digit v0.3.10 text may reach them.
+abort 'historical fixture: v0.3.10 text remains' if document.include?('0.3.10')
+File.write(destination, document)
+RUBY
 
 test_v039_public_release_contract
 
@@ -1863,10 +1996,9 @@ RUBY
 }
 
 historical_v038_readme="$temp_root/v038-historical-public-readme.md"
-ruby - "$ROOT/README.md" "$historical_v038_readme" <<'RUBY'
+ruby - "$historical_v039_readme" "$historical_v038_readme" <<'RUBY'
 source, destination = ARGV
 document = File.read(source)
-abort 'historical fixture: v0.3.10 prepared section missing' unless document.sub!(/^### Reliability fixes \(v0\.3\.10 prepared\)\n.*?(?=^### |\z)/m, '')
 abort 'historical fixture: v0.3.9 reliability section missing' unless document.sub!(/^### Claude refresh reliability \(v0\.3\.9\)\n.*?(?=^### |\z)/m, '')
 {
   'Needlbar v0.3.9 is publicly available' => 'Needlbar v0.3.8 is publicly available',
