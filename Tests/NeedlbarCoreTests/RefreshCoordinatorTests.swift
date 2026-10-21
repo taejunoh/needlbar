@@ -990,7 +990,12 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     )
 
     await coordinator.start()
-    await eventually { usage.callCount == 1 && quota.callCount == 1 && clock.sleeperCount == 2 }
+    // Advance only once both startup calls ran and both safety loops are asleep.
+    // A bounded wait could give up first; a loop that then sleeps from the
+    // advanced clock never reaches its deadline, so the waits below never return.
+    await usage.waitUntilCallCount(1)
+    await quota.waitUntilCallCount(1)
+    await clock.waitUntilSleeperCount(2)
 
     clock.advance(by: 5 * 60 - 1)
     await Task.yield()
@@ -2075,9 +2080,15 @@ private final class ManualClock: ClockLike, @unchecked Sendable {
         let continuation: CheckedContinuation<Void, Error>
     }
 
+    private struct SleeperCountWaiter {
+        let expectedCount: Int
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
     private let lock = NSLock()
     private var date: Date
     private var continuations: [UUID: Sleeper] = [:]
+    private var sleeperCountWaiters: [SleeperCountWaiter] = []
 
     init(now: Date) {
         date = now
@@ -2095,19 +2106,36 @@ private final class ManualClock: ClockLike, @unchecked Sendable {
         lock.withLock { date = value }
     }
 
+    /// Returns once at least `expectedCount` sleepers are registered, so a test
+    /// can advance the clock only after every loop has computed its deadline.
+    func waitUntilSleeperCount(_ expectedCount: Int) async {
+        await withCheckedContinuation { continuation in
+            let ready = lock.withLock { () -> Bool in
+                guard continuations.count < expectedCount else { return true }
+                sleeperCountWaiters.append(.init(expectedCount: expectedCount, continuation: continuation))
+                return false
+            }
+            if ready { continuation.resume() }
+        }
+    }
+
     func sleep(for duration: Duration) async throws {
         try Task.checkCancellation()
         let id = UUID()
         try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
-                let cancelled = lock.withLock { () -> Bool in
-                    if Task.isCancelled { return true }
+                let (cancelled, ready) = lock.withLock { () -> (Bool, [CheckedContinuation<Void, Never>]) in
+                    if Task.isCancelled { return (true, []) }
                     continuations[id] = .init(
                         deadline: date.addingTimeInterval(timeInterval(for: duration)),
                         continuation: continuation
                     )
-                    return false
+                    let count = continuations.count
+                    let ready = sleeperCountWaiters.filter { count >= $0.expectedCount }.map(\.continuation)
+                    sleeperCountWaiters.removeAll { count >= $0.expectedCount }
+                    return (false, ready)
                 }
+                ready.forEach { $0.resume() }
                 if cancelled {
                     continuation.resume(throwing: CancellationError())
                 }
