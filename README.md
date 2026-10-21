@@ -92,6 +92,26 @@ Credential renewal and cancellation of blocked synchronous calls are not
 implemented; expired credentials may still prevent quota retrieval. Native
 overnight, quota-reset, and sustained unattended acceptance remain unverified.
 
+### Reliability fixes (v0.3.10 prepared)
+
+The prepared v0.3.10 changes fix two process-handling issues. The Claude Code
+status-line helper now forwards interrupt, terminate, and hang-up signals from
+before it starts the original status-line command, so stopping the helper
+during startup no longer leaves that command running. Manual repository
+analytics stops waiting on git output at its deadline, even when a git
+descendant process detaches from its process group while still holding the
+output pipes. Build and test hardening runs the fail-closed widget dependency
+check in CI with a pinned ripgrep, fixes macOS 27 release builds, makes
+release contracts independent of the shell locale, and makes process tests
+more tolerant of slow first launches under load.
+
+Signals the helper does not forward, such as SIGKILL, SIGQUIT, SIGUSR1/SIGUSR2,
+or signals sent to the whole process group, can still leave the original
+command running, and a detached git descendant is not itself terminated.
+Credential renewal and cancellation of blocked synchronous calls are not
+implemented. Native overnight, quota-reset, and sustained unattended
+acceptance remain unverified.
+
 ### Usage and quota monitoring
 
 Needlbar presents locally aggregated token usage and estimated cost together with provider quota windows and reset times. Overview combines today’s tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status, and Settings. Provider views show today’s usage/cost, input/output/cache token detail, quota/reset information, freshness, and safe recovery states. Usage and quota are independent refresh streams; a failure in one does not replace a previously valid value with zero.
