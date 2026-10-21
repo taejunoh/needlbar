@@ -20,9 +20,16 @@ cp "$ROOT/WidgetExtension/NeedlbarOverviewWidget.swift" "$fixture/WidgetExtensio
 cp "$ROOT/WidgetExtension/NeedlbarWidgetExtension-Info.plist" "$fixture/WidgetExtension/NeedlbarWidgetExtension-Info.plist"
 cp "$ROOT/WidgetExtension/NeedlbarWidgetExtension.entitlements" "$fixture/WidgetExtension/NeedlbarWidgetExtension.entitlements"
 chmod 755 "$fixture/scripts/build-widget-extension.sh"
-! rg -n 'NeedlbarCore|CNeedlbar|import[[:space:]]+NeedlbarCore|import[[:space:]]+CNeedlbar|Rust|Keychain|URLSession' \
+command -v rg >/dev/null 2>&1 || fail "required search tool not found: rg"
+search_status=0
+rg -n 'NeedlbarCore|CNeedlbar|import[[:space:]]+NeedlbarCore|import[[:space:]]+CNeedlbar|Rust|Keychain|URLSession' \
   "$fixture/Sources/NeedlbarWidgetSupport" "$fixture/WidgetExtension/NeedlbarOverviewWidget.swift" >/dev/null ||
-  fail "widget source contains a host/provider dependency"
+  search_status=$?
+case "$search_status" in
+  0) fail "widget source contains a host/provider dependency" ;;
+  1) ;;
+  *) fail "rg failed with status $search_status" ;;
+esac
 
 cat > "$fake_bin/xcrun" <<'EOF'
 #!/usr/bin/env bash

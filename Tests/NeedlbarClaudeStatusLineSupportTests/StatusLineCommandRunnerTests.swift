@@ -196,7 +196,40 @@ private func fileHandle(_ url: URL, data: Data = Data()) throws -> FileHandle {
     #expect(try Data(contentsOf: root.appendingPathComponent("out")) == Data("Needlbar\n".utf8))
 }
 
+@Test(arguments: [SIGINT, SIGTERM, SIGHUP])
+func runnerStartsOriginalCommandWithDefaultForwardedSignals(signal number: Int32) throws {
+    // The runner ignores these signals while forwarding them, starting before
+    // the spawn; the original command must still get default dispositions and
+    // an unblocked mask, so it dies from the signal instead of printing.
+    let (root, store, generation) = try runnerFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let input = try fileHandle(root.appendingPathComponent("input"))
+    let output = try fileHandle(root.appendingPathComponent("out"))
+    let error = try fileHandle(root.appendingPathComponent("err"))
+    defer { try? input.close(); try? output.close(); try? error.close() }
+    let exitCode = StatusLineCommandRunner.run(originalCommand: "kill -\(number) $$; printf survived",
+        generation: generation, input: input, output: output, error: error, store: store, now: Date.init,
+        shell: URL(fileURLWithPath: "/bin/sh"))
+    #expect(exitCode == 128 + number)
+    #expect(try Data(contentsOf: root.appendingPathComponent("out")).isEmpty)
+}
+
 private func builtStatusLineHelper() throws -> URL {
+    // Prefer the helper built beside the running test bundle, so a custom
+    // --scratch-path never silently exercises a stale or missing helper.
+    var image = Dl_info()
+    if dladdr(#dsohandle, &image) != 0, let path = image.dli_fname {
+        var directory = URL(fileURLWithPath: String(cString: path)).deletingLastPathComponent()
+        for _ in 0..<5 {
+            let candidate = directory.appendingPathComponent("NeedlbarClaudeStatusLine")
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
+               !isDirectory.boolValue, access(candidate.path, X_OK) == 0 {
+                return candidate
+            }
+            directory.deleteLastPathComponent()
+        }
+    }
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .deletingLastPathComponent().deletingLastPathComponent()
     for relative in [".build/out/Products/Debug/NeedlbarClaudeStatusLine",
@@ -207,12 +240,25 @@ private func builtStatusLineHelper() throws -> URL {
     throw CocoaError(.fileNoSuchFile)
 }
 
-private func waitForPath(_ path: String, timeout: TimeInterval = 3) -> Bool {
+private func completePID(at url: URL) -> pid_t? {
+    guard let text = try? String(contentsOf: url, encoding: .utf8), text.hasSuffix("\n"),
+          let pid = pid_t(text.dropLast()), pid > 0 else { return nil }
+    return pid
+}
+
+// Readiness handshake: the original command publishes its pid with
+// `echo ... > file`, which creates the file before writing the line, so only a
+// complete newline-terminated pid counts. No product deadline races this wait
+// (the helper keeps pumping stdin until signalled), so the bound is only a
+// safety net; macOS can hold the first exec of a freshly linked helper ~3 s.
+private func waitForPublishedPID(at url: URL, from helper: Process, timeout: TimeInterval = 30) -> pid_t? {
     let deadline = Date().addingTimeInterval(timeout)
-    while !FileManager.default.fileExists(atPath: path) && Date() < deadline {
+    while true {
+        let helperRunning = helper.isRunning
+        if let pid = completePID(at: url) { return pid }
+        if !helperRunning || Date() >= deadline { return nil }
         Thread.sleep(forTimeInterval: 0.01)
     }
-    return FileManager.default.fileExists(atPath: path)
 }
 
 private func waitForExit(_ process: Process, timeout: TimeInterval = 3) -> Bool {
@@ -241,8 +287,8 @@ private func waitForExit(_ process: Process, timeout: TimeInterval = 3) -> Bool 
         if helper.isRunning { kill(helper.processIdentifier, SIGKILL); try? input.fileHandleForWriting.close(); helper.waitUntilExit() }
         if let text = try? String(contentsOf: childPID, encoding: .utf8), let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) { kill(pid, SIGKILL) }
     }
-    #expect(waitForPath(childPID.path))
-    let child = Int32((try String(contentsOf: childPID, encoding: .utf8)).trimmingCharacters(in: .whitespacesAndNewlines))!
+    let child = try #require(waitForPublishedPID(at: childPID, from: helper),
+                             "original command must publish its pid while the helper runs")
     kill(helper.processIdentifier, SIGTERM)
     #expect(waitForExit(helper, timeout: 2), "helper must stop while parent still holds stdin open")
     #expect(helper.terminationStatus == 143)
@@ -271,8 +317,8 @@ private func waitForExit(_ process: Process, timeout: TimeInterval = 3) -> Bool 
         if helper.isRunning { kill(helper.processIdentifier, SIGKILL); helper.waitUntilExit() }
         if let text = try? String(contentsOf: descendantPID, encoding: .utf8), let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) { kill(pid, SIGKILL) }
     }
-    #expect(waitForPath(descendantPID.path))
-    let child = Int32((try String(contentsOf: descendantPID, encoding: .utf8)).trimmingCharacters(in: .whitespacesAndNewlines))!
+    let child = try #require(waitForPublishedPID(at: descendantPID, from: helper),
+                             "original command must publish its descendant pid while the helper runs")
     Thread.sleep(forTimeInterval: 0.1)
     kill(helper.processIdentifier, SIGTERM)
     #expect(waitForExit(helper, timeout: 2), "helper must stop while child refuses stdin")
@@ -280,4 +326,53 @@ private func waitForExit(_ process: Process, timeout: TimeInterval = 3) -> Bool 
     let deadline = Date().addingTimeInterval(2)
     while kill(child, 0) == 0 && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
     #expect(kill(child, 0) != 0)
+}
+
+// Regression: a SIGTERM that lands right after the original command is spawned
+// must still be forwarded. The DEBUG-only gate holds the helper at that point
+// so the window is deterministic instead of a few microseconds wide.
+@Test func helperSIGTERMRightAfterSpawnReapsOriginalCommandAndDescendant() throws {
+    let (root, _, generation) = try runnerFixture(originalCommand: { root in
+        "/bin/sleep 30 & echo $! > '\(root.appendingPathComponent("descendant-pid").path)'; "
+            + "echo $$ > '\(root.appendingPathComponent("child-pid").path)'; wait"
+    })
+    defer { try? FileManager.default.removeItem(at: root) }
+    let childPID = root.appendingPathComponent("child-pid")
+    let descendantPID = root.appendingPathComponent("descendant-pid")
+    let gate = root.appendingPathComponent("after-spawn-gate")
+    let helper = Process()
+    helper.executableURL = try builtStatusLineHelper()
+    helper.arguments = [generation.uuidString]
+    helper.environment = ProcessInfo.processInfo.environment.merging([
+        "NEEDLBAR_STATUSLINE_TEST_ROOT": root.path,
+        "NEEDLBAR_STATUSLINE_TEST_AFTER_SPAWN_GATE": gate.path,
+    ]) { _, new in new }
+    let input = Pipe()
+    helper.standardInput = input
+    helper.standardOutput = FileHandle.nullDevice
+    helper.standardError = FileHandle.nullDevice
+    try helper.run()
+    defer {
+        FileManager.default.createFile(atPath: gate.path, contents: Data())
+        if helper.isRunning { kill(helper.processIdentifier, SIGKILL); helper.waitUntilExit() }
+        try? input.fileHandleForWriting.close()
+        for url in [childPID, descendantPID] {
+            if let pid = completePID(at: url), kill(pid, 0) == 0 { kill(pid, SIGKILL) }
+        }
+    }
+    // The command publishes both pids only after the helper has spawned it, so
+    // the helper is now between the spawn and the gate, or waiting at the gate.
+    let child = try #require(waitForPublishedPID(at: childPID, from: helper),
+                             "original command must publish its pid while the helper is held after spawn")
+    let descendant = try #require(completePID(at: descendantPID), "descendant pid is published before the child pid")
+    kill(helper.processIdentifier, SIGTERM)
+    FileManager.default.createFile(atPath: gate.path, contents: Data())
+    #expect(waitForExit(helper, timeout: 3), "helper must finish after the gate opens")
+    #expect(helper.terminationReason == .exit, "helper must not die from the default SIGTERM action")
+    #expect(helper.terminationStatus == 143)
+    for (pid, role) in [(child, "original command"), (descendant, "descendant")] {
+        let deadline = Date().addingTimeInterval(2)
+        while kill(pid, 0) == 0 && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+        #expect(kill(pid, 0) != 0, "\(role) \(pid) must not outlive the helper")
+    }
 }

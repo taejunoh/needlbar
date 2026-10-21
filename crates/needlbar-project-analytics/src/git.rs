@@ -1,11 +1,12 @@
 use std::io::Read;
+use std::os::unix::io::AsRawFd;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio as ProcessStdio};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Mutex,
+    Arc, Mutex,
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -192,20 +193,26 @@ impl GitRunner for BoundedGitRunner {
         let Some(err) = child.stderr.take() else {
             return self.cleanup_failure(&mut child, None, None);
         };
-        let stdout = spawn_reader(out, MAX_STDOUT_BYTES);
-        let stderr = spawn_reader(err, MAX_STDERR_BYTES);
+        // Set before joining readers that have not both finished on their own.
+        let stop_readers = Arc::new(AtomicBool::new(false));
+        let stdout = spawn_reader(out, MAX_STDOUT_BYTES, stop_readers.clone());
+        let stderr = spawn_reader(err, MAX_STDERR_BYTES, stop_readers.clone());
         let deadline = Instant::now() + PROCESS_TIMEOUT.min(remaining);
         let status = loop {
             match child.try_wait() {
                 Ok(Some(status)) => break status,
                 Ok(None) => {}
-                Err(_) => return self.cleanup_failure(&mut child, Some(stdout), Some(stderr)),
+                Err(_) => {
+                    stop_readers.store(true, Ordering::Release);
+                    return self.cleanup_failure(&mut child, Some(stdout), Some(stderr));
+                }
             }
             if Instant::now() >= deadline {
                 #[cfg(unix)]
                 unsafe {
                     libc::kill(-process_group, libc::SIGKILL);
                 }
+                stop_readers.store(true, Ordering::Release);
                 let cleaned = self.cleanup_failure(&mut child, Some(stdout), Some(stderr));
                 return if matches!(cleaned, Err(GitRunnerError::CleanupFailed)) {
                     cleaned
@@ -221,6 +228,7 @@ impl GitRunner for BoundedGitRunner {
                 unsafe {
                     libc::kill(-process_group, libc::SIGKILL);
                 }
+                stop_readers.store(true, Ordering::Release);
                 let waited = child.wait().is_ok();
                 let drained = stdout.join().is_ok() && stderr.join().is_ok();
                 if waited && drained {
@@ -277,15 +285,41 @@ impl BoundedGitRunner {
         Ok(())
     }
 }
-fn spawn_reader<R: Read + Send + 'static>(
+// The longest a reader waits before re-checking its stop flag.
+const READER_POLL_INTERVAL_MILLISECONDS: libc::c_int = 10;
+
+// The group SIGKILL cannot reach a descendant that left the process group
+// (setsid/setpgid, e.g. a daemonizing helper) while still holding the write
+// end of a pipe, so a blocking read() would wait for that descendant rather
+// than for the runner's deadline. Each reader therefore owns its read end and
+// only read()s once poll() reports it ready; a ready pipe read never blocks.
+// Once `stop` is set, the reader returns within one poll interval and drops,
+// i.e. closes, its read end, which keeps every join bounded.
+fn spawn_reader<R: Read + AsRawFd + Send + 'static>(
     mut reader: R,
     limit: usize,
+    stop: Arc<AtomicBool>,
 ) -> thread::JoinHandle<(Vec<u8>, bool)> {
     thread::spawn(move || {
         let mut bytes = Vec::new();
         let mut buffer = [0_u8; 8192];
         let mut over = false;
-        loop {
+        let mut ready = libc::pollfd {
+            fd: reader.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        while !stop.load(Ordering::Acquire) {
+            match unsafe { libc::poll(&mut ready, 1, READER_POLL_INTERVAL_MILLISECONDS) } {
+                0 => continue,
+                count if count < 0 => {
+                    if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    break;
+                }
+                _ => {}
+            }
             match reader.read(&mut buffer) {
                 Ok(0) | Err(_) => break,
                 Ok(count) => {
@@ -311,14 +345,17 @@ mod tests {
 
     // The runner's process deadline is deliberately tight. Keep independent
     // shell fixtures out of libtest's parallel scheduler while preserving the
-    // lifecycle test's two concurrent calls below.
+    // lifecycle test's two concurrent calls below. The guard only serializes;
+    // it protects no data, so a panicking holder leaves nothing inconsistent.
+    // Recover from poisoning so one failing fixture test reports alone instead
+    // of failing every later fixture test with a PoisonError.
     static PROCESS_FIXTURE_GUARD: OnceLock<TestMutex<()>> = OnceLock::new();
 
     fn process_fixture_guard() -> MutexGuard<'static, ()> {
         PROCESS_FIXTURE_GUARD
             .get_or_init(|| TestMutex::new(()))
             .lock()
-            .expect("process fixture guard is not poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     #[test]
@@ -368,10 +405,36 @@ mod tests {
 
     #[test]
     fn capped_reader_drops_excess_bytes_without_panicking() {
-        let reader = spawn_reader(std::io::Cursor::new(vec![b'x'; 9]), 8);
+        let (read_end, mut write_end) = std::io::pipe().unwrap();
+        std::io::Write::write_all(&mut write_end, &[b'x'; 9]).unwrap();
+        drop(write_end);
+        let reader = spawn_reader(read_end, 8, Arc::new(AtomicBool::new(false)));
         let (bytes, exceeded) = reader.join().unwrap();
         assert!(exceeded);
         assert!(bytes.len() <= 8);
+    }
+
+    #[test]
+    fn stopped_reader_returns_and_closes_its_pipe_while_a_writer_still_holds_it() {
+        let (read_end, mut write_end) = std::io::pipe().unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let reader = spawn_reader(read_end, 8, stop.clone());
+        // Nothing is written, so only the bounded poll can return the reader
+        // to its stop check; give it time to start waiting first.
+        thread::sleep(Duration::from_millis(50));
+        stop.store(true, Ordering::Release);
+        let stopped = Instant::now();
+        while !reader.is_finished() {
+            assert!(
+                stopped.elapsed() < Duration::from_secs(1),
+                "a stopped reader must not wait for the writer to close"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        reader.join().unwrap();
+        let error = std::io::Write::write_all(&mut write_end, b"x")
+            .expect_err("the stopped reader closed its read end");
+        assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
     }
 
     #[test]
@@ -413,13 +476,69 @@ mod tests {
         }
     }
 
+    const PREWARM_ARGUMENT: &str = "--needlbar-fixture-prewarm";
+
+    // macOS can hold the first exec of a newly written executable for up to
+    // ~3 s after spawn() has returned (exec policy assessment), which is longer
+    // than the runner's 2 s PROCESS_TIMEOUT. Pay that one-time cost here,
+    // outside the runner, so the timed run starts the fixture promptly and the
+    // fixture reaches its intended state before the deadline. The file is
+    // never modified after this exec.
     fn executable(script: &str) -> (tempfile::TempDir, PathBuf) {
+        let body = script
+            .strip_prefix("#!/bin/sh\n")
+            .expect("fixture scripts start with #!/bin/sh");
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("fixture-command");
-        fs::write(&path, script).unwrap();
+        fs::write(
+            &path,
+            format!("#!/bin/sh\nif [ \"$1\" = '{PREWARM_ARGUMENT}' ]; then exit 0; fi\n{body}"),
+        )
+        .unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(
+            TestCommand::new(&path)
+                .arg(PREWARM_ARGUMENT)
+                .status()
+                .unwrap()
+                .success(),
+            "fixture prewarm exec must succeed"
+        );
         (directory, path)
     }
+
+    // A fixture writes its pid with `echo ... > file`; the file can exist
+    // (pre-created or truncated) before the line is written. Only a complete
+    // newline-terminated pid proves the fixture reached that point.
+    fn complete_pid(path: &std::path::Path) -> Option<libc::pid_t> {
+        let text = fs::read_to_string(path).ok()?;
+        let line = text.strip_suffix('\n')?;
+        line.trim()
+            .parse()
+            .ok()
+            .filter(|pid: &libc::pid_t| *pid > 0)
+    }
+
+    // A SIGKILLed descendant is reparented to launchd and remains a zombie
+    // (kill(pid, 0) still succeeds on macOS) until reaped. Wait for that
+    // explicit condition; the bound is only a safety net and stays far below
+    // the fixtures' 30 s sleep, so a surviving descendant still fails.
+    fn process_is_gone_within(pid: libc::pid_t, bound: Duration) -> bool {
+        let deadline = Instant::now() + bound;
+        loop {
+            if unsafe { libc::kill(pid, 0) } != 0
+                && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+            {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    const REAP_SAFETY_BOUND: Duration = Duration::from_secs(5);
 
     #[test]
     fn test_only_executable_observes_closed_arguments_and_allowlisted_environment() {
@@ -458,12 +577,9 @@ mod tests {
         let result = runner.run(GitRequest::discover(std::env::temp_dir()));
         assert!(matches!(result, Err(GitRunnerError::TimedOut)));
         assert!(started.elapsed() >= PROCESS_TIMEOUT);
-        let child = fs::read_to_string(pid.path()).unwrap();
-        assert!(!TestCommand::new("/bin/kill")
-            .args(["-0", child.trim()])
-            .status()
-            .unwrap()
-            .success());
+        let child =
+            complete_pid(pid.path()).expect("fixture recorded its pid before the runner deadline");
+        assert!(process_is_gone_within(child, REAP_SAFETY_BOUND));
     }
 
     #[test]
@@ -482,12 +598,9 @@ mod tests {
             Err(GitRunnerError::TimedOut)
         ));
         assert!(started.elapsed() < Duration::from_secs(3));
-        let pid = fs::read_to_string(child.path()).unwrap();
-        assert!(!TestCommand::new("/bin/kill")
-            .args(["-0", pid.trim()])
-            .status()
-            .unwrap()
-            .success());
+        let pid = complete_pid(child.path())
+            .expect("fixture recorded the descendant pid before the runner deadline");
+        assert!(process_is_gone_within(pid, REAP_SAFETY_BOUND));
     }
 
     #[test]
@@ -496,8 +609,10 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let marker = directory.path().join("already-ran");
         let child = directory.path().join("descendant-pid");
+        // `: >` instead of `touch` keeps the descendant's fork as the only
+        // process creation before the parent exits, well before the deadline.
         let script = format!(
-            "#!/bin/sh\nif [ -e '{}' ]; then\n  exit 0\nfi\ntouch '{}'\n/bin/sleep 30 &\necho $! > '{}'\nexit 0\n",
+            "#!/bin/sh\nif [ -e '{}' ]; then\n  exit 0\nfi\n: > '{}'\n/bin/sleep 30 &\necho $! > '{}'\nexit 0\n",
             marker.display(),
             marker.display(),
             child.display(),
@@ -510,12 +625,133 @@ mod tests {
             Err(GitRunnerError::TimedOut)
         ));
         assert!(started.elapsed() < Duration::from_secs(3));
-        let pid = fs::read_to_string(child).unwrap();
-        assert!(!TestCommand::new("/bin/kill")
-            .args(["-0", pid.trim()])
-            .status()
-            .unwrap()
-            .success());
+        // The pid line is the fixture's last act before `exit 0`; without it the
+        // runner timed out a still-running parent and this test's exited-parent
+        // precondition was never reached.
+        let pid = complete_pid(&child)
+            .expect("fixture parent exited (descendant pid recorded) before the runner deadline");
+        assert!(process_is_gone_within(pid, REAP_SAFETY_BOUND));
+        assert!(runner
+            .run(GitRequest::discover(std::env::temp_dir()))
+            .is_ok());
+    }
+
+    // A descendant that leaves the runner's process group with setsid(), as a
+    // daemonizing helper would, while keeping the inherited stdout/stderr
+    // pipes; the group SIGKILL cannot reach it. It records its pid only after
+    // setsid() succeeded and never writes a byte, so nothing wakes a reader.
+    // Every 20 ms it probes both pipes with a zero-length write, which on macOS
+    // succeeds while a read end is open and fails with EPIPE (SIGPIPE ignored)
+    // once it is closed. When both probes fail it records `closed` and exits;
+    // otherwise it gives up after about 30 s.
+    fn escaping_descendant(pid: &std::path::Path, closed: &std::path::Path) -> String {
+        format!(
+            "/usr/bin/perl -e 'use POSIX (); defined(POSIX::setsid()) or exit 1; \
+             $SIG{{PIPE}} = \"IGNORE\"; \
+             open(my $p, \">\", $ARGV[0]) or exit 1; print $p \"$$\\n\"; close($p) or exit 1; \
+             my ($o, $e) = (1, 1); \
+             for (1 .. 1500) {{ select(undef, undef, undef, 0.02); \
+             $o &&= defined(syswrite(STDOUT, \"\")); $e &&= defined(syswrite(STDERR, \"\")); \
+             next if $o || $e; \
+             open(my $c, \">\", $ARGV[1]) or exit 1; print $c \"closed\\n\"; close($c); exit 0 }} \
+             exit 2' '{}' '{}' &\n",
+            pid.display(),
+            closed.display(),
+        )
+    }
+
+    // Kills the escaped descendant if its test ends, or panics, while it is
+    // still alive. It only signals a pid that still leads its own process
+    // group, as the escaped descendant does.
+    struct EscapedDescendantGuard(PathBuf);
+
+    impl Drop for EscapedDescendantGuard {
+        fn drop(&mut self) {
+            if let Some(pid) = complete_pid(&self.0) {
+                unsafe {
+                    if libc::getpgid(pid) == pid {
+                        libc::kill(pid, libc::SIGKILL);
+                    }
+                }
+            }
+        }
+    }
+
+    // The descendant can only write `closed` if it survived the group SIGKILL
+    // (it escaped) and then saw EPIPE on both pipes (the runner released its
+    // read ends instead of leaving reader threads blocked on them).
+    fn assert_escaped_descendant_saw_both_pipes_closed(
+        pid: &std::path::Path,
+        closed: &std::path::Path,
+    ) {
+        let pid = complete_pid(pid)
+            .expect("descendant left the runner's process group before the deadline");
+        assert!(
+            process_is_gone_within(pid, REAP_SAFETY_BOUND),
+            "escaped descendant still holds an open runner pipe"
+        );
+        assert_eq!(
+            fs::read_to_string(closed).ok().as_deref(),
+            Some("closed\n"),
+            "escaped descendant must exit only after the runner closed both read ends"
+        );
+    }
+
+    #[test]
+    fn descendant_escaping_the_process_group_cannot_hold_a_live_child_past_the_deadline() {
+        let _fixture_guard = process_fixture_guard();
+        let directory = tempfile::tempdir().unwrap();
+        let descendant = directory.path().join("escaped-pid");
+        let closed = directory.path().join("pipes-closed");
+        let _escaped = EscapedDescendantGuard(descendant.clone());
+        let script = format!(
+            "#!/bin/sh\n{}exec /bin/sleep 30\n",
+            escaping_descendant(&descendant, &closed)
+        );
+        let (_fixture_directory, path) = executable(&script);
+        let runner = BoundedGitRunner::with_test_executable(path);
+        let started = Instant::now();
+        let result = runner.run(GitRequest::discover(std::env::temp_dir()));
+        let elapsed = started.elapsed();
+        assert!(
+            matches!(result, Err(GitRunnerError::TimedOut)),
+            "{result:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "run returned after {elapsed:?}"
+        );
+        assert_escaped_descendant_saw_both_pipes_closed(&descendant, &closed);
+    }
+
+    #[test]
+    fn descendant_escaping_the_process_group_cannot_hold_an_exited_child_past_the_deadline() {
+        let _fixture_guard = process_fixture_guard();
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("already-ran");
+        let descendant = directory.path().join("escaped-pid");
+        let closed = directory.path().join("pipes-closed");
+        let _escaped = EscapedDescendantGuard(descendant.clone());
+        let script = format!(
+            "#!/bin/sh\nif [ -e '{}' ]; then\n  exit 0\nfi\n: > '{}'\n{}exit 0\n",
+            marker.display(),
+            marker.display(),
+            escaping_descendant(&descendant, &closed),
+        );
+        let (_fixture_directory, path) = executable(&script);
+        let runner = BoundedGitRunner::with_test_executable(path);
+        let started = Instant::now();
+        let result = runner.run(GitRequest::discover(std::env::temp_dir()));
+        let elapsed = started.elapsed();
+        assert!(
+            matches!(result, Err(GitRunnerError::TimedOut)),
+            "{result:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "run returned after {elapsed:?}"
+        );
+        assert_escaped_descendant_saw_both_pipes_closed(&descendant, &closed);
         assert!(runner
             .run(GitRequest::discover(std::env::temp_dir()))
             .is_ok());

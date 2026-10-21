@@ -639,7 +639,7 @@ import Testing
 private struct ProviderLoginProcessRunnerTests {
 @Test func processRunnerPreventsALateLaunchWhenStoppedDuringPrelaunchRegistration() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let prelaunch = SuspensionGate()
     let starts = ProcessSignalRecorder()
@@ -662,7 +662,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerSendsOnlyTERMToACompliantExactFixturePIDAndReapsIt() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let recorder = ProcessSignalRecorder()
     let runner = ProviderLoginProcessRunner(
@@ -687,7 +687,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerStopsACompliantFixtureWithoutLifecycleObservers() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let runner = ProviderLoginProcessRunner(
         timeout: .seconds(30),
@@ -703,7 +703,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerEscalatesOnlyTheTermIgnoringExactFixturePIDThenReapsIt() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let recorder = ProcessSignalRecorder(holdAfterTERM: true)
     let runner = ProviderLoginProcessRunner(
@@ -733,7 +733,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerSharesOneTerminationSequenceAcrossConcurrentCancellationAndStop() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let recorder = ProcessSignalRecorder(holdAfterTERM: true)
     let runner = ProviderLoginProcessRunner(
@@ -765,7 +765,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerTaskCancellationTerminatesAndReapsADirectChild() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let recorder = ProcessSignalRecorder()
     let runner = ProviderLoginProcessRunner(
@@ -791,7 +791,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerTimeoutTerminatesAndReapsADirectChild() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
 
     let recorder = ProcessSignalRecorder()
     let runner = ProviderLoginProcessRunner(
@@ -1062,7 +1062,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerReapsAHarmlessDirectChildThatExitsNormally() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
     let recorder = ProcessSignalRecorder()
     let runner = ProviderLoginProcessRunner(processStarted: { pid in await recorder.recordStart(pid) }, processFinished: { pid in await recorder.recordFinish(pid) })
     let task = Task.detached { await runner.run(fixture.command(arguments: ["exit"], readyFile: fixture.directory.appendingPathComponent("ready"))) }
@@ -1076,7 +1076,7 @@ private struct ProviderLoginProcessRunnerTests {
 
 @Test func processRunnerSignalsOnlyTheDirectFixtureWhenItHasADescendant() async throws {
     let fixture = try SignalFixture.make()
-    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    defer { fixture.cleanUp() }
     let recorder = ProcessSignalRecorder()
     let ready = fixture.directory.appendingPathComponent("descendant-ready")
     let runner = ProviderLoginProcessRunner(terminationGrace: .milliseconds(100), signalObserved: { pid, signal in await recorder.send(pid, signal) }, processStarted: { pid in await recorder.recordStart(pid) })
@@ -1989,7 +1989,7 @@ private struct SignalFixture {
             const char *ready = getenv("NEEDLBAR_FIXTURE_READY");
             if (ready) {
                 int fd = open(ready, O_WRONLY | O_CREAT, 0600);
-                if (fd >= 0) { if (descendant_mode) dprintf(fd, "%d %d", (int)getpid(), (int)descendant); else write(fd, "1", 1); close(fd); }
+                if (fd >= 0) { if (descendant_mode) dprintf(fd, "%d %d\\n", (int)getpid(), (int)descendant); else write(fd, "1", 1); close(fd); }
             }
             if (exit_mode) return 0;
             for (;;) sleep(1);
@@ -2005,10 +2005,63 @@ private struct SignalFixture {
             try compiler.run()
             compiler.waitUntilExit()
             guard compiler.terminationStatus == 0 else { throw SignalFixtureError.compilationFailed }
+
+            // macOS can hold the first exec of a freshly linked executable for
+            // ~1-3 s after spawn returns (exec policy assessment). Pay that once
+            // here, outside every timed path, using the fixture's exit mode with
+            // no ready/term files, so runs under test start it promptly. The
+            // binary is never modified after this exec.
+            let prewarm = Process()
+            prewarm.executableURL = executable
+            prewarm.arguments = ["exit"]
+            prewarm.environment = [:]
+            prewarm.standardInput = FileHandle.nullDevice
+            prewarm.standardOutput = FileHandle.nullDevice
+            prewarm.standardError = FileHandle.nullDevice
+            try prewarm.run()
+            prewarm.waitUntilExit()
+            guard prewarm.terminationReason == .exit, prewarm.terminationStatus == 0 else {
+                throw SignalFixtureError.prewarmFailed
+            }
             return SignalFixture(directory: directory, executable: executable)
         } catch {
             try? FileManager.default.removeItem(at: directory)
             throw error
+        }
+    }
+
+    /// Test-exit cleanup: SIGKILLs every process still running this fixture's
+    /// executable (the direct child and any forked descendant), then removes the
+    /// fixture directory. Fixtures loop forever and some ignore SIGTERM, so a
+    /// failed readiness wait or assertion before `runner.stop()` would otherwise
+    /// orphan them. Processes are matched by exact resolved executable path, which
+    /// is unique to this fixture (UUID directory), so a reused pid belonging to
+    /// anything else is never signalled. Nothing is waited on here: a still-running
+    /// runner reaps its own direct child, and launchd reaps orphaned descendants.
+    func cleanUp() {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        guard let target = realpath(executable.path, nil) else { return }
+        defer { free(target) }
+        let path = String(cString: target)
+
+        for _ in 0..<100 {
+            let owned = Self.livePIDs(runningExecutableAt: path)
+            if owned.isEmpty { return }
+            for pid in owned { _ = Darwin.kill(pid, SIGKILL) }
+            usleep(10_000)
+        }
+    }
+
+    private static func livePIDs(runningExecutableAt path: String) -> [pid_t] {
+        let capacity = Int(proc_listallpids(nil, 0)) + 64
+        guard capacity > 64 else { return [] }
+        var pids = [pid_t](repeating: 0, count: capacity)
+        let count = Int(proc_listallpids(&pids, Int32(capacity * MemoryLayout<pid_t>.size)))
+        guard count > 0 else { return [] }
+        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        return pids.prefix(count).filter { pid in
+            guard pid > 0, proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return false }
+            return String(cString: buffer) == path
         }
     }
 
@@ -2024,23 +2077,38 @@ private struct SignalFixture {
     }
 
     func pids(at url: URL) async throws -> (parent: Int32, child: Int32) {
-        try await waitForFixtureReady(at: url)
-        let parts = try String(contentsOf: url, encoding: .utf8).split(separator: " ").map { Int32($0) }
-        guard parts.count == 2, let parent = parts[0], let child = parts[1] else { throw SignalFixtureError.readyTimedOut }
-        return (parent, child)
+        // The fixture writes the pids after open(O_CREAT), so wait for the
+        // complete newline-terminated line rather than the file's existence.
+        try await waitForFixtureFile(at: url) { text in
+            guard text.hasSuffix("\n") else { return nil }
+            let parts = text.dropLast().split(separator: " ").compactMap { Int32($0) }
+            return parts.count == 2 ? (parent: parts[0], child: parts[1]) : nil
+        }
     }
 }
 
+// Readiness handshake: the fixture creates its ready file only after installing
+// its SIGTERM disposition, so the file's existence is the condition. The runner
+// under test has no readiness deadline of its own, so the bound is only a
+// safety net, not a startup budget.
 private func waitForFixtureReady(at url: URL) async throws {
-    for _ in 0..<1_000 {
-        if FileManager.default.fileExists(atPath: url.path) { return }
+    try await waitForFixtureFile(at: url) { _ in () }
+}
+
+private func waitForFixtureFile<Value>(
+    at url: URL, timeout: Duration = .seconds(10), _ parse: (String) -> Value?
+) async throws -> Value {
+    let deadline = ContinuousClock.now.advanced(by: timeout)
+    while true {
+        if let text = try? String(contentsOf: url, encoding: .utf8), let value = parse(text) { return value }
+        guard ContinuousClock.now < deadline else { throw SignalFixtureError.readyTimedOut }
         try await Task.sleep(for: .milliseconds(1))
     }
-    throw SignalFixtureError.readyTimedOut
 }
 
 private enum SignalFixtureError: Error {
     case compilationFailed
+    case prewarmFailed
     case readyTimedOut
 }
 

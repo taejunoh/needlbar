@@ -1,18 +1,21 @@
 # Needlbar Agent Guide
 
-This repository is being implemented from an approved v0.1 design and implementation plan. Continue the existing plan; do not redesign the product unless the user explicitly asks for a design change.
+This repository began with the approved v0.1 design and implementation plan. For current continuation state, read `docs/HANDOFF.md` first, then `docs/STATUS.md`. Keep existing approved architecture boundaries; do not redesign the product unless the user explicitly asks for a design change.
 
 ## Start Here
 
 Read these files in order before changing code:
 
-1. `docs/STATUS.md` — current implementation state, blockers, and exact continuation point.
-2. `docs/superpowers/specs/2026-08-13-needlbar-v0.1-design.md` — approved v0.1 product and architecture contract.
-3. `docs/superpowers/plans/2026-08-13-needlbar-v0.1.md` — task-by-task implementation plan.
+1. `docs/HANDOFF.md` — current continuation state, shipped scope, remaining work, and safe next action.
+2. `docs/STATUS.md` — dated implementation and verification history; local-only receipts are labeled as such.
+3. `docs/superpowers/specs/2026-08-13-needlbar-v0.1-design.md` — approved v0.1 product and architecture contract.
+4. `docs/superpowers/plans/2026-08-13-needlbar-v0.1.md` — task-by-task implementation plan.
 
 When the plan is silent, the approved design spec is authoritative.
 
-## Current Continuation Point
+## Historical Bootstrap Continuation (Obsolete)
+
+The following Task 1 / Task 2 bootstrap continuation describes an early repository state. It is retained as historical context only; do not resume it. Use `docs/HANDOFF.md` and the latest dated entry in `docs/STATUS.md` for current work.
 
 The bootstrap from Task 1 is present on `main`. The first GitHub Actions run completed with a failure in the Swift portion of `make test` because `Package.swift` declares `// swift-tools-version: 6.0` while the selected `macos-14` runner invokes Swift 5.10.
 

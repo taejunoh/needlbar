@@ -726,12 +726,39 @@ mod tests {
         }
     }
 
+    const PREWARM_ARGUMENT: &str = "--needlbar-fixture-prewarm";
+
+    // macOS can hold the first exec of a newly written executable for up to
+    // ~3 s after spawn has returned (exec policy assessment). That is longer
+    // than these tests' app-server deadlines, so pay it here, outside the
+    // timed path, and the deadline under test starts with a promptly running
+    // script. The file is never modified after this exec.
     fn write_script(directory: &Path, name: &str, contents: &str) -> PathBuf {
+        let body = contents
+            .strip_prefix("#!/bin/sh\n")
+            .expect("app-server fixtures start with #!/bin/sh");
         let path = directory.join(name);
-        fs::write(&path, contents).unwrap();
+        fs::write(
+            &path,
+            format!(
+                "#!/bin/sh\nif [ \"${{1:-}}\" = '{PREWARM_ARGUMENT}' ]; then exit 0; fi\n{body}"
+            ),
+        )
+        .unwrap();
         let mut permissions = fs::metadata(&path).unwrap().permissions();
         permissions.set_mode(0o700);
         fs::set_permissions(&path, permissions).unwrap();
+        assert!(
+            StdCommand::new(&path)
+                .arg(PREWARM_ARGUMENT)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .unwrap()
+                .success(),
+            "fixture prewarm exec must succeed"
+        );
         path
     }
 
@@ -739,15 +766,21 @@ mod tests {
         path.display().to_string().replace('\'', "'\\\"'\\\"'")
     }
 
+    // The script records `$$` before anything else, and write_script prewarmed
+    // it, so a complete newline-terminated pid proves the child ran; an empty
+    // or missing file would make the exit check below vacuous. A killed child
+    // stays visible to `kill -0` until reaped, so poll that explicit condition;
+    // the bound is only a safety net, far below the scripts' `sleep 10`.
     async fn assert_process_exits(pid_file: &Path) {
-        let Ok(pid) = fs::read_to_string(pid_file) else {
-            // A timeout can win before the child receives CPU time. In that
-            // case there is no child PID left to probe.
-            return;
-        };
-        for _ in 0..20 {
+        let text = fs::read_to_string(pid_file).unwrap_or_default();
+        let pid = text
+            .strip_suffix('\n')
+            .filter(|pid| !pid.is_empty() && pid.bytes().all(|byte| byte.is_ascii_digit()))
+            .unwrap_or_else(|| panic!("scripted app-server recorded its pid, got {text:?}"));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
             let status = StdCommand::new("kill")
-                .args(["-0", pid.trim()])
+                .args(["-0", pid])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status()

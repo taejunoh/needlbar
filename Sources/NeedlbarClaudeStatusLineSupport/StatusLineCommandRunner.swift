@@ -18,16 +18,26 @@ public enum StatusLineCommandRunner {
         error: FileHandle, store: StatusLinePrivateStore, now: () -> Date,
         shell: URL = shellURL()
     ) -> Int32 {
+        // Take over the forwarded signals before the original command exists:
+        // an earlier signal can only end the helper, which then has nothing to
+        // orphan, and any later one is recorded and reaches the child's group.
+        let signals = SignalForwarder()
+        defer { signals.stop() }
+        if let number = signals.received { return 128 + number }
         let child: Child?
         if let originalCommand {
             guard let spawned = Child(command: originalCommand, shell: shell,
                                       output: output.fileDescriptor, error: error.fileDescriptor) else { return 127 }
             child = spawned
+            #if DEBUG
+            holdAfterSpawnForTesting()
+            #endif
+            // A signal caught before this is still forwarded: the loop below
+            // checks `received` before any child I/O and cancels the group.
+            signals.forward(to: spawned.pid)
         } else {
             child = nil
         }
-        let signals = SignalForwarder(childPID: child?.pid)
-        defer { signals.stop() }
         var parsingCopy = Data()
         var exceededLimit = false
         var inputFailed = false
@@ -95,6 +105,17 @@ public enum StatusLineCommandRunner {
         }
         return exitCode
     }
+
+    #if DEBUG
+    /// Test-only: parks the helper just after it spawns the original command
+    /// until the gate file exists, so tests can signal it in that window.
+    private static func holdAfterSpawnForTesting() {
+        guard let gate = ProcessInfo.processInfo.environment["NEEDLBAR_STATUSLINE_TEST_AFTER_SPAWN_GATE"],
+              gate.hasPrefix("/") else { return }
+        let deadline = Date().addingTimeInterval(10)
+        while access(gate, F_OK) != 0 && Date() < deadline { usleep(10_000) }
+    }
+    #endif
 
     private static func cancel(child: Child?, signal: Int32) -> Int32 {
         child?.closeInput()
@@ -192,24 +213,44 @@ private final class Child {
 private final class SignalForwarder: @unchecked Sendable {
     private let lock = NSLock()
     private var caught: Int32?
+    private var childPID: pid_t?
     private var sources: [any DispatchSourceSignal] = []
     private var previous: [(Int32, sig_t?)] = []
     var received: Int32? { lock.lock(); defer { lock.unlock() }; return caught }
 
-    init(childPID: pid_t?) {
-        for number in [SIGINT, SIGTERM, SIGHUP] {
-            previous.append((number, signal(number, SIG_IGN)))
-            let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
-            source.setEventHandler { [weak self] in
-                guard let self else { return }
-                self.lock.lock()
-                if self.caught == nil { self.caught = number }
-                self.lock.unlock()
-                if let childPID { _ = kill(-childPID, number) }
-            }
+    init() {
+        let numbers = [SIGINT, SIGTERM, SIGHUP]
+        // A private serial queue keeps registration and forwarding from
+        // waiting behind a saturated global pool.
+        let queue = DispatchQueue(label: "com.taejunoh.needlbar.statusline-signals")
+        // A semaphore, unlike a group, tolerates a registration callout that
+        // never runs because its source was cancelled after a timed-out wait.
+        let registered = DispatchSemaphore(value: 0)
+        for number in numbers {
+            let source = DispatchSource.makeSignalSource(signal: number, queue: queue)
+            source.setEventHandler { [weak self] in self?.handle(number) }
+            source.setRegistrationHandler { registered.signal() }
             source.resume()
             sources.append(source)
         }
+        // Ignore the default action only once every kevent is registered, so
+        // a signal is either recorded or ends the helper, never dropped. The
+        // bound is a safety net; registration takes microseconds.
+        let deadline = DispatchTime.now() + 1
+        for _ in numbers { _ = registered.wait(timeout: deadline) }
+        for number in numbers { previous.append((number, signal(number, SIG_IGN))) }
+    }
+
+    func forward(to pid: pid_t) {
+        lock.lock(); childPID = pid; lock.unlock()
+    }
+
+    private func handle(_ number: Int32) {
+        lock.lock()
+        if caught == nil { caught = number }
+        let pid = childPID
+        lock.unlock()
+        if let pid { _ = kill(-pid, number) }
     }
 
     func stop() {
