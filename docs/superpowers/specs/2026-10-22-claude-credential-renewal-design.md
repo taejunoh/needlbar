@@ -381,13 +381,17 @@ change.
    - the attempt's Claude result is a failure.
    Otherwise keep the code-based reason. Add no extra quota call, Keychain
    read, or bridge export.
-3. **Copy.** Proposed wording; the final wording is Q2.
-   - Short reason: "Waiting for Claude Code to renew access".
+3. **Copy.** Final wording, chosen by the user on 2026-10-22 (Q2).
+   - Short reason: "Claude Code access on this Mac expired".
    - Detail line, in the popover and Settings only: "Needlbar reads the access
-     Claude Code saves on this Mac. It has expired. Needlbar updates
-     automatically after Claude Code renews it."
+     the Claude Code command-line tool saves on this Mac. The Claude desktop
+     app does not renew it, so it updates after Claude Code runs in Terminal."
    - No "Sign in", no "Log in again", and no instruction to run a command or
-     send a prompt.
+     send a prompt. The detail states facts only and offers no button or
+     action.
+   - Terminal is mentioned as a fact, not as an instruction. This narrowly
+     relaxes the earlier "no Terminal mention" guidance (see the 2026-10-22
+     note in section 8).
 4. **Placement.**
    - When no source has a recent value, use the existing reason slot, as
      today.
@@ -523,15 +527,31 @@ individually take the recommended default:
 - **Q1:** Yes. Amend the 2026-09-15 passive-recovery reason table and the
   2026-09-16 failure-origin presentation sentence, for local-expiry origins
   only.
-- **Q2:** (a) "Waiting for Claude Code to renew access", with the §4.3 detail
-  line.
+- **Q2:** Answered on 2026-10-22, replacing the earlier default (a): the user
+  chose a factual, non-imperative copy. Short reason: "Claude Code access on
+  this Mac expired". Detail line (popover and Settings only): "Needlbar reads
+  the access the Claude Code command-line tool saves on this Mac. The Claude
+  desktop app does not renew it, so it updates after Claude Code runs in
+  Terminal." This is the §4.3 text.
 - **Q3:** (a) No action.
-- **Q4:** Open. It does not block increment 1.
+- **Q4:** Answered on 2026-10-22: "Claude desktop app Code tab mostly".
 - **Q5:** Option D is deferred. No notification work is approved.
 - **Q6:** The Fable detail line, as in §4.4.
 - **Q7:** Open. It is a separate review, not part of increment 1.
 - **Q8:** Deferred. Revisit only if Anthropic documents a non-model renewal
   command, and then only as an explicit-click action.
+
+### Note, 2026-10-22: Terminal as a fact
+
+The Q4 answer (the user mostly runs Claude Code from the Claude desktop app's
+Code tab) was checked against read-only log aggregates: the saved access lasted
+about eight hours and desktop-app use did not renew it, and the status-line
+bridge has received nothing since 2026-10-07 because status-line commands run
+only in interactive terminal sessions. The detail line therefore mentions
+Terminal as a fact about when the access updates. It does not tell the user to
+open Terminal or run a command, and it adds no button or action. This narrowly
+relaxes the earlier "no Terminal mention" guidance; the ban on instructions,
+sign-in wording, and Terminal launch automation is unchanged.
 
 ## References
 

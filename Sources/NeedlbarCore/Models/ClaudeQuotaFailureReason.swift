@@ -25,9 +25,9 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
         case .claudeCodeAccessExpired:
             String(
                 localized: "claudeQuota.reason.claudeCodeAccessExpired",
-                defaultValue: "Waiting for Claude Code to renew access",
+                defaultValue: "Claude Code access on this Mac expired",
                 bundle: bundle,
-                comment: "Claude quota reason: the access Claude Code saved on this Mac has expired."
+                comment: "Claude quota reason, short form: the access the Claude Code command-line tool saved on this Mac has expired. A statement of fact; it offers the user no action."
             )
         }
     }
@@ -37,9 +37,9 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
         case .claudeCodeAccessExpired:
             String(
                 localized: "claudeQuota.reason.claudeCodeAccessExpired.detail",
-                defaultValue: "Needlbar reads the access Claude Code saves on this Mac. It has expired. Needlbar updates automatically after Claude Code renews it.",
+                defaultValue: "Needlbar reads the access the Claude Code command-line tool saves on this Mac. The Claude desktop app does not renew it, so it updates after Claude Code runs in Terminal.",
                 bundle: bundle,
-                comment: "Explains the Claude quota reason. Informational only; it offers the user no action."
+                comment: "Explains the Claude quota reason as fact: Needlbar reads the access the Claude Code command-line tool saves, and the Claude desktop app does not renew it. Mentions Terminal only as a fact. Informational only; it offers the user no action."
             )
         case .quotaAccessUnavailable, .credentialAccessUnavailable, .connectionUnavailable,
              .temporarilyLimited, .couldNotUpdateQuota:
