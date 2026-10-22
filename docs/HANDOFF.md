@@ -61,17 +61,19 @@ orphan the command, and an escaped git descendant is not itself killed.
 The `rg` fail-closed follow-up (PR #21), the `RefreshCoordinatorTests` lost
 wakeup (PR #24) and the follow-up test hygiene (PR #25: explicit readiness and
 cancellation-aware waits, 30 s caps on the blocking fakes, serialized
-in-process status-line runner tests) are complete.
+in-process status-line runner tests) and the status-line signal restore fix
+(PR #27: `SignalForwarder` keeps whole `sigaction` records, so a saved
+`SIG_IGN` no longer ends the restore early) are complete.
 
 Known open items:
 
-- Direct Claude quota retrieval on the maintainer's machine has been failing
-  with origin `keychainCredentialExpired`; the display falls back to
-  status-line values. The approved
+- Direct Claude quota retrieval on the maintainer's machine failed for over
+  a day with origin `keychainCredentialExpired` while the display fell back to
+  status-line values; it recovered on 2026-10-21 after Claude Code was used
+  and renewed its own credential. The approved
   `docs/superpowers/specs/2026-10-22-claude-credential-renewal-design.md`
   (PR #26) authorizes option A, narrowed, and increment 1 only. Increment 1
-  is implemented on branch `codex/claude-access-expired-reason` (stacked on
-  PR #26, not merged): a local-expiry origin now reads "Waiting for Claude
+  is implemented in PR #28, which follows PR #26: a local-expiry origin now reads "Waiting for Claude
   Code to renew access" in the existing reason slot, or once on the Fable line
   while status-line windows are recent, with a detail line in the popover and
   Settings. Credential renewal is still not implemented and is not approved.
@@ -84,10 +86,6 @@ Known open items:
   acceptance build, network disabled in the guest, and GUI interaction for the
   widget and notification cases (see the 2026-09-01 native acceptance driver
   spec and `scripts/native-acceptance-run.sh`).
-- Test-only side finding: in debug builds `SignalForwarder.stop()` was seen
-  to leave SIGTERM/SIGHUP ignored after restoring a saved `SIG_IGN`; release
-  builds restore correctly and the shipped helper runs once per process.
-  Confirm and fix narrowly if pursued.
 
 Useful verified source locations:
 
