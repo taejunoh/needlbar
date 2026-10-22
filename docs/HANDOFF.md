@@ -60,7 +60,10 @@ orphan the command, and an escaped git descendant is not itself killed.
 The `rg` fail-closed follow-up (PR #21), the `RefreshCoordinatorTests` lost
 wakeup (PR #24) and the follow-up test hygiene (PR #25: explicit readiness and
 cancellation-aware waits, 30 s caps on the blocking fakes, serialized
-in-process status-line runner tests) are complete.
+in-process status-line runner tests) are complete. The status-line signal
+restore fix (`SignalForwarder` keeps whole `sigaction` records, so a saved
+`SIG_IGN` no longer ends the restore early; see STATUS) is on branch
+`codex/signal-restore`.
 
 Known open items, none started:
 
@@ -73,10 +76,6 @@ Known open items, none started:
   acceptance build, network disabled in the guest, and GUI interaction for the
   widget and notification cases (see the 2026-09-01 native acceptance driver
   spec and `scripts/native-acceptance-run.sh`).
-- Test-only side finding: in debug builds `SignalForwarder.stop()` was seen
-  to leave SIGTERM/SIGHUP ignored after restoring a saved `SIG_IGN`; release
-  builds restore correctly and the shipped helper runs once per process.
-  Confirm and fix narrowly if pursued.
 
 Useful verified source locations:
 

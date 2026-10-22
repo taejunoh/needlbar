@@ -1,5 +1,41 @@
 # Needlbar Development Status
 
+## 2026-10-21 Status-line signal restore fix
+
+The side finding from PR #25 is confirmed and fixed on branch
+`codex/signal-restore`. `SignalForwarder` saved the previous SIGINT, SIGTERM
+and SIGHUP dispositions as `[(Int32, sig_t?)]`. Swift treats low addresses as
+invalid C function pointers and uses them to encode enum cases, so an
+`Optional<(Int32, sig_t?)>` stores nil as a `sig_t?` field holding 1, which
+is `SIG_IGN`. In debug builds the restore loop's iterator read a saved
+`SIG_IGN` as the end of the array, and every later signal stayed ignored:
+with SIGINT ignored at start, as a non-interactive shell starts background
+jobs, SIGTERM and SIGHUP stayed ignored after one in-process `run()`.
+Optimized builds happen not to build that Optional in the loop, though the
+same value still reads as nil elsewhere. This is our code holding a value
+outside Swift's function-pointer contract, not a compiler fault. Separately,
+restoring with `signal()` replaced a caught handler's mask and flags
+(SA_SIGINFO dropped, SA_RESTART added) in every build.
+
+The forwarder now saves and restores whole `sigaction` records, which have no
+spare bit patterns. Sources are still registered before `SIG_IGN` and before
+spawn; the original command still gets default dispositions; forwarding and
+exit codes are unchanged. The shipped helper runs once per process, so its
+observable behavior is unchanged.
+
+New serialized in-process tests start from each mix of ignored and default
+dispositions, and from a caught SA_SIGINFO handler with a mask, and require
+all three dispositions to read back exactly after one run. Before the fix,
+the debug test run failed the cases starting with SIGINT or SIGTERM ignored
+and the caught case. An optimized build of the same runner source failed only
+the caught case. After the fix both pass.
+
+Verification (local, macOS 27.0.1, Xcode 27.1, Swift 6.4): the
+`NeedlbarClaudeStatusLineSupportTests` bundle passed 10 of 10 runs (39 tests
+each). Full `make test` with cargo and an existing non-installed `rg` on
+`PATH` and `MACOSX_DEPLOYMENT_TARGET=14.0` exited 0: Rust 1552 passed / 1
+ignored, Swift 731.
+
 ## 2026-10-21 Test reliability follow-ups
 
 PR #24 fixed the lost wakeup in
