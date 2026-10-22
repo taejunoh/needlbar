@@ -1,8 +1,9 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-10-21, updated after the v0.3.10 release (first written
-2026-10-20). This is a documentation handoff, not a new product approval or a
-claim of fresh installation/runtime verification.
+**Checkpoint:** 2026-10-22, updated for credential renewal increment 1 (first
+written 2026-10-20, updated after the v0.3.10 release on 2026-10-21). This is a
+documentation handoff, not a new product approval or a claim of fresh
+installation/runtime verification.
 
 ## Repository state
 
@@ -60,17 +61,26 @@ orphan the command, and an escaped git descendant is not itself killed.
 The `rg` fail-closed follow-up (PR #21), the `RefreshCoordinatorTests` lost
 wakeup (PR #24) and the follow-up test hygiene (PR #25: explicit readiness and
 cancellation-aware waits, 30 s caps on the blocking fakes, serialized
-in-process status-line runner tests) are complete. The status-line signal
-restore fix (`SignalForwarder` keeps whole `sigaction` records, so a saved
-`SIG_IGN` no longer ends the restore early; see STATUS) is on branch
-`codex/signal-restore`.
+in-process status-line runner tests) and the status-line signal restore fix
+(PR #27: `SignalForwarder` keeps whole `sigaction` records, so a saved
+`SIG_IGN` no longer ends the restore early) are complete.
 
-Known open items, none started:
+Known open items:
 
-- Direct Claude quota retrieval on the maintainer's machine has been failing
-  with origin `keychainCredentialExpired`; the display falls back to
-  status-line values. Credential renewal is still not implemented and needs
-  its own approved design before any work.
+- Direct Claude quota retrieval on the maintainer's machine failed for over
+  a day with origin `keychainCredentialExpired` while the display fell back to
+  status-line values; it recovered on 2026-10-21 after Claude Code was used
+  and renewed its own credential. The approved
+  `docs/superpowers/specs/2026-10-22-claude-credential-renewal-design.md`
+  (PR #26) authorizes option A, narrowed, and increment 1 only. Increment 1
+  is implemented in PR #28, which follows PR #26: a local-expiry origin now reads "Waiting for Claude
+  Code to renew access" in the existing reason slot, or once on the Fable line
+  while status-line windows are recent, with a detail line in the popover and
+  Settings. Credential renewal is still not implemented and is not approved.
+  The expired-credential notification (option D) is deferred; Q4 (which
+  credential source the maintainer's sessions use) and Q7 (provider-policy
+  review of the direct token path) are open. See the plan
+  `docs/superpowers/plans/2026-10-22-claude-access-expired-reason.md`.
 - Native macOS 14 acceptance is not agent-automatable end to end. It needs a
   provisioned macOS 14 guest with a logged-in GUI user, the Developer ID
   acceptance build, network disabled in the guest, and GUI interaction for the
@@ -84,6 +94,8 @@ Useful verified source locations:
 - `Sources/Needlbar/App/QuotaRecoveryMonitor.swift`
 - `Sources/NeedlbarCore/Repositories/ClaudeStatusLineCacheRepository.swift`
 - `Sources/Needlbar/Diagnostics/ClaudeQuotaFailureDiagnosticsReporter.swift`
+- `Sources/NeedlbarCore/Diagnostics/ClaudeQuotaCompletionDiagnostics.swift`
+- `Sources/NeedlbarCore/Models/ClaudeQuotaFailureReason.swift`
 - `Sources/NeedlbarCore/Widget/WidgetProjectionMapper.swift`
 - `Sources/NeedlbarWidgetSupport/WidgetProjection.swift`
 - `WidgetExtension/NeedlbarOverviewWidget.swift`

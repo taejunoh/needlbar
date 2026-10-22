@@ -194,9 +194,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 store: snapshotStore,
                 usageFileWatcher: usageFileWatcher,
                 statusLineRepository: ClaudeStatusLineCacheRepository(),
-                claudeQuotaOperationCompleted: {
-                    claudeFailureDiagnosticsReporter.reportLatestClaudeQuotaFailure()
-                },
+                claudeQuotaDiagnostics: claudeFailureDiagnosticsReporter.completionDiagnostics,
                 quotaAttemptObserver: { quotaRefreshDiagnosticsReporter.record($0) }
             )
             let loginCoordinator = ProviderLoginCoordinator(

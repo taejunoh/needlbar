@@ -241,7 +241,9 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                 statusText: statusText,
                 action: popover.authenticationAction,
                 apiBillingAction: preference.apiBillingLinkVisible ? ProviderAPIBillingAction(provider: provider) : nil,
-                fable: Self.fableDetail(provider: provider, metric: preference.metric, snapshot: providerSnapshot, now: now),
+                fable: Self.fableDetail(
+                    provider: provider, metric: preference.metric, snapshot: providerSnapshot,
+                    failureReasonText: popover.fableFailureReasonText, now: now),
                 quotaIsLastKnown: popover.quotaIsLastKnown,
                 quotaLastKnownRemaining: popover.lastKnownQuotaRemaining,
                 quotaUnavailable: popover.quotaUnavailable,
@@ -305,6 +307,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         provider: ProviderID,
         metric: AIProviderDisplayMetric,
         snapshot: ProviderSnapshot?,
+        failureReasonText: String?,
         now: Date
     ) -> FableQuotaDetail? {
         guard provider == .claude, metric == .remaining else { return nil }
@@ -314,7 +317,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                 resetCaption: String(localized: "Reset unavailable"),
                 freshness: .unavailable,
                 isLastKnown: false,
-                statusText: nil,
+                statusText: failureReasonText,
                 lastCheckedText: nil
             )
         }
@@ -329,7 +332,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                     ?? String(localized: "Reset unavailable"),
             freshness: freshness,
             isLastKnown: window.isLastKnown,
-            statusText: hasSafeClaudeFallbackReason ? nil : Self.fableStatus(freshness),
+            statusText: failureReasonText ?? (hasSafeClaudeFallbackReason ? nil : Self.fableStatus(freshness)),
             lastCheckedText: window.isLastKnown
                 ? window.observedAt.map { DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .short) }
                 : nil

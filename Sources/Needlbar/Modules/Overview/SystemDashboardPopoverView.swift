@@ -395,6 +395,7 @@ public struct SystemDashboardPopoverView: View {
                         Text("Fable")
                         if let status = fable.compactStatusText {
                             Text("· \(status)")
+                                .accessibilityLabel(status)
                         }
                     }
                     .foregroundStyle(fable.statusText == nil ? Color.secondary : Color.orange)
@@ -449,6 +450,7 @@ public struct SystemDashboardPopoverView: View {
                     }
                     if let reason = provider.quotaFailureReasonText {
                         Text(reason)
+                            .accessibilityLabel(reason)
                     }
                     if let lastChecked = provider.quotaLastCheckedText {
                         Text("\(provider.quotaObservationLabel) \(lastChecked)")
@@ -525,6 +527,7 @@ public struct SystemDashboardPopoverView: View {
                 Text(reason)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel(reason)
             }
             if let lastChecked = provider.quotaLastCheckedText {
                 Text("\(provider.quotaObservationLabel) \(lastChecked)")

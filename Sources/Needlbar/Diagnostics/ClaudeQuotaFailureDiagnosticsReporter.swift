@@ -26,18 +26,30 @@ final class ClaudeQuotaFailureDiagnosticsReporter: @unchecked Sendable {
         self.sink = sink
     }
 
+    /// The coordinator reads through this once per completed Claude operation
+    /// and passes the same read back to `report`, so the record is read once.
+    var completionDiagnostics: ClaudeQuotaCompletionDiagnostics {
+        ClaudeQuotaCompletionDiagnostics(
+            read: { [self] in readOnce() },
+            report: { [self] read in report(read) }
+        )
+    }
+
     func reportLatestClaudeQuotaFailure() {
-        guard let event = latestEvent() else { return }
+        report(readOnce())
+    }
+
+    func report(_ read: ClaudeQuotaDiagnosticsRead) {
+        guard let event = Self.event(from: read) else { return }
         sink(event)
     }
 
-    func latestEvent() -> ClaudeQuotaFailureDiagnosticEvent? {
-        let envelope: BridgeEnvelope<DiagnosticsSnapshot>
-        do {
-            envelope = try readDiagnostics()
-        } catch {
-            return nil
-        }
+    private func readOnce() -> ClaudeQuotaDiagnosticsRead {
+        Result { try readDiagnostics() }
+    }
+
+    static func event(from read: ClaudeQuotaDiagnosticsRead) -> ClaudeQuotaFailureDiagnosticEvent? {
+        guard case .success(let envelope) = read else { return nil }
         guard let provider = envelope.data?.providers.first(where: { $0.provider == .claude }) else {
             return nil
         }
