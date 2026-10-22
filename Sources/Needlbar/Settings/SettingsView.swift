@@ -286,9 +286,7 @@ public struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 if let reason = claudeQuotaPresentation.value.quotaFailureReasonText {
-                    Text(reason)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    ClaudeQuotaReasonLines(reason: reason, detail: claudeQuotaPresentation.value.quotaFailureDetailText)
                 }
                 if let lastChecked = claudeQuotaPresentation.value.quotaLastCheckedText {
                     Text("\(claudeQuotaPresentation.value.quotaObservationLabel) \(lastChecked)")
@@ -303,6 +301,9 @@ public struct SettingsView: View {
                     }
                 } else {
                     Text("Fable weekly unavailable").font(.caption).foregroundStyle(.secondary)
+                }
+                if let reason = claudeQuotaPresentation.value.fableFailureReasonText {
+                    ClaudeQuotaReasonLines(reason: reason, detail: claudeQuotaPresentation.value.quotaFailureDetailText)
                 }
                 if claudeUsageState.showsFailure {
                     Text("Couldn't open Claude usage. Try again.")

@@ -45,6 +45,8 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
     public let quotaIsLastKnown: Bool
     public let quotaUnavailable: Bool
     public let quotaFailureReasonText: String?
+    public let quotaFailureDetailText: String?
+    public let fableFailureReasonText: String?
     public let quotaLastCheckedText: String?
     public let quotaSourceText: String?
     public let quotaObservationLabel: String
@@ -103,7 +105,13 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
             quotaLastCheckedText = primary?.observedAt.map(Self.localizedDateTime)
             quotaIsLastKnown = !hasRecentClaudeQuota && (!main.isEmpty || !projectedFallback.isEmpty)
             quotaUnavailable = !hasRecentClaudeQuota && main.isEmpty && projectedFallback.isEmpty
-            quotaFailureReasonText = hasRecentClaudeQuota ? nil : snapshot.claudeQuotaFailureReason?.displayText
+            let reason = snapshot.claudeQuotaFailureReason
+            quotaFailureReasonText = hasRecentClaudeQuota ? nil : reason?.displayText
+            // While status-line windows are recent, an expired Claude Code access
+            // is shown once, on the direct-only Fable line it keeps from updating.
+            fableFailureReasonText = hasRecentClaudeQuota && reason == .claudeCodeAccessExpired
+                ? reason?.displayText : nil
+            quotaFailureDetailText = reason?.detailText
             if hasRecentClaudeQuota {
                 resolvedQuotaFreshness = .fresh
             } else if (!main.isEmpty || !projectedFallback.isEmpty), snapshot.quotaStatus == .fresh {
@@ -125,6 +133,8 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
             quotaIsLastKnown = false
             quotaUnavailable = false
             quotaFailureReasonText = nil
+            quotaFailureDetailText = nil
+            fableFailureReasonText = nil
             quotaLastCheckedText = nil
         }
         quotaFreshness = resolvedQuotaFreshness
@@ -238,6 +248,9 @@ public struct ProviderPopoverView: View {
                 } else {
                     Text("Fable weekly · Unavailable").font(.caption).foregroundStyle(.secondary)
                 }
+                if let reason = presentation.fableFailureReasonText {
+                    ClaudeQuotaReasonLines(reason: reason, detail: presentation.quotaFailureDetailText)
+                }
             } else if presentation.quotaUnavailable {
                 Text("Quota unavailable").foregroundStyle(.secondary)
             } else if presentation.quotaWindows.isEmpty {
@@ -251,7 +264,7 @@ public struct ProviderPopoverView: View {
                 }
             }
             if let reason = presentation.quotaFailureReasonText {
-                Text(reason).font(.caption).foregroundStyle(.secondary)
+                ClaudeQuotaReasonLines(reason: reason, detail: presentation.quotaFailureDetailText)
             }
             if presentation.provider != .claude, let lastChecked = presentation.quotaLastCheckedText {
                 Text("\(presentation.quotaObservationLabel) \(lastChecked)").font(.caption).foregroundStyle(.secondary)
@@ -318,6 +331,27 @@ public struct ProviderPopoverView: View {
             }
             Spacer()
             Text(detail.remaining).monospacedDigit()
+        }
+    }
+}
+
+/// A Claude quota failure reason and, for an expired Claude Code access, its
+/// detail line. Each line carries its full text as its accessibility label.
+struct ClaudeQuotaReasonLines: View {
+    let reason: String
+    let detail: String?
+
+    var body: some View {
+        Text(reason)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel(reason)
+        if let detail {
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel(detail)
         }
     }
 }

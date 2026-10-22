@@ -36,6 +36,7 @@ public actor RefreshCoordinator {
     private let quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)?
     private let statusLineApplicationWillApply: (@Sendable () async -> Void)?
     private let claudeQuotaOperationCompleted: (@Sendable () async -> Void)?
+    private let claudeQuotaDiagnostics: ClaudeQuotaCompletionDiagnostics?
     private let widgetUsageDayCapture: any WidgetUsageDayCapturing
     private let statusLineRepository: (any ClaudeStatusLineCacheReading)?
     private let backgroundAttemptClock = BackgroundQuotaAttemptClock()
@@ -103,6 +104,7 @@ public actor RefreshCoordinator {
         widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture(),
         statusLineRepository: (any ClaudeStatusLineCacheReading)? = nil,
         claudeQuotaOperationCompleted: (@Sendable () async -> Void)? = nil,
+        claudeQuotaDiagnostics: ClaudeQuotaCompletionDiagnostics? = nil,
         quotaAttemptObserver: (@Sendable (QuotaAttemptEvent) -> Void)? = nil
     ) {
         self.init(
@@ -118,6 +120,7 @@ public actor RefreshCoordinator {
             widgetUsageDayCapture: widgetUsageDayCapture,
             statusLineRepository: statusLineRepository,
             claudeQuotaOperationCompleted: claudeQuotaOperationCompleted,
+            claudeQuotaDiagnostics: claudeQuotaDiagnostics,
             quotaAttemptObserver: quotaAttemptObserver
         )
     }
@@ -135,6 +138,7 @@ public actor RefreshCoordinator {
         widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture(),
         statusLineRepository: (any ClaudeStatusLineCacheReading)? = nil,
         claudeQuotaOperationCompleted: (@Sendable () async -> Void)? = nil,
+        claudeQuotaDiagnostics: ClaudeQuotaCompletionDiagnostics? = nil,
         quotaAttemptObserver: (@Sendable (QuotaAttemptEvent) -> Void)? = nil
     ) {
         self.usageRepository = usageRepository
@@ -149,6 +153,7 @@ public actor RefreshCoordinator {
         self.widgetUsageDayCapture = widgetUsageDayCapture
         self.statusLineRepository = statusLineRepository
         self.claudeQuotaOperationCompleted = claudeQuotaOperationCompleted
+        self.claudeQuotaDiagnostics = claudeQuotaDiagnostics
         self.quotaAttemptLedger = QuotaAttemptLedger(observer: quotaAttemptObserver)
     }
 
@@ -612,6 +617,23 @@ public actor RefreshCoordinator {
         }
 
         guard applyResult, generation == runGeneration else { return }
+        // Read the bridge diagnostics record once for this Claude operation,
+        // before storing its reason, and share that read with the reporter.
+        var claudeDiagnosticsRead: ClaudeQuotaDiagnosticsRead?
+        if intent.includesClaude, let claudeQuotaDiagnostics {
+            let read = await claudeQuotaDiagnostics.read()
+            guard generation == runGeneration else { return }
+            claudeDiagnosticsRead = read
+        }
+        let claudeFailureOrigin = attempt.flatMap { attempt in
+            ClaudeQuotaFailureOriginAssociation.origin(
+                in: claudeDiagnosticsRead,
+                attemptStartedAt: attempt.startedAt,
+                attemptGeneration: attempt.generation,
+                currentGeneration: runGeneration,
+                claudeResultFailed: claudeResultFailed(result)
+            )
+        }
         switch result {
         case .success(let refresh):
             if isClaudePreflight {
@@ -634,7 +656,8 @@ public actor RefreshCoordinator {
                 await store.markQuotaFailure(
                     for: provider,
                     status: quotaStatus(for: error),
-                    claudeFailureReason: provider == .claude ? claudeQuotaFailureReason(for: error) : nil,
+                    claudeFailureReason: provider == .claude
+                        ? ClaudeQuotaFailureReason(errorCode: error.code, associatedOrigin: claudeFailureOrigin) : nil,
                     at: refreshedAt
                 )
             }
@@ -664,7 +687,8 @@ public actor RefreshCoordinator {
                         await store.markQuotaFailure(
                             for: provider,
                             status: quotaStatus(for: error),
-                            claudeFailureReason: provider == .claude ? claudeQuotaFailureReason(for: error) : nil,
+                            claudeFailureReason: provider == .claude
+                                ? ClaudeQuotaFailureReason(errorCode: error.code, associatedOrigin: claudeFailureOrigin) : nil,
                             at: clock.now
                         )
                     }
@@ -689,7 +713,10 @@ public actor RefreshCoordinator {
             }
         }
         guard applyResult, generation == runGeneration else { return }
-        if intent.includesClaude { await claudeQuotaOperationCompleted?() }
+        if intent.includesClaude {
+            if let claudeDiagnosticsRead { await claudeQuotaDiagnostics?.report(claudeDiagnosticsRead) }
+            await claudeQuotaOperationCompleted?()
+        }
         guard generation == runGeneration, isRunning, !Task.isCancelled, let attempt else { return }
         let snapshot = await store.snapshot(for: .claude)
         guard generation == runGeneration, isRunning, !Task.isCancelled else { return }
@@ -883,13 +910,10 @@ public actor RefreshCoordinator {
         return status(for: error)
     }
 
-    private func claudeQuotaFailureReason(for error: BridgeError) -> ClaudeQuotaFailureReason {
-        switch error.code {
-        case "requiresAuthentication", "authenticationExpired": .quotaAccessUnavailable
-        case "permissionDenied": .credentialAccessUnavailable
-        case "networkUnavailable": .connectionUnavailable
-        case "rateLimited": .temporarilyLimited
-        default: .couldNotUpdateQuota
+    private func claudeResultFailed(_ result: Result<QuotaRefreshResult, Error>) -> Bool {
+        switch result {
+        case .success(let refresh): refresh.errors[.claude] != nil
+        case .failure: true
         }
     }
 }
