@@ -8,6 +8,18 @@
 after lifecycle or connectivity changes, without changing authentication
 ownership or the provider refresh cadence.
 
+> **Amendment — 2026-10-22:** Decision (user, 2026-10-22): status-line values
+> older than a fixed age are hidden, and the age is 24 hours. A Claude Code
+> status-line window whose local receipt time is more than 24 hours before the
+> current time is treated exactly like a missing status-line window. It is not
+> presented as last known, does not compete with direct values, and does not
+> count as recent. The observed case was a direct source failing with an
+> expired Claude Code access after a restart, while Settings showed a
+> status-line value received 15 days earlier as `Last known`. This is
+> presentation only: the local bridge cache is neither deleted nor rewritten,
+> and direct observations keep no maximum age. See the amended selection rule
+> under "Source-aware value and freshness".
+
 ## Context and evidence
 
 On October 7, two Needlbar hosts emitted the allowlisted
@@ -75,6 +87,21 @@ are unusable for both freshness and ranking. If both retained values lack usable
 times, prefer direct quota without inventing or displaying an unusable time.
 If neither source has a valid value, show unavailable without a percentage,
 zero, timestamp, or reset.
+
+*(Amended 2026-10-22.)* Before this selection, a status-line observation whose
+receipt time is usable (finite and not later than now) and more than 24 hours
+old (`now - receivedAt > 24 hours`) is removed, exactly as if that window were
+missing from the bridge record. At exactly 24 hours it is still a last-known
+value. Each window uses its own receipt time. A missing, non-finite, or future
+receipt time has no usable age, so the rule above still applies to it: the
+value remains displayable as last-known, without a displayed time, and ranks
+behind dated values. Direct observations have no maximum age. Without another
+value, the window is unavailable and the existing failure reason uses its
+normal slot; the `Reported by Claude Code` source and `Received locally` time
+are not shown because no status-line value is shown. The local attempt
+diagnostics' per-window source follows this selection, so such a window reads
+`unavailable` while its receipt time is still recorded. The bridge cache is not
+deleted or rewritten.
 
 Use this policy in the dashboard, provider popover, and Settings. Re-evaluate
 age/reset boundaries while a surface remains open without a provider request.
@@ -157,6 +184,12 @@ Use an injected clock, synthetic observations, and fake repositories. Cover:
 - Identical status-line data not extending age; old-generation rejection; and
   dashboard/popover/Settings agreement as an open view crosses age/reset
   boundaries without a repository call.
+- *(Amended 2026-10-22.)* Status-line receipt ages of 24 hours minus one
+  second, exactly 24 hours, and 24 hours plus one second on the selector, the
+  menu bar value, popover, Settings, dashboard, and overview; per-window ages;
+  selection identical to a missing record past the limit; unchanged direct,
+  fresh status-line, and unusable-receipt-time behaviour; and widget, export,
+  and alert outputs that never take status-line values.
 - Start/wake/connectivity cache reads; catch-up just below/at five minutes;
   unchanged cadence; one in-flight plus one pending under overlap; stop/restart
   fencing and physical single-flight; rechecking pending recovery eligibility;
