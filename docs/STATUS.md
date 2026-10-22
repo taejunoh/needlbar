@@ -1,5 +1,50 @@
 # Needlbar Development Status
 
+## 2026-10-22 Claude access-expired reason (credential renewal increment 1)
+
+The user approved
+`docs/superpowers/specs/2026-10-22-claude-credential-renewal-design.md`
+(PR #26) for option A, narrowed, and increment 1 only. This change
+implements that increment on branch `codex/claude-access-expired-reason`,
+stacked on PR #26; it is not merged, released, or installed. Credential
+renewal is still not implemented and is not approved.
+
+- **Reason.** New `ClaudeQuotaFailureReason.claudeCodeAccessExpired`, stored
+  only when the completed attempt's Claude error code is
+  `authenticationExpired` and its associated origin is
+  `keychainCredentialExpired` or `fileCredentialExpired`. HTTP 401/403 and
+  every other origin keep the code-based reasons.
+- **Copy.** Short: "Waiting for Claude Code to renew access". Detail, in the
+  provider popover and Settings only: "Needlbar reads the access Claude Code
+  saves on this Mac. It has expired. Needlbar updates automatically after
+  Claude Code renews it." Both are localizable keys with accessibility labels.
+  No action, link, sign-in, Terminal, or command text was added.
+- **One read.** The refresh coordinator reads the existing bridge diagnostics
+  record once per completed Claude operation, before storing the reason, and
+  hands the same read to the unchanged OSLog reporter. Production no longer
+  reads it a second time. The origin counts only when the record's attempt
+  time is not earlier than the attempt start truncated to whole seconds, the
+  attempt is in the current run generation, and its Claude result failed.
+- **Placement.** With no recent value the reason uses the existing slot. When
+  the 5-hour and 7-day windows are recent through the status line, it appears
+  once, on the direct-only Fable line of the popover, Settings, and dashboard.
+  The dashboard compact headline, the menu bar, the widget, the JSON export,
+  notifications, cadence, and recovery triggers are unchanged; the export and
+  widget bytes match fixtures produced by the pre-change code.
+- **Specifications.** Dated amendment notes were added to the 2026-09-15
+  passive-recovery design (reason list and placement) and the 2026-09-16
+  failure-origin design (presentation sentence), for local-expiry origins only.
+
+Verification: 24 new Swift tests (15 core, 9 app; the app tests host the real
+SwiftUI surfaces and read their accessibility tree). Against compile-only
+scaffolding 16 failed on assertions and 8 regression guards passed; all 24
+pass with the implementation. Full local `make test` exited 0 with Rust
+1552 passed / 1 ignored and Swift 753. The notarize contract tests passed with
+the locale variables unset, and `git diff --check` passed. No credential,
+Keychain item, authentication file, or cookie was read; `claude` was not run;
+no model or network request was made. Passing source tests establish mapping
+and presentation only, not native behaviour, renewal, or unattended recovery.
+
 ## 2026-10-21 Test reliability follow-ups
 
 PR #24 fixed the lost wakeup in
