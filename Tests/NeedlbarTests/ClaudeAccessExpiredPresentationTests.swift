@@ -249,7 +249,7 @@ struct ClaudeAccessExpiredPresentationTests {
             claudeUserInitiatedQuotaCall: { quotaCalls.increment(); return nil },
             codexQuotaCall: { quotaCalls.increment(); return nil },
             diagnosticsCall: { diagnosticsCalls.increment(); return Self.cString(json) },
-            free: { $0.map { UnsafeMutablePointer(mutating: $0).deallocate() } })
+            free: { $0.map { Darwin.free(UnsafeMutablePointer(mutating: $0)) } })
         let events = EventSink()
         let reporter = ClaudeQuotaFailureDiagnosticsReporter(readDiagnostics: bridge.diagnosticsEnvelope, sink: { events.append($0) })
         let store = ProviderSnapshotStore(now: { Self.now })
@@ -467,11 +467,10 @@ private extension ClaudeAccessExpiredPresentationTests {
         ).claudeUsageRowContent
     }
 
+    // strdup keeps this portable across Swift 6.0 (CI's Xcode 16.2) and newer
+    // toolchains and handles non-ASCII UTF-8 bytes without a CChar trap.
     nonisolated static func cString(_ text: String) -> UnsafePointer<CChar>? {
-        let bytes = Array(text.utf8).map(CChar.init) + [0]
-        let pointer = UnsafeMutablePointer<CChar>.allocate(capacity: bytes.count)
-        pointer.initialize(from: bytes, count: bytes.count)
-        return UnsafePointer(pointer)
+        strdup(text).map { UnsafePointer($0) }
     }
 }
 
