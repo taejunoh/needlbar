@@ -18,8 +18,8 @@ struct ClaudeAccessExpiredPresentationTests {
     nonisolated static let now = Date()
     nonisolated static let directAt = now.addingTimeInterval(-3_600)
     nonisolated static let attemptAt = now.addingTimeInterval(-600)
-    nonisolated static let shortText = "Waiting for Claude Code to renew access"
-    nonisolated static let detailText = "Needlbar reads the access Claude Code saves on this Mac. It has expired. Needlbar updates automatically after Claude Code renews it."
+    nonisolated static let shortText = "Claude Code access on this Mac expired"
+    nonisolated static let detailText = "Needlbar reads the access the Claude Code command-line tool saves on this Mac. The Claude desktop app does not renew it, so it updates after Claude Code runs in Terminal."
     nonisolated static let oldText = "Quota access unavailable"
     nonisolated static var directChecked: String {
         DateFormatter.localizedString(from: directAt, dateStyle: .medium, timeStyle: .short)
@@ -162,7 +162,7 @@ struct ClaudeAccessExpiredPresentationTests {
                 let rendered = try surface.render(new)
                 let previous = try surface.render(old)
                 #expect(rendered.buttons == previous.buttons, "\(surface) controls changed")
-                for forbidden in ["Sign in", "Log in", "Login", "Terminal", "Open Claude Code"] {
+                for forbidden in ["Sign in", "Log in", "Login", "Open Terminal", "Run ", "Open Claude Code"] {
                     #expect(rendered.count(containing: forbidden) == 0, "\(surface) shows \(forbidden)")
                 }
             }

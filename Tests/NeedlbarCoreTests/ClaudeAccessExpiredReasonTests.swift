@@ -295,7 +295,7 @@ struct ClaudeAccessExpiredReasonTests {
             #expect(output.export == Data(preChangeExportFixture.utf8))
             #expect(output.widget == Data(preChangeWidgetFixture.utf8))
             let text = String(decoding: output.export + output.widget, as: UTF8.self)
-            for marker in canaryMarkers + ["claudeCodeAccessExpired", "Waiting for Claude Code", "renew"] {
+            for marker in canaryMarkers + ["claudeCodeAccessExpired", "Claude Code access on this Mac expired", "renew"] {
                 #expect(!text.contains(marker), "\(marker) leaked into an export or widget payload")
             }
         }
@@ -324,9 +324,9 @@ struct ClaudeAccessExpiredReasonTests {
     // MARK: - §5.7 Copy and localization
 
     @Test func copyIsTheApprovedTextFromLocalizableKeys() throws {
-        #expect(ClaudeQuotaFailureReason.claudeCodeAccessExpired.displayText == "Waiting for Claude Code to renew access")
+        #expect(ClaudeQuotaFailureReason.claudeCodeAccessExpired.displayText == "Claude Code access on this Mac expired")
         #expect(ClaudeQuotaFailureReason.claudeCodeAccessExpired.detailText
-            == "Needlbar reads the access Claude Code saves on this Mac. It has expired. Needlbar updates automatically after Claude Code renews it.")
+            == "Needlbar reads the access the Claude Code command-line tool saves on this Mac. The Claude desktop app does not renew it, so it updates after Claude Code runs in Terminal.")
         for reason in [ClaudeQuotaFailureReason.quotaAccessUnavailable, .credentialAccessUnavailable,
                        .connectionUnavailable, .temporarilyLimited, .couldNotUpdateQuota] {
             #expect(reason.detailText == nil)
@@ -360,7 +360,8 @@ struct ClaudeAccessExpiredReasonTests {
 
 private let canaryMessage = "RAW_ERROR_TOKEN_PATH_CANARY"
 private let canaryMarkers = [canaryMessage, "CLAUDE-CANARY-SECRET", "/private/canary", "sk-ant-canary"]
-private let forbiddenCopy = ["Sign in", "Log in", "Login", "Terminal", "run ", "command", "prompt"]
+// Terminal appears in the approved detail only as a fact; instructions stay forbidden.
+private let forbiddenCopy = ["Sign in", "Log in", "Login", "Open Terminal", "run claude", "run ", "prompt"]
 
 private let preChangeExportFixture = """
 {"exportedAt":"2026-10-22T09:11:00.000Z","providers":[{"provider":"claude","quota":{"data":{"windows":[{"id":"claude.session","resetsAt":"2026-10-22T11:00:00.000Z","usedPercent":30},{"id":"claude.weekly","resetsAt":"2026-10-23T09:00:00.000Z","usedPercent":40}]},"status":{"errorCode":"refreshFailed","lastSuccessfulAt":"2026-10-22T09:00:00.000Z","state":"error"}},"updatedAt":"2026-10-22T09:10:00.000Z","usage":{"data":null,"status":{"errorCode":null,"lastSuccessfulAt":null,"state":"unavailable"}}},{"provider":"codex","quota":{"data":{"windows":[{"id":"codex.primary","resetsAt":"2026-10-22T10:00:00.000Z","usedPercent":25}]},"status":{"errorCode":null,"lastSuccessfulAt":"2026-10-22T09:00:00.000Z","state":"fresh"}},"updatedAt":"2026-10-22T09:00:00.000Z","usage":{"data":null,"status":{"errorCode":null,"lastSuccessfulAt":null,"state":"unavailable"}}},{"provider":"cursor","quota":{"data":null,"status":{"errorCode":null,"lastSuccessfulAt":null,"state":"unavailable"}},"updatedAt":null,"usage":{"data":null,"status":{"errorCode":null,"lastSuccessfulAt":null,"state":"unavailable"}}}],"schemaVersion":1}
