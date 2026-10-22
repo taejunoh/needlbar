@@ -215,7 +215,11 @@ private final class SignalForwarder: @unchecked Sendable {
     private var caught: Int32?
     private var childPID: pid_t?
     private var sources: [any DispatchSourceSignal] = []
-    private var previous: [(Int32, sig_t?)] = []
+    // Whole sigaction records, never `sig_t?`: SIG_IGN is the bit pattern 1,
+    // which Swift may use to encode nil in an enclosing Optional, so a saved
+    // SIG_IGN could end iteration early and leave later signals ignored. The
+    // record also keeps the mask and flags that signal() would replace.
+    private var previous: [(number: Int32, action: sigaction)] = []
     var received: Int32? { lock.lock(); defer { lock.unlock() }; return caught }
 
     init() {
@@ -238,7 +242,12 @@ private final class SignalForwarder: @unchecked Sendable {
         // bound is a safety net; registration takes microseconds.
         let deadline = DispatchTime.now() + 1
         for _ in numbers { _ = registered.wait(timeout: deadline) }
-        for number in numbers { previous.append((number, signal(number, SIG_IGN))) }
+        var ignore = sigaction()
+        ignore.__sigaction_u.__sa_handler = SIG_IGN
+        for number in numbers {
+            var saved = sigaction()
+            if sigaction(number, &ignore, &saved) == 0 { previous.append((number, saved)) }
+        }
     }
 
     func forward(to pid: pid_t) {
@@ -256,7 +265,7 @@ private final class SignalForwarder: @unchecked Sendable {
     func stop() {
         for source in sources { source.cancel() }
         sources.removeAll()
-        for (number, handler) in previous { signal(number, handler) }
+        for (number, action) in previous { var action = action; _ = sigaction(number, &action, nil) }
         previous.removeAll()
     }
 }
