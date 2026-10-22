@@ -73,13 +73,23 @@ Known open items:
   and renewed its own credential. The approved
   `docs/superpowers/specs/2026-10-22-claude-credential-renewal-design.md`
   (PR #26) authorizes option A, narrowed, and increment 1 only. Increment 1
-  is implemented in PR #28, which follows PR #26: a local-expiry origin now reads "Waiting for Claude
-  Code to renew access" in the existing reason slot, or once on the Fable line
-  while status-line windows are recent, with a detail line in the popover and
-  Settings. Credential renewal is still not implemented and is not approved.
-  The expired-credential notification (option D) is deferred; Q4 (which
-  credential source the maintainer's sessions use) and Q7 (provider-policy
-  review of the direct token path) are open. See the plan
+  is implemented in PR #28, which follows PR #26: a local-expiry origin reads
+  in the existing reason slot, or once on the Fable line while status-line
+  windows are recent, with a detail line in the popover and Settings. The
+  increment-1 copy was reworded on 2026-10-22 to be factual for desktop-app
+  users: short "Claude Code access on this Mac expired"; detail "Needlbar reads
+  the access the Claude Code command-line tool saves on this Mac. The Claude
+  desktop app does not renew it, so it updates after Claude Code runs in
+  Terminal." It names Terminal only as a fact, with no instruction, button, or
+  action. Q4 is answered: the maintainer mostly uses the Claude desktop app's
+  Code tab. Read-only log aggregates showed the saved access lasts about eight
+  hours and desktop-app use does not renew it. The status-line bridge has
+  received nothing since 2026-10-07 even though `~/.claude/settings.json`
+  points `statusLine` at the Needlbar helper, because status-line commands run
+  only in interactive terminal sessions, so the bridge helps only those
+  sessions. Credential renewal is still not implemented and is not approved.
+  The expired-credential notification (option D) is deferred; Q7
+  (provider-policy review of the direct token path) stays open. See the plan
   `docs/superpowers/plans/2026-10-22-claude-access-expired-reason.md`.
 - Native macOS 14 acceptance is not agent-automatable end to end. It needs a
   provisioned macOS 14 guest with a logged-in GUI user, the Developer ID

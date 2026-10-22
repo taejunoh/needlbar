@@ -1,5 +1,33 @@
 # Needlbar Development Status
 
+## 2026-10-22 Claude access-expired copy and status-line finding
+
+The user runs Claude Code mostly from the Claude desktop app's Code tab. Two
+read-only log aggregates (no credentials, Keychain items, or auth files were
+read) shaped the copy for `ClaudeQuotaFailureReason.claudeCodeAccessExpired`:
+
+- **Access lifetime.** Direct Claude quota succeeded from 23:04 to 06:56 local
+  after a one-off terminal Claude Code session, then failed again from 07:01
+  with origin `keychainCredentialExpired`. The saved access therefore lasts
+  about eight hours, and desktop-app use did not renew it.
+- **Status-line bridge.** The bridge has received nothing since 2026-10-07,
+  even though `~/.claude/settings.json` points `statusLine` at the Needlbar
+  helper. Status-line commands run only in interactive terminal Claude Code
+  sessions, so the bridge does not help desktop-app use.
+
+Decision (user, 2026-10-22): replace the increment-1 copy with a factual,
+non-imperative text. Short: "Claude Code access on this Mac expired". Detail,
+in the popover and Settings only: "Needlbar reads the access the Claude Code
+command-line tool saves on this Mac. The Claude desktop app does not renew it,
+so it updates after Claude Code runs in Terminal." The detail states a fact. It
+adds no sign-in wording, instruction to open Terminal or run a command, button,
+or action, and it narrowly relaxes the earlier "no Terminal mention" guidance.
+Localization keys are unchanged. The renewal design's Q2 and Q4 are recorded
+as answered; Q7 stays open and credential renewal is still not implemented.
+The core and app tests now assert the new strings, and their forbidden-copy
+checks reject instructions (Open Terminal, Run, Sign in, Log in) rather than
+any mention of Terminal. This change is not merged, released, or installed.
+
 ## 2026-10-22 Claude access-expired reason (credential renewal increment 1)
 
 The user approved

@@ -67,7 +67,7 @@ Unclassified errors remain otherFailure. Existing public error codes/messages
 and presentation mapping stay unchanged, except *(amended 2026-10-22)* that an
 `authenticationExpired` failure whose associated origin is
 `keychainCredentialExpired` or `fileCredentialExpired` presents as
-`Waiting for Claude Code to renew access`. The origin is associated only when
+`Claude Code access on this Mac expired`. The origin is associated only when
 the record's lastAttemptAt is not earlier than the attempt start truncated to
 whole seconds, the attempt is in the current run generation, and its Claude
 result failed. HTTP 401/403 and the other origins keep the existing mapping.
