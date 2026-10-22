@@ -1,15 +1,16 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-10-22, updated for credential renewal increment 1 (first
-written 2026-10-20, updated after the v0.3.10 release on 2026-10-21). This is a
-documentation handoff, not a new product approval or a claim of fresh
-installation/runtime verification.
+**Checkpoint:** 2026-10-22, updated after the v0.3.11 release (first written
+2026-10-20, updated after the v0.3.10 release on 2026-10-21 and for credential
+renewal increment 1 on 2026-10-22). This is a documentation handoff, not a new
+product approval or a claim of fresh installation/runtime verification.
 
 ## Repository state
 
 - Work from `main`. The 2026-10-20 handoff branch merged in PR #21, the
-  v0.3.10 candidate in PR #22 and its public record in PR #23. Do not assume
-  other old branches have been merged.
+  v0.3.10 candidate in PR #22 and its public record in PR #23, and the v0.3.11
+  candidate in PR #30, followed by its public record. Do not assume other old
+  branches have been merged.
 - For an isolated continuation, clone `main` into a new directory and
   initialize submodules as part of the clone:
 
@@ -20,8 +21,8 @@ installation/runtime verification.
 
   Keep the existing primary checkout (stale `main` at `7ab113d`, with local
   notes) untouched. Do not pull, reset, stash, or clean it as part of handoff.
-- The public release is v0.3.10, build 13, for macOS 14+ on Apple Silicon,
-  published 2026-10-21. Its release and distribution checks are evidence
+- The public release is v0.3.11, build 14, for macOS 14+ on Apple Silicon,
+  published 2026-10-22. Its release and distribution checks are evidence
   recorded in `docs/STATUS.md`; they do not establish what is installed or
   running later.
 - Treat prior local runtime receipts in STATUS as private machine history.
@@ -56,6 +57,19 @@ for macOS 27 release builds, locale-independent release contracts, and
 load-robust process fixtures. Signals the helper does not forward can still
 orphan the command, and an escaped git descendant is not itself killed.
 
+## What v0.3.11 adds
+
+v0.3.11 explains expired Claude Code access instead of a generic quota failure
+(PR #28, copy made factual for desktop-app users in PR #29): the Claude
+popover, Settings and dashboard show "Claude Code access on this Mac expired",
+with a factual detail line in the popover and Settings, or once on the Fable
+line while status-line windows are recent. The status-line helper restores
+whole saved signal dispositions (PR #27); it runs one command per process, so
+its observable behavior is unchanged. The rest is test reliability: the
+`RefreshCoordinatorTests` lost wakeup (PR #24) and explicit, time-bounded test
+waits (PR #25). Credential renewal is not implemented, and the explanation
+adds no button, link, sign-in or other action.
+
 ## Current bounded follow-up
 
 The `rg` fail-closed follow-up (PR #21), the `RefreshCoordinatorTests` lost
@@ -63,7 +77,8 @@ wakeup (PR #24) and the follow-up test hygiene (PR #25: explicit readiness and
 cancellation-aware waits, 30 s caps on the blocking fakes, serialized
 in-process status-line runner tests) and the status-line signal restore fix
 (PR #27: `SignalForwarder` keeps whole `sigaction` records, so a saved
-`SIG_IGN` no longer ends the restore early) are complete.
+`SIG_IGN` no longer ends the restore early) are complete; PRs #24, #25 and
+#27 shipped in v0.3.11.
 
 Known open items:
 
@@ -73,9 +88,10 @@ Known open items:
   and renewed its own credential. The approved
   `docs/superpowers/specs/2026-10-22-claude-credential-renewal-design.md`
   (PR #26) authorizes option A, narrowed, and increment 1 only. Increment 1
-  is implemented in PR #28, which follows PR #26: a local-expiry origin reads
-  in the existing reason slot, or once on the Fable line while status-line
-  windows are recent, with a detail line in the popover and Settings. The
+  is implemented in PR #28, which follows PR #26, and shipped with its PR #29
+  copy in v0.3.11: a local-expiry origin reads in the existing reason slot, or
+  once on the Fable line while status-line windows are recent, with a detail
+  line in the popover and Settings. The
   increment-1 copy was reworded on 2026-10-22 to be factual for desktop-app
   users: short "Claude Code access on this Mac expired"; detail "Needlbar reads
   the access the Claude Code command-line tool saves on this Mac. The Claude
@@ -115,8 +131,8 @@ Useful verified source locations:
 
 - The compact Claude quota overview released in v0.3.6 is existing behavior.
   The later refinement is only to name the most-constrained window explicitly
-  and retain the other windows in details; it is not part of v0.3.9 or
-  v0.3.10. Use
+  and retain the other windows in details; it is not part of v0.3.9,
+  v0.3.10 or v0.3.11. Use
   `docs/superpowers/specs/2026-10-07-claude-refresh-reliability-design.md`
   and `docs/superpowers/plans/2026-09-29-claude-compact-presentation.md` before
   touching it.
