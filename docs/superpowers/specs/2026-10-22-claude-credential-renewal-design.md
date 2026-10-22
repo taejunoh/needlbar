@@ -2,9 +2,10 @@
 
 **Date:** 2026-10-22
 
-**Status:** Proposed — not approved. This is a design proposal for review. It
-authorizes no implementation, installation, release, authentication change,
-or amendment of an approved specification.
+**Status:** Approved by the user on 2026-10-22 for option A (narrowed) and
+increment 1 only, with the decisions recorded in §8. It authorizes no
+renewal, installation, release, or authentication change, and amends only the
+two specifications named in §4.
 
 **Scope:** Decide how Needlbar responds when its direct Claude quota source
 fails because the credential Claude Code saved on this Mac has passed its
@@ -513,6 +514,24 @@ credentials, Keychain access, the network, or the `claude` CLI.
    design deferred, in light of the credential-use policy quoted in §3?
 8. **Q8.** If Anthropic later documents a non-model renewal command, should
    option C be reconsidered as an explicit-click action only?
+
+## 8. Decisions (2026-10-22)
+
+The user approved the recommendation. Questions they did not answer
+individually take the recommended default:
+
+- **Q1:** Yes. Amend the 2026-09-15 passive-recovery reason table and the
+  2026-09-16 failure-origin presentation sentence, for local-expiry origins
+  only.
+- **Q2:** (a) "Waiting for Claude Code to renew access", with the §4.3 detail
+  line.
+- **Q3:** (a) No action.
+- **Q4:** Open. It does not block increment 1.
+- **Q5:** Option D is deferred. No notification work is approved.
+- **Q6:** The Fable detail line, as in §4.4.
+- **Q7:** Open. It is a separate review, not part of increment 1.
+- **Q8:** Deferred. Revisit only if Anthropic documents a non-model renewal
+  command, and then only as an explicit-click action.
 
 ## References
 
