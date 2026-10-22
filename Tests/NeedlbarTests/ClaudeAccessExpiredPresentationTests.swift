@@ -338,8 +338,15 @@ private struct Rendered {
     let items: [AccessibilityItem]
 
     init<Content: View>(_ content: Content, width: CGFloat = 320) throws {
-        _ = NSApplication.shared
+        // SwiftUI builds a hosting view's accessibility tree only for an
+        // assistive client; the enhanced-interface flag stands in for one.
         let application = NSApplication.shared
+        guard application.responds(to: NSSelectorFromString("isAccessibilityEnhancedUserInterface")),
+              application.responds(to: NSSelectorFromString("setAccessibilityEnhancedUserInterface:")) else {
+            Issue.record("NSApplication cannot expose the SwiftUI accessibility tree on this macOS")
+            items = []
+            return
+        }
         let wasEnhanced = application.value(forKey: "accessibilityEnhancedUserInterface") as? Bool ?? false
         application.setValue(true, forKey: "accessibilityEnhancedUserInterface")
         defer { application.setValue(wasEnhanced, forKey: "accessibilityEnhancedUserInterface") }

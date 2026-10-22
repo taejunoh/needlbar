@@ -39,7 +39,7 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
                 localized: "claudeQuota.reason.claudeCodeAccessExpired.detail",
                 defaultValue: "Needlbar reads the access Claude Code saves on this Mac. It has expired. Needlbar updates automatically after Claude Code renews it.",
                 bundle: bundle,
-                comment: "Explains the Claude quota reason. Must not ask the user to sign in, run a command, or send a prompt."
+                comment: "Explains the Claude quota reason. Informational only; it offers the user no action."
             )
         case .quotaAccessUnavailable, .credentialAccessUnavailable, .connectionUnavailable,
              .temporarilyLimited, .couldNotUpdateQuota:
