@@ -6,6 +6,17 @@
 
 **Scope:** Reduce repeated user intervention for Claude quota failures.
 
+> **Amendment — 2026-10-22:** The approved
+> `docs/superpowers/specs/2026-10-22-claude-credential-renewal-design.md`
+> (increment 1, decisions Q1, Q2(a), Q3(a) and Q6) amends the reason list and
+> its placement below, for a local credential expiry only. When the completed
+> attempt's error code is `authenticationExpired` and its associated failure
+> origin is `keychainCredentialExpired` or `fileCredentialExpired`, the reason
+> is `Waiting for Claude Code to renew access` instead of
+> `Quota access unavailable`. HTTP 401/403 and every other origin keep the
+> existing reasons. No action, sign-in prompt, Terminal launch, command, or
+> notification is added, and credential renewal is still not implemented.
+
 ## Decision
 
 The user approved replacing repeated re-login guidance with last-known quota,
@@ -62,6 +73,21 @@ connection presentation; leave Codex, Cursor, API billing, and local usage alone
   rate limiting becomes `Temporarily limited`, and unclassified/schema/service
   failure becomes `Could not update quota`. Reasons must derive from typed,
   allowlisted errors, not raw error messages or inferred process timing.
+- *(Amended 2026-10-22.)* A local credential expiry is the one exception:
+  `authenticationExpired` with an associated `keychainCredentialExpired` or
+  `fileCredentialExpired` origin becomes `Waiting for Claude Code to renew access`.
+  The provider popover and Settings add one detail line under it: `Needlbar
+  reads the access Claude Code saves on this Mac. It has expired. Needlbar
+  updates automatically after Claude Code renews it.` The origin counts only
+  for the completed attempt it describes, in the current run generation, when
+  that attempt's Claude result failed; otherwise the code-based reason applies.
+- *(Amended 2026-10-22.)* Placement of that reason: with no recent value from
+  either source it uses the existing reason slot. When the 5-hour and 7-day
+  windows are recent through the Claude Code status line, it appears once, on
+  the direct-only Fable line (provider popover Fable section, Settings Fable
+  line, dashboard Fable status), which no status-line value can refresh. The
+  dashboard compact headline keeps its existing rule and shows no detail line.
+  The menu bar, widget, JSON export, and notifications are unchanged.
 - Fable shares Claude's freshness. Do not repeat the same error after both the
   main quota and Fable reset. Clearly mark the retained provider values as old;
   an old reset date must not imply a newly verified reset or a current 0% limit.

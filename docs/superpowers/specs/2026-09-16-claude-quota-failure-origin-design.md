@@ -4,6 +4,17 @@ Date: 2026-09-16
 
 Status: Approach and written specification approved on 2026-09-16.
 
+> **Amendment — 2026-10-22:** The approved
+> `docs/superpowers/specs/2026-10-22-claude-credential-renewal-design.md`
+> (increment 1, decision Q1) amends the presentation sentence in "Data and
+> ownership", for local-expiry origins only. The diagnostics record that the
+> Swift consumer already reads after each completed Claude quota operation is
+> now read once and shared by the OSLog reporter and the refresh coordinator.
+> The coordinator uses `keychainCredentialExpired` or `fileCredentialExpired`
+> to select a dedicated presentation reason only for the attempt that record
+> describes. Error codes, messages, the bridge record, the C ABI, the JSON
+> schema, and the OSLog event are unchanged.
+
 ## Objective
 
 Identify the failing stage of the installed app's ordinary Claude quota refresh.
@@ -53,7 +64,13 @@ last-error variable. Allowed origins are:
 
 Do not infer an origin from elapsed time, UI state, or generic authenticationExpired.
 Unclassified errors remain otherFailure. Existing public error codes/messages
-and presentation mapping stay unchanged.
+and presentation mapping stay unchanged, except *(amended 2026-10-22)* that an
+`authenticationExpired` failure whose associated origin is
+`keychainCredentialExpired` or `fileCredentialExpired` presents as
+`Waiting for Claude Code to renew access`. The origin is associated only when
+the record's lastAttemptAt is not earlier than the attempt start truncated to
+whole seconds, the attempt is in the current run generation, and its Claude
+result failed. HTTP 401/403 and the other origins keep the existing mapping.
 
 Bridge diagnostics add optional Claude-only origin and lastAttemptAt fields.
 Capture lastAttemptAt when the existing operation begins, not when the diagnostic
