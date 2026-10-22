@@ -11,8 +11,8 @@ nothing since 2026-10-07 because the user runs Claude Code from the desktop
 app, and status-line commands run only in interactive terminal sessions.
 
 Decision (user, 2026-10-22): hide status-line values older than a fixed age,
-24 hours. This change is on branch `codex/statusline-max-age`; it is not
-merged, released, or installed.
+24 hours. This change is PR #32 on branch `codex/statusline-max-age`; it is
+not merged, released, or installed.
 
 - **Choke point.** `ClaudeQuotaPresentationSelector` drops a status-line
   window whose usable receipt time is more than 24 hours old

@@ -108,8 +108,8 @@ Known open items:
   The expired-credential notification (option D) is deferred; Q7
   (provider-policy review of the direct token path) stays open. See the plan
   `docs/superpowers/plans/2026-10-22-claude-access-expired-reason.md`.
-- Status-line maximum age (branch `codex/statusline-max-age`, not merged,
-  released, or installed). Decision (user, 2026-10-22): status-line values
+- Status-line maximum age (PR #32, branch `codex/statusline-max-age`, not
+  merged, released, or installed). Decision (user, 2026-10-22): status-line values
   older than 24 hours are hidden. On v0.3.11 the Settings Claude card still
   showed a status-line value received 15 days earlier as "Last known", because
   direct success is kept only in memory and the persisted cache was the only
