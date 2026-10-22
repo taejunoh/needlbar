@@ -152,6 +152,54 @@ struct ClaudeAccessExpiredPresentationTests {
         }
     }
 
+    // MARK: - Status-line values older than 24 hours (amendment of 2026-10-22)
+
+    // The observed case: no direct value since launch and only a persisted
+    // status-line record from days ago. Past 24 hours the record renders
+    // exactly as if it were missing, so the reason and its detail line sit in
+    // the normal slot with no "Reported by Claude Code", "Last known" or
+    // "Received locally" line.
+    @Test func statusLineValuesOlderThanTwentyFourHoursRenderExactlyAsWithoutAStatusLine() throws {
+        let stale = try Self.claude(reason: .claudeCodeAccessExpired,
+                                    statusLine: Self.statusLine(age: 15 * 86_400), directSuccess: false)
+        let missing = try Self.claude(reason: .claudeCodeAccessExpired, statusLine: nil, directSuccess: false)
+        let popover = ProviderPopoverPresentation(snapshot: stale, now: Self.now)
+        #expect(popover.quotaFailureReasonText == Self.shortText)
+        #expect(popover.fableFailureReasonText == nil)
+        for surface in Surface.allCases {
+            let rendered = try surface.render(stale)
+            let expected = try surface.render(missing)
+            #expect(rendered.items == expected.items, "\(surface) still presents an old status-line value")
+            for hidden in ["Reported by Claude Code", "Received locally", "Last known", "87%"] {
+                #expect(rendered.count(containing: hidden) == 0, "\(surface) shows \(hidden)")
+            }
+            #expect(rendered.count(containing: "Quota unavailable") == 1, "\(surface) unavailable line")
+            #expect(rendered.count(containing: Self.shortText) == 1, "\(surface) must show the reason once")
+            #expect(rendered.count(containing: Self.detailText) == (surface.showsDetail ? 1 : 0), "\(surface) detail line")
+            let index = try #require(rendered.items.firstIndex { $0.contains(Self.shortText) })
+            #expect(rendered.items[index].spoken == Self.shortText, "\(surface) reason accessibility label")
+            if surface.showsDetail {
+                #expect(rendered.items[index + 1].spoken == Self.detailText, "\(surface) detail follows the reason")
+            }
+        }
+    }
+
+    @Test func statusLineValuesWithinTwentyFourHoursStillRenderAsLastKnown() throws {
+        let snapshot = try Self.claude(reason: .claudeCodeAccessExpired,
+                                       statusLine: Self.statusLine(age: 23 * 3_600), directSuccess: false)
+        let received = DateFormatter.localizedString(
+            from: Self.now.addingTimeInterval(-23 * 3_600), dateStyle: .medium, timeStyle: .short)
+        for surface in Surface.allCases {
+            let rendered = try surface.render(snapshot)
+            #expect(rendered.count(containing: "Reported by Claude Code") >= 1, "\(surface) source line")
+            #expect(rendered.count(containing: "Received locally \(received)") >= 1, "\(surface) receipt line")
+            #expect(rendered.count(containing: "87%") >= 1, "\(surface) last-known value")
+            #expect(rendered.count(containing: "Quota unavailable") == 0, "\(surface) unavailable line")
+            #expect(rendered.count(containing: Self.shortText) == 1, "\(surface) must show the reason once")
+        }
+        #expect(try Surface.settings.render(snapshot).count(containing: "Last known quota 87%") == 1)
+    }
+
     // MARK: - No new control, no sign-in, no side effects
 
     @Test func noSurfaceAddsAControlSignInOrCommandText() throws {
@@ -399,6 +447,14 @@ private extension ClaudeAccessExpiredPresentationTests {
         StatusLineQuotaRecord(schemaVersion: 1, generation: UUID(uuidString: "00000000-0000-0000-0000-000000000026")!,
             fiveHour: .init(usedPercent: 25, resetsAt: now.addingTimeInterval(3_600), receivedAt: now.addingTimeInterval(-30)),
             sevenDay: .init(usedPercent: 35, resetsAt: now.addingTimeInterval(86_400), receivedAt: now.addingTimeInterval(-30)))
+    }
+
+    /// A persisted record received `age` seconds before the suite started.
+    static func statusLine(age: TimeInterval) -> StatusLineQuotaRecord {
+        let receivedAt = now.addingTimeInterval(-age)
+        return StatusLineQuotaRecord(schemaVersion: 1, generation: UUID(uuidString: "00000000-0000-0000-0000-000000001022")!,
+            fiveHour: .init(usedPercent: 13, resetsAt: nil, receivedAt: receivedAt),
+            sevenDay: .init(usedPercent: 4, resetsAt: now.addingTimeInterval(3 * 86_400), receivedAt: receivedAt))
     }
 
     static func claude(

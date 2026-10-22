@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import Testing
+import NeedlbarClaudeStatusLineSupport
 @testable import NeedlbarApp
 @testable import NeedlbarCore
 
@@ -339,6 +340,33 @@ struct QuotaNotificationServiceTests {
         let retainedSession = try #require(await restarted.ledger.lastSaved?.record(for: try QuotaAlertKey(provider: .claude, windowID: "claude.session")))
         #expect(retainedSession.consumedStages == [.twenty])
         #expect(retainedSession.reservedStages == [.twenty])
+    }
+
+    // Amendment of 2026-10-22: alerts observe only current direct quota, so a
+    // status-line value of any age, including one older than 24 hours, is
+    // never an alert observation, baseline or crossing.
+    @MainActor @Test(arguments: [30.0, 86_399.0, 86_401.0, 15 * 86_400.0])
+    func statusLineQuotaOfAnyAgeNeverBecomesAnAlertObservation(age: Double) async throws {
+        let fixture = try NotificationFixture(status: .authorized)
+        await fixture.service.start()
+        await fixture.service.setEnabledFromSettings(true)
+        await fixture.applyQuota(remaining: 80, for: .claude)
+        await fixture.service.reconcileLatestForTesting()
+        await fixture.service.waitUntilIdle()
+        let baselineSaves = await fixture.ledger.saveCount
+        let directSample = await fixture.store.currentQuotaAlertSample(for: .claude)
+
+        let now = fixture.advanceClock()
+        await fixture.store.applyClaudeStatusLineQuota(StatusLineQuotaRecord(
+            schemaVersion: StatusLineQuotaRecord.currentSchemaVersion, generation: UUID(),
+            fiveHour: .init(usedPercent: 85, resetsAt: now.addingTimeInterval(3_600), receivedAt: now.addingTimeInterval(-age)),
+            sevenDay: .init(usedPercent: 95, resetsAt: now.addingTimeInterval(86_400), receivedAt: now.addingTimeInterval(-age))))
+        await fixture.service.reconcileLatestForTesting()
+        await fixture.service.waitUntilIdle()
+
+        #expect(await fixture.store.currentQuotaAlertSample(for: .claude) == directSample)
+        #expect(await fixture.ledger.saveCount == baselineSaves)
+        #expect(await fixture.client.submissionCount == 0)
     }
 }
 
