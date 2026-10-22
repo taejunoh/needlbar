@@ -2,7 +2,11 @@ import Foundation
 import Testing
 @testable import NeedlbarCore
 
-@Test func threeEventsInsideDebounceIntervalRequestOneUsageRefresh() async throws {
+// Tests that wait on the doubles below carry a time limit; every such wait
+// ends on cancellation, so a missed wakeup fails the test instead of stalling
+// the run.
+@Test(.timeLimit(.minutes(1)))
+func threeEventsInsideDebounceIntervalRequestOneUsageRefresh() async throws {
     let directory = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let clock = WatcherClock(now: .now)
@@ -17,15 +21,15 @@ import Testing
 
     await watcher.start(using: UsageRefreshRequestToken { calls.increment() })
     source.sendEvent()
-    await eventually { clock.sleeperRegistrationCount >= 1 }
+    await clock.waitUntilSleeperRegistrationCount(1)
     try #require(clock.sleeperRegistrationCount >= 1)
 
     source.sendEvent()
-    await eventually { clock.sleeperRegistrationCount >= 2 }
+    await clock.waitUntilSleeperRegistrationCount(2)
     try #require(clock.sleeperRegistrationCount >= 2)
 
     source.sendEvent()
-    await eventually { clock.sleeperRegistrationCount >= 3 }
+    await clock.waitUntilSleeperRegistrationCount(3)
     try #require(clock.sleeperRegistrationCount >= 3)
 
     clock.advance(by: 0.999)
@@ -34,7 +38,7 @@ import Testing
     #expect(calls.value == 0)
 
     clock.advance(by: 0.001)
-    await eventually { calls.value == 1 }
+    await calls.waitUntilValue(1)
 
     #expect(calls.value == 1)
     await watcher.stop()
@@ -61,7 +65,8 @@ import Testing
     #expect(roots == expected)
 }
 
-@Test func stopCancelsAPendingDebouncedCallback() async throws {
+@Test(.timeLimit(.minutes(1)))
+func stopCancelsAPendingDebouncedCallback() async throws {
     let directory = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let clock = WatcherClock(now: .now)
@@ -76,7 +81,7 @@ import Testing
 
     await watcher.start(using: UsageRefreshRequestToken { calls.increment() })
     source.sendEvent()
-    await eventually { clock.sleeperCount == 1 }
+    await clock.waitUntilSleeperCount(1)
     await watcher.stop()
     clock.advance(by: 1)
     await Task.yield()
@@ -84,7 +89,8 @@ import Testing
     #expect(calls.value == 0)
 }
 
-@Test func restartedCoordinatorRejectsAnOldWatcherRequestAfterDebounceBeforeAcceptance() async throws {
+@Test(.timeLimit(.minutes(1)))
+func restartedCoordinatorRejectsAnOldWatcherRequestAfterDebounceBeforeAcceptance() async throws {
     let directory = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let clock = WatcherClock(now: .now)
@@ -185,6 +191,7 @@ private final class TestEventSource: UsageFileEventSource, @unchecked Sendable {
 
 private final class AsyncCounter: @unchecked Sendable {
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private var count = 0
 
     var value: Int {
@@ -193,14 +200,19 @@ private final class AsyncCounter: @unchecked Sendable {
 
     func increment() {
         lock.withLock { count += 1 }
+        changes.signal()
+    }
+
+    func waitUntilValue(_ expectedValue: Int) async {
+        await changes.wait { self.value >= expectedValue }
     }
 }
 
 private final class UsageRefreshSpy: UsageRepository, @unchecked Sendable {
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private let result: UsageRefreshResult
     private var calls = 0
-    private var callCountWaiters: [CallCountWaiter] = []
 
     init(result: UsageRefreshResult) {
         self.result = result
@@ -211,31 +223,14 @@ private final class UsageRefreshSpy: UsageRepository, @unchecked Sendable {
     }
 
     func refresh() throws -> UsageRefreshResult {
-        let waiters = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
-            calls += 1
-            let ready = callCountWaiters.filter { calls >= $0.expectedCount }.map(\.continuation)
-            callCountWaiters.removeAll { calls >= $0.expectedCount }
-            return ready
-        }
-        waiters.forEach { $0.resume() }
+        lock.withLock { calls += 1 }
+        changes.signal()
         return result
     }
 
     func waitUntilCallCount(_ expectedCount: Int) async {
-        await withCheckedContinuation { continuation in
-            let ready = lock.withLock { () -> Bool in
-                guard calls < expectedCount else { return true }
-                callCountWaiters.append(.init(expectedCount: expectedCount, continuation: continuation))
-                return false
-            }
-            if ready { continuation.resume() }
-        }
+        await changes.wait { self.callCount >= expectedCount }
     }
-}
-
-private struct CallCountWaiter {
-    let expectedCount: Int
-    let continuation: CheckedContinuation<Void, Never>
 }
 
 private final class QuotaRefreshSpy: QuotaRepository, @unchecked Sendable {
@@ -254,43 +249,32 @@ private final class QuotaRefreshSpy: QuotaRepository, @unchecked Sendable {
 }
 
 private final class AsyncGate: @unchecked Sendable {
-    private struct WaiterCountWaiter {
-        let expectedCount: Int
-        let continuation: CheckedContinuation<Void, Never>
-    }
-
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private var isOpen = false
     private var continuations: [CheckedContinuation<Void, Never>] = []
-    private var waiterCountWaiters: [WaiterCountWaiter] = []
 
     var waiterCount: Int {
         lock.withLock { continuations.count }
     }
 
     func waitUntilWaiterCount(_ expectedCount: Int) async {
-        await withCheckedContinuation { continuation in
-            let ready = lock.withLock { () -> Bool in
-                guard continuations.count < expectedCount else { return true }
-                waiterCountWaiters.append(.init(expectedCount: expectedCount, continuation: continuation))
-                return false
-            }
-            if ready { continuation.resume() }
-        }
+        await changes.wait { self.waiterCount >= expectedCount }
     }
 
+    /// The watcher's delivery hook. Like the delivery it holds, it ignores
+    /// cancellation and returns only once the test calls `open()`.
     func wait() async {
         await withCheckedContinuation { continuation in
             let resumeImmediately = lock.withLock { () -> Bool in
                 guard !isOpen else { return true }
                 continuations.append(continuation)
-                let ready = waiterCountWaiters.filter { continuations.count >= $0.expectedCount }.map(\.continuation)
-                waiterCountWaiters.removeAll { continuations.count >= $0.expectedCount }
-                ready.forEach { $0.resume() }
                 return false
             }
             if resumeImmediately {
                 continuation.resume()
+            } else {
+                changes.signal()
             }
         }
     }
@@ -311,16 +295,11 @@ private final class WatcherClock: ClockLike, @unchecked Sendable {
         let continuation: CheckedContinuation<Void, Error>
     }
 
-    private struct SleeperCountWaiter {
-        let expectedCount: Int
-        let continuation: CheckedContinuation<Void, Never>
-    }
-
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private var date: Date
     private var continuations: [UUID: Sleeper] = [:]
     private var registeredSleeperCount = 0
-    private var sleeperCountWaiters: [SleeperCountWaiter] = []
 
     init(now: Date) {
         date = now
@@ -339,14 +318,11 @@ private final class WatcherClock: ClockLike, @unchecked Sendable {
     }
 
     func waitUntilSleeperCount(_ expectedCount: Int) async {
-        await withCheckedContinuation { continuation in
-            let ready = lock.withLock { () -> Bool in
-                guard continuations.count < expectedCount else { return true }
-                sleeperCountWaiters.append(.init(expectedCount: expectedCount, continuation: continuation))
-                return false
-            }
-            if ready { continuation.resume() }
-        }
+        await changes.wait { self.sleeperCount >= expectedCount }
+    }
+
+    func waitUntilSleeperRegistrationCount(_ expectedCount: Int) async {
+        await changes.wait { self.sleeperRegistrationCount >= expectedCount }
     }
 
     func sleep(for duration: Duration) async throws {
@@ -361,13 +337,12 @@ private final class WatcherClock: ClockLike, @unchecked Sendable {
                         continuation: continuation
                     )
                     registeredSleeperCount += 1
-                    let ready = sleeperCountWaiters.filter { continuations.count >= $0.expectedCount }.map(\.continuation)
-                    sleeperCountWaiters.removeAll { continuations.count >= $0.expectedCount }
-                    ready.forEach { $0.resume() }
                     return false
                 }
                 if cancelled {
                     continuation.resume(throwing: CancellationError())
+                } else {
+                    changes.signal()
                 }
             }
         }, onCancel: {
@@ -396,13 +371,4 @@ private func makeTemporaryDirectory() throws -> URL {
     let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory
-}
-
-private func eventually(
-    _ condition: @escaping @Sendable () -> Bool,
-    yields: Int = 100
-) async {
-    for _ in 0 ..< yields where !condition() {
-        await Task.yield()
-    }
 }

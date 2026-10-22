@@ -4,11 +4,18 @@ import NeedlbarClaudeStatusLineSupport
 @testable import NeedlbarCore
 
 // These tests deliberately hold a synchronous repository call in flight to
-// exercise coordinator merge/restart races. Keep the suite serialized so those
-// bounded blocking test doubles cannot exhaust Swift's cooperative executor.
-// The time limit cancels a test whose condition never arrives; the call-count
-// and sleeper-count waiters end on cancellation, so a missed wakeup fails that
-// test instead of stalling the whole run.
+// exercise coordinator merge/restart races. The repository protocols are
+// synchronous and the coordinator calls them from tasks on Swift's cooperative
+// pool, so a held call blocks one pool thread until the test, which needs
+// another thread, releases it. The suite is serialized so that at most one
+// test holds calls at a time (one call, or a usage and a quota call in
+// authenticationVerificationDoesNotTriggerUsageRefresh). Each hold is bounded
+// by blockingFakeReleaseTimeout: a forgotten release, or a pool too small to
+// run the test beside its held calls, fails the test and frees the thread
+// instead of deadlocking the run.
+// The time limit cancels a test whose condition never arrives. Every
+// test-side wait ends on cancellation (see TestWaiting.swift), so a missed
+// wakeup fails that test instead of stalling the whole run.
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct RefreshCoordinatorTests {
 
@@ -42,7 +49,7 @@ struct RefreshCoordinatorTests {
     #expect(events.values.count == 1)
     clock.setNowWithoutWakingSleepers(now.addingTimeInterval(30))
     await completion.resume()
-    await eventually({ events.values.count == 2 }, yields: 10_000)
+    await events.waitUntilCount(2)
     #expect(events.values.last?.phase == .completed)
     #expect(events.values.last?.id == events.values.first?.id)
     #expect(events.values.last?.startedAt == now)
@@ -79,7 +86,7 @@ struct RefreshCoordinatorTests {
     #expect(events.values.last?.id != original?.id)
     #expect(events.values.last?.generation != original?.generation)
     try quota.releaseNext(with: quotaResult(for: .claude))
-    await eventually({ events.values.count == 4 }, yields: 10_000)
+    await events.waitUntilCount(4)
     #expect(events.values.last?.outcome == .success)
     await coordinator.stop()
 }
@@ -108,7 +115,7 @@ struct RefreshCoordinatorTests {
     await quota.waitUntilCallCount(1)
     try quota.releaseNext(with: .init(snapshots: [:], errors: [.claude: .init(
         provider: "claude", code: "authenticationExpired", message: "RAW_ERROR_TOKEN_PATH_CANARY", action: nil)]))
-    await eventually({ events.values.count == 2 }, yields: 10_000)
+    await events.waitUntilCount(2)
     let failure = events.values.last
     #expect(failure?.outcome == .failure)
     #expect(failure?.failureAttemptAt == now)
@@ -125,7 +132,7 @@ struct RefreshCoordinatorTests {
     #expect(events.values.last?.directLastSuccessfulAt == failure?.directLastSuccessfulAt)
     #expect(events.values.last?.fiveHourReceiptAt == five)
     try quota.releaseNext(with: try quotaResult(for: .claude, usedPercent: 15))
-    await eventually({ events.values.count == 4 }, yields: 10_000)
+    await events.waitUntilCount(4)
     #expect(events.values.last?.outcome == .success)
     #expect(events.values.last?.failureAttemptAt == nil)
     #expect(events.values.last?.directLastSuccessfulAt == now.addingTimeInterval(60))
@@ -143,24 +150,24 @@ struct RefreshCoordinatorTests {
     await coordinator.start()
     await quota.waitUntilCallCount(1)
     try quota.releaseNext(with: quotaResult(for: .claude))
-    await eventually({ events.values.count == 2 }, yields: 10_000)
+    await events.waitUntilCount(2)
     await coordinator.manualRefresh()
     await quota.waitUntilCallCount(2)
     try quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
-    await eventually({ events.values.count == 4 }, yields: 10_000)
+    await events.waitUntilCount(4)
     #expect(events.values.last?.outcome == .unavailable)
     #expect(events.values.last?.failureAttemptAt == Self.fixedStart)
     await coordinator.manualRefresh()
     await quota.waitUntilCallCount(3)
     try quota.releaseNext(throwing: NSError(domain: "RAW_ERROR_TOKEN_PATH_CANARY", code: 1))
-    await eventually({ events.values.count == 6 }, yields: 10_000)
+    await events.waitUntilCount(6)
     #expect(events.values.last?.outcome == .failure)
     #expect(!String(describing: events.values).contains("RAW_ERROR_TOKEN_PATH_CANARY"))
     let claudeFailure = events.values.last
     let codex = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .codex) }
     await quota.waitUntilCallCount(4)
     try quota.releaseNext(with: quotaResult(for: .codex))
-    #expect(await codex.value)
+    #expect(await codex.valueUnlessCancelled == true)
     #expect(events.values.last?.outcome == .success)
     #expect(events.values.last?.trigger == .manual)
     #expect(events.values.last?.failureAttemptAt == claudeFailure?.failureAttemptAt)
@@ -183,11 +190,12 @@ struct RefreshCoordinatorTests {
     await coordinator.start()
     await quota.waitUntilCallCount(1)
     try quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
-    await eventually({ events.values.count == 2 && cache.readCount == 1 }, yields: 10_000)
+    await events.waitUntilCount(2)
+    await cache.waitUntilReadCount(1)
     let previous = events.values
     let token = await coordinator.recoveryRequestToken()
     await token.submit(.wake)
-    await eventually({ cache.readCount == 2 }, yields: 10_000)
+    await cache.waitUntilReadCount(2)
     #expect(events.values == previous)
     #expect(quota.callCount == 1)
     #expect(events.values.last?.directLastSuccessfulAt == nil)
@@ -207,7 +215,7 @@ struct RefreshCoordinatorTests {
     await coordinator.start()
     await quota.waitUntilCallCount(1)
     try quota.releaseNext(with: try quotaResult(for: .claude, usedPercent: 20))
-    await eventually({ events.values.count == 2 }, yields: 10_000)
+    await events.waitUntilCount(2)
     let previous = events.values.last
     let codex = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .codex) }
     await quota.waitUntilCallCount(2)
@@ -215,7 +223,7 @@ struct RefreshCoordinatorTests {
     await store.applyClaudeStatusLineQuota(.init(schemaVersion: 1, generation: UUID(),
         fiveHour: .init(usedPercent: 60, resetsAt: nil, receivedAt: now), sevenDay: nil))
     try quota.releaseNext(with: quotaResult(for: .codex))
-    #expect(await codex.value)
+    #expect(await codex.valueUnlessCancelled == true)
     #expect(events.values.last?.outcome == .success)
     #expect(events.values.last?.fiveHourSource == previous?.fiveHourSource)
     #expect(events.values.last?.fiveHourReceiptAt == previous?.fiveHourReceiptAt)
@@ -237,7 +245,7 @@ struct RefreshCoordinatorTests {
     await callback.waitUntilEntered()
     await coordinator.stop()
     await callback.resume()
-    for _ in 0..<100 { await Task.yield() }
+    await settle(watchingFor: { events.values.count > 2 })
     #expect(events.values.map(\.phase) == [.started, .invalidated])
 }
 
@@ -270,15 +278,15 @@ struct RefreshCoordinatorTests {
     await quota.waitUntilCallCount(1)
     try quota.releaseNext(with: quotaResult(for: .claude))
     let token = await coordinator.recoveryRequestToken()
-    await eventually({ cache.readCount == 1 }, yields: 10_000)
+    await cache.waitUntilReadCount(1)
     clock.setNowWithoutWakingSleepers(now.addingTimeInterval(299))
     await token.submit(.wake)
-    await eventually({ cache.readCount == 2 }, yields: 10_000)
+    await cache.waitUntilReadCount(2)
     #expect(cache.readCount == 2)
     #expect(quota.callCount == 1)
     clock.setNowWithoutWakingSleepers(now.addingTimeInterval(300))
     await token.submit(.connectivity)
-    await eventually({ quota.callCount == 2 }, yields: 10_000)
+    await quota.waitUntilCallCount(2)
     #expect(quota.callCount == 2)
     quota.forbidAdditionalCalls()
     if quota.callCount == 2 { try quota.releaseNext(with: quotaResult(for: .claude)) }
@@ -297,20 +305,20 @@ struct RefreshCoordinatorTests {
     await coordinator.start()
     await quota.waitUntilCallCount(1)
     try quota.releaseNext(with: quotaResult(for: .claude))
-    await eventuallyAsync({ await completed.count == 1 }, yields: 10_000)
+    await completed.waitUntilCount(1)
     clock.setNowWithoutWakingSleepers(now.addingTimeInterval(100))
     await coordinator.popoverOpened()
     await quota.waitUntilCallCount(2)
     try quota.releaseNext(with: quotaResult(for: .claude))
-    await eventuallyAsync({ await completed.count == 2 }, yields: 10_000)
+    await completed.waitUntilCount(2)
     let token = await coordinator.recoveryRequestToken()
     clock.setNowWithoutWakingSleepers(now.addingTimeInterval(399))
     await token.submit(.wake)
-    await eventually { quota.callCount == 3 }
+    await settle(watchingFor: { quota.callCount == 3 })
     #expect(quota.callCount == 2)
     clock.setNowWithoutWakingSleepers(now.addingTimeInterval(400))
     await token.submit(.connectivity)
-    await eventually({ quota.callCount == 3 }, yields: 10_000)
+    await quota.waitUntilCallCount(3)
     #expect(quota.callCount == 3)
     quota.forbidAdditionalCalls()
     if quota.callCount == 3 { try quota.releaseNext(with: quotaResult(for: .claude)) }
@@ -334,8 +342,8 @@ struct RefreshCoordinatorTests {
     await quota.waitUntilCallCount(1)
     quota.forbidAdditionalCalls()
     try quota.releaseNext(with: quotaResult(for: .claude))
-    await eventuallyAsync({ await completed.count == 1 }, yields: 10_000)
-    await eventually { !quota.unexpectedIntents.isEmpty }
+    await completed.waitUntilCount(1)
+    await settle(watchingFor: { !quota.unexpectedIntents.isEmpty })
     #expect(quota.callCount == 1)
     #expect(quota.unexpectedIntents.isEmpty)
     await coordinator.stop()
@@ -361,13 +369,13 @@ func recoveryBurstQueuesOneAggregateFollowUp(includesPopover: Bool) async throws
     }
     #expect(quota.callCount == 1)
     try quota.releaseNext(with: quotaResult(for: .claude))
-    await eventually({ quota.callCount == 2 }, yields: 10_000)
+    await quota.waitUntilCallCount(2)
     #expect(quota.callCount == 2)
     quota.forbidAdditionalCalls()
     if quota.callCount == 2 { try quota.releaseNext(with: quotaResult(for: .claude)) }
-    await eventuallyAsync({ await completed.count == 2 }, yields: 10_000)
+    await completed.waitUntilCount(2)
     #expect(await completed.count == 2)
-    await eventually { !quota.unexpectedIntents.isEmpty }
+    await settle(watchingFor: { !quota.unexpectedIntents.isEmpty })
     #expect(quota.intents == [.backgroundAll, .backgroundAll])
     #expect(quota.unexpectedIntents.isEmpty)
     await coordinator.stop()
@@ -392,14 +400,14 @@ func recoveryBurstQueuesOneAggregateFollowUp(includesPopover: Bool) async throws
     await token.submit(.wake)
     await coordinator.popoverOpened()
     await gate.resume()
-    await eventually({ quota.callCount == 2 }, yields: 10_000)
+    await quota.waitUntilCallCount(2)
     #expect(quota.callCount == 2)
     await token.submit(.connectivity)
     quota.forbidAdditionalCalls()
     if quota.callCount == 2 { try quota.releaseNext(with: quotaResult(for: .claude)) }
-    await eventuallyAsync({ await completed.count == 2 }, yields: 10_000)
+    await completed.waitUntilCount(2)
     #expect(await completed.count == 2)
-    await eventually { !quota.unexpectedIntents.isEmpty }
+    await settle(watchingFor: { !quota.unexpectedIntents.isEmpty })
     #expect(quota.unexpectedIntents.isEmpty)
     await coordinator.stop()
 }
@@ -420,10 +428,10 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     await coordinator.start()
     await quota.waitUntilCallCount(1)
     try quota.releaseNext(with: quotaResult(for: .claude))
-    await eventuallyAsync({ await completed.count == 1 }, yields: 10_000)
+    await completed.waitUntilCount(1)
     #expect(await completed.count == 1)
-    await eventually({ cache.readCount == 1 }, yields: 10_000)
-    await eventually({ clock.sleeperCount == 2 }, yields: 10_000)
+    await cache.waitUntilReadCount(1)
+    await clock.waitUntilSleeperCount(2)
     let token = await coordinator.recoveryRequestToken()
     if periodicFirst {
         clock.advance(by: 300)
@@ -431,23 +439,23 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
         clock.setNowWithoutWakingSleepers(Date(timeIntervalSince1970: 300))
         await token.submit(.wake)
     }
-    await eventually({ quota.callCount == 2 }, yields: 10_000)
+    await quota.waitUntilCallCount(2)
     #expect(quota.callCount == 2)
     if periodicFirst {
         await token.submit(.wake)
         await token.submit(.connectivity)
     } else {
-        await eventually({ cache.readCount == 2 }, yields: 10_000)
+        await cache.waitUntilReadCount(2)
         clock.advance(by: 0)
-        await eventually({ clock.sleeperCount == 2 }, yields: 10_000)
-        await eventually({ cache.readCount == 3 }, yields: 10_000)
+        await clock.waitUntilSleeperCount(2)
+        await cache.waitUntilReadCount(3)
         #expect(cache.readCount == 3)
     }
     quota.forbidAdditionalCalls()
     if quota.callCount == 2 { try quota.releaseNext(with: quotaResult(for: .claude)) }
-    await eventuallyAsync({ await completed.count == 2 }, yields: 10_000)
+    await completed.waitUntilCount(2)
     #expect(await completed.count == 2)
-    await eventually { !quota.unexpectedIntents.isEmpty }
+    await settle(watchingFor: { !quota.unexpectedIntents.isEmpty })
     #expect(quota.intents == [.backgroundAll, .backgroundAll])
     #expect(quota.unexpectedIntents.isEmpty)
     await coordinator.stop()
@@ -469,10 +477,10 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     await coordinator.stop()
     await coordinator.start()
     await oldToken.submit(.wake)
-    await eventually { quota.callCount == 2 }
+    await settle(watchingFor: { quota.callCount == 2 })
     #expect(quota.callCount == 1)
     try quota.releaseNext(with: quotaResult(for: .claude, usedPercent: 10))
-    await eventually({ quota.callCount == 2 }, yields: 10_000)
+    await quota.waitUntilCallCount(2)
     #expect(quota.callCount == 2)
     #expect(await store.snapshot(for: .claude).quota == nil)
     quota.forbidAdditionalCalls()
@@ -482,9 +490,9 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
         #expect(await store.snapshot(for: .claude).quota == nil)
     }
     await gate.resume()
-    await eventuallyAsync({ await store.snapshot(for: .claude).quota?.windows.first?.usedPercent == 60 }, yields: 10_000)
+    await pollUntil { await store.snapshot(for: .claude).quota?.windows.first?.usedPercent == 60 }
     #expect(await store.snapshot(for: .claude).quota?.windows.first?.usedPercent == 60)
-    await eventually { !quota.unexpectedIntents.isEmpty }
+    await settle(watchingFor: { !quota.unexpectedIntents.isEmpty })
     #expect(quota.unexpectedIntents.isEmpty)
     await coordinator.stop()
 }
@@ -507,18 +515,18 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     clock.setNowWithoutWakingSleepers(Date(timeIntervalSince1970: 300))
     await token.submit(.wake)
     let user = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .codex) }
-    await eventually({ registrations.intents == [.backgroundAll, .userInitiated(provider: .codex)] }, yields: 10_000)
+    await registrations.waitUntil([.backgroundAll, .userInitiated(provider: .codex)])
     #expect(registrations.intents == [.backgroundAll, .userInitiated(provider: .codex)])
     // A wall-clock adjustment makes the already queued automatic ticket no
     // longer due. It must still release the user waiter queued after it.
     clock.setNowWithoutWakingSleepers(Date(timeIntervalSince1970: 299))
     await gate.resume()
-    await eventually({ quota.callCount == 2 }, yields: 10_000)
+    await quota.waitUntilCallCount(2)
     #expect(quota.intents == [.backgroundAll, .userInitiated(provider: .codex)])
     quota.forbidAdditionalCalls()
     if quota.callCount == 2 { try quota.releaseNext(with: quotaResult(for: .codex)) }
     if quota.callCount < 2 { await coordinator.stop() }
-    #expect(await user.value)
+    #expect(await user.valueUnlessCancelled == true)
     #expect(quota.unexpectedIntents.isEmpty)
     await coordinator.stop()
 }
@@ -545,7 +553,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     await gate.waitUntilEntered()
     await coordinator.start()
     await gate.resume()
-    await eventuallyAsync({ await store.snapshot(for: .claude).claudeStatusLineQuota != nil }, yields: 10_000)
+    await pollUntil { await store.snapshot(for: .claude).claudeStatusLineQuota != nil }
     #expect(cache.readCount == 2)
     #expect(await store.snapshot(for: .claude).claudeStatusLineQuota?.fiveHour?.usedPercent == 25)
     await coordinator.stop()
@@ -576,7 +584,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
         fiveHour: .init(usedPercent: 60, resetsAt: now.addingTimeInterval(3600), receivedAt: now),
         sevenDay: nil))
     await gate.resume()
-    await eventuallyAsync({ await store.snapshot(for: .claude).claudeStatusLineQuota?.generation == active }, yields: 10_000)
+    await pollUntil { await store.snapshot(for: .claude).claudeStatusLineQuota?.generation == active }
     #expect(cache.readCount == 2)
     #expect(await store.snapshot(for: .claude).claudeStatusLineQuota?.fiveHour?.usedPercent == 60)
     await coordinator.stop()
@@ -603,14 +611,14 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
         statusLineRepository: cache
     )
     await coordinator.start()
-    await eventuallyAsync { await store.snapshot(for: .claude).claudeStatusLineQuota != nil }
-    await eventuallyAsync { await store.snapshot(for: .claude).claudeQuotaFailureReason == .quotaAccessUnavailable }
+    await pollUntil { await store.snapshot(for: .claude).claudeStatusLineQuota != nil }
+    await pollUntil { await store.snapshot(for: .claude).claudeQuotaFailureReason == .quotaAccessUnavailable }
     #expect(cache.readCount == 1)
     #expect(await store.snapshot(for: .claude).quota == nil)
 
     cache.disconnect()
     await coordinator.manualRefresh()
-    await eventuallyAsync { await store.snapshot(for: .claude).claudeStatusLineQuota == nil }
+    await pollUntil { await store.snapshot(for: .claude).claudeStatusLineQuota == nil }
     #expect(await store.snapshot(for: .claude).claudeQuotaFailureReason == .quotaAccessUnavailable)
     await coordinator.stop()
 }
@@ -635,7 +643,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
         statusLineRepository: cache
     )
     await coordinator.popoverOpened()
-    await eventuallyAsync { await store.snapshot(for: .claude).claudeStatusLineQuota != nil }
+    await pollUntil { await store.snapshot(for: .claude).claudeStatusLineQuota != nil }
     #expect(await store.snapshot(for: .claude).claudeStatusLineQuota?.fiveHour?.usedPercent == 40)
     #expect(cache.readCount == 1)
     #expect(quota.callCount == 0)
@@ -664,7 +672,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     cache.disconnect()
     await store.reconcileClaudeStatusLineQuota(activeGeneration: { cache.activeGeneration() })
     await gate.resume()
-    await eventuallyAsync { cache.activeGenerationChecks >= 3 }
+    await cache.waitUntilActiveGenerationChecks(3)
 
     #expect(await store.snapshot(for: .claude).claudeStatusLineQuota == nil)
     await coordinator.stop()
@@ -702,7 +710,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     // A delayed disconnect callback must preserve the newly connected generation.
     await store.reconcileClaudeStatusLineQuota(activeGeneration: { cache.activeGeneration() })
     await gate.resume()
-    await eventuallyAsync { cache.activeGenerationChecks >= 5 }
+    await cache.waitUntilActiveGenerationChecks(5)
 
     let retained = await store.snapshot(for: .claude).claudeStatusLineQuota
     #expect(retained?.generation == newGeneration)
@@ -712,6 +720,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
 
 private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked Sendable {
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private var generation: UUID?
     private var record: StatusLineQuotaRecord
     private var reads = 0
@@ -725,16 +734,30 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     var readCount: Int { lock.withLock { reads } }
     var activeGenerationChecks: Int { lock.withLock { activeChecks } }
 
-    func activeGeneration() -> UUID? { lock.withLock {
-        activeChecks += 1
-        return generation
-    } }
+    func activeGeneration() -> UUID? {
+        let active = lock.withLock { () -> UUID? in
+            activeChecks += 1
+            return generation
+        }
+        changes.signal()
+        return active
+    }
 
     func read(expectedGeneration: UUID) -> StatusLineQuotaRecord? {
-        lock.withLock {
+        let result = lock.withLock { () -> StatusLineQuotaRecord? in
             reads += 1
             return generation == expectedGeneration ? record : nil
         }
+        changes.signal()
+        return result
+    }
+
+    func waitUntilReadCount(_ expectedCount: Int) async {
+        await changes.wait { self.readCount >= expectedCount }
+    }
+
+    func waitUntilActiveGenerationChecks(_ expectedCount: Int) async {
+        await changes.wait { self.activeGenerationChecks >= expectedCount }
     }
 
     func disconnect() { lock.withLock { generation = nil } }
@@ -802,7 +825,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
 
     await coordinator.popoverOpened()
     await quota.waitUntilCallCount(1)
-    await eventuallyAsync { await store.snapshot(for: .claude).quotaStatus == .requiresAuthentication }
+    await pollUntil { await store.snapshot(for: .claude).quotaStatus == .requiresAuthentication }
     await coordinator.popoverOpened()
     await quota.waitUntilCallCount(2)
 
@@ -829,7 +852,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
 
     await coordinator.popoverOpened()
     await quota.waitUntilCallCount(1)
-    await eventuallyAsync { await store.snapshot(for: .cursor).quotaStatus == .unavailable }
+    await pollUntil { await store.snapshot(for: .cursor).quotaStatus == .unavailable }
 
     #expect(await store.snapshot(for: .cursor).quotaStatus == .unavailable)
     #expect(await store.snapshot(for: .claude).quotaStatus == .error(message: "Claude unavailable", lastSuccessfulAt: nil))
@@ -907,15 +930,15 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
             try quota.releaseNext(throwing: BridgeFailure.bridgeFailed([
                 .init(provider: "claude", code: entry.0, message: "untrusted raw detail", action: nil)
             ]))
-            #expect(!(await bridgeRefresh.value))
-            await eventuallyAsync { await store.snapshot(for: .claude).claudeQuotaFailureReason == entry.1 }
+            #expect(await bridgeRefresh.valueUnlessCancelled == false)
+            await pollUntil { await store.snapshot(for: .claude).claudeQuotaFailureReason == entry.1 }
         }
 
         let untypedRefresh = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
         await quota.waitUntilCallCount(cases.count + 2)
         try quota.releaseNext(throwing: BlockingQuotaRepositoryError.missingOutcome)
-        #expect(!(await untypedRefresh.value))
-        await eventuallyAsync { await store.snapshot(for: .claude).claudeQuotaFailureReason == .couldNotUpdateQuota }
+        #expect(await untypedRefresh.valueUnlessCancelled == false)
+        await pollUntil { await store.snapshot(for: .claude).claudeQuotaFailureReason == .couldNotUpdateQuota }
         await coordinator.stop()
     }
 
@@ -932,15 +955,15 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     )
 
     await coordinator.start()
-    await eventually { usage.callCount == 1 }
+    await usage.waitUntilCallCount(1)
 
     let manual = Task { await coordinator.manualRefresh() }
     await Task.yield()
     #expect(usage.callCount == 1)
 
     usage.releaseFirstCall()
-    await manual.value
-    await eventually { usage.callCount == 2 }
+    _ = await manual.valueUnlessCancelled
+    await usage.waitUntilCallCount(2)
 
     #expect(usage.callCount == 2)
     #expect(quota.callCount >= 1)
@@ -958,7 +981,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     )
 
     await coordinator.start()
-    await eventually { usage.callCount == 1 }
+    await usage.waitUntilCallCount(1)
 
     var manualRequests: [Task<Void, Never>] = []
     for _ in 0 ..< 3 {
@@ -969,10 +992,10 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     }
 
     usage.releaseFirstCall()
-    await eventually { usage.callCount == 2 }
-    await eventually { usage.completedCallCount == 2 }
+    await usage.waitUntilCallCount(2)
+    await usage.waitUntilCompletedCallCount(2)
     for request in manualRequests {
-        await request.value
+        _ = await request.valueUnlessCancelled
     }
     await Task.yield()
 
@@ -1027,14 +1050,14 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     )
 
     await coordinator.start()
-    await eventually { usage.callCount == 1 }
+    await usage.waitUntilCallCount(1)
     await coordinator.stop()
     await coordinator.start()
     await Task.yield()
 
     #expect(usage.callCount == 1)
     usage.releaseFirstCall()
-    await eventually { usage.callCount == 2 }
+    await usage.waitUntilCallCount(2)
     await coordinator.stop()
 }
 
@@ -1051,14 +1074,14 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     )
 
     let firstStart = Task { await coordinator.start() }
-    await eventuallyAsync { await watcher.firstStartIsSuspended }
+    await pollUntil { await watcher.firstStartIsSuspended }
 
     await coordinator.stop()
     await coordinator.start()
-    await eventually { usage.callCount == 1 }
+    await usage.waitUntilCallCount(1)
 
     await watcher.resumeFirstStart()
-    await firstStart.value
+    _ = await firstStart.valueUnlessCancelled
 
     let lifecycleBeforeEvent = await watcher.lifecycle
     #expect(lifecycleBeforeEvent == ["start-1", "stop", "start-2"])
@@ -1081,13 +1104,13 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     await quota.waitUntilCallCount(1)
     try quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
     usage.releaseFirstCall()
-    await eventually { usage.completedCallCount == 1 }
+    await usage.waitUntilCompletedCallCount(1)
 
     let verification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
     await quota.waitUntilCallCount(2)
     try quota.releaseNext(with: quotaResult(for: .claude))
 
-    #expect(await verification.value)
+    #expect(await verification.valueUnlessCancelled == true)
     #expect(usage.callCount == 1)
     await coordinator.stop()
 }
@@ -1104,7 +1127,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     #expect(!verification.isCancelled)
     try quota.releaseNext(with: quotaResult(for: .claude))
 
-    #expect(await verification.value)
+    #expect(await verification.valueUnlessCancelled == true)
     #expect(quota.intents == [.backgroundAll, .userInitiated(provider: .claude)])
     await coordinator.stop()
 }
@@ -1115,6 +1138,40 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     #expect(throws: BlockingQuotaRepositoryError.unexpectedRelease) {
         try quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
     }
+}
+
+@Test func testWaitsEndWhenTheirTaskIsCancelled() async {
+    // The time limit can end a test only by cancelling it, so each wait must
+    // return once cancelled even though its condition never arrives.
+    let gate = QuotaApplicationGate()
+    let held = Task { await gate.pause() }
+    let quota = BlockingIntentQuotaRepository()
+    let usage = RecordingUsageRepository()
+    let clock = ManualClock(now: Self.fixedStart)
+    let registrations = QuotaIntentRegistrationGate()
+    let completions = ClaudeQuotaCompletionRecorder()
+    let events = QuotaAttemptCollector()
+    let cache = StatusLineCacheSpy(generation: UUID(), record: .init(
+        schemaVersion: 1, generation: UUID(), fiveHour: nil, sevenDay: nil))
+    let waits: [(String, @Sendable () async -> Void)] = [
+        ("quota calls", { await quota.waitUntilCallCount(1) }),
+        ("completed usage calls", { await usage.waitUntilCompletedCallCount(1) }),
+        ("sleepers", { await clock.waitUntilSleeperCount(1) }),
+        ("intent registrations", { await registrations.waitUntil([.backgroundAll]) }),
+        ("attempt events", { await events.waitUntilCount(1) }),
+        ("cache reads", { await cache.waitUntilReadCount(1) }),
+        ("gate entry", { await QuotaApplicationGate().waitUntilEntered() }),
+        ("completions", { await completions.waitUntilCount(1) }),
+        ("task value", { _ = await held.valueUnlessCancelled }),
+    ]
+    for (name, wait) in waits {
+        let waiting = Task { await wait(); return true }
+        try? await Task.sleep(for: .milliseconds(10))
+        waiting.cancel()
+        #expect(await waiting.valueUnlessCancelled == true, "the \(name) wait must end once cancelled")
+    }
+    await gate.resume()
+    _ = await held.valueUnlessCancelled
 }
 
 @Test func permissionDeniedVerificationPreservesLastKnownGoodQuotaAndReturnsFalse() async throws {
@@ -1131,8 +1188,8 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     await quota.waitUntilCallCount(2)
     try quota.releaseNext(with: .init(snapshots: [:], errors: [.claude: permissionDenied(for: .claude)]))
 
-    let verified = await verification.value
-    #expect(!verified)
+    let verified = await verification.valueUnlessCancelled
+    #expect(verified == false)
     #expect(await store.snapshot(for: .claude).quota == previous)
     if case .error(message: "access denied", lastSuccessfulAt: _) = await store.snapshot(for: .claude).quotaStatus {
         // The previous quota timestamp must survive the failed verification.
@@ -1158,7 +1215,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
         .init(provider: ProviderID.claude.rawValue, code: "invalidResponse", message: "Provider verification returned no result.", action: nil)
     ]))
 
-    #expect(!(await verification.value))
+    #expect(await verification.valueUnlessCancelled == false)
     #expect(await store.snapshot(for: .claude).quota == previous)
     if case .error(message: "Provider verification returned no result.", lastSuccessfulAt: _) = await store.snapshot(for: .claude).quotaStatus {
         // A malformed dedicated response must make only the requested quota stale.
@@ -1183,7 +1240,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     await quota.waitUntilCallCount(2)
     try quota.releaseNext(with: quotaResult(for: .claude))
 
-    #expect(await verification.value)
+    #expect(await verification.valueUnlessCancelled == true)
     #expect(quota.intents == [.backgroundAll, .userInitiated(provider: .claude)])
     await coordinator.stop()
 }
@@ -1206,7 +1263,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     try quota.releaseNext(with: quotaResult(for: .claude))
 
     for caller in callers {
-        #expect(await caller.value)
+        #expect(await caller.valueUnlessCancelled == true)
     }
     #expect(quota.intents == [.backgroundAll, .userInitiated(provider: .claude)])
     await coordinator.stop()
@@ -1228,11 +1285,11 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     #expect(quota.intents[1] == .userInitiated(provider: .claude))
     try quota.releaseNext(with: .init(snapshots: [:], errors: [.claude: permissionDenied(for: .claude)]))
     await quota.waitUntilCallCount(3)
-    let claudeVerified = await claude.value
-    #expect(!claudeVerified)
+    let claudeVerified = await claude.valueUnlessCancelled
+    #expect(claudeVerified == false)
     try quota.releaseNext(with: quotaResult(for: .codex))
 
-    #expect(await codex.value)
+    #expect(await codex.valueUnlessCancelled == true)
     #expect(quota.intents == [.backgroundAll, .userInitiated(provider: .claude), .userInitiated(provider: .codex)])
     await coordinator.stop()
 }
@@ -1248,8 +1305,8 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     await quota.waitUntilCallCount(2)
 
     await coordinator.stop()
-    let verified = await verification.value
-    #expect(!verified)
+    let verified = await verification.valueUnlessCancelled
+    #expect(verified == false)
     try quota.releaseNext(with: quotaResult(for: .claude))
     await coordinator.start()
     await quota.waitUntilCallCount(3)
@@ -1275,7 +1332,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let verification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
     await quota.waitUntilCallCount(2)
     try quota.releaseNext(with: quotaResult(for: .claude))
-    #expect(await verification.value)
+    #expect(await verification.valueUnlessCancelled == true)
 
     await coordinator.popoverOpened()
     await quota.waitUntilCallCount(3)
@@ -1292,7 +1349,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     try quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
 
     let verified = await coordinator.refreshQuota(afterUserAuthenticationFor: .cursor)
-    #expect(!verified)
+    #expect(verified == false)
     #expect(quota.callCount == 1)
     await coordinator.stop()
 }
@@ -1310,23 +1367,23 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let authentication = Task { await coordinator.preflightClaudeLogin() }
     await quota.waitUntilCallCount(2)
     try quota.releaseNext(with: .init(snapshots: [:], errors: [.claude: BridgeError(provider: "claude", code: "requiresAuthentication", message: "sign in", action: nil)]))
-    #expect(await authentication.value == .requiresAuthentication)
+    #expect(await authentication.valueUnlessCancelled == .requiresAuthentication)
     #expect(await store.snapshot(for: .claude).quota == cached)
 
     let expiredAuthentication = Task { await coordinator.preflightClaudeLogin() }
     await quota.waitUntilCallCount(3)
     try quota.releaseNext(with: .init(snapshots: [:], errors: [.claude: BridgeError(provider: "claude", code: "authenticationExpired", message: "expired", action: nil)]))
-    #expect(await expiredAuthentication.value == .requiresAuthentication)
+    #expect(await expiredAuthentication.valueUnlessCancelled == .requiresAuthentication)
 
     let permission = Task { await coordinator.preflightClaudeLogin() }
     await quota.waitUntilCallCount(4)
     try quota.releaseNext(with: .init(snapshots: [:], errors: [.claude: permissionDenied(for: .claude)]))
-    #expect(await permission.value == .keychainPermissionRequired)
+    #expect(await permission.valueUnlessCancelled == .keychainPermissionRequired)
 
     let failed = Task { await coordinator.preflightClaudeLogin() }
     await quota.waitUntilCallCount(5)
     try quota.releaseNext(with: .init(snapshots: [.claude: cached], errors: [.claude: BridgeError(provider: "claude", code: "networkUnavailable", message: "offline", action: nil)]))
-    #expect(await failed.value == .verificationFailed)
+    #expect(await failed.valueUnlessCancelled == .verificationFailed)
     await coordinator.stop()
 }
 
@@ -1343,8 +1400,8 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     #expect(quota.intents == [.backgroundAll, .claudePreflight])
     await coordinator.stop()
 
-    #expect(await first.value == .verificationFailed)
-    #expect(await second.value == .verificationFailed)
+    #expect(await first.valueUnlessCancelled == .verificationFailed)
+    #expect(await second.valueUnlessCancelled == .verificationFailed)
     try quota.releaseNext(with: quotaResult(for: .claude))
 }
 
@@ -1359,14 +1416,16 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
         clock: clock
     )
     await coordinator.start()
-    await eventually { quota.callCount == 1 && clock.sleeperCount == 2 }
+    await quota.waitUntilCallCount(1)
+    await clock.waitUntilSleeperCount(2)
     await coordinator.manualRefresh()
-    await eventually { quota.callCount >= 2 }
+    await quota.waitUntilCallCount(2)
     await coordinator.popoverOpened()
-    await eventually { quota.callCount >= 3 }
+    await quota.waitUntilCallCount(3)
     clock.advance(by: 5 * 60)
-    await eventually { quota.callCount >= 4 }
+    await quota.waitUntilCallCount(4)
 
+    #expect(quota.callCount == 4)
     #expect(quota.intents.allSatisfy { $0 == .backgroundAll })
     await coordinator.stop()
 }
@@ -1391,8 +1450,8 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     await storeGate.waitUntilEntered()
     await coordinator.stop()
 
-    let verified = await verification.value
-    #expect(!verified)
+    let verified = await verification.valueUnlessCancelled
+    #expect(verified == false)
     await storeGate.resume()
 }
 
@@ -1422,9 +1481,9 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     quota.forbidAdditionalCalls()
     await storeGate.resume()
 
-    #expect(await first.value)
+    #expect(await first.valueUnlessCancelled == true)
     #expect(quota.callCount == 2)
-    #expect(await joining.value)
+    #expect(await joining.valueUnlessCancelled == true)
     #expect(quota.unexpectedIntents.isEmpty)
     await coordinator.stop()
 }
@@ -1458,7 +1517,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     await quota.waitUntilCallCount(2)
     #expect(quota.intents[1] == .userInitiated(provider: .claude))
     try quota.releaseNext(with: quotaResult(for: .claude))
-    #expect(await aheadClaude.value)
+    #expect(await aheadClaude.valueUnlessCancelled == true)
     await quota.waitUntilCallCount(3)
     #expect(quota.intents[2] == .backgroundAll)
 
@@ -1470,9 +1529,9 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     #expect(quota.intents[4] == .userInitiated(provider: .codex))
     try quota.releaseNext(with: quotaResult(for: .codex))
 
-    #expect(await behindClaude.value)
-    #expect(await behindCodex.value)
-    await manual.value
+    #expect(await behindClaude.valueUnlessCancelled == true)
+    #expect(await behindCodex.valueUnlessCancelled == true)
+    _ = await manual.valueUnlessCancelled
     await coordinator.stop()
 }
 
@@ -1487,7 +1546,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let oldVerification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
     await quota.waitUntilCallCount(2)
     await coordinator.stop()
-    #expect(!(await oldVerification.value))
+    #expect(await oldVerification.valueUnlessCancelled == false)
     await coordinator.start()
     let newVerification = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .claude) }
 
@@ -1499,9 +1558,9 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     #expect(quota.intents[3] == .userInitiated(provider: .claude))
     try quota.releaseNext(with: try quotaResult(for: .claude, usedPercent: 20))
 
-    #expect(await newVerification.value)
+    #expect(await newVerification.valueUnlessCancelled == true)
     let expected = try QuotaSnapshot(windows: [.init(id: "claude.session", title: "Session", usedPercent: 20, resetsAt: nil)])
-    await eventuallyAsync { await store.snapshot(for: .claude).quota == expected }
+    await pollUntil { await store.snapshot(for: .claude).quota == expected }
     #expect(await store.snapshot(for: .claude).quota == expected)
     await coordinator.stop()
 }
@@ -1528,7 +1587,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     await quota.waitUntilCallCount(2)
     #expect(quota.intents[1] == .userInitiated(provider: .codex))
     try quota.releaseNext(with: quotaResult(for: .codex))
-    #expect(await queuedCodex.value)
+    #expect(await queuedCodex.valueUnlessCancelled == true)
     await coordinator.stop()
 }
 
@@ -1566,7 +1625,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     )
     await codexCoordinator.start()
     await codexQuota.waitUntilCallCount(1)
-    await eventuallyAsync { await codexCounter.count == 1 }
+    await codexCounter.waitUntilCount(1)
     _ = await codexCoordinator.refreshQuota(afterUserAuthenticationFor: .codex)
     await codexQuota.waitUntilCallCount(2)
     await Task.yield()
@@ -1617,7 +1676,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
 
     await coordinator.start()
     await usage.waitUntilCallCount(1)
-    await appliedUsage.value
+    _ = await appliedUsage.valueUnlessCancelled
 
     #expect(usage.callCount == 1)
     #expect(await store.captureForWidget(exportedAt: Self.fixedStart).providers[0].usageDayProvenance?.provenContext == context)
@@ -1673,16 +1732,24 @@ private func permissionDenied(for provider: ProviderID) -> BridgeError {
 
 private final class QuotaAttemptCollector: @unchecked Sendable {
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private var events: [QuotaAttemptEvent] = []
     var values: [QuotaAttemptEvent] { lock.withLock { events } }
-    func record(_ event: QuotaAttemptEvent) { lock.withLock { events.append(event) } }
+    func record(_ event: QuotaAttemptEvent) {
+        lock.withLock { events.append(event) }
+        changes.signal()
+    }
+
+    func waitUntilCount(_ expectedCount: Int) async {
+        await changes.wait { self.values.count >= expectedCount }
+    }
 }
 
 private final class UsageRefreshSpy: UsageRepository, @unchecked Sendable {
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private let result: UsageRefreshResult
     private var calls = 0
-    private var callCountWaiters: [QuotaCallCountWaiter] = []
 
     init(result: UsageRefreshResult) {
         self.result = result
@@ -1693,43 +1760,21 @@ private final class UsageRefreshSpy: UsageRepository, @unchecked Sendable {
     }
 
     func refresh() throws -> UsageRefreshResult {
-        let waiters = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
-            calls += 1
-            let ready = callCountWaiters.filter { calls >= $0.expectedCount }.map(\.continuation)
-            callCountWaiters.removeAll { calls >= $0.expectedCount }
-            return ready
-        }
-        waiters.forEach { $0.resume() }
+        lock.withLock { calls += 1 }
+        changes.signal()
         return result
     }
 
     func waitUntilCallCount(_ expectedCount: Int) async {
-        await cancellableWait(register: { id, continuation in
-            lock.withLock { () -> Bool in
-                guard calls < expectedCount, !Task.isCancelled else { return true }
-                callCountWaiters.append(.init(id: id, expectedCount: expectedCount, continuation: continuation))
-                return false
-            }
-        }, remove: { id in
-            self.lock.withLock { () -> CheckedContinuation<Void, Never>? in
-                guard let index = self.callCountWaiters.firstIndex(where: { $0.id == id }) else { return nil }
-                return self.callCountWaiters.remove(at: index).continuation
-            }
-        })
+        await changes.wait { self.callCount >= expectedCount }
     }
-}
-
-private struct QuotaCallCountWaiter {
-    var id = UUID()
-    let expectedCount: Int
-    let continuation: CheckedContinuation<Void, Never>
 }
 
 private final class QuotaRefreshSpy: QuotaRepository, @unchecked Sendable {
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private let result: QuotaRefreshResult
     private var calls = 0
-    private var callCountWaiters: [QuotaCallCountWaiter] = []
 
     init(result: QuotaRefreshResult) {
         self.result = result
@@ -1740,37 +1785,13 @@ private final class QuotaRefreshSpy: QuotaRepository, @unchecked Sendable {
     }
 
     func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
-        let waiters = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
-            calls += 1
-            var remaining: [QuotaCallCountWaiter] = []
-            var ready: [CheckedContinuation<Void, Never>] = []
-            for waiter in callCountWaiters {
-                if calls >= waiter.expectedCount {
-                    ready.append(waiter.continuation)
-                } else {
-                    remaining.append(waiter)
-                }
-            }
-            callCountWaiters = remaining
-            return ready
-        }
-        waiters.forEach { $0.resume() }
+        lock.withLock { calls += 1 }
+        changes.signal()
         return result
     }
 
     func waitUntilCallCount(_ expectedCount: Int) async {
-        await cancellableWait(register: { id, continuation in
-            lock.withLock { () -> Bool in
-                guard calls < expectedCount, !Task.isCancelled else { return true }
-                callCountWaiters.append(.init(id: id, expectedCount: expectedCount, continuation: continuation))
-                return false
-            }
-        }, remove: { id in
-            self.lock.withLock { () -> CheckedContinuation<Void, Never>? in
-                guard let index = self.callCountWaiters.firstIndex(where: { $0.id == id }) else { return nil }
-                return self.callCountWaiters.remove(at: index).continuation
-            }
-        })
+        await changes.wait { self.callCount >= expectedCount }
     }
 }
 
@@ -1781,9 +1802,9 @@ private final class BlockingIntentQuotaRepository: QuotaRepository, @unchecked S
     }
 
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private var calls: [QuotaRefreshIntent] = []
     private var pendingCalls: [PendingCall] = []
-    private var callCountWaiters: [QuotaCallCountWaiter] = []
     private var blockedAfterCallCount: Int?
     private var unexpected: [QuotaRefreshIntent] = []
 
@@ -1801,46 +1822,40 @@ private final class BlockingIntentQuotaRepository: QuotaRepository, @unchecked S
 
     func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
         let pendingCall = PendingCall()
-        let registrationWaiters = lock.withLock { () -> ([CheckedContinuation<Void, Never>], Bool) in
+        let callNumber = lock.withLock { () -> Int? in
             if let blockedAfterCallCount, calls.count >= blockedAfterCallCount {
                 unexpected.append(intent)
-                return ([], true)
+                return nil
             }
             calls.append(intent)
             pendingCalls.append(pendingCall)
-            var remaining: [QuotaCallCountWaiter] = []
-            var ready: [CheckedContinuation<Void, Never>] = []
-            for waiter in callCountWaiters {
-                if calls.count >= waiter.expectedCount {
-                    ready.append(waiter.continuation)
-                } else {
-                    remaining.append(waiter)
-                }
-            }
-            callCountWaiters = remaining
-            return (ready, false)
+            return calls.count
         }
-        registrationWaiters.0.forEach { $0.resume() }
-        if registrationWaiters.1 { throw BlockingQuotaRepositoryError.unexpectedCall }
-        pendingCall.gate.wait()
+        changes.signal()
+        guard let callNumber else { throw BlockingQuotaRepositoryError.unexpectedCall }
+        // The coordinator makes this synchronous call on a cooperative thread,
+        // which stays blocked until the test releases the call; see the suite
+        // comment and blockingFakeReleaseTimeout.
+        if pendingCall.gate.wait(timeout: .now() + .seconds(blockingFakeReleaseTimeout)) == .timedOut {
+            let abandoned = lock.withLock { () -> Bool in
+                guard let index = pendingCalls.firstIndex(where: { $0 === pendingCall }) else { return false }
+                pendingCalls.remove(at: index)
+                return true
+            }
+            if abandoned {
+                recordReleaseTimeout(of: "BlockingIntentQuotaRepository call \(callNumber) (\(intent))")
+                throw BlockingFakeError.notReleasedInTime
+            }
+            // A release claimed this call as the wait timed out; its signal follows at once.
+            pendingCall.gate.wait()
+        }
         let outcome = lock.withLock { pendingCall.outcome }
         guard let outcome else { throw BlockingQuotaRepositoryError.missingOutcome }
         return try outcome.get()
     }
 
     func waitUntilCallCount(_ expectedCount: Int) async {
-        await withCheckedContinuation { continuation in
-            let resumeImmediately = lock.withLock { () -> Bool in
-                if calls.count >= expectedCount {
-                    return true
-                }
-                callCountWaiters.append(.init(expectedCount: expectedCount, continuation: continuation))
-                return false
-            }
-            if resumeImmediately {
-                continuation.resume()
-            }
-        }
+        await changes.wait { self.callCount >= expectedCount }
     }
 
     func releaseNext(with result: QuotaRefreshResult) throws {
@@ -1876,6 +1891,7 @@ private enum BlockingQuotaRepositoryError: Error, Equatable {
 
 private final class IntentRecordingQuotaRepository: QuotaRepository, @unchecked Sendable {
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private var calls: [QuotaRefreshIntent] = []
 
     var callCount: Int {
@@ -1888,20 +1904,24 @@ private final class IntentRecordingQuotaRepository: QuotaRepository, @unchecked 
 
     func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
         lock.withLock { calls.append(intent) }
+        changes.signal()
         return .init(snapshots: [:], errors: [:])
+    }
+
+    func waitUntilCallCount(_ expectedCount: Int) async {
+        await changes.wait { self.callCount >= expectedCount }
     }
 }
 
 private actor QuotaApplicationGate {
     private var entered = false
     private var released = false
-    private var enteredContinuation: CheckedContinuation<Void, Never>?
     private var releaseContinuation: CheckedContinuation<Void, Never>?
 
+    /// The coordinator's hook. Like the call it holds, it ignores cancellation
+    /// and returns only once the test calls `resume()`.
     func pause() async {
         entered = true
-        enteredContinuation?.resume()
-        enteredContinuation = nil
         guard !released else { return }
         await withCheckedContinuation { continuation in
             if released {
@@ -1912,11 +1932,8 @@ private actor QuotaApplicationGate {
         }
     }
 
-    func waitUntilEntered() async {
-        guard !entered else { return }
-        await withCheckedContinuation { continuation in
-            enteredContinuation = continuation
-        }
+    nonisolated func waitUntilEntered() async {
+        await pollUntil { await self.entered }
     }
 
     func resume() {
@@ -1932,56 +1949,32 @@ private actor ClaudeQuotaCompletionRecorder {
     func record() {
         count += 1
     }
+
+    nonisolated func waitUntilCount(_ expectedCount: Int) async {
+        await pollUntil { await self.count >= expectedCount }
+    }
 }
 
 private final class QuotaIntentRegistrationGate: @unchecked Sendable {
-    private struct Waiter {
-        let expected: [QuotaRefreshIntent]
-        let continuation: CheckedContinuation<Void, Never>
-    }
-
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private var events: [QuotaRefreshIntent] = []
-    private var waiters: [Waiter] = []
 
     var intents: [QuotaRefreshIntent] { lock.withLock { events } }
 
     func record(_ intent: QuotaRefreshIntent) {
-        let ready = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
-            events.append(intent)
-            var remaining: [Waiter] = []
-            var ready: [CheckedContinuation<Void, Never>] = []
-            for waiter in waiters {
-                if events.starts(with: waiter.expected) {
-                    ready.append(waiter.continuation)
-                } else {
-                    remaining.append(waiter)
-                }
-            }
-            waiters = remaining
-            return ready
-        }
-        ready.forEach { $0.resume() }
+        lock.withLock { events.append(intent) }
+        changes.signal()
     }
 
     func waitUntil(_ expected: [QuotaRefreshIntent]) async {
-        await withCheckedContinuation { continuation in
-            let resumeImmediately = lock.withLock { () -> Bool in
-                if events.starts(with: expected) {
-                    return true
-                }
-                waiters.append(.init(expected: expected, continuation: continuation))
-                return false
-            }
-            if resumeImmediately {
-                continuation.resume()
-            }
-        }
+        await changes.wait { self.intents.starts(with: expected) }
     }
 }
 
 private final class BlockingUsageRepository: UsageRepository, @unchecked Sendable {
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private let released = DispatchSemaphore(value: 0)
     private var calls = 0
 
@@ -1994,8 +1987,10 @@ private final class BlockingUsageRepository: UsageRepository, @unchecked Sendabl
             calls += 1
             return calls
         }
-        if count == 1 {
-            released.wait()
+        changes.signal()
+        if count == 1, released.wait(timeout: .now() + .seconds(blockingFakeReleaseTimeout)) == .timedOut {
+            recordReleaseTimeout(of: "BlockingUsageRepository's first call")
+            throw BlockingFakeError.notReleasedInTime
         }
         return .init(snapshots: [:], errors: [:])
     }
@@ -2003,10 +1998,15 @@ private final class BlockingUsageRepository: UsageRepository, @unchecked Sendabl
     func releaseFirstCall() {
         released.signal()
     }
+
+    func waitUntilCallCount(_ expectedCount: Int) async {
+        await changes.wait { self.callCount >= expectedCount }
+    }
 }
 
 private final class RecordingUsageRepository: UsageRepository, @unchecked Sendable {
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private let released = DispatchSemaphore(value: 0)
     private var calls = 0
     private var completedCalls = 0
@@ -2024,15 +2024,26 @@ private final class RecordingUsageRepository: UsageRepository, @unchecked Sendab
             calls += 1
             return calls
         }
-        if count == 1 {
-            released.wait()
+        changes.signal()
+        if count == 1, released.wait(timeout: .now() + .seconds(blockingFakeReleaseTimeout)) == .timedOut {
+            recordReleaseTimeout(of: "RecordingUsageRepository's first call")
+            throw BlockingFakeError.notReleasedInTime
         }
         lock.withLock { completedCalls += 1 }
+        changes.signal()
         return .init(snapshots: [:], errors: [:])
     }
 
     func releaseFirstCall() {
         released.signal()
+    }
+
+    func waitUntilCallCount(_ expectedCount: Int) async {
+        await changes.wait { self.callCount >= expectedCount }
+    }
+
+    func waitUntilCompletedCallCount(_ expectedCount: Int) async {
+        await changes.wait { self.completedCallCount >= expectedCount }
     }
 }
 
@@ -2088,16 +2099,10 @@ private final class ManualClock: ClockLike, @unchecked Sendable {
         let continuation: CheckedContinuation<Void, Error>
     }
 
-    private struct SleeperCountWaiter {
-        let id: UUID
-        let expectedCount: Int
-        let continuation: CheckedContinuation<Void, Never>
-    }
-
     private let lock = NSLock()
+    private let changes = ConditionWaiters()
     private var date: Date
     private var continuations: [UUID: Sleeper] = [:]
-    private var sleeperCountWaiters: [SleeperCountWaiter] = []
 
     init(now: Date) {
         date = now
@@ -2118,18 +2123,7 @@ private final class ManualClock: ClockLike, @unchecked Sendable {
     /// Returns once at least `expectedCount` sleepers are registered, so a test
     /// can advance the clock only after every loop has computed its deadline.
     func waitUntilSleeperCount(_ expectedCount: Int) async {
-        await cancellableWait(register: { id, continuation in
-            lock.withLock { () -> Bool in
-                guard continuations.count < expectedCount, !Task.isCancelled else { return true }
-                sleeperCountWaiters.append(.init(id: id, expectedCount: expectedCount, continuation: continuation))
-                return false
-            }
-        }, remove: { id in
-            self.lock.withLock { () -> CheckedContinuation<Void, Never>? in
-                guard let index = self.sleeperCountWaiters.firstIndex(where: { $0.id == id }) else { return nil }
-                return self.sleeperCountWaiters.remove(at: index).continuation
-            }
-        })
+        await changes.wait { self.sleeperCount >= expectedCount }
     }
 
     func sleep(for duration: Duration) async throws {
@@ -2137,20 +2131,18 @@ private final class ManualClock: ClockLike, @unchecked Sendable {
         let id = UUID()
         try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
-                let (cancelled, ready) = lock.withLock { () -> (Bool, [CheckedContinuation<Void, Never>]) in
-                    if Task.isCancelled { return (true, []) }
+                let cancelled = lock.withLock { () -> Bool in
+                    if Task.isCancelled { return true }
                     continuations[id] = .init(
                         deadline: date.addingTimeInterval(timeInterval(for: duration)),
                         continuation: continuation
                     )
-                    let count = continuations.count
-                    let ready = sleeperCountWaiters.filter { count >= $0.expectedCount }.map(\.continuation)
-                    sleeperCountWaiters.removeAll { count >= $0.expectedCount }
-                    return (false, ready)
+                    return false
                 }
-                ready.forEach { $0.resume() }
                 if cancelled {
                     continuation.resume(throwing: CancellationError())
+                } else {
+                    changes.signal()
                 }
             }
         }, onCancel: {
@@ -2175,41 +2167,22 @@ private final class ManualClock: ClockLike, @unchecked Sendable {
     }
 }
 
-private func eventually(
-    _ condition: @escaping @Sendable () -> Bool,
-    yields: Int = 100
-) async {
-    for _ in 0 ..< yields where !condition() {
-        await Task.yield()
-    }
 }
 
-private func eventuallyAsync(
-    _ condition: @escaping @Sendable () async -> Bool,
-    yields: Int = 100
-) async {
-    for _ in 0 ..< yields where !(await condition()) {
-        await Task.yield()
-    }
+/// How long a blocking fake holds its cooperative thread waiting for the test
+/// to release it. It is far above any legitimate hold and below the suite time
+/// limit, so a forgotten release or a starved pool fails the test with a
+/// diagnostic and frees the thread before the time limit cancels the test.
+private let blockingFakeReleaseTimeout = 30
+
+private enum BlockingFakeError: Error {
+    case notReleasedInTime
 }
 
-}
-
-/// Suspends until `register` reports the condition met, or until a later
-/// resume of the registered continuation, or until the task is cancelled
-/// (for example by the suite time limit). `register` and `remove` must share
-/// one lock, and `register` must report a cancelled task as ready, so a
-/// cancellation that races registration still resumes the waiter.
-private func cancellableWait(
-    register: (UUID, CheckedContinuation<Void, Never>) -> Bool,
-    remove: @escaping @Sendable (UUID) -> CheckedContinuation<Void, Never>?
-) async {
-    let id = UUID()
-    await withTaskCancellationHandler {
-        await withCheckedContinuation { continuation in
-            if register(id, continuation) { continuation.resume() }
-        }
-    } onCancel: {
-        remove(id)?.resume()
-    }
+private func recordReleaseTimeout(of call: String) {
+    Issue.record("""
+        \(call) was not released within \(blockingFakeReleaseTimeout) s. Either the test \
+        never released it, or no cooperative thread was free to run the test while \
+        the held call blocked one.
+        """)
 }

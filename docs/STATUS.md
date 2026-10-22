@@ -1,5 +1,36 @@
 # Needlbar Development Status
 
+## 2026-10-21 Test reliability follow-ups
+
+PR #24 fixed the lost wakeup in
+`RefreshCoordinatorTests.safetyCadenceRefreshesUsageAndQuotaEveryFiveMinutes`
+that stalled candidate CI: it now waits for both startup calls and both
+registered safety sleepers before advancing the manual clock. Under 60 CPU
+burners the old test hung 3 times in 351 runs; the fixed test passed 600/600.
+Merged main CI passed.
+
+PR #25 (this change) is test-only:
+
+- Readiness waits that silently gave up after 100 yields now wait for explicit
+  signals (call counts, attempt events, registered sleepers) in
+  `RefreshCoordinatorTests` and `UsageFileWatcherTests`; the ProviderLogin
+  `eventually` helper is time-bounded and its last unchecked use is asserted.
+- Every test wait ends on cancellation, so `.timeLimit` can end a stuck test.
+- The blocking repository fakes cap each hold at 30 s instead of deadlocking a
+  one-thread cooperative pool.
+- In-process `StatusLineCommandRunner` tests are serialized; in parallel they
+  overlapped and could leave the test process ignoring SIGTERM/SIGHUP.
+
+Local loops (200 runs per variant, 30 and 60 CPU burners): old core suites 12
+failures, new 0, no hangs. Full local `make test` exited 0 with Rust 1552
+passed / 1 ignored and Swift 729. No product code changed.
+
+Separately, a read-only look at the app's unified-log diagnostics on the
+maintainer's machine showed scheduled quota attempts every 5 minutes, with
+every direct Claude attempt failing as `keychainCredentialExpired` and the
+display falling back to status-line values. This is the known unresolved
+credential limitation, not a v0.3.10 regression.
+
 ## 2026-10-21 v0.3.10 public artifact verified
 
 The human approved the protected `release` environment for the independent
