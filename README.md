@@ -112,6 +112,30 @@ Credential renewal and cancellation of blocked synchronous calls are not
 implemented. Native overnight, quota-reset, and sustained unattended
 acceptance remain unverified.
 
+### Expired Claude Code access explained (v0.3.11 prepared)
+
+The prepared v0.3.11 changes explain an expired Claude Code access instead of
+a generic quota failure. When a direct Claude quota update fails because the
+access the Claude Code command-line tool saved on this Mac has expired, the
+Claude popover, Settings, and dashboard show
+**Claude Code access on this Mac expired** instead of
+**Quota access unavailable**. In the popover and Settings, a detail line says
+that the Claude desktop app does not renew this access and that it updates
+after Claude Code runs in Terminal. When the five-hour and seven-day windows
+are still recent through the Claude Code status line, they are shown as before
+and the explanation appears once, on the Fable line. The status-line helper
+now restores the signal dispositions it saved exactly; it runs one command per
+process, so its observable behavior is unchanged. Refresh and file-watcher
+tests now wait for explicit readiness and end at a time limit instead of
+stalling.
+
+Credential renewal is not implemented, and the explanation adds no button,
+link, sign-in, or other new action. The status-line bridge receives values
+only from interactive terminal Claude Code sessions. Signals the helper does
+not forward can still leave the original command running. Native overnight,
+quota-reset, sustained unattended, and native macOS 14 acceptance remain
+unverified.
+
 ### Usage and quota monitoring
 
 Needlbar presents locally aggregated token usage and estimated cost together with provider quota windows and reset times. Overview combines today’s tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status, and Settings. Provider views show today’s usage/cost, input/output/cache token detail, quota/reset information, freshness, and safe recovery states. Usage and quota are independent refresh streams; a failure in one does not replace a previously valid value with zero.
