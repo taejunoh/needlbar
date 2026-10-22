@@ -19,6 +19,65 @@ private func fileHandle(_ url: URL, data: Data = Data()) throws -> FileHandle {
     return try FileHandle(forUpdating: url)
 }
 
+private let forwardedSignals = [SIGINT, SIGTERM, SIGHUP]
+
+// A disposition as sigaction reports it. The handler is kept as raw bits:
+// SIG_IGN is 1, a value Swift may use to encode nil in an enclosing Optional,
+// so it must not sit in a function-pointer typed value here.
+private struct SignalDisposition: Equatable, CustomStringConvertible {
+    var handler: UInt
+    var mask: sigset_t
+    var flags: Int32
+
+    static let defaultAction: UInt = 0
+    static let ignore: UInt = 1
+
+    static func current(_ number: Int32) throws -> SignalDisposition {
+        var action = sigaction()
+        try #require(sigaction(number, nil, &action) == 0)
+        return SignalDisposition(handler: unsafeBitCast(action.__sigaction_u, to: UInt.self),
+                                 mask: action.sa_mask, flags: action.sa_flags)
+    }
+
+    func install(_ number: Int32) throws {
+        var action = sigaction()
+        action.__sigaction_u = unsafeBitCast(handler, to: __sigaction_u.self)
+        action.sa_mask = mask
+        action.sa_flags = flags
+        try #require(sigaction(number, &action, nil) == 0)
+    }
+
+    var description: String {
+        "handler=\(handler) mask=0x\(String(mask, radix: 16)) flags=0x\(String(flags, radix: 16))"
+    }
+}
+
+/// Arranges the forwarded signals, runs one ordinary in-process run(), and
+/// returns the dispositions from just before and just after it. The test
+/// process gets its own dispositions back whatever the runner leaves behind.
+private func dispositionsAroundOneRun(
+    arrange: [Int32: SignalDisposition]
+) throws -> (before: [SignalDisposition], after: [SignalDisposition]) {
+    let original = try forwardedSignals.map(SignalDisposition.current)
+    defer { for index in forwardedSignals.indices { try? original[index].install(forwardedSignals[index]) } }
+    for (number, disposition) in arrange { try disposition.install(number) }
+    let before = try forwardedSignals.map(SignalDisposition.current)
+
+    let (root, store, generation) = try runnerFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let input = try fileHandle(root.appendingPathComponent("input"))
+    let output = try fileHandle(root.appendingPathComponent("out"))
+    let error = try fileHandle(root.appendingPathComponent("err"))
+    defer { try? input.close(); try? output.close(); try? error.close() }
+    let exitCode = StatusLineCommandRunner.run(originalCommand: "printf ok", generation: generation,
+        input: input, output: output, error: error, store: store, now: Date.init,
+        shell: URL(fileURLWithPath: "/bin/sh"))
+    #expect(exitCode == 0)
+    #expect(try Data(contentsOf: root.appendingPathComponent("out")) == Data("ok".utf8))
+
+    return (before, try forwardedSignals.map(SignalDisposition.current))
+}
+
 // Each in-process run() ignores SIGINT, SIGTERM and SIGHUP while it forwards
 // them, then restores the dispositions it saved. Those dispositions belong to
 // the whole process: that suits the helper, which makes one run per process,
@@ -221,6 +280,36 @@ func runnerStartsOriginalCommandWithDefaultForwardedSignals(signal number: Int32
         shell: URL(fileURLWithPath: "/bin/sh"))
     #expect(exitCode == 128 + number)
     #expect(try Data(contentsOf: root.appendingPathComponent("out")).isEmpty)
+}
+
+@Test(arguments: [[SIGINT], [SIGTERM], [SIGHUP], [SIGINT, SIGTERM], [SIGINT, SIGTERM, SIGHUP], []])
+func runnerRestoresIgnoredAndDefaultForwardedSignalsExactly(startIgnored ignored: [Int32]) throws {
+    // A non-interactive shell starts background jobs with SIGINT ignored. The
+    // runner ignores all three signals while it forwards them; afterwards each
+    // must again be exactly what it was, whichever of them started ignored.
+    var arrange: [Int32: SignalDisposition] = [:]
+    for number in forwardedSignals {
+        arrange[number] = SignalDisposition(
+            handler: ignored.contains(number) ? SignalDisposition.ignore : SignalDisposition.defaultAction,
+            mask: 0, flags: SA_RESTART)
+    }
+    let (before, after) = try dispositionsAroundOneRun(arrange: arrange)
+    #expect(after == before)
+}
+
+@Test func runnerRestoresACaughtSignalWithItsMaskAndFlags() throws {
+    // A caught disposition is more than its handler: restoring it must keep
+    // the handler's mask and flags (here SA_SIGINFO and no SA_RESTART).
+    let handler: @convention(c) (Int32, UnsafeMutablePointer<__siginfo>?, UnsafeMutableRawPointer?) -> Void = { _, _, _ in }
+    var mask = sigset_t()
+    sigemptyset(&mask)
+    sigaddset(&mask, SIGUSR1)
+    let (before, after) = try dispositionsAroundOneRun(arrange: [
+        SIGINT: SignalDisposition(handler: SignalDisposition.ignore, mask: 0, flags: SA_RESTART),
+        SIGTERM: SignalDisposition(handler: SignalDisposition.defaultAction, mask: 0, flags: SA_RESTART),
+        SIGHUP: SignalDisposition(handler: unsafeBitCast(handler, to: UInt.self), mask: mask, flags: SA_SIGINFO),
+    ])
+    #expect(after == before)
 }
 
 }
