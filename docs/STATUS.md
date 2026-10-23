@@ -1,5 +1,65 @@
 # Needlbar Development Status
 
+## 2026-10-22 Claude status-line quota maximum age
+
+On v0.3.11 the Settings Claude connection card showed "Reported by Claude
+Code", "Last known quota 13%" and "Received locally Oct 7, 2026 at 10:21 AM",
+then the access-expired reason and its detail line: a value received 15 days
+earlier. Direct quota success is kept only in memory, so after a restart the
+persisted status-line cache was the only value. The bridge has received
+nothing since 2026-10-07 because the user runs Claude Code from the desktop
+app, and status-line commands run only in interactive terminal sessions.
+
+Decision (user, 2026-10-22): hide status-line values older than a fixed age,
+24 hours. This change is PR #32 on branch `codex/statusline-max-age`; it is
+not merged, released, or installed.
+
+- **Choke point.** `ClaudeQuotaPresentationSelector` drops a status-line
+  window whose usable receipt time is more than 24 hours old
+  (`now - receivedAt > 24 h`), exactly as if the window were missing. At
+  exactly 24 hours it is still last known. Each window ages by its own receipt
+  time. A future or non-finite receipt time has no usable age and keeps its
+  existing handling: last known, undated, ranked behind dated values (the
+  private store already rejects non-finite times on read). Direct values have
+  no maximum age. The cache file is neither deleted nor rewritten.
+- **Consumers.** The provider popover, the Settings connection card, the
+  dashboard (compact and full) and the overview popover rows use
+  `ProviderPopoverPresentation`; the menu bar titles, the menu-bar dashboard
+  AI value and the overview headline use `HeadlineQuotaSelector`. Both call
+  the selector, so all of them change together. The attempt diagnostics'
+  per-window source also uses it, so such a window now logs `unavailable`
+  while its receipt time is still recorded. The widget projection, the JSON
+  export and quota alerts never read status-line data (the store's captures
+  are direct-only) and are unchanged. The Settings bridge connection status
+  reports the last receipt time, not a quota value, and is unchanged.
+- **Reported state after the change.** The card shows "Quota unavailable",
+  then "Claude Code access on this Mac expired" and its detail line in the
+  normal reason slot, with no "Reported by Claude Code", "Last known quota" or
+  "Received locally" line. The Claude menu bar title shows "Claude —".
+- **Specifications.** Dated 2026-10-22 amendments were added to the 2026-10-07
+  refresh-reliability design and the 2026-09-25 status-line bridge design.
+
+Verification: 20 new Swift test functions (10 core, 10 app) use injected
+clocks at 24 hours minus one second, exactly 24 hours and 24 hours plus one
+second. The hosted SwiftUI popover, Settings and dashboard are read through
+their accessibility tree; the menu bar renderers read the wall clock, so
+their tests use one-hour margins. Before the fix 12 failed on assertions, all
+in cases older than 24 hours, and 8 guard tests passed; after it all 20 pass.
+Full local `make test` exited 0 with Rust 1552 passed / 1 ignored and
+Swift 774. The notarize contract tests passed with the locale variables
+unset, and `git diff --check` passed. No credential, Keychain item,
+authentication file, cookie, Claude settings file or status-line data file
+was read; `claude` was not run; the installed app was not touched.
+
+Lesson: never repeat a run ID, asset ID or hash from an older STATUS record in
+a newer entry. The notarize-app contract tests build decoys by rewriting the
+first occurrence of each such value, and a newer entry comes first, so a
+repeat there takes the rewrite and the decoy no longer tests the record it
+targets.
+
+Next: review the pull request. Merge, release and installation need separate
+approval.
+
 ## 2026-10-22 v0.3.11 public artifact verified
 
 The human approved the protected `release` environment for the independent

@@ -140,6 +140,38 @@ struct RefreshCoordinatorTests {
     await coordinator.stop()
 }
 
+// Amendment of 2026-10-22: the attempt's per-window source follows the shared
+// presentation selection, so a status-line window older than 24 hours reads as
+// unavailable. Its local receipt time is still recorded unchanged.
+@Test func attemptSourceTreatsStatusLineOlderThanTwentyFourHoursAsUnavailableAndKeepsItsReceipt() async throws {
+    let now = Self.fixedStart
+    let store = ProviderSnapshotStore()
+    let five = now.addingTimeInterval(-86_401)
+    let seven = now.addingTimeInterval(-86_399)
+    await store.applyClaudeStatusLineQuota(.init(schemaVersion: 1, generation: UUID(),
+        fiveHour: .init(usedPercent: 30, resetsAt: nil, receivedAt: five),
+        sevenDay: .init(usedPercent: 40, resetsAt: nil, receivedAt: seven)))
+    let quota = BlockingIntentQuotaRepository()
+    let events = QuotaAttemptCollector()
+    let coordinator = RefreshCoordinator(
+        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
+        quotaRepository: quota, store: store, clock: ManualClock(now: now),
+        quotaAttemptObserver: { events.record($0) })
+    await coordinator.start()
+    await quota.waitUntilCallCount(1)
+    try quota.releaseNext(with: .init(snapshots: [:], errors: [.claude: .init(
+        provider: "claude", code: "authenticationExpired", message: "fixture", action: nil)]))
+    await events.waitUntilCount(2)
+    let failure = events.values.last
+    #expect(failure?.outcome == .failure)
+    #expect(failure?.fiveHourSource == .unavailable)
+    #expect(failure?.sevenDaySource == .statusLine)
+    #expect(failure?.fableSource == .unavailable)
+    #expect(failure?.fiveHourReceiptAt == five)
+    #expect(failure?.sevenDayReceiptAt == seven)
+    await coordinator.stop()
+}
+
 @Test func currentResultDeterminesAttemptOutcomeWithoutCachedSuccessInference() async throws {
     let quota = BlockingIntentQuotaRepository()
     let events = QuotaAttemptCollector()

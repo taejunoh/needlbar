@@ -8,6 +8,19 @@
 readings without asking users to log in to Needlbar repeatedly or letting
 Needlbar manage Claude credentials.
 
+> **Amendment — 2026-10-22:** Decision (user, 2026-10-22): status-line values
+> older than a fixed age are hidden, and the age is 24 hours. A five-hour or
+> seven-day window whose local `receivedAt` is more than 24 hours before the
+> current time is not presented, not even as `Last known`; it is treated
+> exactly like a missing window, and its `Reported by Claude Code` source and
+> local receipt time are not shown either. Status-line commands run only in
+> interactive terminal sessions, so a persisted value can otherwise outlive
+> any recent Claude Code use (one was still shown 15 days after receipt). The
+> change is presentation only: the cache file is neither deleted nor rewritten,
+> and the Settings bridge connection status, which reports the last receipt
+> time rather than a quota value, is unchanged. The rule is defined in the
+> 2026-10-07 refresh-reliability design, amended on the same date.
+
 ## Context and decision
 
 The installed v0.3.4 app repeatedly reports `keychainCredentialExpired` on its
@@ -147,6 +160,13 @@ credential files.
   0%-remaining observation into a fresh 100%. A direct request failure must
   not erase a valid status-line observation, and a status-line parse failure
   must not erase direct data.
+- *(Amended 2026-10-22.)* `Last known` is bounded too: more than 24 hours after
+  a window's local receipt, it is not presented at all and the window reads as
+  missing (unavailable unless a direct value exists). At exactly 24 hours it is
+  still `Last known`. A receipt time in the future, or one that is not finite,
+  has no usable age and keeps the existing undated last-known handling. The
+  stored record is unchanged; a newer valid emission is presented again under
+  the normal recency rules.
 - The app's existing five-minute quota refresh may read the local status-line
   record without launching Claude Code or causing model/API requests. File
   watching may improve latency, but must not bypass single-flight state
@@ -159,6 +179,9 @@ credential files.
   Claude usage) and actual source/receipt time; it must not imply the browser
   page and Needlbar share a session or claim a server fetch occurred.
   Stale values say `Last known` and display their actual observation time.
+  *(Amended 2026-10-22.)* A status-line value more than 24 hours past its
+  local receipt is not displayed, so neither its `Last known` value nor its
+  `Reported by Claude Code` and `Received locally` lines appear.
 - Fable is a distinct line: fresh when the direct source succeeds, otherwise
   clearly `Last known` or `Unavailable`. Do not show a stale reset as a live
   countdown. A status-line observation cannot clear a Fable retrieval error.

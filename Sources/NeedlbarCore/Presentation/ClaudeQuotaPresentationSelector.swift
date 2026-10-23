@@ -31,6 +31,10 @@ public struct ClaudeQuotaSelection: Equatable, Sendable {
 public enum ClaudeQuotaPresentationSelector {
     public static let recentStatusLineInterval: TimeInterval = 15 * 60
     public static let recentDirectInterval: TimeInterval = 15 * 60
+    /// A status-line window received longer ago than this is treated exactly
+    /// like a missing one, so it is not presented even as last known (user
+    /// decision, 2026-10-22). Direct observations have no such limit.
+    public static let maximumStatusLineAge: TimeInterval = 24 * 60 * 60
 
     public static func select(snapshot: ProviderSnapshot, now: Date) -> ClaudeQuotaSelection {
         guard snapshot.provider == .claude else {
@@ -99,6 +103,9 @@ public enum ClaudeQuotaPresentationSelector {
               window.resetsAt?.timeIntervalSince1970.isFinite ?? true else { return nil }
         let observed = usableTime(window.receivedAt, now: now)
         let age = observed.map { now.timeIntervalSince($0) }
+        // A future or non-finite receipt time has no age; it keeps the existing
+        // undated last-known handling.
+        if let age, age > maximumStatusLineAge { return nil }
         let recentlyReported = age.map { $0 <= recentStatusLineInterval } == true
             && (window.resetsAt.map { $0 > now } ?? true)
         return DisplayedClaudeWindow(

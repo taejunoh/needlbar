@@ -1,9 +1,10 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-10-22, updated after the v0.3.11 release (first written
-2026-10-20, updated after the v0.3.10 release on 2026-10-21 and for credential
-renewal increment 1 on 2026-10-22). This is a documentation handoff, not a new
-product approval or a claim of fresh installation/runtime verification.
+**Checkpoint:** 2026-10-22, updated after the v0.3.11 release and for the
+status-line maximum age (first written 2026-10-20, updated after the v0.3.10
+release on 2026-10-21 and for credential renewal increment 1 on 2026-10-22).
+This is a documentation handoff, not a new product approval or a claim of
+fresh installation/runtime verification.
 
 ## Repository state
 
@@ -107,6 +108,21 @@ Known open items:
   The expired-credential notification (option D) is deferred; Q7
   (provider-policy review of the direct token path) stays open. See the plan
   `docs/superpowers/plans/2026-10-22-claude-access-expired-reason.md`.
+- Status-line maximum age (PR #32, branch `codex/statusline-max-age`, not
+  merged, released, or installed). Decision (user, 2026-10-22): status-line values
+  older than 24 hours are hidden. On v0.3.11 the Settings Claude card still
+  showed a status-line value received 15 days earlier as "Last known", because
+  direct success is kept only in memory and the persisted cache was the only
+  value after a restart. `ClaudeQuotaPresentationSelector` now treats a
+  status-line window received more than 24 hours ago exactly like a missing
+  one, so the popover, Settings, dashboard, overview and menu bar drop the
+  value and its "Reported by Claude Code" / "Received locally" lines, and the
+  access-expired reason uses its normal slot. Exactly 24 hours is still last
+  known; future or non-finite receipt times keep the undated last-known
+  handling; direct values have no maximum age. Widget, JSON export and alerts
+  never read status-line data, and the cache file is not touched. The
+  2026-10-07 refresh-reliability and 2026-09-25 bridge designs carry dated
+  amendments.
 - Native macOS 14 acceptance is not agent-automatable end to end. It needs a
   provisioned macOS 14 guest with a logged-in GUI user, the Developer ID
   acceptance build, network disabled in the guest, and GUI interaction for the
