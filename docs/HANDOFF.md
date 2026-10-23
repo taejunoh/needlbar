@@ -11,8 +11,8 @@ approval or a claim of fresh installation/runtime verification.
 - Work from `main`. The 2026-10-20 handoff branch merged in PR #21, the
   v0.3.10 candidate in PR #22 and its public record in PR #23, the v0.3.11
   candidate in PR #30 and its public record in PR #31, the status-line maximum
-  age in PR #32, and the v0.3.12 candidate in PR #33, followed by its public
-  record. Do not assume other old branches have been merged.
+  age in PR #32, and the v0.3.12 candidate in PR #33 and its public record in
+  PR #34. Do not assume other old branches have been merged.
 - For an isolated continuation, clone `main` into a new directory and
   initialize submodules as part of the clone:
 

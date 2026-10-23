@@ -48,13 +48,15 @@ verification does not establish native macOS 14, overnight/reset,
 authentication renewal or sustained unattended recovery acceptance.
 Credential renewal is still not implemented.
 
-Next: review/test/merge these public documentation contracts. The Homebrew
-Cask update to this measured public SHA and the canonical laptop replacement
-with a compressed rollback backup are being done separately by root, which
-will append a non-machine-specific note to this documentation PR before
-merge. Per the handoff policy, machine-specific installation receipts stay
-out of public docs. Installation must preserve existing settings and
-authentication.
+Homebrew: `taejunoh/homebrew-tap` commit `ed873b8` sets the Cask to 0.3.12
+with the measured public ZIP SHA-256 above. Ruby syntax, `brew style`, strict
+online `brew audit` and `brew fetch` passed, and the fetched cache file's
+SHA-256 matched. The canonical laptop replacement with a compressed rollback
+backup was completed and verified on 2026-10-23; per the handoff policy its
+machine-specific receipt is kept out of public docs. Existing settings and
+authentication were not inspected or changed.
+
+Next: review/test/merge these public documentation contracts.
 
 ## 2026-10-22 Claude status-line quota maximum age
 
