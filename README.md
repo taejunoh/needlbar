@@ -136,6 +136,25 @@ not forward can still leave the original command running. Native overnight,
 quota-reset, sustained unattended, and native macOS 14 acceptance remain
 unverified.
 
+### Stale Claude Code status-line values hidden (v0.3.12 prepared)
+
+The prepared v0.3.12 changes stop presenting a Claude Code status-line quota
+value that was received more than 24 hours ago; it is treated as no value, not
+as last known. When the direct Claude quota update is also failing because the
+Claude Code access on this Mac has expired, the Claude popover, Settings, and
+dashboard show **Quota unavailable** with the existing
+**Claude Code access on this Mac expired** explanation instead of a
+**Last known quota** received weeks earlier, and the menu bar Claude value
+shows **—**. Direct values, status-line values received within the last 24
+hours, the widget, JSON export, and quota alerts are unchanged.
+
+Direct last-known values are kept only in memory, so they are lost when
+Needlbar restarts. Credential renewal is not implemented. The status-line
+bridge receives values only from interactive terminal Claude Code sessions.
+Menu bar titles update at the next published snapshot, normally within 5
+minutes. Native overnight, quota-reset, sustained unattended, and native
+macOS 14 acceptance remain unverified.
+
 ### Usage and quota monitoring
 
 Needlbar presents locally aggregated token usage and estimated cost together with provider quota windows and reset times. Overview combines today’s tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status, and Settings. Provider views show today’s usage/cost, input/output/cache token detail, quota/reset information, freshness, and safe recovery states. Usage and quota are independent refresh streams; a failure in one does not replace a previously valid value with zero.
