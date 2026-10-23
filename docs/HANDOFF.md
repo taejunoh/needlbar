@@ -1,17 +1,18 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-10-22, updated after the v0.3.11 release and for the
-status-line maximum age (first written 2026-10-20, updated after the v0.3.10
-release on 2026-10-21 and for credential renewal increment 1 on 2026-10-22).
-This is a documentation handoff, not a new product approval or a claim of
-fresh installation/runtime verification.
+**Checkpoint:** 2026-10-23, updated after the v0.3.12 release (first written
+2026-10-20, updated after the v0.3.10 release on 2026-10-21, and for
+credential renewal increment 1, the v0.3.11 release and the status-line
+maximum age on 2026-10-22). This is a documentation handoff, not a new product
+approval or a claim of fresh installation/runtime verification.
 
 ## Repository state
 
 - Work from `main`. The 2026-10-20 handoff branch merged in PR #21, the
-  v0.3.10 candidate in PR #22 and its public record in PR #23, and the v0.3.11
-  candidate in PR #30 and its public record in PR #31. Do not assume other old
-  branches have been merged.
+  v0.3.10 candidate in PR #22 and its public record in PR #23, the v0.3.11
+  candidate in PR #30 and its public record in PR #31, the status-line maximum
+  age in PR #32, and the v0.3.12 candidate in PR #33, followed by its public
+  record. Do not assume other old branches have been merged.
 - For an isolated continuation, clone `main` into a new directory and
   initialize submodules as part of the clone:
 
@@ -22,8 +23,8 @@ fresh installation/runtime verification.
 
   Keep the existing primary checkout (stale `main` at `7ab113d`, with local
   notes) untouched. Do not pull, reset, stash, or clean it as part of handoff.
-- The public release is v0.3.11, build 14, for macOS 14+ on Apple Silicon,
-  published 2026-10-22. Its release and distribution checks are evidence
+- The public release is v0.3.12, build 15, for macOS 14+ on Apple Silicon,
+  published 2026-10-23. Its release and distribution checks are evidence
   recorded in `docs/STATUS.md`; they do not establish what is installed or
   running later.
 - Treat prior local runtime receipts in STATUS as private machine history.
@@ -71,6 +72,23 @@ its observable behavior is unchanged. The rest is test reliability: the
 waits (PR #25). Credential renewal is not implemented, and the explanation
 adds no button, link, sign-in or other action.
 
+## What v0.3.12 adds
+
+v0.3.12 hides Claude Code status-line values received more than 24 hours ago
+(PR #32; user decision 2026-10-22). On v0.3.11 Settings could show such a
+value received weeks earlier as "Last known", because direct values are kept
+only in memory and the saved status-line value was all that remained after a
+restart. `ClaudeQuotaPresentationSelector` now treats such a window exactly
+like a missing one, so the popover, Settings, dashboard, overview and menu bar
+drop the value and its "Reported by Claude Code" / "Received locally" lines,
+and the access-expired reason uses its normal slot. Exactly 24 hours is still
+last known; future or non-finite receipt times keep the undated last-known
+handling; direct values have no maximum age. The widget, JSON export and
+alerts never read status-line data, and the cache file is not touched. The
+2026-10-07 refresh-reliability and 2026-09-25 bridge designs carry dated
+amendments. Direct last-known values are still lost on restart, and credential
+renewal is not implemented.
+
 ## Current bounded follow-up
 
 The `rg` fail-closed follow-up (PR #21), the `RefreshCoordinatorTests` lost
@@ -79,7 +97,8 @@ cancellation-aware waits, 30 s caps on the blocking fakes, serialized
 in-process status-line runner tests) and the status-line signal restore fix
 (PR #27: `SignalForwarder` keeps whole `sigaction` records, so a saved
 `SIG_IGN` no longer ends the restore early) are complete; PRs #24, #25 and
-#27 shipped in v0.3.11.
+#27 shipped in v0.3.11. The status-line maximum age (PR #32) is complete and
+shipped in v0.3.12.
 
 Known open items:
 
@@ -108,21 +127,6 @@ Known open items:
   The expired-credential notification (option D) is deferred; Q7
   (provider-policy review of the direct token path) stays open. See the plan
   `docs/superpowers/plans/2026-10-22-claude-access-expired-reason.md`.
-- Status-line maximum age (PR #32, branch `codex/statusline-max-age`, not
-  merged, released, or installed). Decision (user, 2026-10-22): status-line values
-  older than 24 hours are hidden. On v0.3.11 the Settings Claude card still
-  showed a status-line value received 15 days earlier as "Last known", because
-  direct success is kept only in memory and the persisted cache was the only
-  value after a restart. `ClaudeQuotaPresentationSelector` now treats a
-  status-line window received more than 24 hours ago exactly like a missing
-  one, so the popover, Settings, dashboard, overview and menu bar drop the
-  value and its "Reported by Claude Code" / "Received locally" lines, and the
-  access-expired reason uses its normal slot. Exactly 24 hours is still last
-  known; future or non-finite receipt times keep the undated last-known
-  handling; direct values have no maximum age. Widget, JSON export and alerts
-  never read status-line data, and the cache file is not touched. The
-  2026-10-07 refresh-reliability and 2026-09-25 bridge designs carry dated
-  amendments.
 - Native macOS 14 acceptance is not agent-automatable end to end. It needs a
   provisioned macOS 14 guest with a logged-in GUI user, the Developer ID
   acceptance build, network disabled in the guest, and GUI interaction for the
@@ -148,7 +152,7 @@ Useful verified source locations:
 - The compact Claude quota overview released in v0.3.6 is existing behavior.
   The later refinement is only to name the most-constrained window explicitly
   and retain the other windows in details; it is not part of v0.3.9,
-  v0.3.10 or v0.3.11. Use
+  v0.3.10, v0.3.11 or v0.3.12. Use
   `docs/superpowers/specs/2026-10-07-claude-refresh-reliability-design.md`
   and `docs/superpowers/plans/2026-09-29-claude-compact-presentation.md` before
   touching it.
