@@ -15,7 +15,10 @@ import NeedlbarCore
     }
 
     #expect(sink.values.map(\.origin) == ClaudeQuotaFailureOrigin.allCasesForTest)
-    #expect(sink.values.map(\.attemptAt) == Array(repeating: "2026-09-16T11:59:59Z", count: 7))
+    #expect(sink.values.map(\.attemptAt) == Array(
+        repeating: "2026-09-16T11:59:59Z",
+        count: ClaudeQuotaFailureOrigin.allCasesForTest.count
+    ))
     #expect(sink.values.map(\.message) == ClaudeQuotaFailureOrigin.allCasesForTest.map {
         "claudeQuotaFailure origin=\($0.rawValue) code=unknown attempt=2026-09-16T11:59:59Z"
     })
@@ -37,6 +40,41 @@ import NeedlbarCore
     #expect(sink.values.map(\.message) == allowlistedQuotaCodes.map {
         "claudeQuotaFailure origin=otherFailure code=\($0) attempt=2026-09-16T11:59:59Z"
     })
+}
+
+@Test func reporterLogsEachSplitOtherFailureOriginWithItsProducerCode() async throws {
+    let sink = DiagnosticEventSink()
+    let cases = [
+        ("credentialStoreAmbiguous", "schemaChanged"),
+        ("credentialFormatUnrecognized", "schemaChanged"),
+        ("credentialFormatUnrecognized", "requiresAuthentication"),
+        ("usageEndpointServerError", "providerUnavailable"),
+        ("usageResponseUnrecognized", "schemaChanged"),
+    ]
+    for (origin, code) in cases {
+        let reporter = ClaudeQuotaFailureDiagnosticsReporter(
+            readDiagnostics: {
+                try diagnosticsEnvelope(
+                    origin: origin,
+                    attempt: "2026-10-29T11:59:59.123Z",
+                    quotaErrorCode: code,
+                    extraFields: "\"rawSecretCanary\":\"CLAUDE-CANARY-SECRET\"",
+                    errors: #"[{"provider":"claude","code":"\#(code)","message":"CLAUDE-CANARY-SECRET"}]"#
+                )
+            },
+            sink: { sink.append($0) }
+        )
+
+        reporter.reportLatestClaudeQuotaFailure()
+    }
+
+    #expect(sink.values.map(\.message) == cases.map {
+        "claudeQuotaFailure origin=\($0.0) code=\($0.1) attempt=2026-10-29T11:59:59Z"
+    })
+    for event in sink.values {
+        #expect(!event.message.contains("CLAUDE-CANARY-SECRET"))
+        #expect(!String(describing: event).contains("CLAUDE-CANARY-SECRET"))
+    }
 }
 
 @Test func reporterLogsUnknownForAnAbsentOrNonQuotaRecordCode() async throws {
@@ -328,8 +366,12 @@ private extension ClaudeQuotaFailureOrigin {
         .keychainCredentialExpired,
         .fileCredentialExpired,
         .credentialAccessDenied,
+        .credentialStoreAmbiguous,
+        .credentialFormatUnrecognized,
         .usageEndpointUnauthorized,
         .usageEndpointForbidden,
+        .usageEndpointServerError,
+        .usageResponseUnrecognized,
         .otherFailure,
     ]
 }

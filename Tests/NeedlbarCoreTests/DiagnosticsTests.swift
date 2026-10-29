@@ -65,7 +65,9 @@ import Testing
 @Test func diagnosticsDecoderAcceptsOnlyClosedClaudeFailureOriginsAndOptionalAttemptTime() throws {
     let origins: [ClaudeQuotaFailureOrigin] = [
         .credentialMissing, .keychainCredentialExpired, .fileCredentialExpired,
-        .credentialAccessDenied, .usageEndpointUnauthorized, .usageEndpointForbidden, .otherFailure,
+        .credentialAccessDenied, .credentialStoreAmbiguous, .credentialFormatUnrecognized,
+        .usageEndpointUnauthorized, .usageEndpointForbidden, .usageEndpointServerError,
+        .usageResponseUnrecognized, .otherFailure,
     ]
     for origin in origins {
         let payload = """
@@ -74,6 +76,23 @@ import Testing
         let provider = try #require(BridgeDecoder().decodeDiagnosticsEnvelope(Data(payload.utf8)).data?.providers.first)
         #expect(provider.claudeQuotaFailureOrigin == origin)
         #expect(provider.lastAttemptAt == BridgeDecoder.date("2026-09-16T11:59:59Z"))
+    }
+}
+
+@Test func diagnosticsDecoderAcceptsTheSplitOtherFailureOriginsByTheirRustNames() throws {
+    // The exact strings the Rust bridge serializes (pinned in needlbar-bridge).
+    let origins = [
+        "credentialStoreAmbiguous", "credentialFormatUnrecognized",
+        "usageEndpointServerError", "usageResponseUnrecognized",
+    ]
+    for origin in origins {
+        let payload = """
+        {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-10-29T12:00:00Z","data":{"providers":[{"provider":"claude","usageStatus":"available","quotaStatus":"error","usageSource":"local","quotaSource":"oauth","lastAttemptAt":"2026-10-29T11:59:59Z","quotaErrorCode":"schemaChanged","claudeQuotaFailureOrigin":"\(origin)"}]},"errors":[]}
+        """
+        let envelope = try BridgeDecoder().decodeDiagnosticsEnvelope(Data(payload.utf8))
+        let provider = try #require(envelope.data?.providers.first)
+        #expect(provider.claudeQuotaFailureOrigin?.rawValue == origin)
+        #expect(provider.quotaErrorCode == .schemaChanged)
     }
 }
 
