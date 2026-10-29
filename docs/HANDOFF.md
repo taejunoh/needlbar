@@ -107,8 +107,8 @@ Known open items:
   every attempt with origin `otherFailure` since at least 2026-10-28
   (installed v0.3.12; Settings shows "Could not update quota"). It continued
   after Claude Code's saved access was refreshed, so it is not local expiry.
-  The cause is pending the diagnostic on branch
-  `codex/claude-failure-code-diagnostic`, which adds the allowlisted Claude
+  The cause is pending the diagnostic in PR #35 (branch
+  `codex/claude-failure-code-diagnostic`), which adds the allowlisted Claude
   quota error code to the `ClaudeQuotaFailureDiagnostic` line (user decision
   2026-10-29; dated amendment in the 2026-09-16 failure-origin design). It
   must be merged, released and installed before a field line can name the

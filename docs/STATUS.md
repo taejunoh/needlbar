@@ -22,8 +22,8 @@ possible Claude error codes, and the old line logged none of them:
 - no Claude code at all: the bridge's quota operation failed internally.
 
 Decision (user, 2026-10-29): log the allowlisted error code with the origin.
-This change is on branch `codex/claude-failure-code-diagnostic`; it is not
-merged, released, or installed.
+This change is PR #35 on branch `codex/claude-failure-code-diagnostic`; it is
+not merged, released, or installed.
 
 - **Line.** `claudeQuotaFailure origin=<origin> code=<code>
   attempt=<RFC 3339 second>`, one public OSLog string built only from two
