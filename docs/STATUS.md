@@ -1,5 +1,61 @@
 # Needlbar Development Status
 
+## 2026-10-29 v0.3.13 public artifact verified
+
+The independent tagged Release run `40961442547` (push of tag `v0.3.13`)
+completed with both validate and publish SUCCESS at frozen release G
+`9a2c7c4800ac6a650b36b460d9911da89f9c586f`, the PR #36 merge commit.
+Tagless run `40958747972` previously completed validation SUCCESS with publish
+SKIPPED; it was a `workflow_dispatch` run at G. Annotated tag object
+`01818639c0338c01344ca6e828a3cb1c62a862ac` peels exactly to G and must never
+be retargeted. Only that tag was pushed.
+
+Public release: https://github.com/taejunoh/needlbar/releases/tag/v0.3.13
+Release ID: `428493788`; published `2026-10-29T23:24:12Z`, not draft or prerelease.
+The release has exactly two assets. Public ZIP asset ID: `690239478`; checksum sidecar asset ID: `690239474`.
+Public ZIP (7058391 bytes) SHA-256:
+`848dea045d3f6772764c09c79440e0f026d7e347fbfe37df537b421024f0efa2`.
+Public checksum sidecar (91 bytes) SHA-256:
+`d456c7ce56b15025966a2608316df5f81d995d557538131dd9e83c7e15de577e`.
+The tagless validation run's ZIP and sidecar passed checksum, host/widget
+0.3.13 build 16, arm64, strict deep signature, Developer ID team 3BMF4LM6TM,
+hardened runtime, staple and Gatekeeper checks; they were not installed or
+distributed.
+
+A fresh `gh release download v0.3.13` fetched exactly the public ZIP and its
+single-record checksum sidecar. The sidecar check passed, and both
+measured file hashes match the GitHub asset digests. The sidecar names
+`Needlbar-macos-arm64.zip` exactly.
+Extracted host and widget report 0.3.13 / 16; the host and widget are arm64
+executables and the `NeedlbarClaudeStatusLine` helper is an executable.
+Strict deep Developer ID signature, team `3BMF4LM6TM`, hardened runtime,
+stapled ticket, and Gatekeeper acceptance passed; Gatekeeper assessed the
+source as Notarized Developer ID.
+
+Unchanged smoke and brand-verifier scripts ran against the exact public bundle
+in an isolated temporary root; smoke passed. The strict signature passed again
+afterward. Public verification does not establish native macOS 14,
+overnight/reset, authentication renewal or sustained unattended recovery
+acceptance. Credential renewal is still not implemented.
+
+v0.3.13 ships the Claude failure diagnostics from PR #35: the local
+`ClaudeQuotaFailureDiagnostic` event adds `code=`, and `otherFailure` is split
+into `credentialStoreAmbiguous`, `credentialFormatUnrecognized`,
+`usageEndpointServerError` and `usageResponseUnrecognized`. Nothing visible
+changes. The 2026-10-29 diagnostic entry below was written before that PR
+merged and is not edited. The other change since v0.3.12 is documentation
+(PR #34).
+
+Homebrew: `taejunoh/homebrew-tap` commit `8ebb2a9` ("needlbar 0.3.13")
+changes only `Casks/needlbar.rb`: version 0.3.12 to 0.3.13 and the sha256 to
+the measured public ZIP SHA-256 above. Ruby syntax, `brew style` (no
+offenses), strict online `brew audit --cask` and `brew fetch --cask --force`
+passed, and the fetched cache file's SHA-256 matched. The maintainer's laptop
+was updated to v0.3.13; per the handoff policy its machine-specific receipt is
+kept out of public docs.
+
+Next: review/test/merge these public documentation contracts.
+
 ## 2026-10-29 Claude quota failure diagnostic: error code and split origins
 
 Field symptom: on the maintainer's Mac, installed v0.3.12 has failed every
