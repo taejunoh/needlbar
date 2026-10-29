@@ -14,7 +14,8 @@ installation/runtime verification.
   candidate in PR #30 and its public record in PR #31, the status-line maximum
   age in PR #32, the v0.3.12 candidate in PR #33 and its public record in
   PR #34, the Claude failure diagnostics in PR #35, and the v0.3.13 candidate
-  in PR #36. Do not assume other old branches have been merged.
+  in PR #36 and its public record in the v0.3.13 public-record PR. Do not
+  assume other old branches have been merged.
 - For an isolated continuation, clone `main` into a new directory and
   initialize submodules as part of the clone:
 
@@ -28,7 +29,8 @@ installation/runtime verification.
 - The public release is v0.3.13, build 16, for macOS 14+ on Apple Silicon,
   published 2026-10-29. Its release and distribution checks are evidence
   recorded in `docs/STATUS.md`; they do not establish what is installed or
-  running later.
+  running later. The Homebrew Cask (`taejunoh/homebrew-tap` commit `8ebb2a9`)
+  points at v0.3.13.
 - Treat prior local runtime receipts in STATUS as private machine history.
   They are not part of this handoff and must not be copied into public docs.
 
