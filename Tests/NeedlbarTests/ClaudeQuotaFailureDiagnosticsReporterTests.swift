@@ -16,6 +16,109 @@ import NeedlbarCore
 
     #expect(sink.values.map(\.origin) == ClaudeQuotaFailureOrigin.allCasesForTest)
     #expect(sink.values.map(\.attemptAt) == Array(repeating: "2026-09-16T11:59:59Z", count: 7))
+    #expect(sink.values.map(\.message) == ClaudeQuotaFailureOrigin.allCasesForTest.map {
+        "claudeQuotaFailure origin=\($0.rawValue) code=unknown attempt=2026-09-16T11:59:59Z"
+    })
+}
+
+@Test func reporterLogLineAddsEachAllowlistedQuotaCodeBetweenOriginAndAttempt() async throws {
+    let sink = DiagnosticEventSink()
+    for code in allowlistedQuotaCodes {
+        let fixture = try diagnosticsEnvelope(
+            origin: "otherFailure",
+            attempt: "2026-09-16T11:59:59.123Z",
+            quotaErrorCode: code
+        )
+        let reporter = ClaudeQuotaFailureDiagnosticsReporter(readDiagnostics: { fixture }, sink: { sink.append($0) })
+
+        reporter.reportLatestClaudeQuotaFailure()
+    }
+
+    #expect(sink.values.map(\.message) == allowlistedQuotaCodes.map {
+        "claudeQuotaFailure origin=otherFailure code=\($0) attempt=2026-09-16T11:59:59Z"
+    })
+}
+
+@Test func reporterLogsUnknownForAnAbsentOrNonQuotaRecordCode() async throws {
+    let sink = DiagnosticEventSink()
+    let codes: [String?] = [
+        nil, "noUsageData", "usageRuntimeUnavailable", "usageReportUnavailable",
+        "invalidUsageDate", "invalidUsageData", "internalError",
+    ]
+    for code in codes {
+        let fixture = try diagnosticsEnvelope(
+            origin: "otherFailure",
+            attempt: "2026-09-16T11:59:59.123Z",
+            quotaErrorCode: code
+        )
+        let reporter = ClaudeQuotaFailureDiagnosticsReporter(readDiagnostics: { fixture }, sink: { sink.append($0) })
+
+        reporter.reportLatestClaudeQuotaFailure()
+    }
+
+    #expect(sink.values.map(\.message) == Array(
+        repeating: "claudeQuotaFailure origin=otherFailure code=unknown attempt=2026-09-16T11:59:59Z",
+        count: codes.count
+    ))
+}
+
+@Test func reporterFailsClosedWhenTheRecordCodeIsOutsideTheDecodedSet() async {
+    let sink = DiagnosticEventSink()
+    // `serviceUnavailable` is a Rust quota code the bridge folds into
+    // `providerUnavailable`; it, like any other undecodable value, must not
+    // reach the line. The record decode rejects it, so nothing is emitted.
+    for code in ["serviceUnavailable", "futureCode", "HTTP 503 CLAUDE-CANARY-SECRET"] {
+        let reporter = ClaudeQuotaFailureDiagnosticsReporter(
+            readDiagnostics: {
+                try diagnosticsEnvelope(origin: "otherFailure", attempt: "2026-09-16T11:59:59.123Z", quotaErrorCode: code)
+            },
+            sink: { sink.append($0) }
+        )
+
+        reporter.reportLatestClaudeQuotaFailure()
+    }
+
+    #expect(sink.values.isEmpty)
+}
+
+@Test func reporterLogLineCarriesNoCanaryFromErrorMessagesOrOtherRecordFields() async throws {
+    let canaries = [
+        "CLAUDE-CANARY-SECRET", "/private/canary", "https://canary.invalid",
+        "Bearer CANARY-TOKEN", "HTTP/1.1 503 CANARY", "CANARY-BODY", "503", "5xx",
+    ]
+    let fixture = try diagnosticsEnvelope(
+        origin: "otherFailure",
+        attempt: "2026-09-16T11:59:59.123Z",
+        quotaErrorCode: "schemaChanged",
+        usageErrorCode: "internalError",
+        extraFields: [
+            "\"quotaErrorMessage\":\"CLAUDE-CANARY-SECRET\"",
+            "\"httpStatus\":\"HTTP/1.1 503 CANARY\"",
+            "\"statusClass\":\"5xx\"",
+            "\"url\":\"https://canary.invalid/api/oauth/usage\"",
+            "\"authorization\":\"Bearer CANARY-TOKEN\"",
+            "\"accountPath\":\"/private/canary\"",
+            "\"responseBody\":\"{\\\"five_hour\\\":\\\"CANARY-BODY\\\"}\"",
+        ].joined(separator: ","),
+        errors: """
+        [{"provider":"claude","code":"schemaChanged","message":"CLAUDE-CANARY-SECRET HTTP/1.1 503 CANARY https://canary.invalid /private/canary Bearer CANARY-TOKEN CANARY-BODY"}]
+        """
+    )
+    // The canaries are in the read the reporter receives.
+    #expect(fixture.errors.first?.message.contains("CLAUDE-CANARY-SECRET") == true)
+    #expect(fixture.data?.providers.first?.usageErrorCode == .internalError)
+    let sink = DiagnosticEventSink()
+    let reporter = ClaudeQuotaFailureDiagnosticsReporter(readDiagnostics: { fixture }, sink: { sink.append($0) })
+
+    reporter.reportLatestClaudeQuotaFailure()
+
+    let event = try #require(sink.values.first)
+    #expect(sink.values.count == 1)
+    #expect(event.message == "claudeQuotaFailure origin=otherFailure code=schemaChanged attempt=2026-09-16T11:59:59Z")
+    for marker in canaries {
+        #expect(!event.message.contains(marker), "\(marker) leaked into the log line")
+        #expect(!String(describing: event).contains(marker), "\(marker) leaked into the event")
+    }
 }
 
 @Test func reporterOmitsEventsForOldSuccessAndMissingDiagnosticFields() async throws {
@@ -125,16 +228,27 @@ import NeedlbarCore
     #expect(sink.values.count == 1)
 }
 
+/// The Claude quota error codes the bridge can record; the log line's allowlist.
+private let allowlistedQuotaCodes = [
+    "notInstalled", "requiresAuthentication", "authenticationExpired", "permissionDenied",
+    "rateLimited", "networkUnavailable", "providerUnavailable", "schemaChanged",
+]
+
 private func diagnosticsEnvelope(
     origin: String?,
     attempt: String?,
     quotaStatus: String = "error",
-    extraFields: String = ""
+    quotaErrorCode: String? = nil,
+    usageErrorCode: String? = nil,
+    extraFields: String = "",
+    errors: String = "[]"
 ) throws -> BridgeEnvelope<DiagnosticsSnapshot> {
     let originField = origin.map { "\"claudeQuotaFailureOrigin\":\"\($0)\"," } ?? ""
     let attemptField = attempt.map { "\"lastAttemptAt\":\"\($0)\"," } ?? ""
+    let quotaCodeField = quotaErrorCode.map { "\"quotaErrorCode\":\"\($0)\"," } ?? ""
+    let usageCodeField = usageErrorCode.map { "\"usageErrorCode\":\"\($0)\"," } ?? ""
     let json = """
-    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-09-16T12:00:00Z","data":{"providers":[{"provider":"claude","usageStatus":"available","quotaStatus":"\(quotaStatus)","usageSource":"local","quotaSource":"oauth",\(attemptField)\(originField)\(extraFields)}]},"errors":[]}
+    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-09-16T12:00:00Z","data":{"providers":[{"provider":"claude","usageStatus":"available","quotaStatus":"\(quotaStatus)","usageSource":"local","quotaSource":"oauth",\(attemptField)\(quotaCodeField)\(usageCodeField)\(originField)\(extraFields)}]},"errors":\(errors)}
     """
     return try BridgeDecoder().decodeDiagnosticsEnvelope(Data(json.utf8))
 }
