@@ -206,7 +206,8 @@ fn status_error(status: reqwest::StatusCode, headers: &header::HeaderMap) -> Quo
             QuotaErrorCode::ServiceUnavailable,
             "The quota service is temporarily unavailable.",
         )
-        .with_retry_after(retry_after),
+        .with_retry_after(retry_after)
+        .with_usage_endpoint_status(ClaudeUsageEndpointStatus::ServerError),
         _ => QuotaError::new(
             None,
             QuotaErrorCode::NetworkUnavailable,
