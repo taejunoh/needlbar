@@ -134,6 +134,25 @@ import Testing
     #expect(recorder.count == 1)
 }
 
+@Test func rustBridgeDiagnosticsEnvelopeDecodesEachSplitOtherFailureOriginAndFreesItsPointer() throws {
+    for origin in [
+        "credentialStoreAmbiguous", "credentialFormatUnrecognized",
+        "usageEndpointServerError", "usageResponseUnrecognized",
+    ] {
+        let frees = FreeRecorder()
+        let returnedPointer = try CStringPointer(diagnosticsCString(origin: origin))
+        let bridge = RustBridge(
+            diagnosticsCall: { returnedPointer.pointer },
+            free: { frees.release($0) }
+        )
+
+        let envelope = try bridge.diagnosticsEnvelope()
+
+        #expect(envelope.data?.providers.first?.claudeQuotaFailureOrigin?.rawValue == origin)
+        #expect(frees.count == 1)
+    }
+}
+
 @Test func rustBridgeDiagnosticsEnvelopeCallsInjectedClosureAndFreesItsExactPointerOnce() throws {
     let calls = CallRecorder()
     let frees = FreeRecorder()

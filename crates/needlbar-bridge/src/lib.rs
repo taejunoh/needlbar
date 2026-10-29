@@ -771,6 +771,138 @@ mod tests {
     }
 
     #[test]
+    fn diagnostics_serializes_every_closed_claude_failure_origin_by_its_stable_name() {
+        use needlbar_quota::ClaudeQuotaFailureOrigin as Origin;
+
+        let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        for (origin, name) in [
+            (Origin::CredentialMissing, "credentialMissing"),
+            (
+                Origin::KeychainCredentialExpired,
+                "keychainCredentialExpired",
+            ),
+            (Origin::FileCredentialExpired, "fileCredentialExpired"),
+            (Origin::CredentialAccessDenied, "credentialAccessDenied"),
+            (Origin::CredentialStoreAmbiguous, "credentialStoreAmbiguous"),
+            (
+                Origin::CredentialFormatUnrecognized,
+                "credentialFormatUnrecognized",
+            ),
+            (
+                Origin::UsageEndpointUnauthorized,
+                "usageEndpointUnauthorized",
+            ),
+            (Origin::UsageEndpointForbidden, "usageEndpointForbidden"),
+            (Origin::UsageEndpointServerError, "usageEndpointServerError"),
+            (
+                Origin::UsageResponseUnrecognized,
+                "usageResponseUnrecognized",
+            ),
+            (Origin::OtherFailure, "otherFailure"),
+        ] {
+            let quota = Envelope {
+                schema_version: SCHEMA_VERSION,
+                ok: true,
+                generated_at: "2026-10-29T12:00:00Z".to_owned(),
+                data: Some(quota::QuotaPayload {
+                    providers: Vec::new(),
+                    claude_failure_origin: Some(origin),
+                    claude_attempted: true,
+                }),
+                errors: vec![BridgeError {
+                    provider: Some("claude".to_owned()),
+                    code: "schemaChanged".to_owned(),
+                    message: "CLAUDE-RAW-ERROR-CANARY".to_owned(),
+                }],
+            };
+
+            diagnostics::record_quota(&quota, Some("2026-10-29T11:59:59Z"));
+            let json = serde_json::to_value(Envelope::success(
+                diagnostics::DiagnosticsSnapshot::from_recorded_outcomes(),
+            ))
+            .expect("diagnostics JSON");
+
+            assert_eq!(
+                json["data"]["providers"][0]["claudeQuotaFailureOrigin"],
+                name
+            );
+            assert!(!json.to_string().contains("CLAUDE-RAW-ERROR-CANARY"));
+        }
+    }
+
+    #[test]
+    fn real_claude_credential_failures_reach_diagnostics_as_split_origins() {
+        use needlbar_quota::{
+            ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver,
+            ClaudeOAuthSecret, ClaudeQuotaProvider, RedactingHttpClient,
+        };
+
+        struct FailingResolver(ClaudeCredentialError);
+
+        impl ClaudeCredentialResolver for FailingResolver {
+            fn resolve(
+                &self,
+                _access: ClaudeCredentialAccess,
+            ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
+                Err(self.0)
+            }
+        }
+
+        let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+        for (credential_error, code, origin) in [
+            (
+                ClaudeCredentialError::KeychainAmbiguous,
+                "schemaChanged",
+                "credentialStoreAmbiguous",
+            ),
+            (
+                ClaudeCredentialError::Malformed,
+                "schemaChanged",
+                "credentialFormatUnrecognized",
+            ),
+            (
+                ClaudeCredentialError::FileMalformed,
+                "requiresAuthentication",
+                "credentialFormatUnrecognized",
+            ),
+            (
+                ClaudeCredentialError::FileReadFailed,
+                "requiresAuthentication",
+                "otherFailure",
+            ),
+        ] {
+            let source = std::sync::Arc::new(ClaudeQuotaProvider::with_resolver(
+                std::sync::Arc::new(FailingResolver(credential_error)),
+                RedactingHttpClient::new(),
+            ));
+            let collection = runtime.block_on(quota::collect_claude_preflight_with_source(source));
+            let envelope = quota::envelope_from_collection(collection);
+
+            diagnostics::record_partial_quota(&envelope, Some("2026-10-29T11:59:59Z"));
+            let json = serde_json::to_value(Envelope::success(
+                diagnostics::DiagnosticsSnapshot::from_recorded_outcomes(),
+            ))
+            .expect("diagnostics JSON");
+            let claude = &json["data"]["providers"][0];
+
+            assert_eq!(claude["quotaErrorCode"], code, "{credential_error:?}");
+            assert_eq!(
+                claude["claudeQuotaFailureOrigin"], origin,
+                "{credential_error:?}"
+            );
+            assert_eq!(claude["lastAttemptAt"], "2026-10-29T11:59:59Z");
+        }
+    }
+
+    #[test]
     fn unclassified_claude_failure_replaces_a_previous_endpoint_origin() {
         let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
             .lock()

@@ -3,8 +3,9 @@
 **Checkpoint:** 2026-10-23, updated after the v0.3.12 release (first written
 2026-10-20, updated after the v0.3.10 release on 2026-10-21, and for
 credential renewal increment 1, the v0.3.11 release and the status-line
-maximum age on 2026-10-22). This is a documentation handoff, not a new product
-approval or a claim of fresh installation/runtime verification.
+maximum age on 2026-10-22), with the open `otherFailure` item added on
+2026-10-29. This is a documentation handoff, not a new product approval or a
+claim of fresh installation/runtime verification.
 
 ## Repository state
 
@@ -102,6 +103,22 @@ shipped in v0.3.12.
 
 Known open items:
 
+- Direct Claude quota retrieval on the maintainer's machine has failed on
+  every attempt with origin `otherFailure` since at least 2026-10-28
+  (installed v0.3.12; Settings shows "Could not update quota"). It continued
+  after Claude Code's saved access was refreshed, so it is not local expiry.
+  The cause is pending the diagnostic in PR #35 (branch
+  `codex/claude-failure-code-diagnostic`, user decisions 2026-10-29, dated
+  amendment in the 2026-09-16 failure-origin design). It adds the allowlisted
+  Claude quota error code to the `ClaudeQuotaFailureDiagnostic` line, and it
+  splits `otherFailure` into `credentialStoreAmbiguous`,
+  `credentialFormatUnrecognized`, `usageEndpointServerError` and
+  `usageResponseUnrecognized`. It must be merged, released (planned v0.3.13)
+  and installed before a field line can name the failing stage. With it, the
+  "Could not update quota" cases separate as follows: the Keychain lookup,
+  the Keychain credential format, the usage response, HTTP 5xx, or
+  `otherFailure` with `code=unknown` for an internal bridge failure. See
+  STATUS 2026-10-29.
 - Direct Claude quota retrieval on the maintainer's machine failed for over
   a day with origin `keychainCredentialExpired` while the display fell back to
   status-line values; it recovered on 2026-10-21 after Claude Code was used

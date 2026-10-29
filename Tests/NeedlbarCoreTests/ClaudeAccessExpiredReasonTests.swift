@@ -27,7 +27,7 @@ struct ClaudeAccessExpiredReasonTests {
             "authenticationExpired|keychainCredentialExpired",
             "authenticationExpired|fileCredentialExpired",
         ]
-        // Seven closed origins, a missing origin, and an undecodable origin.
+        // Every closed origin, a missing origin, and an undecodable origin.
         let origins: [String?] = ClaudeQuotaFailureOrigin.allCasesForTest.map(\.rawValue) + [nil, "futureOrigin"]
 
         var newReasonCount = 0
@@ -48,6 +48,32 @@ struct ClaudeAccessExpiredReasonTests {
             }
         }
         #expect(newReasonCount == 2)
+    }
+
+    @Test func splitOtherFailureOriginsAssociateButKeepTheCodeMapping() async throws {
+        let cases: [(origin: String, code: String, reason: ClaudeQuotaFailureReason)] = [
+            ("credentialStoreAmbiguous", "schemaChanged", .couldNotUpdateQuota),
+            ("credentialFormatUnrecognized", "schemaChanged", .couldNotUpdateQuota),
+            ("credentialFormatUnrecognized", "requiresAuthentication", .quotaAccessUnavailable),
+            ("usageEndpointServerError", "providerUnavailable", .couldNotUpdateQuota),
+            ("usageResponseUnrecognized", "schemaChanged", .couldNotUpdateQuota),
+            // Even paired with authenticationExpired, only local expiry gets the new copy.
+            ("credentialFormatUnrecognized", "authenticationExpired", .quotaAccessUnavailable),
+        ]
+        for (origin, code, expected) in cases {
+            let associated = ClaudeQuotaFailureOriginAssociation.origin(
+                in: diagnosticsRead(origin: origin, lastAttemptAt: Self.start),
+                attemptStartedAt: Self.start, attemptGeneration: 1, currentGeneration: 1, claudeResultFailed: true)
+            #expect(associated?.rawValue == origin, "\(origin) must decode and associate")
+
+            let harness = Harness(results: [.result(claudeError(code))])
+            harness.diagnostics.script { now in diagnosticsRead(origin: origin, lastAttemptAt: now) }
+            await harness.coordinator.popoverOpened()
+            await harness.waitUntilCompleted(1)
+            let reason = await harness.store.snapshot(for: .claude).claudeQuotaFailureReason
+            #expect(reason == expected, "\(code) with \(origin) stored \(String(describing: reason))")
+            await harness.coordinator.stop()
+        }
     }
 
     @Test func failedDiagnosticsReadFallsBackToTheCodeMapping() async throws {
@@ -408,7 +434,9 @@ private func diagnosticsRead(
 private extension ClaudeQuotaFailureOrigin {
     static let allCasesForTest: [Self] = [
         .credentialMissing, .keychainCredentialExpired, .fileCredentialExpired, .credentialAccessDenied,
-        .usageEndpointUnauthorized, .usageEndpointForbidden, .otherFailure,
+        .credentialStoreAmbiguous, .credentialFormatUnrecognized,
+        .usageEndpointUnauthorized, .usageEndpointForbidden, .usageEndpointServerError,
+        .usageResponseUnrecognized, .otherFailure,
     ]
 }
 

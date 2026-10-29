@@ -42,6 +42,10 @@ pub enum ClaudeCredentialError {
     InteractionNotAllowed,
     PermissionDenied,
     Cancelled,
+    /// The Keychain lookup did not yield exactly one usable data item: the
+    /// match list was empty or held several items, a result had an unexpected
+    /// type, or the Keychain rejected the query parameters (errSecParam).
+    KeychainAmbiguous,
     KeychainExpired,
     FileExpired,
     FileMalformed,
@@ -355,17 +359,19 @@ fn single_persistent_ref(
         if CFGetTypeID(result) == CFArray::<CFType>::type_id() {
             let values = CFArray::<CFType>::wrap_under_create_rule(result as *mut _);
             if values.len() != 1 {
-                return Err(ClaudeCredentialError::Malformed);
+                return Err(ClaudeCredentialError::KeychainAmbiguous);
             }
-            let value = values.get(0).ok_or(ClaudeCredentialError::Malformed)?;
+            let value = values
+                .get(0)
+                .ok_or(ClaudeCredentialError::KeychainAmbiguous)?;
             value
                 .downcast::<CFData>()
-                .ok_or(ClaudeCredentialError::Malformed)
+                .ok_or(ClaudeCredentialError::KeychainAmbiguous)
         } else if CFGetTypeID(result) == CFData::type_id() {
             Ok(CFData::wrap_under_create_rule(result as *mut _))
         } else {
             CFRelease(result);
-            Err(ClaudeCredentialError::Malformed)
+            Err(ClaudeCredentialError::KeychainAmbiguous)
         }
     }
 }
@@ -384,7 +390,7 @@ fn single_keychain_data(
     unsafe {
         if CFGetTypeID(result) != CFData::type_id() {
             CFRelease(result);
-            return Err(ClaudeCredentialError::Malformed);
+            return Err(ClaudeCredentialError::KeychainAmbiguous);
         }
         let value = CFData::wrap_under_create_rule(result as *mut _);
         Ok(Zeroizing::new(value.bytes().to_vec()))
@@ -403,7 +409,7 @@ fn map_security_error(error: security_framework::base::Error) -> ClaudeCredentia
     const ERR_SEC_AUTH_FAILED: i32 = errSecAuthFailed;
 
     match error.code() {
-        ERR_SEC_PARAM => ClaudeCredentialError::Malformed,
+        ERR_SEC_PARAM => ClaudeCredentialError::KeychainAmbiguous,
         ERR_SEC_ITEM_NOT_FOUND => ClaudeCredentialError::NotFound,
         ERR_SEC_INTERACTION_NOT_ALLOWED => ClaudeCredentialError::InteractionNotAllowed,
         ERR_SEC_USER_CANCELED => ClaudeCredentialError::Cancelled,
@@ -476,10 +482,10 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn invalid_keychain_query_is_reported_as_malformed() {
+    fn invalid_keychain_query_is_reported_as_an_ambiguous_store() {
         let error = super::map_security_error(security_framework::base::Error::from_code(-50));
 
-        assert_eq!(error, ClaudeCredentialError::Malformed);
+        assert_eq!(error, ClaudeCredentialError::KeychainAmbiguous);
     }
 
     #[cfg(target_os = "macos")]
@@ -568,7 +574,7 @@ mod tests {
         let empty = CFArray::<CFData>::from_CFTypes(&[]);
         assert_eq!(
             resolve_owned(empty.into_CFType()),
-            Err(ClaudeCredentialError::Malformed)
+            Err(ClaudeCredentialError::KeychainAmbiguous)
         );
 
         let first = CFData::from_buffer(b"first");
@@ -576,13 +582,49 @@ mod tests {
         let multiple = CFArray::from_CFTypes(&[first, second]);
         assert_eq!(
             resolve_owned(multiple.into_CFType()),
-            Err(ClaudeCredentialError::Malformed)
+            Err(ClaudeCredentialError::KeychainAmbiguous)
+        );
+
+        let not_data = CFArray::from_CFTypes(&[CFString::new("not-data")]);
+        assert_eq!(
+            resolve_owned(not_data.into_CFType()),
+            Err(ClaudeCredentialError::KeychainAmbiguous)
         );
 
         let wrong_type = CFString::new("not-data");
         assert_eq!(
             resolve_owned(wrong_type.into_CFType()),
-            Err(ClaudeCredentialError::Malformed)
+            Err(ClaudeCredentialError::KeychainAmbiguous)
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn keychain_data_result_must_be_data() {
+        use core_foundation::{
+            base::{CFType, TCFType},
+            data::CFData,
+            string::CFString,
+        };
+        use std::mem;
+
+        fn resolve_owned(value: CFType) -> Result<Vec<u8>, ClaudeCredentialError> {
+            let raw = value.as_CFTypeRef();
+            mem::forget(value);
+            super::single_keychain_data(raw).map(|data| data.to_vec())
+        }
+
+        assert_eq!(
+            resolve_owned(CFData::from_buffer(b"payload").into_CFType()),
+            Ok(b"payload".to_vec())
+        );
+        assert_eq!(
+            super::single_keychain_data(std::ptr::null()).map(|data| data.to_vec()),
+            Err(ClaudeCredentialError::NotFound)
+        );
+        assert_eq!(
+            resolve_owned(CFString::new("not-data").into_CFType()),
+            Err(ClaudeCredentialError::KeychainAmbiguous)
         );
     }
 }

@@ -63,16 +63,20 @@ impl ClaudeQuotaProvider {
         credentials: Arc<dyn ClaudeCredentialResolver>,
         endpoint: &str,
     ) -> Result<Self, QuotaError> {
-        let url = reqwest::Url::parse(endpoint).map_err(|_| schema_error())?;
+        let url = reqwest::Url::parse(endpoint)
+            .map_err(|_| schema_error(ClaudeQuotaFailureOrigin::OtherFailure))?;
         if url.scheme() != "http"
             || !matches!(
                 url.host_str(),
                 Some("127.0.0.1") | Some("::1") | Some("localhost")
             )
         {
-            return Err(schema_error());
+            return Err(schema_error(ClaudeQuotaFailureOrigin::OtherFailure));
         }
-        let host = url.host_str().ok_or_else(schema_error)?.to_owned();
+        let host = url
+            .host_str()
+            .ok_or_else(|| schema_error(ClaudeQuotaFailureOrigin::OtherFailure))?
+            .to_owned();
 
         Ok(Self {
             credentials,
@@ -106,14 +110,15 @@ impl ClaudeQuotaProvider {
             .http
             .read_limited_body(response)
             .await
-            .map_err(claude_other_error)?;
-        let payload = String::from_utf8(bytes).map_err(|_| schema_error())?;
+            .map_err(claude_body_error)?;
+        let payload = String::from_utf8(bytes).map_err(|_| usage_response_error())?;
 
         Self::parse_usage_payload(&payload)
     }
 
     pub fn parse_usage_payload(payload: &str) -> Result<ProviderQuotaSnapshot, QuotaError> {
-        let response: UsageResponse = serde_json::from_str(payload).map_err(|_| schema_error())?;
+        let response: UsageResponse =
+            serde_json::from_str(payload).map_err(|_| usage_response_error())?;
         let session = parse_window(response.five_hour, "claude.session", "Session")?;
         let weekly = parse_window(response.seven_day, "claude.weekly", "Weekly")?;
         let mut windows = vec![session, weekly];
@@ -175,7 +180,8 @@ where
 }
 
 fn parse_window(source: UsageWindow, id: &str, title: &str) -> Result<QuotaWindow, QuotaError> {
-    QuotaWindow::new(id, title, source.utilization, source.resets_at).map_err(|_| schema_error())
+    QuotaWindow::new(id, title, source.utilization, source.resets_at)
+        .map_err(|_| usage_response_error())
 }
 
 fn is_fable_weekly_candidate(limit: &Value) -> bool {
@@ -245,7 +251,7 @@ fn credential_error_to_quota_error(error: ClaudeCredentialError) -> QuotaError {
             QuotaErrorCode::RequiresAuthentication,
             "Claude authentication was not available.",
         )
-        .with_claude_failure_origin(ClaudeQuotaFailureOrigin::OtherFailure),
+        .with_claude_failure_origin(ClaudeQuotaFailureOrigin::CredentialFormatUnrecognized),
         ClaudeCredentialError::FileReadFailed => QuotaError::new(
             Some(ProviderId::Claude),
             QuotaErrorCode::RequiresAuthentication,
@@ -265,7 +271,10 @@ fn credential_error_to_quota_error(error: ClaudeCredentialError) -> QuotaError {
         )
         .with_claude_failure_origin(ClaudeQuotaFailureOrigin::OtherFailure),
         ClaudeCredentialError::Malformed => {
-            schema_error().with_claude_failure_origin(ClaudeQuotaFailureOrigin::OtherFailure)
+            schema_error(ClaudeQuotaFailureOrigin::CredentialFormatUnrecognized)
+        }
+        ClaudeCredentialError::KeychainAmbiguous => {
+            schema_error(ClaudeQuotaFailureOrigin::CredentialStoreAmbiguous)
         }
     }
 }
@@ -277,6 +286,9 @@ fn claude_http_error(error: QuotaError) -> QuotaError {
         }
         Some(ClaudeUsageEndpointStatus::Forbidden) => {
             ClaudeQuotaFailureOrigin::UsageEndpointForbidden
+        }
+        Some(ClaudeUsageEndpointStatus::ServerError) => {
+            ClaudeQuotaFailureOrigin::UsageEndpointServerError
         }
         None => ClaudeQuotaFailureOrigin::OtherFailure,
     };
@@ -291,13 +303,31 @@ fn claude_other_error(error: QuotaError) -> QuotaError {
         .with_claude_failure_origin(ClaudeQuotaFailureOrigin::OtherFailure)
 }
 
-fn schema_error() -> QuotaError {
+/// The body reader fails in exactly two ways: a body over the size limit is
+/// `SchemaChanged`, and a body that could not be read is a transport failure.
+/// Only the first is an unrecognized usage response.
+fn claude_body_error(error: QuotaError) -> QuotaError {
+    let origin = if error.code == QuotaErrorCode::SchemaChanged {
+        ClaudeQuotaFailureOrigin::UsageResponseUnrecognized
+    } else {
+        ClaudeQuotaFailureOrigin::OtherFailure
+    };
+    error
+        .for_provider(ProviderId::Claude)
+        .with_claude_failure_origin(origin)
+}
+
+fn usage_response_error() -> QuotaError {
+    schema_error(ClaudeQuotaFailureOrigin::UsageResponseUnrecognized)
+}
+
+fn schema_error(origin: ClaudeQuotaFailureOrigin) -> QuotaError {
     QuotaError::new(
         Some(ProviderId::Claude),
         QuotaErrorCode::SchemaChanged,
         "Claude quota data was not in the expected format.",
     )
-    .with_claude_failure_origin(ClaudeQuotaFailureOrigin::OtherFailure)
+    .with_claude_failure_origin(origin)
 }
 
 #[cfg(test)]
@@ -391,7 +421,7 @@ mod tests {
         assert!(!serde_json::to_string(&error).unwrap().contains(canary));
         assert_eq!(
             error.claude_failure_origin(),
-            Some(ClaudeQuotaFailureOrigin::OtherFailure)
+            Some(ClaudeQuotaFailureOrigin::UsageEndpointServerError)
         );
         assert_eq!(
             accesses.lock().unwrap().as_slice(),
@@ -454,6 +484,178 @@ mod tests {
             error.claude_failure_origin(),
             Some(ClaudeQuotaFailureOrigin::OtherFailure)
         );
+    }
+
+    #[tokio::test]
+    async fn loopback_server_errors_have_the_server_error_origin() {
+        for status in [
+            "500 Internal Server Error",
+            "502 Bad Gateway",
+            "503 Service Unavailable",
+            "504 Gateway Timeout",
+            "599 Network Connect Timeout Error",
+        ] {
+            let error = loopback_failure(http_response(status, BODY_CANARY.as_bytes())).await;
+
+            assert_eq!(error.code, QuotaErrorCode::ServiceUnavailable, "{status}");
+            assert_eq!(
+                error.claude_failure_origin(),
+                Some(ClaudeQuotaFailureOrigin::UsageEndpointServerError),
+                "{status}"
+            );
+            assert_no_canary(&error);
+        }
+    }
+
+    #[tokio::test]
+    async fn loopback_other_unsuccessful_statuses_keep_other_failure() {
+        for (status, code) in [
+            ("429 Too Many Requests", QuotaErrorCode::RateLimited),
+            ("404 Not Found", QuotaErrorCode::NetworkUnavailable),
+            ("302 Found", QuotaErrorCode::NetworkUnavailable),
+        ] {
+            let error = loopback_failure(http_response(status, BODY_CANARY.as_bytes())).await;
+
+            assert_eq!(error.code, code, "{status}");
+            assert_eq!(
+                error.claude_failure_origin(),
+                Some(ClaudeQuotaFailureOrigin::OtherFailure),
+                "{status}"
+            );
+            assert_no_canary(&error);
+        }
+    }
+
+    #[tokio::test]
+    async fn loopback_unrecognized_usage_responses_have_the_usage_response_origin() {
+        let weekly = r#"{"utilization":80.0,"resets_at":"2026-08-18T00:00:00Z"}"#;
+        let mut oversized = BODY_CANARY.as_bytes().to_vec();
+        oversized.resize(64 * 1024 + 1, b' ');
+        let mut chunked_oversized = format!(
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:X}\r\n",
+            oversized.len()
+        )
+        .into_bytes();
+        chunked_oversized.extend_from_slice(&oversized);
+        chunked_oversized.extend_from_slice(b"\r\n0\r\n\r\n");
+        let cases = [
+            (
+                "not JSON",
+                http_response("200 OK", format!("{BODY_CANARY} is not JSON").as_bytes()),
+            ),
+            (
+                "missing session window",
+                http_response(
+                    "200 OK",
+                    format!(r#"{{"seven_day":{weekly},"note":"{BODY_CANARY}"}}"#).as_bytes(),
+                ),
+            ),
+            (
+                "null session window",
+                http_response(
+                    "200 OK",
+                    format!(r#"{{"five_hour":null,"seven_day":{weekly}}}"#).as_bytes(),
+                ),
+            ),
+            (
+                "utilization out of range",
+                http_response(
+                    "200 OK",
+                    format!(
+                        r#"{{"five_hour":{{"utilization":101,"resets_at":null}},"seven_day":{weekly}}}"#
+                    )
+                    .as_bytes(),
+                ),
+            ),
+            (
+                "not UTF-8",
+                http_response("200 OK", &[0xff, 0xfe, 0xfd, b'{', b'}']),
+            ),
+            ("over the length limit", http_response("200 OK", &oversized)),
+            ("over the streamed limit", chunked_oversized),
+        ];
+
+        for (name, response) in cases {
+            let error = loopback_failure(response).await;
+
+            assert_eq!(error.code, QuotaErrorCode::SchemaChanged, "{name}");
+            assert_eq!(
+                error.claude_failure_origin(),
+                Some(ClaudeQuotaFailureOrigin::UsageResponseUnrecognized),
+                "{name}"
+            );
+            assert_no_canary(&error);
+        }
+    }
+
+    #[tokio::test]
+    async fn loopback_truncated_body_is_a_transport_failure_not_a_usage_response() {
+        let error = loopback_failure(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 4096\r\nConnection: close\r\n\r\n{\"five_hour\""
+                .to_vec(),
+        )
+        .await;
+
+        assert_eq!(error.code, QuotaErrorCode::NetworkUnavailable);
+        assert_eq!(
+            error.claude_failure_origin(),
+            Some(ClaudeQuotaFailureOrigin::OtherFailure)
+        );
+    }
+
+    const BODY_CANARY: &str = "CLAUDE-BODY-CANARY";
+
+    fn http_response(status: &str, body: &[u8]) -> Vec<u8> {
+        let mut response = format!(
+            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        response.extend_from_slice(body);
+        response
+    }
+
+    fn assert_no_canary(error: &QuotaError) {
+        for canary in ["CLAUDE-KEYCHAIN-CANARY", BODY_CANARY] {
+            assert!(!format!("{error:?}").contains(canary));
+            assert!(!serde_json::to_string(error).unwrap().contains(canary));
+            assert!(!error.message.contains(canary));
+        }
+    }
+
+    /// Fetches through a loopback endpoint with the canary token resolver. The
+    /// server tolerates the client closing early, as it does when it rejects an
+    /// oversized body before reading it.
+    async fn loopback_failure(response: Vec<u8>) -> QuotaError {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("loopback listener");
+        let endpoint = format!("http://{}/usage", listener.local_addr().expect("address"));
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("loopback accept");
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 1024];
+            while let Ok(read) = stream.read(&mut chunk) {
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..read]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let _ = stream.write_all(&response);
+            let _ = stream.flush();
+        });
+        let provider = ClaudeQuotaProvider::with_resolver_and_test_endpoint_for_test(
+            Arc::new(CanaryResolver {
+                accesses: Arc::new(Mutex::new(Vec::new())),
+            }),
+            &endpoint,
+        )
+        .expect("loopback provider");
+
+        let error = provider.fetch().await.expect_err("loopback failure");
+        server.join().expect("loopback server");
+        error
     }
 
     fn capturing_local_server(response: Vec<u8>) -> (String, thread::JoinHandle<Vec<u8>>) {

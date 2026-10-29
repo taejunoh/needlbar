@@ -1,5 +1,103 @@
 # Needlbar Development Status
 
+## 2026-10-29 Claude quota failure diagnostic: error code and split origins
+
+Field symptom: on the maintainer's Mac, installed v0.3.12 has failed every
+direct Claude quota attempt since at least 2026-10-28 07:33 local time. Each
+failure logs `claudeQuotaFailure origin=otherFailure`, and Settings shows
+"Quota unavailable" with the reason "Could not update quota". The failures
+continued after the maintainer refreshed Claude Code's saved access by running
+Claude Code in Terminal, so this is not local expiry, which would log
+`keychainCredentialExpired`. Credentials, the Keychain and the installed app
+were not inspected for this entry.
+
+From the source, `otherFailure` with "Could not update quota" on v0.3.12 is
+one of: a Keychain lookup that did not return exactly one usable item, a
+Keychain credential payload in an unrecognized format, an unparseable,
+oversized or non-UTF-8 usage response (all three with code `schemaChanged`),
+HTTP 5xx from the usage endpoint (`providerUnavailable`), or an internal
+bridge failure (no code). The v0.3.12 line logged none of this.
+
+Decisions (user, 2026-10-29): log the allowlisted error code with the origin,
+and split `otherFailure` into closed origins at its producers, both in one
+change so one release can settle the cause. This change is PR #35 on branch
+`codex/claude-failure-code-diagnostic`; it is not merged, released, or
+installed.
+
+- **Line.** `claudeQuotaFailure origin=<origin> code=<code>
+  attempt=<RFC 3339 second>`, one public OSLog string built only from two
+  closed values and the timestamp. Subsystem, category and the existing
+  fields are unchanged; nothing in the repository parses the old line.
+- **Code.** The `quotaErrorCode` of the same Claude entry of the bridge
+  diagnostics record the reporter already reads once per completed
+  operation, so code, origin and attempt time always describe the same
+  attempt. Allowlist: `notInstalled`, `requiresAuthentication`,
+  `authenticationExpired`, `permissionDenied`, `rateLimited`,
+  `networkUnavailable`, `providerUnavailable`, `schemaChanged`, and
+  `unknown` for an absent or non-quota record code.
+- **New origins.**
+  - `credentialStoreAmbiguous` (code `schemaChanged`): the Keychain lookup
+    returned an empty or multi-item match list, a result of the wrong type,
+    or errSecParam.
+  - `credentialFormatUnrecognized`: the credential payload is not JSON, lacks
+    `claudeAiOauth`, or has a missing or invalid access token or an
+    unparseable `expiresAt`. The code is `schemaChanged` from the Keychain and
+    `requiresAuthentication` from the fallback file.
+  - `usageEndpointServerError` (`providerUnavailable`): HTTP 5xx.
+  - `usageResponseUnrecognized` (`schemaChanged`): the body is over 64 KiB,
+    is not UTF-8, or does not parse or validate as a usage document.
+
+  `otherFailure` remains for an unreadable fallback file, transport failures
+  and timeouts, an unreadable body, HTTP 429 and other unexpected statuses,
+  and an internal bridge failure.
+- **Contracts.** The new origins extend only the closed string vocabulary of
+  the existing optional `claudeQuotaFailureOrigin` field. There is no new
+  field and no C ABI change, and Swift decodes the origin strictly. No golden
+  fixture or public bridge surface needed an update.
+- **Not logged.** Messages, URLs, headers, bodies, tokens, paths, HTTP status
+  and payloads.
+- **Unchanged.** Error codes, messages, presentation (only the two
+  local-expiry origins change the reason), credential precedence, network
+  behavior and request count. The 2026-09-16 failure-origin design carries a
+  dated 2026-10-29 amendment covering both parts.
+
+Reading a field line from a build with this change, when Settings shows
+"Could not update quota": `credentialStoreAmbiguous` or
+`credentialFormatUnrecognized` means the Keychain credential, and
+`usageResponseUnrecognized` means the usage response. `usageEndpointServerError`
+means HTTP 5xx, and `otherFailure` with `code=unknown` means an internal bridge
+failure.
+
+Verification: test-first in both parts.
+
+- **Part 1.** After the old line moved into `message` unchanged, the five new
+  format expectations failed. With the change they passed.
+- **Part 2, Rust.** With only the new variants in place and the producers
+  unchanged, 12 assertions failed across the quota unit, quota integration
+  and bridge tests. Each showed `otherFailure` (or `Malformed`) where a split
+  value was expected. The tests that pin unchanged paths already passed: 429,
+  404 and 302, a truncated body, and origin serialization.
+- **Part 2, Swift.** Four Swift tests that use raw origin strings failed,
+  because the strict decoder rejected `credentialStoreAmbiguous`.
+- **After the change.** 112 quota and bridge tests passed, and the focused
+  Swift run passed 84 tests.
+
+Gates:
+
+- `cargo test --workspace`: 140 passed.
+- Clippy with `--workspace --all-targets --all-features -- -D warnings`: clean.
+- rustfmt: clean on every changed Rust file. A workspace-wide
+  `cargo fmt --all --check` already fails on origin/main in two untouched
+  bridge test files and the vendored `tokscale-core`; this change leaves them
+  as they are.
+- `make test` with `MACOSX_DEPLOYMENT_TARGET=14.0`: Rust 1559 passed with 1
+  ignored, Swift 782 passed, and the public bridge surface and every script
+  contract passed.
+- The locale-free `notarize-app-tests.sh` run and `git diff --check`: passed.
+
+Next: review and merge. The field line names the stage only after a release
+(planned v0.3.13) and an install that include this change.
+
 ## 2026-10-23 v0.3.12 public artifact verified
 
 The human approved the protected `release` environment for the independent

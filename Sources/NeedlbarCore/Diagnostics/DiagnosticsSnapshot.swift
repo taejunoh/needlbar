@@ -97,13 +97,23 @@ public enum DiagnosticsErrorCode: String, Decodable, Sendable, Equatable {
     case internalError
 }
 
+/// The closed stage label of a failed Claude quota operation, decoded
+/// strictly: Rust and Swift ship together, so an unknown value is a bug.
 public enum ClaudeQuotaFailureOrigin: String, Decodable, Sendable, Equatable {
     case credentialMissing
     case keychainCredentialExpired
     case fileCredentialExpired
     case credentialAccessDenied
+    /// The Keychain lookup did not yield exactly one usable data item.
+    case credentialStoreAmbiguous
+    /// A credential payload was found but its format was not recognized.
+    case credentialFormatUnrecognized
     case usageEndpointUnauthorized
     case usageEndpointForbidden
+    /// The usage endpoint answered with HTTP 5xx.
+    case usageEndpointServerError
+    /// The usage response body could not be read as a usage document.
+    case usageResponseUnrecognized
     case otherFailure
 }
 

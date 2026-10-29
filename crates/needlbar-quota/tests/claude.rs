@@ -121,7 +121,7 @@ async fn credential_failures_map_to_safe_quota_errors() {
         (
             ClaudeCredentialError::FileMalformed,
             QuotaErrorCode::RequiresAuthentication,
-            ClaudeQuotaFailureOrigin::OtherFailure,
+            ClaudeQuotaFailureOrigin::CredentialFormatUnrecognized,
         ),
         (
             ClaudeCredentialError::FileReadFailed,
@@ -141,7 +141,12 @@ async fn credential_failures_map_to_safe_quota_errors() {
         (
             ClaudeCredentialError::Malformed,
             QuotaErrorCode::SchemaChanged,
-            ClaudeQuotaFailureOrigin::OtherFailure,
+            ClaudeQuotaFailureOrigin::CredentialFormatUnrecognized,
+        ),
+        (
+            ClaudeCredentialError::KeychainAmbiguous,
+            QuotaErrorCode::SchemaChanged,
+            ClaudeQuotaFailureOrigin::CredentialStoreAmbiguous,
         ),
     ];
 
@@ -184,6 +189,8 @@ async fn safe_credential_errors_never_expose_a_keychain_canary() {
         ClaudeCredentialError::Cancelled,
         ClaudeCredentialError::Expired,
         ClaudeCredentialError::Malformed,
+        ClaudeCredentialError::KeychainAmbiguous,
+        ClaudeCredentialError::FileMalformed,
     ];
 
     for credential_error in errors {
@@ -379,7 +386,7 @@ fn rejects_malformed_or_out_of_range_claude_payloads() {
     assert_eq!(error.code, QuotaErrorCode::SchemaChanged);
     assert_eq!(
         error.claude_failure_origin(),
-        Some(ClaudeQuotaFailureOrigin::OtherFailure)
+        Some(ClaudeQuotaFailureOrigin::UsageResponseUnrecognized)
     );
 }
 
@@ -394,6 +401,10 @@ fn rejects_claude_payloads_without_provider_reset_evidence() {
     .unwrap_err();
 
     assert_eq!(error.code, QuotaErrorCode::SchemaChanged);
+    assert_eq!(
+        error.claude_failure_origin(),
+        Some(ClaudeQuotaFailureOrigin::UsageResponseUnrecognized)
+    );
 }
 
 #[test]
@@ -407,6 +418,10 @@ fn rejects_claude_payloads_with_malformed_provider_reset_evidence() {
     .unwrap_err();
 
     assert_eq!(error.code, QuotaErrorCode::SchemaChanged);
+    assert_eq!(
+        error.claude_failure_origin(),
+        Some(ClaudeQuotaFailureOrigin::UsageResponseUnrecognized)
+    );
 }
 
 #[tokio::test]
@@ -428,7 +443,7 @@ async fn missing_file_oauth_requires_authentication_without_prompting() {
 }
 
 #[tokio::test]
-async fn malformed_file_oauth_keeps_legacy_safe_code_but_has_other_failure_origin() {
+async fn malformed_file_oauth_keeps_legacy_safe_code_but_has_credential_format_origin() {
     let temp = TempDir::new().unwrap();
     let config_dir = temp.path().join("claude-config");
     fs::create_dir_all(&config_dir).unwrap();
@@ -448,7 +463,7 @@ async fn malformed_file_oauth_keeps_legacy_safe_code_but_has_other_failure_origi
     assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
     assert_eq!(
         error.claude_failure_origin(),
-        Some(ClaudeQuotaFailureOrigin::OtherFailure)
+        Some(ClaudeQuotaFailureOrigin::CredentialFormatUnrecognized)
     );
 }
 

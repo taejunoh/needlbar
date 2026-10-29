@@ -289,7 +289,7 @@ struct ClaudeAccessExpiredPresentationTests {
         let diagnosticsCalls = Counter()
         let quotaCalls = Counter()
         let json = """
-        {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-10-18T00:00:00Z","data":{"providers":[{"provider":"claude","usageStatus":"available","quotaStatus":"requiresAuthentication","usageSource":"local","quotaSource":"oauth","lastAttemptAt":"\(ISO8601DateFormatter().string(from: Self.now))","claudeQuotaFailureOrigin":"keychainCredentialExpired","rawSecretCanary":"CLAUDE-CANARY-SECRET","accountPath":"/private/canary"}]},"errors":[]}
+        {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-10-18T00:00:00Z","data":{"providers":[{"provider":"claude","usageStatus":"available","quotaStatus":"requiresAuthentication","usageSource":"local","quotaSource":"oauth","lastAttemptAt":"\(ISO8601DateFormatter().string(from: Self.now))","quotaErrorCode":"authenticationExpired","claudeQuotaFailureOrigin":"keychainCredentialExpired","rawSecretCanary":"CLAUDE-CANARY-SECRET","accountPath":"/private/canary"}]},"errors":[]}
         """
         let bridge = RustBridge(
             quotaCall: { quotaCalls.increment(); return nil },
@@ -316,11 +316,14 @@ struct ClaudeAccessExpiredPresentationTests {
         #expect(quotaCalls.value == 0)
         #expect(repository.callCount == 1)
         #expect(events.values.map(\.origin) == [.keychainCredentialExpired])
+        #expect(events.values.map(\.message) == [
+            "claudeQuotaFailure origin=keychainCredentialExpired code=authenticationExpired attempt=\(ISO8601DateFormatter().string(from: Self.now))",
+        ])
         let snapshot = await store.snapshot(for: .claude)
         #expect(snapshot.claudeQuotaFailureReason == .claudeCodeAccessExpired)
 
         let presentation = ProviderPopoverPresentation(snapshot: snapshot, now: Self.now)
-        let surfaces = [String(describing: events.values), String(describing: presentation)]
+        let surfaces = [String(describing: events.values), events.values.map(\.message).joined(), String(describing: presentation)]
             + (try Surface.allCases.map { try $0.render(snapshot).items.map(\.description).joined() })
         for text in surfaces {
             for marker in ["CLAUDE-CANARY-SECRET", "/private/canary", "RAW_ERROR_TOKEN_PATH_CANARY"] {

@@ -81,8 +81,16 @@ pub enum ClaudeQuotaFailureOrigin {
     KeychainCredentialExpired,
     FileCredentialExpired,
     CredentialAccessDenied,
+    /// The Keychain lookup did not yield exactly one usable data item.
+    CredentialStoreAmbiguous,
+    /// A credential payload was found but its format was not recognized.
+    CredentialFormatUnrecognized,
     UsageEndpointUnauthorized,
     UsageEndpointForbidden,
+    /// The usage endpoint answered with HTTP 5xx.
+    UsageEndpointServerError,
+    /// The usage response body could not be read as a usage document.
+    UsageResponseUnrecognized,
     OtherFailure,
 }
 
@@ -90,6 +98,7 @@ pub enum ClaudeQuotaFailureOrigin {
 pub(crate) enum ClaudeUsageEndpointStatus {
     Unauthorized,
     Forbidden,
+    ServerError,
 }
 
 /// A deliberately provider-safe error. It never stores a source error, URL,

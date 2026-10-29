@@ -2,9 +2,50 @@ import Foundation
 import NeedlbarCore
 import OSLog
 
+/// The closed allowlist of Claude quota error codes the failure diagnostic may
+/// log: the codes the bridge can record for a Claude quota error, which are the
+/// Rust `QuotaErrorCode` values after the bridge folds `serviceUnavailable`
+/// (HTTP 5xx) into `providerUnavailable`. An absent code, or a record code that
+/// is not a quota code, logs as `unknown`.
+enum ClaudeQuotaFailureDiagnosticCode: String, Equatable, Sendable {
+    case notInstalled
+    case requiresAuthentication
+    case authenticationExpired
+    case permissionDenied
+    case rateLimited
+    case networkUnavailable
+    case providerUnavailable
+    case schemaChanged
+    case unknown
+
+    /// Exhaustive on purpose: a new record code must be placed deliberately.
+    init(recordCode: DiagnosticsErrorCode?) {
+        switch recordCode {
+        case .notInstalled?: self = .notInstalled
+        case .requiresAuthentication?: self = .requiresAuthentication
+        case .authenticationExpired?: self = .authenticationExpired
+        case .permissionDenied?: self = .permissionDenied
+        case .rateLimited?: self = .rateLimited
+        case .networkUnavailable?: self = .networkUnavailable
+        case .providerUnavailable?: self = .providerUnavailable
+        case .schemaChanged?: self = .schemaChanged
+        case .noUsageData?, .usageRuntimeUnavailable?, .usageReportUnavailable?,
+             .invalidUsageDate?, .invalidUsageData?, .internalError?, nil:
+            self = .unknown
+        }
+    }
+}
+
 struct ClaudeQuotaFailureDiagnosticEvent: Equatable, Sendable {
     let origin: ClaudeQuotaFailureOrigin
+    let code: ClaudeQuotaFailureDiagnosticCode
     let attemptAt: String
+
+    /// The whole OSLog line, built only from the two closed values and the
+    /// formatted attempt time.
+    var message: String {
+        "claudeQuotaFailure origin=\(origin.rawValue) code=\(code.rawValue) attempt=\(attemptAt)"
+    }
 }
 
 final class ClaudeQuotaFailureDiagnosticsReporter: @unchecked Sendable {
@@ -62,12 +103,13 @@ final class ClaudeQuotaFailureDiagnosticsReporter: @unchecked Sendable {
         }
         return ClaudeQuotaFailureDiagnosticEvent(
             origin: origin,
+            code: ClaudeQuotaFailureDiagnosticCode(recordCode: provider.quotaErrorCode),
             attemptAt: ISO8601DateFormatter().string(from: attemptAt)
         )
     }
 
     private static func productionSink(_ event: ClaudeQuotaFailureDiagnosticEvent) {
         let logger = Logger(subsystem: "com.taejunoh.needlbar", category: "ClaudeQuotaFailureDiagnostic")
-        logger.notice("claudeQuotaFailure origin=\(event.origin.rawValue, privacy: .public) attempt=\(event.attemptAt, privacy: .public)")
+        logger.notice("\(event.message, privacy: .public)")
     }
 }
