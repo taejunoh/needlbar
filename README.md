@@ -155,6 +155,24 @@ Menu bar titles update at the next published snapshot, normally within 5
 minutes. Native overnight, quota-reset, sustained unattended, and native
 macOS 14 acceptance remain unverified.
 
+### Claude failure diagnostics (v0.3.13 prepared)
+
+The prepared v0.3.13 changes add the error code of a failed direct Claude
+quota attempt to the existing local diagnostic log entry, and split failures
+that were all logged as `otherFailure` into closed origins: an ambiguous
+Keychain match, an unrecognized saved credential format, an HTTP 5xx answer
+from the usage endpoint, and an unrecognized usage response. The entry stays
+in the macOS unified log on this Mac and carries no message, URL, header,
+body, token, path, or HTTP status. Nothing visible changes: messages, the
+popover, Settings, dashboard, menu bar, widget, JSON export, quota alerts,
+and network requests are unchanged.
+
+Credential renewal is not implemented. Direct last-known values are kept only
+in memory, so they are lost when Needlbar restarts. The status-line bridge
+receives values only from interactive terminal Claude Code sessions. Native
+overnight, quota-reset, sustained unattended, and native macOS 14 acceptance
+remain unverified.
+
 ### Usage and quota monitoring
 
 Needlbar presents locally aggregated token usage and estimated cost together with provider quota windows and reset times. Overview combines today’s tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status, and Settings. Provider views show today’s usage/cost, input/output/cache token detail, quota/reset information, freshness, and safe recovery states. Usage and quota are independent refresh streams; a failure in one does not replace a previously valid value with zero.
