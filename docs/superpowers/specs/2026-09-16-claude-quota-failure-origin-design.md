@@ -15,6 +15,32 @@ Status: Approach and written specification approved on 2026-09-16.
 > describes. Error codes, messages, the bridge record, the C ABI, the JSON
 > schema, and the OSLog event are unchanged.
 
+> **Amendment — 2026-10-29:** Approved by the user to diagnose
+> `otherFailure`. On the maintainer's Mac the installed v0.3.12 has failed
+> every direct Claude quota attempt since at least 2026-10-28 with only
+> `origin=otherFailure` logged, and that origin covers credential-format,
+> usage-response and HTTP/transport failures alike. The OSLog event now also
+> carries the allowlisted Claude quota error code, taken from the same bridge
+> diagnostics record entry (`quotaErrorCode`) as the origin and attempt time,
+> so the three always describe the same attempt:
+>
+> `claudeQuotaFailure origin=<origin> code=<code> attempt=<RFC 3339 second>`
+>
+> The code allowlist is closed: `notInstalled`, `requiresAuthentication`,
+> `authenticationExpired`, `permissionDenied`, `rateLimited`,
+> `networkUnavailable`, `providerUnavailable`, `schemaChanged`, and
+> `unknown`. The first eight are the codes the bridge can record for a Claude
+> quota error; the Rust `serviceUnavailable` code (HTTP 5xx) is folded into
+> `providerUnavailable` before it reaches Swift. An absent code, or a record
+> code that is not a quota code, logs `unknown`. A record whose code does not
+> decode still fails closed and emits no event. No message, URL, header, body,
+> token, path, HTTP status or payload enters the event; the line is one public
+> string built only from the two closed values and the timestamp. No HTTP
+> status class is logged, because the Swift-visible record has none and adding
+> one would change the bridge schema. The quota layer, bridge record, C ABI,
+> JSON schema, presentation, and the event's subsystem and category are
+> unchanged.
+
 ## Objective
 
 Identify the failing stage of the installed app's ordinary Claude quota refresh.
@@ -82,7 +108,8 @@ valid for older data. Do not add presentation logic to the bridge.
 The Swift consumer reads the diagnostic snapshot after the matching existing
 quota completion, frees the C string through the existing ownership convention,
 and publishes one local OSLog diagnostic event with a fixed subsystem/category.
-Only the allowlisted outcome/origin and attempt time may enter this event. Parse
+Only the allowlisted outcome/origin and attempt time may enter this event
+*(amended 2026-10-29: plus the allowlisted Claude quota error code)*. Parse
 failure must produce no raw payload output and must not affect quota refresh.
 Tests must establish the completion/record association under current single-flight
 behavior. No history file, telemetry, or UI setting is added.
