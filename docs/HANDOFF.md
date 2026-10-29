@@ -14,7 +14,7 @@ installation/runtime verification.
   candidate in PR #30 and its public record in PR #31, the status-line maximum
   age in PR #32, the v0.3.12 candidate in PR #33 and its public record in
   PR #34, the Claude failure diagnostics in PR #35, and the v0.3.13 candidate
-  in PR #36 and its public record in the v0.3.13 public-record PR. Do not
+  in PR #36 and its public record in PR #37. Do not
   assume other old branches have been merged.
 - For an isolated continuation, clone `main` into a new directory and
   initialize submodules as part of the clone:
