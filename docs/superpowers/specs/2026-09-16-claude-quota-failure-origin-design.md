@@ -16,13 +16,16 @@ Status: Approach and written specification approved on 2026-09-16.
 > schema, and the OSLog event are unchanged.
 
 > **Amendment — 2026-10-29:** Approved by the user to diagnose
-> `otherFailure`. On the maintainer's Mac the installed v0.3.12 has failed
-> every direct Claude quota attempt since at least 2026-10-28 with only
-> `origin=otherFailure` logged, and that origin covers credential-format,
-> usage-response and HTTP/transport failures alike. The OSLog event now also
-> carries the allowlisted Claude quota error code, taken from the same bridge
-> diagnostics record entry (`quotaErrorCode`) as the origin and attempt time,
-> so the three always describe the same attempt:
+> `otherFailure`, in two parts that ship together. On the maintainer's Mac the
+> installed v0.3.12 has failed every direct Claude quota attempt since at least
+> 2026-10-28 with only `origin=otherFailure` logged. That origin covered
+> credential-store, credential-format, usage-response and HTTP 5xx failures
+> alike.
+>
+> *Part 1, error code in the event.* The OSLog event now also carries the
+> allowlisted Claude quota error code, taken from the same bridge diagnostics
+> record entry (`quotaErrorCode`) as the origin and attempt time, so the three
+> always describe the same attempt:
 >
 > `claudeQuotaFailure origin=<origin> code=<code> attempt=<RFC 3339 second>`
 >
@@ -32,14 +35,40 @@ Status: Approach and written specification approved on 2026-09-16.
 > `unknown`. The first eight are the codes the bridge can record for a Claude
 > quota error; the Rust `serviceUnavailable` code (HTTP 5xx) is folded into
 > `providerUnavailable` before it reaches Swift. An absent code, or a record
-> code that is not a quota code, logs `unknown`. A record whose code does not
-> decode still fails closed and emits no event. No message, URL, header, body,
-> token, path, HTTP status or payload enters the event; the line is one public
-> string built only from the two closed values and the timestamp. No HTTP
-> status class is logged, because the Swift-visible record has none and adding
-> one would change the bridge schema. The quota layer, bridge record, C ABI,
-> JSON schema, presentation, and the event's subsystem and category are
-> unchanged.
+> code that is not a quota code, logs `unknown`. A record whose code or origin
+> does not decode still fails closed and emits no event. No message, URL,
+> header, body, token, path, HTTP status or payload enters the event; the line
+> is one public string built only from the two closed values and the
+> timestamp. No HTTP status class is logged, because the Swift-visible record
+> has none.
+>
+> *Part 2, split origins.* The user approved four further closed origins,
+> assigned at their producing branches in place of `otherFailure`:
+>
+> - `credentialStoreAmbiguous`: the Keychain lookup returned an empty or
+>   multi-item match list, a result of an unexpected type, or errSecParam
+>   (code `schemaChanged`).
+> - `credentialFormatUnrecognized`: a credential payload that is not JSON,
+>   lacks `claudeAiOauth`, has a missing or invalid access token, or has an
+>   unparseable `expiresAt`; from the Keychain (code `schemaChanged`) or the
+>   fallback file (code `requiresAuthentication`).
+> - `usageEndpointServerError`: the usage endpoint answered HTTP 5xx (code
+>   `providerUnavailable`).
+> - `usageResponseUnrecognized`: the usage body was over 64 KiB, was not
+>   UTF-8, or did not parse or validate as a usage document (code
+>   `schemaChanged`).
+>
+> `otherFailure` remains for the rest: a fallback file that could not be
+> read, transport failures and timeouts, a body that could not be read, HTTP
+> 429 and other unexpected statuses, and an internal bridge failure. Of these,
+> only the internal bridge failure reads "Could not update quota"; it records
+> no code and logs `code=unknown`. The new values extend only the closed string
+> vocabulary of the existing optional `claudeQuotaFailureOrigin` field. There
+> is no new field and no C ABI change, and Swift still decodes the origin
+> strictly because Rust and Swift ship together. Error codes, messages,
+> presentation (only the two local-expiry origins change the reason),
+> credential precedence, network behavior, request count, and the event's
+> subsystem and category are unchanged.
 
 ## Objective
 
@@ -84,8 +113,12 @@ last-error variable. Allowed origins are:
 - keychainCredentialExpired
 - fileCredentialExpired
 - credentialAccessDenied
+- credentialStoreAmbiguous *(added 2026-10-29)*
+- credentialFormatUnrecognized *(added 2026-10-29)*
 - usageEndpointUnauthorized (HTTP 401)
 - usageEndpointForbidden (HTTP 403)
+- usageEndpointServerError (HTTP 5xx) *(added 2026-10-29)*
+- usageResponseUnrecognized *(added 2026-10-29)*
 - otherFailure
 
 Do not infer an origin from elapsed time, UI state, or generic authenticationExpired.
