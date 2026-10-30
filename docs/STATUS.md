@@ -1,5 +1,95 @@
 # Needlbar Development Status
 
+## 2026-10-30 Background Claude Keychain reads cannot show UI
+
+Field incident: after the user deleted the item with account `unknown`, the
+next background refresh on the maintainer's Mac displayed a macOS Keychain
+access dialog. The Keychain call blocked while the dialog was open, which
+also held up Codex and Cursor quota, because the quota run joins all three
+providers on one thread. A background refresh must never display Keychain
+UI (§3.3 of the 2026-08-25 provider-managed browser login design). Agents
+did not inspect the Keychain, credentials or the installed app for this
+entry.
+
+Cause: the UI keys in a SecItem query cover only Data Protection keychain
+items. SecItem.h says legacy keychain items "will still activate UI if
+needed", and `kSecUseAuthenticationUIFail` did not stop the dialog. Claude
+Code saves its item with the `security` tool into the legacy login
+keychain. Prompts for legacy items follow the process-wide
+`SecKeychainSetUserInteractionAllowed` setting.
+
+Decision (user, 2026-10-30): disable that setting around background reads.
+This change is on branch `codex/claude-keychain-account-match`, after the
+account match below. It is not merged, released, or installed. The account
+match must not ship without it.
+
+- **Background.** `BackgroundNoUI` reads the current setting, disables
+  interaction, runs the reference lookup and the data read, and restores
+  the value it read. A drop guard does the restore, so it also runs after
+  an error and while unwinding. If the setting cannot be read or disabled,
+  no query runs and the attempt fails as interaction not allowed.
+- **User-initiated.** `UserInitiatedAllowUI` never reads or changes the
+  setting.
+- **Serialization.** One process-wide lock (recovered if poisoned) holds the
+  whole sequence in both modes.
+- **Query keys.** `kSecUseAuthenticationUIFail` stays on background queries
+  for Data Protection items.
+- **Guard choice.** security-framework's `KeychainUserInteractionLock`
+  re-enables interaction unconditionally on drop. The resolver therefore
+  calls the security-framework-sys get and set bindings itself, so it
+  restores the previous value.
+- **Errors.** errSecInteractionRequired (-25315) now maps to interaction not
+  allowed, beside errSecInteractionNotAllowed (-25308). errSecAuthFailed
+  (-25293) stays permission denied. None becomes not found, so none falls
+  back to the service-only query or the credentials file. All three
+  surface as `permissionDenied` with origin `credentialAccessDenied`
+  ("Credential access unavailable"). Recovery is unchanged: Sign in with
+  Claude classifies `permissionDenied` as Keychain permission required
+  (`RefreshCoordinator`) and then runs the user-initiated read, which may
+  prompt (`ProviderLoginCoordinator`). Which status macOS 27 returns when a
+  legacy item would need UI has not been observed.
+- **Risks.** Both functions have been deprecated since macOS 10.10 but are
+  still exported by the macOS 27 SDK; removal would fail the link, not
+  silently drop the guard. The setting is process-wide. A search of
+  Sources, WidgetExtension, Tests, the crates and the vendored engine found
+  no other SecItem, SecKeychain, kSec or LAContext use, and the widget runs
+  in its own process. A background sequence waits while a user-initiated
+  one holds the lock, including while a prompt is open.
+- **Unchanged.** Error codes, failure origins, messages, presentation,
+  credential precedence, network requests, the C ABI and Swift.
+- **Design record.** A dated 2026-10-30 (background Keychain UI) amendment
+  at the end of §3.3 of the 2026-08-25 design, with a marker on the
+  `BackgroundNoUI` bullet.
+
+Verification: test-first, using an injected interaction setting next to the
+injected `SecItemCopyMatching`. No test reads or changes the real setting
+or reaches the real Keychain.
+
+- **RED.** With the setting passed in but ignored and no lock, 13 of 33
+  credential tests failed. Seven were new: the background order (read,
+  disable, queries, restore), the restore of a previously disabled value,
+  the restore after a query error and after a panic, no query after a
+  failed read or disable, and serialization of concurrent resolutions. Six
+  were existing flow tests that now also check that every background query
+  runs with interaction disabled. The new user-initiated test already
+  passed. The errSecInteractionRequired mapping failed on its own
+  (permission denied where interaction not allowed was expected).
+- **GREEN.** All 33 credential tests passed, five times in a row.
+
+Gates:
+
+- `cargo test --workspace`: 165 passed, the 8 new credential tests above
+  the account-match count.
+- Clippy with `--workspace --all-targets --all-features -- -D warnings`: clean.
+- rustfmt: clean on the changed Rust file.
+- `make test` with `MACOSX_DEPLOYMENT_TARGET=14.0`: Rust 1584 passed with 1
+  ignored, Swift 782 passed (unchanged), and the public bridge surface and
+  every script contract passed.
+- `make notarize-test` and `git diff --check`: passed.
+
+Next: review and merge together with the account match. The field effect
+needs a release and an install that include both changes.
+
 ## 2026-10-30 Claude Keychain lookup prefers the login user's item
 
 Field symptom: on the maintainer's Mac, the installed v0.3.13 logs
@@ -90,7 +180,8 @@ Gates:
 - `git diff --check`: passed.
 
 Next: review and merge. The field effect needs a release and an install that
-include this change.
+include this change. It must not ship without the background no-UI fix
+recorded above.
 
 ## 2026-10-29 v0.3.13 public artifact verified
 
