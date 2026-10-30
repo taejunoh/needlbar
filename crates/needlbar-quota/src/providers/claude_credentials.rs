@@ -228,9 +228,12 @@ fn resolve_keychain(
     use security_framework_sys::keychain_item::SecItemCopyMatching;
 
     let login_name = current_login_name();
-    resolve_keychain_with(access, login_name.as_deref(), &mut |query, result| unsafe {
-        SecItemCopyMatching(query, result)
-    })
+    resolve_keychain_with(
+        access,
+        login_name.as_deref(),
+        &mut |query, result| unsafe { SecItemCopyMatching(query, result) },
+        &mut SystemKeychainUserInteraction,
+    )
 }
 
 /// The single Security.framework call the Keychain resolver makes, injected so
@@ -243,12 +246,130 @@ type KeychainCopyMatching<'a> = dyn FnMut(
     ) -> core_foundation_sys::base::OSStatus
     + 'a;
 
+/// The process-wide Keychain user-interaction setting, which governs prompts
+/// for legacy (file-based) keychain items; `kSecUseAuthenticationUIFail`
+/// covers only Data Protection keychain items. Injected so tests never read
+/// or change the real setting.
+#[cfg(target_os = "macos")]
+trait KeychainUserInteraction {
+    fn is_allowed(&mut self) -> Result<bool, core_foundation_sys::base::OSStatus>;
+    fn set_allowed(&mut self, allowed: bool) -> Result<(), core_foundation_sys::base::OSStatus>;
+}
+
+/// `SecKeychainGetUserInteractionAllowed` and
+/// `SecKeychainSetUserInteractionAllowed`. Both are deprecated since macOS
+/// 10.10 but still exported; if they are ever removed, linking fails rather
+/// than the guard silently disappearing.
+#[cfg(target_os = "macos")]
+struct SystemKeychainUserInteraction;
+
+#[cfg(target_os = "macos")]
+impl KeychainUserInteraction for SystemKeychainUserInteraction {
+    fn is_allowed(&mut self) -> Result<bool, core_foundation_sys::base::OSStatus> {
+        use security_framework_sys::{
+            base::errSecSuccess, keychain::SecKeychainGetUserInteractionAllowed,
+        };
+
+        let mut state: core_foundation_sys::base::Boolean = 0;
+        let status = unsafe { SecKeychainGetUserInteractionAllowed(&mut state) };
+        if status == errSecSuccess {
+            Ok(state != 0)
+        } else {
+            Err(status)
+        }
+    }
+
+    fn set_allowed(&mut self, allowed: bool) -> Result<(), core_foundation_sys::base::OSStatus> {
+        use security_framework_sys::{
+            base::errSecSuccess, keychain::SecKeychainSetUserInteractionAllowed,
+        };
+
+        let status = unsafe { SecKeychainSetUserInteractionAllowed(u8::from(allowed)) };
+        if status == errSecSuccess {
+            Ok(())
+        } else {
+            Err(status)
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn resolve_keychain_with(
     access: ClaudeCredentialAccess,
     login_name: Option<&str>,
     copy_matching: &mut KeychainCopyMatching<'_>,
+    interaction: &mut dyn KeychainUserInteraction,
 ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
+    use std::sync::{Mutex, PoisonError};
+
+    /// Serializes whole Keychain sequences in this process, so a background
+    /// sequence that disables interaction can never overlap a user-initiated
+    /// one that needs it, and two background sequences cannot restore out of
+    /// order.
+    static KEYCHAIN_SEQUENCE: Mutex<()> = Mutex::new(());
+
+    let payload = {
+        let _sequence = KEYCHAIN_SEQUENCE
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        // Declared after the lock, so it restores the setting before the
+        // lock is released, on success, error and unwinding alike.
+        let _no_ui = match access {
+            ClaudeCredentialAccess::BackgroundNoUI => Some(InteractionDisabled::new(interaction)?),
+            ClaudeCredentialAccess::UserInitiatedAllowUI => None,
+        };
+        copy_keychain_payload(access, login_name, copy_matching)?
+    };
+    parse_credential_payload(&payload).map_err(|error| match error {
+        ClaudeCredentialError::Expired => ClaudeCredentialError::KeychainExpired,
+        other => other,
+    })
+}
+
+/// Disables Keychain user interaction for the life of the guard and then
+/// restores the value found before, not unconditionally `true`.
+#[cfg(target_os = "macos")]
+struct InteractionDisabled<'a> {
+    interaction: &'a mut dyn KeychainUserInteraction,
+    previous: bool,
+}
+
+#[cfg(target_os = "macos")]
+impl<'a> InteractionDisabled<'a> {
+    /// Fails closed: if the setting cannot be read or disabled, no query may
+    /// run, and the attempt reads as interaction not allowed.
+    fn new(
+        interaction: &'a mut dyn KeychainUserInteraction,
+    ) -> Result<Self, ClaudeCredentialError> {
+        let previous = interaction
+            .is_allowed()
+            .map_err(|_| ClaudeCredentialError::InteractionNotAllowed)?;
+        interaction
+            .set_allowed(false)
+            .map_err(|_| ClaudeCredentialError::InteractionNotAllowed)?;
+        Ok(Self {
+            interaction,
+            previous,
+        })
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for InteractionDisabled<'_> {
+    fn drop(&mut self) {
+        // Nothing can be reported from a drop; a failed restore leaves
+        // interaction disabled, which can only suppress a prompt.
+        let _ = self.interaction.set_allowed(self.previous);
+    }
+}
+
+/// The reference lookup and the one data read by persistent reference.
+#[cfg(target_os = "macos")]
+fn copy_keychain_payload(
+    access: ClaudeCredentialAccess,
+    login_name: Option<&str>,
+    copy_matching: &mut KeychainCopyMatching<'_>,
+) -> Result<Zeroizing<Vec<u8>>, ClaudeCredentialError> {
     use core_foundation::string::CFString;
 
     let service = CFString::new(CLAUDE_KEYCHAIN_SERVICE);
@@ -265,11 +386,7 @@ fn resolve_keychain_with(
         copy_matching_result(copy_matching, &query).and_then(single_persistent_ref)
     })?;
     let query = build_keychain_query(&service, ui_mode, KeychainQueryPhase::Data(&persistent_ref));
-    let payload = copy_matching_result(copy_matching, &query).and_then(single_keychain_data)?;
-    parse_credential_payload(&payload).map_err(|error| match error {
-        ClaudeCredentialError::Expired => ClaudeCredentialError::KeychainExpired,
-        other => other,
-    })
+    copy_matching_result(copy_matching, &query).and_then(single_keychain_data)
 }
 
 /// Background access must never display Keychain UI; only the user-initiated
@@ -536,6 +653,7 @@ fn map_security_error(error: security_framework::base::Error) -> ClaudeCredentia
 
     const ERR_SEC_PARAM: i32 = -50;
     const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25_308;
+    const ERR_SEC_INTERACTION_REQUIRED: i32 = -25_315;
     const ERR_SEC_USER_CANCELED: i32 = -128;
     const ERR_SEC_NOT_AVAILABLE: i32 = -25_291;
     const ERR_SEC_ITEM_NOT_FOUND: i32 = errSecItemNotFound;
@@ -544,7 +662,9 @@ fn map_security_error(error: security_framework::base::Error) -> ClaudeCredentia
     match error.code() {
         ERR_SEC_PARAM => ClaudeCredentialError::KeychainAmbiguous,
         ERR_SEC_ITEM_NOT_FOUND => ClaudeCredentialError::NotFound,
-        ERR_SEC_INTERACTION_NOT_ALLOWED => ClaudeCredentialError::InteractionNotAllowed,
+        ERR_SEC_INTERACTION_NOT_ALLOWED | ERR_SEC_INTERACTION_REQUIRED => {
+            ClaudeCredentialError::InteractionNotAllowed
+        }
         ERR_SEC_USER_CANCELED => ClaudeCredentialError::Cancelled,
         ERR_SEC_AUTH_FAILED | ERR_SEC_NOT_AVAILABLE => ClaudeCredentialError::PermissionDenied,
         _ => ClaudeCredentialError::PermissionDenied,
@@ -772,6 +892,7 @@ mod tests {
         pub(super) struct FakeKeychain {
             account: Lookup,
             service_only: Lookup,
+            data_status: Option<OSStatus>,
             pub(super) queries: Vec<Query>,
             pub(super) ui_modes: Vec<CFStringRef>,
         }
@@ -781,9 +902,16 @@ mod tests {
                 Self {
                     account,
                     service_only,
+                    data_status: None,
                     queries: Vec::new(),
                     ui_modes: Vec::new(),
                 }
+            }
+
+            /// Makes the data query fail with `status` instead of answering.
+            pub(super) fn with_data_status(mut self, status: OSStatus) -> Self {
+                self.data_status = Some(status);
+                self
             }
 
             pub(super) fn copy_matching(
@@ -823,6 +951,9 @@ mod tests {
                         let item = String::from_utf8(item.bytes().to_vec()).unwrap();
                         let payload = format!(r#"{{"claudeAiOauth":{{"accessToken":"{item}"}}}}"#);
                         self.queries.push(Query::Data(item));
+                        if let Some(status) = self.data_status {
+                            return status;
+                        }
                         *result = hand_over(CFData::from_buffer(payload.as_bytes()).into_CFType());
                         return 0;
                     }
@@ -870,16 +1001,146 @@ mod tests {
         }
     }
 
+    /// In-memory stand-in for the process-wide Keychain user-interaction
+    /// setting. It records each read and write, and the copy closure records
+    /// the setting each query ran under, in one ordered log. The real setting
+    /// is never read or changed by any test.
+    #[cfg(target_os = "macos")]
+    mod fake_interaction {
+        use core_foundation_sys::base::OSStatus;
+        use std::{cell::RefCell, rc::Rc};
+
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub(super) enum Step {
+            Read,
+            Set(bool),
+            Query { interaction_allowed: bool },
+        }
+
+        pub(super) struct Log {
+            pub(super) allowed: bool,
+            pub(super) steps: Vec<Step>,
+        }
+
+        pub(super) struct FakeInteraction {
+            pub(super) log: Rc<RefCell<Log>>,
+            read_status: OSStatus,
+            disable_status: OSStatus,
+        }
+
+        impl FakeInteraction {
+            pub(super) fn new(allowed: bool) -> Self {
+                Self {
+                    log: Rc::new(RefCell::new(Log {
+                        allowed,
+                        steps: Vec::new(),
+                    })),
+                    read_status: 0,
+                    disable_status: 0,
+                }
+            }
+
+            pub(super) fn failing_read(status: OSStatus) -> Self {
+                Self {
+                    read_status: status,
+                    ..Self::new(true)
+                }
+            }
+
+            pub(super) fn failing_disable(status: OSStatus) -> Self {
+                Self {
+                    disable_status: status,
+                    ..Self::new(true)
+                }
+            }
+
+            pub(super) fn steps(&self) -> Vec<Step> {
+                self.log.borrow().steps.clone()
+            }
+
+            pub(super) fn allowed(&self) -> bool {
+                self.log.borrow().allowed
+            }
+        }
+
+        impl super::super::KeychainUserInteraction for FakeInteraction {
+            fn is_allowed(&mut self) -> Result<bool, OSStatus> {
+                let mut log = self.log.borrow_mut();
+                log.steps.push(Step::Read);
+                if self.read_status == 0 {
+                    Ok(log.allowed)
+                } else {
+                    Err(self.read_status)
+                }
+            }
+
+            fn set_allowed(&mut self, allowed: bool) -> Result<(), OSStatus> {
+                let mut log = self.log.borrow_mut();
+                log.steps.push(Step::Set(allowed));
+                if !allowed && self.disable_status != 0 {
+                    return Err(self.disable_status);
+                }
+                log.allowed = allowed;
+                Ok(())
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn resolve_with_fakes(
+        access: super::ClaudeCredentialAccess,
+        login_name: Option<&str>,
+        keychain: &mut fake_keychain::FakeKeychain,
+        interaction: &mut fake_interaction::FakeInteraction,
+    ) -> Result<String, ClaudeCredentialError> {
+        let log = std::rc::Rc::clone(&interaction.log);
+        super::resolve_keychain_with(
+            access,
+            login_name,
+            &mut |query, result| {
+                let interaction_allowed = log.borrow().allowed;
+                log.borrow_mut().steps.push(fake_interaction::Step::Query {
+                    interaction_allowed,
+                });
+                keychain.copy_matching(query, result)
+            },
+            interaction,
+        )
+        .map(|secret| secret.access_token().to_owned())
+    }
+
+    /// Resolves with interaction initially allowed and checks the invariants
+    /// every flow must keep: background queries run with interaction
+    /// disabled and the setting is restored; user-initiated resolution never
+    /// reads or changes it.
     #[cfg(target_os = "macos")]
     fn resolve_with_fake(
         access: super::ClaudeCredentialAccess,
         login_name: Option<&str>,
         keychain: &mut fake_keychain::FakeKeychain,
     ) -> Result<String, ClaudeCredentialError> {
-        super::resolve_keychain_with(access, login_name, &mut |query, result| {
-            keychain.copy_matching(query, result)
-        })
-        .map(|secret| secret.access_token().to_owned())
+        use fake_interaction::{FakeInteraction, Step};
+
+        let mut interaction = FakeInteraction::new(true);
+        let result = resolve_with_fakes(access, login_name, keychain, &mut interaction);
+        let steps = interaction.steps();
+        assert!(interaction.allowed(), "the setting ends as it began");
+        match access {
+            super::ClaudeCredentialAccess::BackgroundNoUI => {
+                assert!(
+                    steps.starts_with(&[Step::Read, Step::Set(false)]),
+                    "background disables interaction first: {steps:?}"
+                );
+                assert_eq!(steps.last(), Some(&Step::Set(true)));
+                assert!(!steps.contains(&Step::Query {
+                    interaction_allowed: true
+                }));
+            }
+            super::ClaudeCredentialAccess::UserInitiatedAllowUI => {
+                assert!(steps.iter().all(|step| matches!(step, Step::Query { .. })));
+            }
+        }
+        result
     }
 
     #[cfg(target_os = "macos")]
@@ -1337,6 +1598,327 @@ mod tests {
         let name = super::current_login_name().expect("the test user has a passwd entry");
 
         assert!(!name.is_empty());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn background_resolution_disables_interaction_around_every_query() {
+        use super::ClaudeCredentialAccess;
+        use fake_interaction::{FakeInteraction, Step};
+        use fake_keychain::{FakeKeychain, Lookup};
+
+        let mut keychain = FakeKeychain::new(
+            Lookup::Status(fake_keychain::ITEM_NOT_FOUND),
+            Lookup::Items(&["only-item"]),
+        );
+        let mut interaction = FakeInteraction::new(true);
+
+        assert_eq!(
+            resolve_with_fakes(
+                ClaudeCredentialAccess::BackgroundNoUI,
+                Some(TEST_LOGIN_NAME),
+                &mut keychain,
+                &mut interaction
+            ),
+            Ok("only-item".to_owned())
+        );
+        let disabled = Step::Query {
+            interaction_allowed: false,
+        };
+        assert_eq!(
+            interaction.steps(),
+            [
+                Step::Read,
+                Step::Set(false),
+                disabled,
+                disabled,
+                disabled,
+                Step::Set(true),
+            ]
+        );
+        assert!(interaction.allowed());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn background_resolution_restores_the_previous_setting() {
+        use super::ClaudeCredentialAccess;
+        use fake_interaction::{FakeInteraction, Step};
+        use fake_keychain::{FakeKeychain, Lookup};
+
+        let mut keychain = FakeKeychain::new(
+            Lookup::Items(&["login-item"]),
+            Lookup::Items(&["only-item"]),
+        );
+        let mut interaction = FakeInteraction::new(false);
+
+        assert_eq!(
+            resolve_with_fakes(
+                ClaudeCredentialAccess::BackgroundNoUI,
+                Some(TEST_LOGIN_NAME),
+                &mut keychain,
+                &mut interaction
+            ),
+            Ok("login-item".to_owned())
+        );
+        assert_eq!(interaction.steps().last(), Some(&Step::Set(false)));
+        assert!(!interaction.allowed());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn background_resolution_restores_the_setting_after_a_query_error() {
+        use super::ClaudeCredentialAccess;
+        use fake_interaction::{FakeInteraction, Step};
+        use fake_keychain::{FakeKeychain, Lookup};
+
+        let mut keychain = FakeKeychain::new(
+            Lookup::Items(&["login-item"]),
+            Lookup::Items(&["only-item"]),
+        )
+        .with_data_status(-25_308);
+        let mut interaction = FakeInteraction::new(true);
+
+        assert_eq!(
+            resolve_with_fakes(
+                ClaudeCredentialAccess::BackgroundNoUI,
+                Some(TEST_LOGIN_NAME),
+                &mut keychain,
+                &mut interaction
+            ),
+            Err(ClaudeCredentialError::InteractionNotAllowed)
+        );
+        let disabled = Step::Query {
+            interaction_allowed: false,
+        };
+        assert_eq!(
+            interaction.steps(),
+            [
+                Step::Read,
+                Step::Set(false),
+                disabled,
+                disabled,
+                Step::Set(true),
+            ]
+        );
+        assert!(interaction.allowed());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn background_resolution_restores_the_setting_after_a_panic() {
+        use super::ClaudeCredentialAccess;
+        use fake_interaction::{FakeInteraction, Step};
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+
+        let mut interaction = FakeInteraction::new(true);
+        let log = std::rc::Rc::clone(&interaction.log);
+        let outcome = catch_unwind(AssertUnwindSafe(|| {
+            super::resolve_keychain_with(
+                ClaudeCredentialAccess::BackgroundNoUI,
+                Some(TEST_LOGIN_NAME),
+                &mut |_query, _result| {
+                    let interaction_allowed = log.borrow().allowed;
+                    log.borrow_mut().steps.push(Step::Query {
+                        interaction_allowed,
+                    });
+                    panic!("synthetic query panic");
+                },
+                &mut interaction,
+            )
+            .is_ok()
+        }));
+
+        assert!(outcome.is_err(), "the synthetic panic propagates");
+        assert_eq!(
+            interaction.steps(),
+            [
+                Step::Read,
+                Step::Set(false),
+                Step::Query {
+                    interaction_allowed: false
+                },
+                Step::Set(true),
+            ]
+        );
+        assert!(interaction.allowed());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn background_resolution_issues_no_query_when_interaction_cannot_be_disabled() {
+        use super::ClaudeCredentialAccess;
+        use fake_interaction::{FakeInteraction, Step};
+        use fake_keychain::{FakeKeychain, Lookup};
+
+        for (mut interaction, expected_steps) in [
+            (FakeInteraction::failing_read(-25_291), vec![Step::Read]),
+            (
+                FakeInteraction::failing_disable(-25_291),
+                vec![Step::Read, Step::Set(false)],
+            ),
+        ] {
+            let mut keychain = FakeKeychain::new(
+                Lookup::Items(&["login-item"]),
+                Lookup::Items(&["only-item"]),
+            );
+
+            assert_eq!(
+                resolve_with_fakes(
+                    ClaudeCredentialAccess::BackgroundNoUI,
+                    Some(TEST_LOGIN_NAME),
+                    &mut keychain,
+                    &mut interaction
+                ),
+                Err(ClaudeCredentialError::InteractionNotAllowed)
+            );
+            assert_eq!(interaction.steps(), expected_steps);
+            assert!(keychain.queries.is_empty());
+            assert!(interaction.allowed());
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn user_initiated_resolution_never_touches_the_interaction_setting() {
+        use super::ClaudeCredentialAccess;
+        use fake_interaction::{FakeInteraction, Step};
+        use fake_keychain::{FakeKeychain, Lookup};
+
+        for initially_allowed in [true, false] {
+            let mut keychain = FakeKeychain::new(
+                Lookup::Status(fake_keychain::ITEM_NOT_FOUND),
+                Lookup::Items(&["only-item"]),
+            );
+            let mut interaction = FakeInteraction::new(initially_allowed);
+
+            assert_eq!(
+                resolve_with_fakes(
+                    ClaudeCredentialAccess::UserInitiatedAllowUI,
+                    Some(TEST_LOGIN_NAME),
+                    &mut keychain,
+                    &mut interaction
+                ),
+                Ok("only-item".to_owned())
+            );
+            let query = Step::Query {
+                interaction_allowed: initially_allowed,
+            };
+            assert_eq!(interaction.steps(), [query, query, query]);
+            assert_eq!(interaction.allowed(), initially_allowed);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn interaction_failures_from_the_data_query_never_become_not_found() {
+        use super::ClaudeCredentialAccess;
+        use fake_keychain::{FakeKeychain, Lookup, Query};
+
+        for (status, expected) in [
+            (-25_315, ClaudeCredentialError::InteractionNotAllowed),
+            (-25_308, ClaudeCredentialError::InteractionNotAllowed),
+            (-25_293, ClaudeCredentialError::PermissionDenied),
+        ] {
+            assert_eq!(
+                super::map_security_error(security_framework::base::Error::from_code(status)),
+                expected,
+                "status {status}"
+            );
+            for access in [
+                ClaudeCredentialAccess::BackgroundNoUI,
+                ClaudeCredentialAccess::UserInitiatedAllowUI,
+            ] {
+                let mut keychain = FakeKeychain::new(
+                    Lookup::Items(&["login-item"]),
+                    Lookup::Items(&["only-item"]),
+                )
+                .with_data_status(status);
+
+                assert_eq!(
+                    resolve_with_fake(access, Some(TEST_LOGIN_NAME), &mut keychain),
+                    Err(expected),
+                    "status {status} must not become NotFound"
+                );
+                assert_eq!(
+                    keychain.queries,
+                    [
+                        Query::Account(TEST_LOGIN_NAME.to_owned()),
+                        Query::Data("login-item".to_owned()),
+                    ]
+                );
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn concurrent_resolutions_are_serialized() {
+        use super::ClaudeCredentialAccess;
+        use fake_interaction::FakeInteraction;
+        use fake_keychain::{FakeKeychain, Lookup};
+        use std::{
+            sync::{
+                atomic::{AtomicBool, Ordering},
+                mpsc, Arc,
+            },
+            thread,
+            time::Duration,
+        };
+
+        fn resolve_in_thread(
+            access: ClaudeCredentialAccess,
+            on_first_query: impl FnOnce() + Send + 'static,
+        ) -> thread::JoinHandle<Result<String, ClaudeCredentialError>> {
+            thread::spawn(move || {
+                let mut keychain = FakeKeychain::new(
+                    Lookup::Items(&["login-item"]),
+                    Lookup::Items(&["only-item"]),
+                );
+                let mut interaction = FakeInteraction::new(true);
+                let mut on_first_query = Some(on_first_query);
+                super::resolve_keychain_with(
+                    access,
+                    Some(TEST_LOGIN_NAME),
+                    &mut |query, result| {
+                        if let Some(callback) = on_first_query.take() {
+                            callback();
+                        }
+                        keychain.copy_matching(query, result)
+                    },
+                    &mut interaction,
+                )
+                .map(|secret| secret.access_token().to_owned())
+            })
+        }
+
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let first = resolve_in_thread(ClaudeCredentialAccess::BackgroundNoUI, move || {
+            entered_tx.send(()).unwrap();
+            release_rx
+                .recv_timeout(Duration::from_secs(30))
+                .expect("the test releases the first resolution");
+        });
+        entered_rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("the first resolution reaches its first query");
+
+        let second_entered = Arc::new(AtomicBool::new(false));
+        let second_flag = Arc::clone(&second_entered);
+        let second = resolve_in_thread(ClaudeCredentialAccess::UserInitiatedAllowUI, move || {
+            second_flag.store(true, Ordering::SeqCst);
+        });
+        thread::sleep(Duration::from_millis(200));
+        assert!(
+            !second_entered.load(Ordering::SeqCst),
+            "a second resolution must wait for the first to finish"
+        );
+
+        release_tx.send(()).unwrap();
+        assert_eq!(first.join().unwrap(), Ok("login-item".to_owned()));
+        assert_eq!(second.join().unwrap(), Ok("login-item".to_owned()));
+        assert!(second_entered.load(Ordering::SeqCst));
     }
 
     #[cfg(target_os = "macos")]
