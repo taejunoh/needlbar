@@ -119,7 +119,7 @@ const char *needlbar_codex_quota_snapshot_json(void);
 - The existing all-provider quota call always uses `BackgroundNoUI` and must never display Keychain UI.
 - The new Claude-only call always uses `UserInitiatedAllowUI`, returns the normal versioned envelope containing only Claude data/errors, and is called only after the explicit Claude login child exits successfully.
 - The new Codex-only call is always non-interactive, returns only Codex data/errors, and prevents Codex verification from calling Claude or Cursor adapters.
-- The macOS resolver queries only the exact `Claude Code-credentials` generic-password item through Security.framework. It does not run `/usr/bin/security`, enumerate Keychain contents, infer accounts, or search browser data.
+- The macOS resolver queries only the exact `Claude Code-credentials` generic-password item through Security.framework. It does not run `/usr/bin/security`, enumerate Keychain contents, infer accounts, or search browser data. *(Amended 2026-10-30: the lookup first narrows that exact-service query to the current macOS login user's account, a name taken from the local user database; see the amendment in §3.4.)*
 - The raw Keychain payload bytes and every Needlbar-owned token-bearing string remain in non-logging zeroizing wrappers inside `needlbar-quota`. The Keychain parser ignores `refreshToken` without materializing it, moves the access token once into the secret wrapper, and drops the HTTP request promptly after the bounded Anthropic quota request. Third-party request internals are not claimed to provide formal zeroization.
 - `needlbar-bridge` preserves its panic boundary, envelope contract, redaction, and Rust-owned string lifetime for the new export.
 - `needlbar-source-sync` continues to own only Cursor usage hydration.
@@ -129,6 +129,47 @@ The Rust layer never launches interactive login, owns a provider callback, or st
 ### 3.4 Claude Keychain compatibility gate
 
 Anthropic publicly documents Keychain storage but does not publish the Keychain item attributes or payload schema as a stable third-party API. Needlbar therefore supports only the exact `Claude Code-credentials` contract verified against the supported Claude Code version. The implementation must fail closed on missing, multiple, inaccessible, or malformed matches and must not broaden the query.
+
+> **Amendment — 2026-10-30:** Approved by the user on 2026-10-30, after a
+> second generic-password item whose service is exactly
+> `Claude Code-credentials` (account `unknown`) made every direct Claude
+> quota refresh on the maintainer's Mac fail as `credentialStoreAmbiguous`
+> (code `schemaChanged`). The user saw both items in Keychain Access; Needlbar
+> and its agents did not inspect the Keychain. The resolver now selects the
+> item in two steps, each of which only narrows the query:
+>
+> 1. It runs the existing reference-only query (generic-password class, the
+>    exact service, the access mode's UI setting, match all, persistent
+>    references) with `kSecAttrAccount` set to the current macOS login
+>    user's short name. Exactly one match is then read by persistent
+>    reference as before. Several matches fail closed as ambiguous.
+> 2. Only when that query finds nothing (errSecItemNotFound, or no result)
+>    does it run the unchanged service-only query, which still requires
+>    exactly one match.
+>
+> The account name comes from the local user database (`getpwuid_r` for the
+> process's user ID), not from the environment or from Keychain contents. An
+> unreadable, empty or non-UTF-8 name skips step 1. Every other step-1
+> result is final and keeps its existing mapping: interaction not allowed,
+> cancellation, authorization failures and errSecParam never reach step 2.
+> No other service is queried, no item outside the exact service is
+> enumerated, and nothing is chosen by modification date. Two items under
+> the login user's account stay ambiguous, as do two or more other items when
+> no item has that account. The item data is still read once, by persistent
+> reference, and both steps use the same UI setting, so background access
+> still cannot allow Keychain UI. The two steps are a fixed query order, not
+> the heuristic fallback that §8 excludes, and the gate above still holds:
+> missing, multiple, inaccessible or malformed matches fail closed, and the
+> query is never broadened.
+>
+> Rationale: Claude Code reads and writes its item with an account
+> attribute. The program text of the installed Claude Code command-line tool
+> calls `security find-generic-password` and `add-generic-password` with
+> `-a <account> -s <service>`, taking the account from `USER`, else the
+> operating-system user name. In an ordinary login session that is the same
+> short name as the user database entry; where they differ, step 1 finds
+> nothing and step 2 behaves as before. Error codes, failure origins,
+> presentation, the C ABI, Swift and network behavior are unchanged.
 
 Automated tests use an injected resolver and never access a real user Keychain. Before release, a user-authorized local acceptance check must confirm the service/payload contract against the installed supported Claude Code version without recording the credential value. If the contract is incompatible, Claude post-login quota remains a documented blocker rather than falling back to Keychain crawling.
 
