@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-27-release-validation-and-notarization-design.md`
 
+> **Note — 2026-10-30:** Historical plan. The CI and release runner moved from `macos-14` to `macos-15` on 2026-10-30 (Xcode 16.2 still pinned); the code blocks below are unchanged.
+
 ## Global Constraints
 
 - This work is release-validation plumbing only: do not create/push a tag, public GitHub Release, release asset, or distribution.

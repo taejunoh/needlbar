@@ -1,5 +1,32 @@
 # Needlbar Development Status
 
+## 2026-10-30 CI and release runners moved to macos-15
+
+GitHub retires the `macos-14` runner image on 2026-11-02, and scheduled
+brownouts fail `macos-14` jobs from 14:00 to 24:00 UTC on 2026-10-30,
+2026-10-31 and 2026-11-01. The brownouts cancelled attempts 1 and 2 of the
+v0.3.14 tagged release run on 2026-10-30.
+
+Decision (user, 2026-10-30): `ci.yml` and `release.yml` now use
+`runs-on: macos-15`. The explicit `sudo xcode-select --switch
+/Applications/Xcode_16.2.app` step stays: the `macos-15` arm64 image
+(20261028.0489.1) ships Xcode 16.2 (build 16C5032a) but defaults to 16.4.
+The app's minimum macOS stays 14; only the build host changes.
+
+- **v0.3.14.** The rerun of the tagged release uses the existing tag's
+  workflow, which still names `macos-14`, so it must run outside the
+  brownout windows. The runner change applies to the next release and to CI.
+- **Coverage.** CI smoke now runs on a macOS 15 host. macOS 14 runtime
+  coverage depends on native macOS 14 acceptance, which is still an open
+  item.
+- **Docs.** A dated amendment in the 2026-08-27 release-validation design
+  and a note in its plan. The earlier `macos-14` entries in this file are
+  historical.
+
+Verification: `grep -rn macos-14 .github` returns nothing; see the pull
+request for the test results. This change is on branch
+`claude/macos15-runners` and is not merged.
+
 ## 2026-10-30 Background Claude Keychain reads cannot show UI
 
 Field incident: after the user deleted the item with account `unknown`, the
