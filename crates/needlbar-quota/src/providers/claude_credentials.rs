@@ -227,7 +227,8 @@ fn resolve_keychain(
 ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
     use security_framework_sys::keychain_item::SecItemCopyMatching;
 
-    resolve_keychain_with(access, &mut |query, result| unsafe {
+    let login_name = current_login_name();
+    resolve_keychain_with(access, login_name.as_deref(), &mut |query, result| unsafe {
         SecItemCopyMatching(query, result)
     })
 }
@@ -245,15 +246,24 @@ type KeychainCopyMatching<'a> = dyn FnMut(
 #[cfg(target_os = "macos")]
 fn resolve_keychain_with(
     access: ClaudeCredentialAccess,
+    login_name: Option<&str>,
     copy_matching: &mut KeychainCopyMatching<'_>,
 ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
     use core_foundation::string::CFString;
 
     let service = CFString::new(CLAUDE_KEYCHAIN_SERVICE);
     let ui_mode = keychain_ui_mode(access);
-    let query = build_keychain_query(&service, ui_mode, KeychainQueryPhase::PersistentReference);
-    let persistent_ref =
-        copy_matching_result(copy_matching, &query).and_then(single_persistent_ref)?;
+    let persistent_ref = select_persistent_ref(login_name, |account| {
+        let account = account.map(CFString::new);
+        let query = build_keychain_query(
+            &service,
+            ui_mode,
+            KeychainQueryPhase::PersistentReference {
+                account: account.as_ref(),
+            },
+        );
+        copy_matching_result(copy_matching, &query).and_then(single_persistent_ref)
+    })?;
     let query = build_keychain_query(&service, ui_mode, KeychainQueryPhase::Data(&persistent_ref));
     let payload = copy_matching_result(copy_matching, &query).and_then(single_keychain_data)?;
     parse_credential_payload(&payload).map_err(|error| match error {
@@ -301,8 +311,89 @@ fn copy_matching_result(
 #[cfg(target_os = "macos")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum KeychainQueryPhase<'a> {
-    PersistentReference,
+    /// Reference-only lookup for the exact service, narrowed to one account
+    /// when given. It returns persistent references, never item data.
+    PersistentReference {
+        account: Option<&'a core_foundation::string::CFString>,
+    },
     Data(&'a core_foundation::data::CFData),
+}
+
+/// Chooses the one Keychain item to read. `lookup` runs the reference-only
+/// query for the exact service: `Some(account)` narrows it to that account,
+/// `None` is the service-only query. The current login user's item is
+/// preferred because Claude Code is expected to save its item under that
+/// account. Only a definite NotFound for that account reaches the unchanged
+/// service-only single-match rule; several matches, access errors,
+/// cancellation and errSecParam are final, so the query is only ever narrowed
+/// and never broadened.
+#[cfg(target_os = "macos")]
+fn select_persistent_ref<R>(
+    login_name: Option<&str>,
+    mut lookup: impl FnMut(Option<&str>) -> Result<R, ClaudeCredentialError>,
+) -> Result<R, ClaudeCredentialError> {
+    if let Some(account) = login_name {
+        match lookup(Some(account)) {
+            Err(ClaudeCredentialError::NotFound) => {}
+            decided => return decided,
+        }
+    }
+    lookup(None)
+}
+
+/// The current user's short login name from the local user database
+/// (`getpwuid_r`), never from the environment or Keychain contents. `None`
+/// when the entry cannot be read; the caller then uses only the
+/// service-only rule.
+#[cfg(target_os = "macos")]
+fn current_login_name() -> Option<String> {
+    use std::{ffi::CStr, mem::MaybeUninit, ptr};
+
+    const DEFAULT_BUFFER_LEN: usize = 1_024;
+    const MAX_BUFFER_LEN: usize = 1 << 20;
+
+    let uid = unsafe { libc::getuid() };
+    let suggested = unsafe { libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) };
+    let mut buffer_len = usize::try_from(suggested)
+        .ok()
+        .filter(|len| *len > 0)
+        .unwrap_or(DEFAULT_BUFFER_LEN)
+        .min(MAX_BUFFER_LEN);
+    loop {
+        let mut buffer: Vec<libc::c_char> = vec![0; buffer_len];
+        let mut entry = MaybeUninit::<libc::passwd>::uninit();
+        let mut found: *mut libc::passwd = ptr::null_mut();
+        let status = unsafe {
+            libc::getpwuid_r(
+                uid,
+                entry.as_mut_ptr(),
+                buffer.as_mut_ptr(),
+                buffer.len(),
+                &mut found,
+            )
+        };
+        if status == libc::ERANGE && buffer_len < MAX_BUFFER_LEN {
+            buffer_len = buffer_len.saturating_mul(2).min(MAX_BUFFER_LEN);
+            continue;
+        }
+        if status != 0 || found.is_null() {
+            return None;
+        }
+        // `pw_name` points into `buffer`, which outlives this conversion.
+        let name = unsafe { (*found).pw_name };
+        if name.is_null() {
+            return None;
+        }
+        return login_name_from_c_str(unsafe { CStr::from_ptr(name) });
+    }
+}
+
+/// Accepts only a non-empty UTF-8 name; anything else means no account
+/// narrowing.
+#[cfg(target_os = "macos")]
+fn login_name_from_c_str(name: &std::ffi::CStr) -> Option<String> {
+    let name = name.to_str().ok()?;
+    (!name.is_empty()).then(|| name.to_owned())
 }
 
 #[cfg(target_os = "macos")]
@@ -329,8 +420,8 @@ fn build_keychain_query(
         dictionary::CFMutableDictionary,
     };
     use security_framework_sys::item::{
-        kSecAttrService, kSecClass, kSecClassGenericPassword, kSecMatchLimit, kSecMatchLimitAll,
-        kSecReturnData, kSecReturnPersistentRef, kSecUseAuthenticationUI,
+        kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecMatchLimit,
+        kSecMatchLimitAll, kSecReturnData, kSecReturnPersistentRef, kSecUseAuthenticationUI,
     };
 
     let true_value = CFBoolean::true_value();
@@ -349,7 +440,13 @@ fn build_keychain_query(
             &(ui_mode as *const std::ffi::c_void),
         );
         match phase {
-            KeychainQueryPhase::PersistentReference => {
+            KeychainQueryPhase::PersistentReference { account } => {
+                if let Some(account) = account {
+                    query.add(
+                        &(kSecAttrAccount as *const std::ffi::c_void),
+                        &(account.as_concrete_TypeRef() as *const std::ffi::c_void),
+                    );
+                }
                 query.add(
                     &(kSecMatchLimit as *const std::ffi::c_void),
                     &(kSecMatchLimitAll as *const std::ffi::c_void),
@@ -549,7 +646,7 @@ mod tests {
         let first = super::build_keychain_query(
             &service,
             unsafe { super::kSecUseAuthenticationUIFail },
-            super::KeychainQueryPhase::PersistentReference,
+            super::KeychainQueryPhase::PersistentReference { account: None },
         );
         unsafe {
             assert!(first.contains_key(kSecMatchLimit as *const c_void));
@@ -776,9 +873,10 @@ mod tests {
     #[cfg(target_os = "macos")]
     fn resolve_with_fake(
         access: super::ClaudeCredentialAccess,
+        login_name: Option<&str>,
         keychain: &mut fake_keychain::FakeKeychain,
     ) -> Result<String, ClaudeCredentialError> {
-        super::resolve_keychain_with(access, &mut |query, result| {
+        super::resolve_keychain_with(access, login_name, &mut |query, result| {
             keychain.copy_matching(query, result)
         })
         .map(|secret| secret.access_token().to_owned())
@@ -813,7 +911,7 @@ mod tests {
         );
 
         assert_eq!(
-            resolve_with_fake(ClaudeCredentialAccess::BackgroundNoUI, &mut keychain),
+            resolve_with_fake(ClaudeCredentialAccess::BackgroundNoUI, None, &mut keychain),
             Ok("only-item".to_owned())
         );
         assert_eq!(
@@ -838,7 +936,11 @@ mod tests {
         );
 
         assert_eq!(
-            resolve_with_fake(ClaudeCredentialAccess::UserInitiatedAllowUI, &mut keychain),
+            resolve_with_fake(
+                ClaudeCredentialAccess::UserInitiatedAllowUI,
+                None,
+                &mut keychain
+            ),
             Err(ClaudeCredentialError::KeychainAmbiguous)
         );
         assert_eq!(keychain.queries, [Query::ServiceOnly]);
@@ -856,10 +958,385 @@ mod tests {
         );
 
         assert_eq!(
-            resolve_with_fake(ClaudeCredentialAccess::BackgroundNoUI, &mut keychain),
+            resolve_with_fake(ClaudeCredentialAccess::BackgroundNoUI, None, &mut keychain),
             Err(ClaudeCredentialError::NotFound)
         );
         assert_eq!(keychain.queries, [Query::ServiceOnly]);
+    }
+
+    #[cfg(target_os = "macos")]
+    const TEST_LOGIN_NAME: &str = "test-login-user";
+
+    /// Runs the selection with fixed lookup outcomes and records each lookup
+    /// scope: `Some(account)` for the account-scoped query, `None` for the
+    /// service-only query.
+    #[cfg(target_os = "macos")]
+    fn select_with(
+        login_name: Option<&str>,
+        account: Result<&'static str, ClaudeCredentialError>,
+        service_only: Result<&'static str, ClaudeCredentialError>,
+    ) -> (
+        Result<&'static str, ClaudeCredentialError>,
+        Vec<Option<String>>,
+    ) {
+        let mut scopes = Vec::new();
+        let chosen = super::select_persistent_ref(login_name, |scope| {
+            scopes.push(scope.map(str::to_owned));
+            match scope {
+                Some(_) => account,
+                None => service_only,
+            }
+        });
+        (chosen, scopes)
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn login_account_match_is_chosen_even_when_the_service_holds_several_items() {
+        let (chosen, scopes) = select_with(
+            Some(TEST_LOGIN_NAME),
+            Ok("login-item"),
+            Err(ClaudeCredentialError::KeychainAmbiguous),
+        );
+
+        assert_eq!(chosen, Ok("login-item"));
+        assert_eq!(scopes, [Some(TEST_LOGIN_NAME.to_owned())]);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn several_login_account_matches_stay_ambiguous_without_fallback() {
+        let (chosen, scopes) = select_with(
+            Some(TEST_LOGIN_NAME),
+            Err(ClaudeCredentialError::KeychainAmbiguous),
+            Ok("service-item"),
+        );
+
+        assert_eq!(chosen, Err(ClaudeCredentialError::KeychainAmbiguous));
+        assert_eq!(scopes, [Some(TEST_LOGIN_NAME.to_owned())]);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn missing_login_account_item_falls_back_to_the_unchanged_service_only_rule() {
+        let both = [Some(TEST_LOGIN_NAME.to_owned()), None];
+        for (service_only, expected) in [
+            (Ok("service-item"), Ok("service-item")),
+            (
+                Err(ClaudeCredentialError::KeychainAmbiguous),
+                Err(ClaudeCredentialError::KeychainAmbiguous),
+            ),
+            (
+                Err(ClaudeCredentialError::NotFound),
+                Err(ClaudeCredentialError::NotFound),
+            ),
+        ] {
+            let (chosen, scopes) = select_with(
+                Some(TEST_LOGIN_NAME),
+                Err(ClaudeCredentialError::NotFound),
+                service_only,
+            );
+
+            assert_eq!(chosen, expected);
+            assert_eq!(scopes, both);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn keychain_errors_on_the_login_account_lookup_never_fall_back() {
+        for (status, expected) in [
+            (-25_308, ClaudeCredentialError::InteractionNotAllowed),
+            (-128, ClaudeCredentialError::Cancelled),
+            (-50, ClaudeCredentialError::KeychainAmbiguous),
+            (-25_293, ClaudeCredentialError::PermissionDenied),
+            (-25_291, ClaudeCredentialError::PermissionDenied),
+            (-34_018, ClaudeCredentialError::PermissionDenied),
+        ] {
+            let mapped =
+                super::map_security_error(security_framework::base::Error::from_code(status));
+            assert_eq!(mapped, expected, "status {status} keeps its mapping");
+
+            let (chosen, scopes) =
+                select_with(Some(TEST_LOGIN_NAME), Err(mapped), Ok("service-item"));
+
+            assert_eq!(chosen, Err(expected), "status {status} must not fall back");
+            assert_eq!(scopes, [Some(TEST_LOGIN_NAME.to_owned())]);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn unavailable_login_name_uses_only_the_service_only_rule() {
+        for (service_only, expected) in [
+            (Ok("service-item"), Ok("service-item")),
+            (
+                Err(ClaudeCredentialError::KeychainAmbiguous),
+                Err(ClaudeCredentialError::KeychainAmbiguous),
+            ),
+        ] {
+            let (chosen, scopes) = select_with(None, Ok("login-item"), service_only);
+
+            assert_eq!(chosen, expected);
+            assert_eq!(scopes, [None]);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn only_the_account_scoped_reference_query_names_an_account() {
+        use core_foundation::{
+            base::TCFType,
+            data::CFData,
+            string::{CFString, CFStringRef},
+        };
+        use security_framework_sys::item::{
+            kSecAttrAccount, kSecAttrService, kSecMatchLimit, kSecMatchLimitAll, kSecReturnData,
+            kSecReturnPersistentRef, kSecUseAuthenticationUI,
+        };
+        use std::ffi::c_void;
+
+        let service = CFString::new("Claude Code-credentials");
+        let account = CFString::new(TEST_LOGIN_NAME);
+        for ui_mode in unsafe {
+            [
+                super::kSecUseAuthenticationUIFail,
+                super::kSecUseAuthenticationUIAllow,
+            ]
+        } {
+            let scoped = super::build_keychain_query(
+                &service,
+                ui_mode,
+                super::KeychainQueryPhase::PersistentReference {
+                    account: Some(&account),
+                },
+            )
+            .to_immutable();
+            let service_only = super::build_keychain_query(
+                &service,
+                ui_mode,
+                super::KeychainQueryPhase::PersistentReference { account: None },
+            )
+            .to_immutable();
+            let persistent_ref = CFData::from_buffer(b"persistent-ref");
+            let data = super::build_keychain_query(
+                &service,
+                ui_mode,
+                super::KeychainQueryPhase::Data(&persistent_ref),
+            )
+            .to_immutable();
+
+            unsafe {
+                let string_value = |value: *const c_void| {
+                    CFString::wrap_under_get_rule(value as CFStringRef).to_string()
+                };
+                let account_value = scoped
+                    .find(kSecAttrAccount as *const c_void)
+                    .map(|value| string_value(*value));
+                assert_eq!(account_value.as_deref(), Some(TEST_LOGIN_NAME));
+                assert!(!service_only.contains_key(&(kSecAttrAccount as *const c_void)));
+                assert!(!data.contains_key(&(kSecAttrAccount as *const c_void)));
+                assert_eq!(scoped.len(), service_only.len() + 1);
+
+                for query in [&scoped, &service_only] {
+                    let service_value = query
+                        .find(kSecAttrService as *const c_void)
+                        .map(|value| string_value(*value));
+                    assert_eq!(service_value.as_deref(), Some("Claude Code-credentials"));
+                    assert_eq!(
+                        query
+                            .find(kSecMatchLimit as *const c_void)
+                            .map(|value| *value),
+                        Some(kSecMatchLimitAll as *const c_void)
+                    );
+                    assert!(query.contains_key(&(kSecReturnPersistentRef as *const c_void)));
+                    assert!(!query.contains_key(&(kSecReturnData as *const c_void)));
+                    assert_eq!(
+                        query
+                            .find(kSecUseAuthenticationUI as *const c_void)
+                            .map(|value| *value),
+                        Some(ui_mode as *const c_void)
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn login_account_item_is_read_without_the_service_only_query() {
+        use super::ClaudeCredentialAccess;
+        use fake_keychain::{FakeKeychain, Lookup, Query};
+
+        let mut keychain = FakeKeychain::new(
+            Lookup::Items(&["login-item"]),
+            Lookup::Items(&["login-item", "unknown-account-item"]),
+        );
+
+        assert_eq!(
+            resolve_with_fake(
+                ClaudeCredentialAccess::BackgroundNoUI,
+                Some(TEST_LOGIN_NAME),
+                &mut keychain
+            ),
+            Ok("login-item".to_owned())
+        );
+        assert_eq!(
+            keychain.queries,
+            [
+                Query::Account(TEST_LOGIN_NAME.to_owned()),
+                Query::Data("login-item".to_owned()),
+            ]
+        );
+        assert!(keychain
+            .ui_modes
+            .iter()
+            .all(|mode| *mode == unsafe { super::kSecUseAuthenticationUIFail }));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn missing_login_account_item_reads_the_single_service_item_once() {
+        use super::ClaudeCredentialAccess;
+        use fake_keychain::{FakeKeychain, Lookup, Query};
+
+        let mut keychain = FakeKeychain::new(
+            Lookup::Status(fake_keychain::ITEM_NOT_FOUND),
+            Lookup::Items(&["only-item"]),
+        );
+
+        assert_eq!(
+            resolve_with_fake(
+                ClaudeCredentialAccess::UserInitiatedAllowUI,
+                Some(TEST_LOGIN_NAME),
+                &mut keychain
+            ),
+            Ok("only-item".to_owned())
+        );
+        assert_eq!(
+            keychain.queries,
+            [
+                Query::Account(TEST_LOGIN_NAME.to_owned()),
+                Query::ServiceOnly,
+                Query::Data("only-item".to_owned()),
+            ]
+        );
+        assert_eq!(keychain.ui_modes.len(), 3);
+        assert!(keychain
+            .ui_modes
+            .iter()
+            .all(|mode| *mode == unsafe { super::kSecUseAuthenticationUIAllow }));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn missing_login_account_item_with_several_service_items_stays_ambiguous() {
+        use super::ClaudeCredentialAccess;
+        use fake_keychain::{FakeKeychain, Lookup, Query};
+
+        let mut keychain = FakeKeychain::new(
+            Lookup::Status(fake_keychain::ITEM_NOT_FOUND),
+            Lookup::Items(&["first-item", "second-item"]),
+        );
+
+        assert_eq!(
+            resolve_with_fake(
+                ClaudeCredentialAccess::BackgroundNoUI,
+                Some(TEST_LOGIN_NAME),
+                &mut keychain
+            ),
+            Err(ClaudeCredentialError::KeychainAmbiguous)
+        );
+        assert_eq!(
+            keychain.queries,
+            [
+                Query::Account(TEST_LOGIN_NAME.to_owned()),
+                Query::ServiceOnly
+            ]
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn several_login_account_items_stay_ambiguous_before_any_data_read() {
+        use super::ClaudeCredentialAccess;
+        use fake_keychain::{FakeKeychain, Lookup, Query};
+
+        let mut keychain = FakeKeychain::new(
+            Lookup::Items(&["first-item", "second-item"]),
+            Lookup::Items(&["only-item"]),
+        );
+
+        assert_eq!(
+            resolve_with_fake(
+                ClaudeCredentialAccess::BackgroundNoUI,
+                Some(TEST_LOGIN_NAME),
+                &mut keychain
+            ),
+            Err(ClaudeCredentialError::KeychainAmbiguous)
+        );
+        assert_eq!(
+            keychain.queries,
+            [Query::Account(TEST_LOGIN_NAME.to_owned())]
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn refused_login_account_lookup_issues_no_further_query() {
+        use super::ClaudeCredentialAccess;
+        use fake_keychain::{FakeKeychain, Lookup, Query};
+
+        for (access, status, expected) in [
+            (
+                ClaudeCredentialAccess::BackgroundNoUI,
+                -25_308,
+                ClaudeCredentialError::InteractionNotAllowed,
+            ),
+            (
+                ClaudeCredentialAccess::UserInitiatedAllowUI,
+                -128,
+                ClaudeCredentialError::Cancelled,
+            ),
+            (
+                ClaudeCredentialAccess::UserInitiatedAllowUI,
+                -50,
+                ClaudeCredentialError::KeychainAmbiguous,
+            ),
+        ] {
+            let mut keychain =
+                FakeKeychain::new(Lookup::Status(status), Lookup::Items(&["only-item"]));
+
+            assert_eq!(
+                resolve_with_fake(access, Some(TEST_LOGIN_NAME), &mut keychain),
+                Err(expected)
+            );
+            assert_eq!(
+                keychain.queries,
+                [Query::Account(TEST_LOGIN_NAME.to_owned())]
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn login_name_must_be_non_empty_utf8() {
+        use std::ffi::CStr;
+
+        let name =
+            |bytes: &[u8]| super::login_name_from_c_str(CStr::from_bytes_with_nul(bytes).unwrap());
+
+        assert_eq!(name(b"test-login-user\0"), Some(TEST_LOGIN_NAME.to_owned()));
+        assert_eq!(name(b"\0"), None);
+        assert_eq!(name(b"\xff\xfe\0"), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn current_login_name_comes_from_the_user_database() {
+        let name = super::current_login_name().expect("the test user has a passwd entry");
+
+        assert!(!name.is_empty());
     }
 
     #[cfg(target_os = "macos")]
