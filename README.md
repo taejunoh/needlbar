@@ -173,6 +173,25 @@ receives values only from interactive terminal Claude Code sessions. Native
 overnight, quota-reset, sustained unattended, and native macOS 14 acceptance
 remain unverified.
 
+### Claude Keychain selection and background prompts (v0.3.14 prepared)
+
+The prepared v0.3.14 changes make the direct Claude quota update read the
+`Claude Code-credentials` Keychain item saved under the macOS login name when
+more than one item with that name exists, instead of failing on every update.
+Without such an item, the only matching item is still used, and an item that
+cannot be identified still fails safely. Background quota updates no longer
+show a macOS Keychain access dialog, which used to stop Claude, Codex and
+Cursor quota updates until it was answered; when access would need
+confirmation, the Claude quota shows **Credential access unavailable** and
+**Sign in with Claude** asks for it as before. Nothing else visible changes.
+
+Credential renewal is not implemented, so expired Claude Code access still
+updates only after Claude Code runs in Terminal. Direct last-known values are
+kept only in memory, so they are lost when Needlbar restarts. The status-line
+bridge receives values only from interactive terminal Claude Code sessions.
+Native overnight, quota-reset, sustained unattended, and native macOS 14
+acceptance remain unverified.
+
 ### Usage and quota monitoring
 
 Needlbar presents locally aggregated token usage and estimated cost together with provider quota windows and reset times. Overview combines today’s tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status, and Settings. Provider views show today’s usage/cost, input/output/cache token detail, quota/reset information, freshness, and safe recovery states. Usage and quota are independent refresh streams; a failure in one does not replace a previously valid value with zero.
