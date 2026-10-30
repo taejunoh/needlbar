@@ -1,19 +1,21 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-10-23, updated after the v0.3.12 release (first written
-2026-10-20, updated after the v0.3.10 release on 2026-10-21, and for
-credential renewal increment 1, the v0.3.11 release and the status-line
-maximum age on 2026-10-22), with the open `otherFailure` item added on
-2026-10-29. This is a documentation handoff, not a new product approval or a
-claim of fresh installation/runtime verification.
+**Checkpoint:** 2026-10-29, updated after the v0.3.13 release (first written
+2026-10-20, updated after the v0.3.10 release on 2026-10-21, for credential
+renewal increment 1, the v0.3.11 release and the status-line maximum age on
+2026-10-22, and after the v0.3.12 release on 2026-10-23). This is a
+documentation handoff, not a new product approval or a claim of fresh
+installation/runtime verification.
 
 ## Repository state
 
 - Work from `main`. The 2026-10-20 handoff branch merged in PR #21, the
   v0.3.10 candidate in PR #22 and its public record in PR #23, the v0.3.11
   candidate in PR #30 and its public record in PR #31, the status-line maximum
-  age in PR #32, and the v0.3.12 candidate in PR #33 and its public record in
-  PR #34. Do not assume other old branches have been merged.
+  age in PR #32, the v0.3.12 candidate in PR #33 and its public record in
+  PR #34, the Claude failure diagnostics in PR #35, and the v0.3.13 candidate
+  in PR #36 and its public record in PR #37. Do not
+  assume other old branches have been merged.
 - For an isolated continuation, clone `main` into a new directory and
   initialize submodules as part of the clone:
 
@@ -24,10 +26,11 @@ claim of fresh installation/runtime verification.
 
   Keep the existing primary checkout (stale `main` at `7ab113d`, with local
   notes) untouched. Do not pull, reset, stash, or clean it as part of handoff.
-- The public release is v0.3.12, build 15, for macOS 14+ on Apple Silicon,
-  published 2026-10-23. Its release and distribution checks are evidence
+- The public release is v0.3.13, build 16, for macOS 14+ on Apple Silicon,
+  published 2026-10-29. Its release and distribution checks are evidence
   recorded in `docs/STATUS.md`; they do not establish what is installed or
-  running later.
+  running later. The Homebrew Cask (`taejunoh/homebrew-tap` commit `8ebb2a9`)
+  points at v0.3.13.
 - Treat prior local runtime receipts in STATUS as private machine history.
   They are not part of this handoff and must not be copied into public docs.
 
@@ -90,6 +93,21 @@ alerts never read status-line data, and the cache file is not touched. The
 amendments. Direct last-known values are still lost on restart, and credential
 renewal is not implemented.
 
+## What v0.3.13 adds
+
+v0.3.13 adds diagnostics only (PR #35; user decisions 2026-10-29); nothing
+visible changes. The local `ClaudeQuotaFailureDiagnostic` event now carries
+`code=`, the allowlisted Claude quota error code of the same attempt, and the
+failures that were all logged as `otherFailure` are split into
+`credentialStoreAmbiguous`, `credentialFormatUnrecognized`,
+`usageEndpointServerError` and `usageResponseUnrecognized`. `otherFailure`
+remains for an unreadable fallback file, transport failures and timeouts, an
+unreadable body, HTTP 429 and other unexpected statuses, and an internal
+bridge failure. The entry stays in the macOS unified log on this Mac and
+carries no message, URL, header, body, token, path or HTTP status. Messages,
+presentation, credential precedence, network requests and the C interface are
+unchanged, and credential renewal is not implemented.
+
 ## Current bounded follow-up
 
 The `rg` fail-closed follow-up (PR #21), the `RefreshCoordinatorTests` lost
@@ -99,26 +117,29 @@ in-process status-line runner tests) and the status-line signal restore fix
 (PR #27: `SignalForwarder` keeps whole `sigaction` records, so a saved
 `SIG_IGN` no longer ends the restore early) are complete; PRs #24, #25 and
 #27 shipped in v0.3.11. The status-line maximum age (PR #32) is complete and
-shipped in v0.3.12.
+shipped in v0.3.12. The Claude failure diagnostics (PR #35) are complete and
+shipped in v0.3.13.
 
 Known open items:
 
-- Direct Claude quota retrieval on the maintainer's machine has failed on
-  every attempt with origin `otherFailure` since at least 2026-10-28
-  (installed v0.3.12; Settings shows "Could not update quota"). It continued
-  after Claude Code's saved access was refreshed, so it is not local expiry.
-  The cause is pending the diagnostic in PR #35 (branch
-  `codex/claude-failure-code-diagnostic`, user decisions 2026-10-29, dated
-  amendment in the 2026-09-16 failure-origin design). It adds the allowlisted
-  Claude quota error code to the `ClaudeQuotaFailureDiagnostic` line, and it
-  splits `otherFailure` into `credentialStoreAmbiguous`,
-  `credentialFormatUnrecognized`, `usageEndpointServerError` and
-  `usageResponseUnrecognized`. It must be merged, released (planned v0.3.13)
-  and installed before a field line can name the failing stage. With it, the
-  "Could not update quota" cases separate as follows: the Keychain lookup,
-  the Keychain credential format, the usage response, HTTP 5xx, or
+- Direct Claude quota retrieval on the maintainer's machine failed on every
+  attempt with origin `otherFailure` from at least 2026-10-28 on installed
+  v0.3.12 (Settings shows "Could not update quota"). It continued after Claude
+  Code's saved access was refreshed, so it is not local expiry. The
+  diagnostic shipped in v0.3.13 (PR #35; dated amendment in the 2026-09-16
+  failure-origin design) now names the failing stage in the log line: the
+  Keychain lookup (`credentialStoreAmbiguous`), the Keychain credential format
+  (`credentialFormatUnrecognized`), the usage response
+  (`usageResponseUnrecognized`), HTTP 5xx (`usageEndpointServerError`), or
   `otherFailure` with `code=unknown` for an internal bridge failure. See
   STATUS 2026-10-29.
+  Observation (2026-10-29, not a root cause): on the maintainer's Mac the
+  installed v0.3.13 logged `claudeQuotaFailure origin=credentialStoreAmbiguous
+  code=schemaChanged` on its first refreshes. That origin means the Keychain
+  lookup for `Claude Code-credentials` returned zero or several items, a
+  result of an unexpected type, or errSecParam. The cause is not yet
+  narrowed, and no Keychain item was inspected. Any next step needs the user's
+  agreement; do not inspect credentials as part of it.
 - Direct Claude quota retrieval on the maintainer's machine failed for over
   a day with origin `keychainCredentialExpired` while the display fell back to
   status-line values; it recovered on 2026-10-21 after Claude Code was used
@@ -169,7 +190,7 @@ Useful verified source locations:
 - The compact Claude quota overview released in v0.3.6 is existing behavior.
   The later refinement is only to name the most-constrained window explicitly
   and retain the other windows in details; it is not part of v0.3.9,
-  v0.3.10, v0.3.11 or v0.3.12. Use
+  v0.3.10, v0.3.11, v0.3.12 or v0.3.13. Use
   `docs/superpowers/specs/2026-10-07-claude-refresh-reliability-design.md`
   and `docs/superpowers/plans/2026-09-29-claude-compact-presentation.md` before
   touching it.
