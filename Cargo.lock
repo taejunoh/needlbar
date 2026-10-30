@@ -887,6 +887,7 @@ dependencies = [
  "chrono",
  "core-foundation",
  "core-foundation-sys",
+ "libc",
  "reqwest",
  "security-framework",
  "security-framework-sys",

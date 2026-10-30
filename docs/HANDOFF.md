@@ -3,9 +3,10 @@
 **Checkpoint:** 2026-10-29, updated after the v0.3.13 release (first written
 2026-10-20, updated after the v0.3.10 release on 2026-10-21, for credential
 renewal increment 1, the v0.3.11 release and the status-line maximum age on
-2026-10-22, and after the v0.3.12 release on 2026-10-23). This is a
-documentation handoff, not a new product approval or a claim of fresh
-installation/runtime verification.
+2026-10-22, after the v0.3.12 release on 2026-10-23, and on 2026-10-30 for
+the unreleased Claude Keychain account match and background no-UI fix).
+This is a documentation handoff, not a new product approval or a claim of
+fresh installation/runtime verification.
 
 ## Repository state
 
@@ -140,6 +141,29 @@ Known open items:
   result of an unexpected type, or errSecParam. The cause is not yet
   narrowed, and no Keychain item was inspected. Any next step needs the user's
   agreement; do not inspect credentials as part of it.
+  Update (2026-10-30): the user looked in Keychain Access and saw two
+  generic-password items whose service is exactly `Claude Code-credentials`,
+  one with account `unknown`; the other's account was not visible. Items with
+  a `-<suffix>` service name do not match the exact service. The approved
+  product fix is implemented on branch `codex/claude-keychain-account-match`,
+  not merged or released: the lookup first narrows the exact-service query to
+  the current macOS login user's account (name from the local user database),
+  and only when that finds nothing applies the unchanged service-only
+  single-match rule. It still fails closed on ambiguity and never broadens
+  the query. That the second item's account is the login name is an
+  assumption; the field effect needs a release and an install. See STATUS
+  2026-10-30 and the dated amendment in §3.4 of
+  `docs/superpowers/specs/2026-08-25-provider-managed-browser-login-design.md`.
+  Field incident (2026-10-30): after the user deleted the `unknown` item, a
+  background refresh displayed a Keychain access dialog and blocked the
+  Keychain call, holding up Codex and Cursor quota too. Query UI keys cover
+  only Data Protection items, not Claude Code's legacy login-keychain item.
+  The approved fix is on the same branch: background reads disable the
+  process-wide legacy-keychain interaction setting and restore the previous
+  value, user-initiated reads never change it, and one lock serializes both.
+  Both fixes are on that branch only, not merged or released, and the
+  account match must not ship without the no-UI fix. See the
+  background Keychain UI amendment at the end of §3.3 of the same design.
 - Direct Claude quota retrieval on the maintainer's machine failed for over
   a day with origin `keychainCredentialExpired` while the display fell back to
   status-line values; it recovered on 2026-10-21 after Claude Code was used
@@ -180,6 +204,7 @@ Useful verified source locations:
 - `Sources/Needlbar/Diagnostics/ClaudeQuotaFailureDiagnosticsReporter.swift`
 - `Sources/NeedlbarCore/Diagnostics/ClaudeQuotaCompletionDiagnostics.swift`
 - `Sources/NeedlbarCore/Models/ClaudeQuotaFailureReason.swift`
+- `crates/needlbar-quota/src/providers/claude_credentials.rs`
 - `Sources/NeedlbarCore/Widget/WidgetProjectionMapper.swift`
 - `Sources/NeedlbarWidgetSupport/WidgetProjection.swift`
 - `WidgetExtension/NeedlbarOverviewWidget.swift`

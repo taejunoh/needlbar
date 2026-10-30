@@ -70,6 +70,16 @@ Status: Approach and written specification approved on 2026-09-16.
 > credential precedence, network behavior, request count, and the event's
 > subsystem and category are unchanged.
 
+> **Amendment — 2026-10-30:** The Keychain lookup behind
+> `credentialStoreAmbiguous` now first narrows the exact-service query to the
+> current macOS login user's account, and uses the unchanged service-only
+> single-match rule only when that finds nothing. See the 2026-10-30
+> amendment to §3.4 of
+> `docs/superpowers/specs/2026-08-25-provider-managed-browser-login-design.md`.
+> The origin, its code `schemaChanged` and its meaning are unchanged: either
+> query returned several matches or an empty list, a result had an
+> unexpected type, or the Keychain answered errSecParam.
+
 ## Objective
 
 Identify the failing stage of the installed app's ordinary Claude quota refresh.
@@ -113,7 +123,8 @@ last-error variable. Allowed origins are:
 - keychainCredentialExpired
 - fileCredentialExpired
 - credentialAccessDenied
-- credentialStoreAmbiguous *(added 2026-10-29)*
+- credentialStoreAmbiguous *(added 2026-10-29; lookup narrowed to the login
+  user's account first on 2026-10-30, see the amendment above)*
 - credentialFormatUnrecognized *(added 2026-10-29)*
 - usageEndpointUnauthorized (HTTP 401)
 - usageEndpointForbidden (HTTP 403)
