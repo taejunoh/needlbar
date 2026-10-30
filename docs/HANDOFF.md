@@ -109,6 +109,13 @@ carries no message, URL, header, body, token, path or HTTP status. Messages,
 presentation, credential precedence, network requests and the C interface are
 unchanged, and credential renewal is not implemented.
 
+## CI runners
+
+CI and release workflows run on `macos-15` (Xcode 16.2 still pinned) because
+GitHub retires `macos-14` on 2026-11-02 (PR #40). The v0.3.14 tagged rerun
+still uses the tag's `macos-14` workflow. See the 2026-10-30 entry in
+`docs/STATUS.md`.
+
 ## Current bounded follow-up
 
 The `rg` fail-closed follow-up (PR #21), the `RefreshCoordinatorTests` lost
