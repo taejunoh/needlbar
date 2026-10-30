@@ -219,47 +219,83 @@ impl ClaudeCredentialResolver for MacClaudeCredentialResolver {
 }
 
 #[cfg(target_os = "macos")]
+const CLAUDE_KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
+
+#[cfg(target_os = "macos")]
 fn resolve_keychain(
     access: ClaudeCredentialAccess,
 ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
-    use std::ptr;
+    use security_framework_sys::keychain_item::SecItemCopyMatching;
 
-    use core_foundation::base::TCFType;
+    resolve_keychain_with(access, &mut |query, result| unsafe {
+        SecItemCopyMatching(query, result)
+    })
+}
+
+/// The single Security.framework call the Keychain resolver makes, injected so
+/// query wiring can be tested against a fake store. Production passes
+/// `SecItemCopyMatching`; tests never reach the real Keychain.
+#[cfg(target_os = "macos")]
+type KeychainCopyMatching<'a> = dyn FnMut(
+        core_foundation_sys::dictionary::CFDictionaryRef,
+        &mut core_foundation_sys::base::CFTypeRef,
+    ) -> core_foundation_sys::base::OSStatus
+    + 'a;
+
+#[cfg(target_os = "macos")]
+fn resolve_keychain_with(
+    access: ClaudeCredentialAccess,
+    copy_matching: &mut KeychainCopyMatching<'_>,
+) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
     use core_foundation::string::CFString;
-    use core_foundation_sys::base::CFTypeRef;
-    use security_framework_sys::{base::errSecSuccess, keychain_item::SecItemCopyMatching};
 
-    let service = CFString::new("Claude Code-credentials");
-    let ui_mode = unsafe {
-        match access {
-            ClaudeCredentialAccess::BackgroundNoUI => kSecUseAuthenticationUIFail,
-            ClaudeCredentialAccess::UserInitiatedAllowUI => kSecUseAuthenticationUIAllow,
-        }
-    };
+    let service = CFString::new(CLAUDE_KEYCHAIN_SERVICE);
+    let ui_mode = keychain_ui_mode(access);
     let query = build_keychain_query(&service, ui_mode, KeychainQueryPhase::PersistentReference);
-    let mut result: CFTypeRef = ptr::null();
-    let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut result) };
-    if status != errSecSuccess {
-        return Err(map_security_error(
-            security_framework::base::Error::from_code(status),
-        ));
-    }
-
-    let persistent_ref = single_persistent_ref(result)?;
+    let persistent_ref =
+        copy_matching_result(copy_matching, &query).and_then(single_persistent_ref)?;
     let query = build_keychain_query(&service, ui_mode, KeychainQueryPhase::Data(&persistent_ref));
-    let mut result: CFTypeRef = ptr::null();
-    let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut result) };
-    if status != errSecSuccess {
-        return Err(map_security_error(
-            security_framework::base::Error::from_code(status),
-        ));
-    }
-
-    let payload = single_keychain_data(result)?;
+    let payload = copy_matching_result(copy_matching, &query).and_then(single_keychain_data)?;
     parse_credential_payload(&payload).map_err(|error| match error {
         ClaudeCredentialError::Expired => ClaudeCredentialError::KeychainExpired,
         other => other,
     })
+}
+
+/// Background access must never display Keychain UI; only the user-initiated
+/// path may allow it.
+#[cfg(target_os = "macos")]
+fn keychain_ui_mode(access: ClaudeCredentialAccess) -> core_foundation_sys::string::CFStringRef {
+    unsafe {
+        match access {
+            ClaudeCredentialAccess::BackgroundNoUI => kSecUseAuthenticationUIFail,
+            ClaudeCredentialAccess::UserInitiatedAllowUI => kSecUseAuthenticationUIAllow,
+        }
+    }
+}
+
+/// Runs one query and returns the owned (create-rule) result, mapping a
+/// non-success status exactly as the resolver always has.
+#[cfg(target_os = "macos")]
+fn copy_matching_result(
+    copy_matching: &mut KeychainCopyMatching<'_>,
+    query: &core_foundation::dictionary::CFMutableDictionary<
+        *const std::ffi::c_void,
+        *const std::ffi::c_void,
+    >,
+) -> Result<core_foundation_sys::base::CFTypeRef, ClaudeCredentialError> {
+    use core_foundation::base::TCFType;
+    use core_foundation_sys::dictionary::CFDictionaryRef;
+    use security_framework_sys::base::errSecSuccess;
+
+    let mut result: core_foundation_sys::base::CFTypeRef = std::ptr::null();
+    let status = copy_matching(query.as_concrete_TypeRef() as CFDictionaryRef, &mut result);
+    if status != errSecSuccess {
+        return Err(map_security_error(
+            security_framework::base::Error::from_code(status),
+        ));
+    }
+    Ok(result)
 }
 
 #[cfg(target_os = "macos")]
@@ -596,6 +632,234 @@ mod tests {
             resolve_owned(wrong_type.into_CFType()),
             Err(ClaudeCredentialError::KeychainAmbiguous)
         );
+    }
+
+    /// In-memory stand-in for `SecItemCopyMatching`. It answers the
+    /// reference-only queries from configured outcomes, answers the data query
+    /// with a synthetic payload whose access token names the chosen item, and
+    /// records every query. No real Keychain is ever consulted.
+    #[cfg(target_os = "macos")]
+    mod fake_keychain {
+        use core_foundation::{
+            array::{CFArray, CFArrayRef},
+            base::{CFType, TCFType},
+            data::CFData,
+            dictionary::CFDictionary,
+            string::{CFString, CFStringRef},
+        };
+        use core_foundation_sys::{
+            base::{CFTypeRef, OSStatus},
+            dictionary::CFDictionaryRef,
+        };
+        use security_framework_sys::item::{
+            kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecMatchLimit,
+            kSecMatchLimitAll, kSecReturnData, kSecReturnPersistentRef, kSecUseAuthenticationUI,
+        };
+        use std::{ffi::c_void, mem};
+
+        pub(super) const ITEM_NOT_FOUND: OSStatus = -25_300;
+
+        #[derive(Clone, Copy)]
+        pub(super) enum Lookup {
+            Status(OSStatus),
+            Items(&'static [&'static str]),
+        }
+
+        #[derive(Debug, PartialEq, Eq)]
+        pub(super) enum Query {
+            Account(String),
+            ServiceOnly,
+            Data(String),
+        }
+
+        pub(super) struct FakeKeychain {
+            account: Lookup,
+            service_only: Lookup,
+            pub(super) queries: Vec<Query>,
+            pub(super) ui_modes: Vec<CFStringRef>,
+        }
+
+        impl FakeKeychain {
+            pub(super) fn new(account: Lookup, service_only: Lookup) -> Self {
+                Self {
+                    account,
+                    service_only,
+                    queries: Vec::new(),
+                    ui_modes: Vec::new(),
+                }
+            }
+
+            pub(super) fn copy_matching(
+                &mut self,
+                query: CFDictionaryRef,
+                result: &mut CFTypeRef,
+            ) -> OSStatus {
+                let query = unsafe {
+                    CFDictionary::<*const c_void, *const c_void>::wrap_under_get_rule(query)
+                };
+                let value = |key: CFStringRef| query.find(key as *const c_void).map(|value| *value);
+                unsafe {
+                    assert_eq!(
+                        value(kSecClass),
+                        Some(kSecClassGenericPassword as *const c_void)
+                    );
+                    let service = value(kSecAttrService).expect("every query names the service");
+                    assert_eq!(string(service), "Claude Code-credentials");
+                    self.ui_modes.push(
+                        value(kSecUseAuthenticationUI).expect("every query sets a UI mode")
+                            as CFStringRef,
+                    );
+
+                    if value(kSecReturnData).is_some() {
+                        assert!(value(kSecReturnPersistentRef).is_none());
+                        assert!(value(kSecMatchLimit).is_none());
+                        assert!(value(kSecAttrAccount).is_none());
+                        let item_list = value(super::super::K_SEC_MATCH_ITEM_LIST)
+                            .expect("the data query names one item");
+                        let item_list =
+                            CFArray::<CFType>::wrap_under_get_rule(item_list as CFArrayRef);
+                        assert_eq!(item_list.len(), 1);
+                        let item = item_list
+                            .get(0)
+                            .and_then(|item| item.downcast::<CFData>())
+                            .expect("the item list holds a persistent reference");
+                        let item = String::from_utf8(item.bytes().to_vec()).unwrap();
+                        let payload = format!(r#"{{"claudeAiOauth":{{"accessToken":"{item}"}}}}"#);
+                        self.queries.push(Query::Data(item));
+                        *result = hand_over(CFData::from_buffer(payload.as_bytes()).into_CFType());
+                        return 0;
+                    }
+
+                    assert!(value(kSecReturnPersistentRef).is_some());
+                    assert_eq!(
+                        value(kSecMatchLimit),
+                        Some(kSecMatchLimitAll as *const c_void)
+                    );
+                    let lookup = match value(kSecAttrAccount) {
+                        Some(account) => {
+                            self.queries.push(Query::Account(string(account)));
+                            self.account
+                        }
+                        None => {
+                            self.queries.push(Query::ServiceOnly);
+                            self.service_only
+                        }
+                    };
+                    match lookup {
+                        Lookup::Status(status) => status,
+                        Lookup::Items(items) => {
+                            let refs: Vec<CFData> = items
+                                .iter()
+                                .map(|item| CFData::from_buffer(item.as_bytes()))
+                                .collect();
+                            *result = hand_over(CFArray::from_CFTypes(&refs).into_CFType());
+                            0
+                        }
+                    }
+                }
+            }
+        }
+
+        /// `value` must be a live CFString owned by the query being inspected.
+        fn string(value: *const c_void) -> String {
+            unsafe { CFString::wrap_under_get_rule(value as CFStringRef) }.to_string()
+        }
+
+        /// Returns a +1 reference, as `SecItemCopyMatching` does.
+        fn hand_over(value: CFType) -> CFTypeRef {
+            let raw = value.as_CFTypeRef();
+            mem::forget(value);
+            raw
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn resolve_with_fake(
+        access: super::ClaudeCredentialAccess,
+        keychain: &mut fake_keychain::FakeKeychain,
+    ) -> Result<String, ClaudeCredentialError> {
+        super::resolve_keychain_with(access, &mut |query, result| {
+            keychain.copy_matching(query, result)
+        })
+        .map(|secret| secret.access_token().to_owned())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn background_access_never_allows_keychain_ui() {
+        use super::ClaudeCredentialAccess;
+
+        unsafe {
+            assert_eq!(
+                super::keychain_ui_mode(ClaudeCredentialAccess::BackgroundNoUI),
+                super::kSecUseAuthenticationUIFail
+            );
+            assert_eq!(
+                super::keychain_ui_mode(ClaudeCredentialAccess::UserInitiatedAllowUI),
+                super::kSecUseAuthenticationUIAllow
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn single_service_item_is_read_once_by_persistent_reference() {
+        use super::ClaudeCredentialAccess;
+        use fake_keychain::{FakeKeychain, Lookup, Query};
+
+        let mut keychain = FakeKeychain::new(
+            Lookup::Status(fake_keychain::ITEM_NOT_FOUND),
+            Lookup::Items(&["only-item"]),
+        );
+
+        assert_eq!(
+            resolve_with_fake(ClaudeCredentialAccess::BackgroundNoUI, &mut keychain),
+            Ok("only-item".to_owned())
+        );
+        assert_eq!(
+            keychain.queries,
+            [Query::ServiceOnly, Query::Data("only-item".to_owned())]
+        );
+        assert!(keychain
+            .ui_modes
+            .iter()
+            .all(|mode| *mode == unsafe { super::kSecUseAuthenticationUIFail }));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn several_service_items_fail_closed_before_any_data_read() {
+        use super::ClaudeCredentialAccess;
+        use fake_keychain::{FakeKeychain, Lookup, Query};
+
+        let mut keychain = FakeKeychain::new(
+            Lookup::Status(fake_keychain::ITEM_NOT_FOUND),
+            Lookup::Items(&["first-item", "second-item"]),
+        );
+
+        assert_eq!(
+            resolve_with_fake(ClaudeCredentialAccess::UserInitiatedAllowUI, &mut keychain),
+            Err(ClaudeCredentialError::KeychainAmbiguous)
+        );
+        assert_eq!(keychain.queries, [Query::ServiceOnly]);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn missing_service_item_is_not_found_and_reads_no_data() {
+        use super::ClaudeCredentialAccess;
+        use fake_keychain::{FakeKeychain, Lookup, Query};
+
+        let mut keychain = FakeKeychain::new(
+            Lookup::Status(fake_keychain::ITEM_NOT_FOUND),
+            Lookup::Status(fake_keychain::ITEM_NOT_FOUND),
+        );
+
+        assert_eq!(
+            resolve_with_fake(ClaudeCredentialAccess::BackgroundNoUI, &mut keychain),
+            Err(ClaudeCredentialError::NotFound)
+        );
+        assert_eq!(keychain.queries, [Query::ServiceOnly]);
     }
 
     #[cfg(target_os = "macos")]
