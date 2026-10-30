@@ -116,7 +116,7 @@ const char *needlbar_codex_quota_snapshot_json(void);
 ```
 
 - `needlbar-quota` introduces `ClaudeCredentialAccess::BackgroundNoUI` and `ClaudeCredentialAccess::UserInitiatedAllowUI`.
-- The existing all-provider quota call always uses `BackgroundNoUI` and must never display Keychain UI.
+- The existing all-provider quota call always uses `BackgroundNoUI` and must never display Keychain UI. *(Amended 2026-10-30: background reads now also disable legacy-keychain user interaction; see the background Keychain UI amendment at the end of this section.)*
 - The new Claude-only call always uses `UserInitiatedAllowUI`, returns the normal versioned envelope containing only Claude data/errors, and is called only after the explicit Claude login child exits successfully.
 - The new Codex-only call is always non-interactive, returns only Codex data/errors, and prevents Codex verification from calling Claude or Cursor adapters.
 - The macOS resolver queries only the exact `Claude Code-credentials` generic-password item through Security.framework. It does not run `/usr/bin/security`, enumerate Keychain contents, infer accounts, or search browser data. *(Amended 2026-10-30: the lookup first narrows that exact-service query to the current macOS login user's account, a name taken from the local user database; see the amendment in §3.4.)*
@@ -125,6 +125,62 @@ const char *needlbar_codex_quota_snapshot_json(void);
 - `needlbar-source-sync` continues to own only Cursor usage hydration.
 
 The Rust layer never launches interactive login, owns a provider callback, or stores a new Claude/Codex credential. The new export grants only user-initiated credential-read interaction for Claude quota verification.
+
+> **Amendment — 2026-10-30 (background Keychain UI):** Approved by the user
+> on 2026-10-30. After the user removed the second exact-service item, a
+> background refresh on the maintainer's Mac displayed a macOS Keychain
+> access dialog and blocked the Keychain call, which also held up Codex and
+> Cursor quota in the same run. That broke the `BackgroundNoUI` rule above.
+> The cause is the scope of the query keys: SecItem.h states that
+> `kSecUseNoAuthenticationUI` applies on macOS only to items in the Data
+> Protection keychain and that legacy keychain items will still activate UI
+> if needed. Its successor, `kSecUseAuthenticationUI` with
+> `kSecUseAuthenticationUIFail`, did not prevent the dialog either. Claude
+> Code saves its item with the `security` tool into the legacy login
+> keychain. Prompts for legacy items follow the process-wide setting of
+> `SecKeychainSetUserInteractionAllowed`.
+>
+> Mechanism:
+>
+> - For `BackgroundNoUI` the resolver reads the current setting, disables
+>   interaction, runs the reference lookup and the data read, and then
+>   restores the value it read. A drop guard does the restore, so it also
+>   runs after an error and while unwinding. If the setting cannot be read
+>   or disabled, no query runs and the attempt fails as interaction not
+>   allowed.
+> - `UserInitiatedAllowUI` never reads or changes the setting.
+> - One process-wide lock serializes the whole sequence in both modes, so a
+>   background sequence never overlaps a user-initiated one and two
+>   sequences never restore out of order.
+> - `kSecUseAuthenticationUIFail` stays on background queries for Data
+>   Protection items.
+> - errSecInteractionNotAllowed and errSecInteractionRequired map to
+>   interaction not allowed, and errSecAuthFailed to permission denied.
+>   None of them becomes not found, so none falls back to the service-only
+>   query or to the credentials file. All surface as `permissionDenied`
+>   with origin `credentialAccessDenied` ("Credential access unavailable").
+>   Recovery is unchanged: Sign in with Claude classifies `permissionDenied`
+>   as Keychain permission required and runs the user-initiated read, which
+>   may prompt.
+>
+> Which status macOS 27 returns when a legacy item would need UI has not
+> been observed. Apple's archived documentation names
+> errSecInteractionNotAllowed.
+>
+> Accepted risks:
+>
+> - Both functions have been deprecated since macOS 10.10 but are still
+>   exported by the macOS 27 SDK. If Apple removes them, the build fails to
+>   link, so the guard cannot disappear silently.
+> - The setting is process-wide. Needlbar's own code has no other Keychain
+>   use: Sources, WidgetExtension and the crates contain no SecItem,
+>   SecKeychain, kSec or LAContext use outside this resolver, and the widget
+>   runs in its own process. Other Security.framework use in the process is
+>   limited to the TLS stack's certificate trust evaluation; if it ran during
+>   the short background window and needed UI, it would fail instead of
+>   prompting.
+> - A background sequence waits while a user-initiated sequence holds the
+>   lock, including while a prompt is open.
 
 ### 3.4 Claude Keychain compatibility gate
 
