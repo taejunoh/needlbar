@@ -96,16 +96,17 @@ The validation job:
 
 1. Runs on the approved `macos-14` baseline and selects the Swift 6-capable Xcode toolchain already used by CI.
 
-> **Amendment — 2026-10-30:** Approved by the user on 2026-10-30. GitHub
-> retires the `macos-14` runner image on 2026-11-02 and fails `macos-14` jobs
-> in scheduled brownouts on 2026-10-30, 2026-10-31 and 2026-11-01 (14:00 to
-> 24:00 UTC), which cancelled the v0.3.14 tagged release run twice. The CI
-> and release baseline moves to `macos-15`. The explicit
-> `sudo xcode-select --switch /Applications/Xcode_16.2.app` step stays,
-> because the `macos-15` image defaults to a newer Xcode and ships 16.2
-> alongside it. The app's minimum macOS stays 14; only the build host
-> changes. CI smoke now runs on a macOS 15 host, so macOS 14 runtime
-> coverage depends on native macOS 14 acceptance.
+   > **Amendment — 2026-10-30:** Requested by the user on 2026-10-30. GitHub
+   > retires the `macos-14` runner image on 2026-11-02 and fails `macos-14` jobs
+   > in scheduled brownouts on 2026-10-30, 2026-10-31 and 2026-11-01 (14:00 to
+   > 24:00 UTC), which cancelled the v0.3.14 tagged release run twice. The CI
+   > and release baseline moves to `macos-15`. The explicit
+   > `sudo xcode-select --switch /Applications/Xcode_16.2.app` step stays,
+   > because the `macos-15` image defaults to a newer Xcode and ships 16.2
+   > alongside it. The app's minimum macOS stays 14; only the build host
+   > changes. CI smoke now runs on a macOS 15 host, so macOS 14 runtime
+   > coverage depends on native macOS 14 acceptance.
+
 2. Checks out the repository with recursive submodules.
 3. Runs `make test`, `make package`, and `make smoke`.
 4. Uses the protected GitHub `release` Environment to obtain signing/notarization inputs.

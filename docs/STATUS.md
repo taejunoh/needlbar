@@ -7,7 +7,7 @@ brownouts fail `macos-14` jobs from 14:00 to 24:00 UTC on 2026-10-30,
 2026-10-31 and 2026-11-01. The brownouts cancelled attempts 1 and 2 of the
 v0.3.14 tagged release run on 2026-10-30.
 
-Decision (user, 2026-10-30): `ci.yml` and `release.yml` now use
+Decision (2026-10-30, migration requested by the user): `ci.yml` and `release.yml` now use
 `runs-on: macos-15`. The explicit `sudo xcode-select --switch
 /Applications/Xcode_16.2.app` step stays: the `macos-15` arm64 image
 (20261028.0489.1) ships Xcode 16.2 (build 16C5032a) but defaults to 16.4.
@@ -23,9 +23,10 @@ The app's minimum macOS stays 14; only the build host changes.
   and a note in its plan. The earlier `macos-14` entries in this file are
   historical.
 
-Verification: `grep -rn macos-14 .github` returns nothing; see the pull
-request for the test results. This change is on branch
-`claude/macos15-runners` and is not merged.
+Verification: `grep -rn macos-14 .github` returns nothing, and `make test`,
+`scripts/tests/notarize-app-tests.sh` and
+`scripts/tests/acceptance-build-isolation-tests.sh` pass locally. The change
+lands through PR #40; its CI run is the first on `macos-15`.
 
 ## 2026-10-30 Background Claude Keychain reads cannot show UI
 
