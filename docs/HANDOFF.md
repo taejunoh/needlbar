@@ -1,10 +1,11 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-10-29, updated after the v0.3.13 release (first written
+**Checkpoint:** 2026-11-02, updated after the v0.3.14 release (first written
 2026-10-20, updated after the v0.3.10 release on 2026-10-21, for credential
 renewal increment 1, the v0.3.11 release and the status-line maximum age on
-2026-10-22, after the v0.3.12 release on 2026-10-23, and on 2026-10-30 for
-the unreleased Claude Keychain account match and background no-UI fix).
+2026-10-22, after the v0.3.12 release on 2026-10-23, after the v0.3.13
+release on 2026-10-29, and on 2026-10-30 for the Claude Keychain account
+match and background no-UI fix that v0.3.14 shipped).
 This is a documentation handoff, not a new product approval or a claim of
 fresh installation/runtime verification.
 
@@ -14,9 +15,11 @@ fresh installation/runtime verification.
   v0.3.10 candidate in PR #22 and its public record in PR #23, the v0.3.11
   candidate in PR #30 and its public record in PR #31, the status-line maximum
   age in PR #32, the v0.3.12 candidate in PR #33 and its public record in
-  PR #34, the Claude failure diagnostics in PR #35, and the v0.3.13 candidate
-  in PR #36 and its public record in PR #37. Do not
-  assume other old branches have been merged.
+  PR #34, the Claude failure diagnostics in PR #35, the v0.3.13 candidate
+  in PR #36 and its public record in PR #37, the Claude Keychain account match
+  and background no-UI fix in PR #38, the v0.3.14 candidate in PR #39, the
+  `macos-15` runner move in PR #40, and the v0.3.14 public record in PR #41.
+  Do not assume other old branches have been merged.
 - For an isolated continuation, clone `main` into a new directory and
   initialize submodules as part of the clone:
 
@@ -27,11 +30,11 @@ fresh installation/runtime verification.
 
   Keep the existing primary checkout (stale `main` at `7ab113d`, with local
   notes) untouched. Do not pull, reset, stash, or clean it as part of handoff.
-- The public release is v0.3.13, build 16, for macOS 14+ on Apple Silicon,
-  published 2026-10-29. Its release and distribution checks are evidence
+- The public release is v0.3.14, build 17, for macOS 14+ on Apple Silicon,
+  published 2026-11-02. Its release and distribution checks are evidence
   recorded in `docs/STATUS.md`; they do not establish what is installed or
-  running later. The Homebrew Cask (`taejunoh/homebrew-tap` commit `8ebb2a9`)
-  points at v0.3.13.
+  running later. The Homebrew Cask (`taejunoh/homebrew-tap` commit `4b0773d`)
+  points at v0.3.14.
 - Treat prior local runtime receipts in STATUS as private machine history.
   They are not part of this handoff and must not be copied into public docs.
 
@@ -109,12 +112,28 @@ carries no message, URL, header, body, token, path or HTTP status. Messages,
 presentation, credential precedence, network requests and the C interface are
 unchanged, and credential renewal is not implemented.
 
+## What v0.3.14 adds
+
+v0.3.14 fixes two ways the direct Claude quota update could stop working when
+Claude Code saves its access in the login keychain (PR #38; user decisions
+2026-10-30). When more than one `Claude Code-credentials` item exists, the
+lookup first narrows to the item saved under the macOS login name and only
+then applies the unchanged single-match rule; it still fails closed on
+ambiguity. Background quota updates no longer show a macOS Keychain access
+dialog: they disable the process-wide legacy-keychain interaction setting
+around the read and restore it, user-initiated reads never change it, and the
+Claude quota shows **Credential access unavailable** when access would need
+confirmation. Nothing else visible changes, and credential renewal is not
+implemented. Whether the dialog stays suppressed in the field is only what the
+local observation in STATUS 2026-11-02 shows; no Keychain item was inspected.
+
 ## CI runners
 
 CI and release workflows run on `macos-15` (Xcode 16.2 still pinned) because
-GitHub retires `macos-14` on 2026-11-02 (PR #40). The v0.3.14 tagged rerun
-still uses the tag's `macos-14` workflow. See the 2026-10-30 entry in
-`docs/STATUS.md`.
+GitHub retires `macos-14` on 2026-11-02 (PR #40). v0.3.14 was released from
+the tag's `macos-14` workflow, so the next release is the first notarized
+build from `macos-15` and needs a fresh tagless validation run first. See
+the 2026-10-30 entry in `docs/STATUS.md`.
 
 ## Current bounded follow-up
 
@@ -126,7 +145,8 @@ in-process status-line runner tests) and the status-line signal restore fix
 `SIG_IGN` no longer ends the restore early) are complete; PRs #24, #25 and
 #27 shipped in v0.3.11. The status-line maximum age (PR #32) is complete and
 shipped in v0.3.12. The Claude failure diagnostics (PR #35) are complete and
-shipped in v0.3.13.
+shipped in v0.3.13. The Claude Keychain account match and background no-UI
+fix (PR #38) are complete and shipped in v0.3.14.
 
 Known open items:
 
@@ -152,24 +172,24 @@ Known open items:
   generic-password items whose service is exactly `Claude Code-credentials`,
   one with account `unknown`; the other's account was not visible. Items with
   a `-<suffix>` service name do not match the exact service. The approved
-  product fix is implemented on branch `codex/claude-keychain-account-match`,
-  not merged or released: the lookup first narrows the exact-service query to
+  product fix was implemented in PR #38 and shipped in v0.3.14: the lookup first narrows the exact-service query to
   the current macOS login user's account (name from the local user database),
   and only when that finds nothing applies the unchanged service-only
   single-match rule. It still fails closed on ambiguity and never broadens
   the query. That the second item's account is the login name is an
-  assumption; the field effect needs a release and an install. See STATUS
+  assumption; the field effect needs the v0.3.14 install and is recorded in
+  STATUS 2026-11-02 only as the local observation shown there. See STATUS
   2026-10-30 and the dated amendment in §3.4 of
   `docs/superpowers/specs/2026-08-25-provider-managed-browser-login-design.md`.
   Field incident (2026-10-30): after the user deleted the `unknown` item, a
   background refresh displayed a Keychain access dialog and blocked the
   Keychain call, holding up Codex and Cursor quota too. Query UI keys cover
   only Data Protection items, not Claude Code's legacy login-keychain item.
-  The approved fix is on the same branch: background reads disable the
+  The approved fix, in the same PR: background reads disable the
   process-wide legacy-keychain interaction setting and restore the previous
   value, user-initiated reads never change it, and one lock serializes both.
-  Both fixes are on that branch only, not merged or released, and the
-  account match must not ship without the no-UI fix. See the
+  Both fixes shipped together in v0.3.14 (the account match must not ship
+  without the no-UI fix). See the
   background Keychain UI amendment at the end of §3.3 of the same design.
 - Direct Claude quota retrieval on the maintainer's machine failed for over
   a day with origin `keychainCredentialExpired` while the display fell back to
@@ -222,7 +242,7 @@ Useful verified source locations:
 - The compact Claude quota overview released in v0.3.6 is existing behavior.
   The later refinement is only to name the most-constrained window explicitly
   and retain the other windows in details; it is not part of v0.3.9,
-  v0.3.10, v0.3.11, v0.3.12 or v0.3.13. Use
+  v0.3.10, v0.3.11, v0.3.12, v0.3.13 or v0.3.14. Use
   `docs/superpowers/specs/2026-10-07-claude-refresh-reliability-design.md`
   and `docs/superpowers/plans/2026-09-29-claude-compact-presentation.md` before
   touching it.
