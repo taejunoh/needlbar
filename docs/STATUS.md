@@ -1,5 +1,65 @@
 # Needlbar Development Status
 
+## 2026-11-02 v0.3.14 public artifact verified
+
+The independent tagged Release run `41080111388` (push of tag `v0.3.14`)
+completed with both validate and publish SUCCESS at frozen release G
+`59be993ef3240632887f9ed341519a1c6d036d59`, the PR #39 merge commit. It
+succeeded on attempt 4. Attempts 1 to 3 were cancelled by the `macos-14`
+runner brownout. Attempt 4 ran on `macos-14` on 2026-11-02, the announced
+retirement date, and got a runner; that is recorded as observed and says
+nothing about GitHub's retirement timing.
+Tagless run `41077881862` previously completed validation SUCCESS with publish
+SKIPPED. Annotated tag object
+`776bcc4d6f616f75dbfd9dc30cb632e17af37785` peels exactly to G and must never
+be retargeted.
+
+Public release: https://github.com/taejunoh/needlbar/releases/tag/v0.3.14
+Release ID: `431636180`; published `2026-11-02T15:34:41Z`.
+The release has exactly two assets. Public ZIP asset ID: `702228999`; checksum sidecar asset ID: `702228993`.
+Public ZIP (7058759 bytes) SHA-256:
+`801f00ca5984be261ee0142b18c22a7e81d2b1f4bbab0794b4f5d91d888ec100`.
+Public checksum sidecar (91 bytes) SHA-256:
+`36d6b5550ddc69d589847b9f1577268b32e49dcffa2b88af00f52d562ca8d4ed`.
+
+A fresh download of the public ZIP and its checksum sidecar passed the
+checksum check. Extracted host and widget report 0.3.14 / 17,
+with minimum macOS 14.0, and are arm64 executables. Strict deep Developer ID
+signature (`codesign --verify --deep --strict`), team `3BMF4LM6TM`, hardened
+runtime, stapled ticket, and Gatekeeper acceptance passed; Gatekeeper
+assessed the source as Notarized Developer ID. The app-bundle smoke ran
+against the public bundle in an isolated temporary root; smoke passed.
+Public verification does not establish native macOS 14, overnight/reset,
+authentication renewal or sustained unattended recovery acceptance.
+Credential renewal is still not implemented.
+
+v0.3.14 ships the Claude Keychain account match (the lookup prefers the item
+saved under the macOS login name) and the background no-UI rule (background
+reads disable the legacy-keychain interaction setting around the read) from
+PR #38. The 2026-10-30 entries below were written before the release and
+are not edited. The `macos-15` runner move (PR #40) merged after the tagged
+commit and is not part of this release.
+
+Homebrew: `taejunoh/homebrew-tap` commit `4b0773d` ("needlbar 0.3.14")
+updates the Cask to the measured public ZIP SHA-256 above. `brew style`,
+strict online `brew audit --cask` and `brew fetch --cask --force` passed, and
+the fetched cache file's SHA-256 matched.
+
+Local-only receipt: the maintainer's installed v0.3.13 was backed up and the
+canonical app was replaced with v0.3.14. Three refreshes (startup and two
+scheduled, over about 12 minutes) each finished within a second, and no
+SecurityAgent process or log entry appeared. Each reported
+`keychainCredentialExpired`, so the background read returned the item without
+UI and the stored credential had expired; the renewal gap below applies.
+This item's access list did not need a prompt, so the receipt does not
+exercise the prompting case. Whether `SecKeychainSetUserInteractionAllowed(false)`
+suppresses a dialog on macOS 27, and which status it returns, stays unverified.
+
+Still open: credential renewal is not implemented; native macOS 14 acceptance
+remains unverified.
+
+Next: review/test/merge these public documentation contracts.
+
 ## 2026-10-30 CI and release runners moved to macos-15
 
 GitHub retires the `macos-14` runner image on 2026-11-02, and scheduled
