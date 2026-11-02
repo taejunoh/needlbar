@@ -219,7 +219,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             let actions = SettingsActions(
                 loginCoordinator: loginCoordinator,
-                snapshotExportController: snapshotExportController
+                snapshotExportController: snapshotExportController,
+                claudeKeychainAccessOperation: {
+                    _ = await refreshCoordinator.requestClaudeKeychainAccess()
+                }
             )
             self.refreshCoordinator = refreshCoordinator
             self.quotaRecoveryLifecycle = QuotaRecoveryLifecycleController(
@@ -247,6 +250,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 onProviderLoginRequested: { provider in
                     _ = loginCoordinator.connect(provider)
+                },
+                onClaudeKeychainAccessRequested: {
+                    actions.requestClaudeKeychainAccess()
                 },
                 onAnalyticsRequested: { [weak analyticsWindowController] in
                     analyticsWindowController?.showAnalytics()

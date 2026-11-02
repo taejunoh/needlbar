@@ -313,7 +313,13 @@ public struct SettingsView: View {
                 }
             }
             Spacer()
-            Button("View Claude usage") { claudeUsageState.openUsage(openClaudeUsage) }
+            VStack(alignment: .trailing, spacing: 6) {
+                Button("View Claude usage") { claudeUsageState.openUsage(openClaudeUsage) }
+                if case let .allowClaudeKeychainAccess(title)? = claudeQuotaPresentation.value.keychainAccessAction {
+                    Button(title) { actions.requestClaudeKeychainAccess() }
+                        .disabled(actions.isRequestingClaudeKeychainAccess)
+                }
+            }
         }
         .frame(minHeight: 54)
     }
