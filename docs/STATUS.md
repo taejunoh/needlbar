@@ -45,11 +45,15 @@ updates the Cask to the measured public ZIP SHA-256 above. `brew style`,
 strict online `brew audit --cask` and `brew fetch --cask --force` passed, and
 the fetched cache file's SHA-256 matched.
 
-Local install: the maintainer's installed v0.3.13 was backed up and the
-canonical app was replaced with v0.3.14. Background refresh observation: TBD.
-Public verification and the install do not establish that the Keychain
-dialog stays suppressed; whether `SecKeychainSetUserInteractionAllowed(false)`
-suppresses the dialog is only what the local observation shows.
+Local-only receipt: the maintainer's installed v0.3.13 was backed up and the
+canonical app was replaced with v0.3.14. Three refreshes (startup and two
+scheduled, about 13 minutes in all) each finished within a second, and no
+SecurityAgent process or log entry appeared. Each reported
+`keychainCredentialExpired`, so the background read returned the item without
+UI and the stored credential had expired; the renewal gap below applies.
+This item's access list did not need a prompt, so the receipt does not
+exercise the prompting case. Whether `SecKeychainSetUserInteractionAllowed(false)`
+suppresses a dialog on macOS 27, and which status it returns, stays unverified.
 
 Still open: credential renewal is not implemented; native macOS 14 acceptance
 remains unverified.
