@@ -200,7 +200,7 @@ The prepared v0.3.15 changes add one explicit action, **Allow Keychain access**,
 beside **View Claude usage** in the dashboard and the Settings Connection row
 while the Claude quota shows **Credential access unavailable**. One click asks
 macOS once for the `Claude Code-credentials` item, which may show the macOS
-Keychain dialog. Nothing else ever does:
+Keychain dialog; a line beside the button suggests choosing Always Allow. Nothing else ever does:
 timers, startup, wake and background updates still cannot show that dialog.
 Codex and Cursor quota keep updating while the dialog is open. Allowing access
 shows the Claude quota; cancelling or denying keeps the same state and action,

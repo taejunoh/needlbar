@@ -356,6 +356,13 @@ public struct SystemDashboardPopoverView: View {
                 .buttonStyle(.borderless)
                 .font(.caption)
                 .accessibilityLabel(title)
+            if let detail = provider.keychainAccessDetailText {
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel(detail)
+            }
         }
     }
 

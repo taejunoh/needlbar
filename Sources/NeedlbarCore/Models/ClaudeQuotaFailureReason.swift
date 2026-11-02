@@ -19,6 +19,10 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
     /// that offers it. Every other reason offers the user no such action.
     public var keychainAccessActionTitle: String? { localizedKeychainAccessActionTitle(bundle: .main) }
 
+    /// One line shown beside the Keychain access button, for the one reason
+    /// that offers it, and never otherwise.
+    public var keychainAccessActionDetail: String? { localizedKeychainAccessActionDetail(bundle: .main) }
+
     func localizedDisplayText(bundle: Bundle) -> String {
         switch self {
         case .quotaAccessUnavailable: "Quota access unavailable"
@@ -59,6 +63,21 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
                 defaultValue: "Allow Keychain access",
                 bundle: bundle,
                 comment: "Button shown with the Claude quota reason 'Credential access unavailable'. Clicking it asks macOS once for access to the Keychain item the Claude Code command-line tool saved, which may show a macOS dialog. It only ever runs after this click. Keep 'Keychain', the macOS name."
+            )
+        case .quotaAccessUnavailable, .connectionUnavailable, .temporarilyLimited,
+             .couldNotUpdateQuota, .claudeCodeAccessExpired:
+            nil
+        }
+    }
+
+    func localizedKeychainAccessActionDetail(bundle: Bundle) -> String? {
+        switch self {
+        case .credentialAccessUnavailable:
+            String(
+                localized: "claudeQuota.action.allowKeychainAccess.detail",
+                defaultValue: "Choose Always Allow so background updates can keep reading it.",
+                bundle: bundle,
+                comment: "One line of guidance shown beside the 'Allow Keychain access' button, only while that button is shown. It explains the macOS dialog's 'Always Allow' choice: choosing it lets background updates keep reading the Keychain item. Keep 'Always Allow', the macOS button name."
             )
         case .quotaAccessUnavailable, .connectionUnavailable, .temporarilyLimited,
              .couldNotUpdateQuota, .claudeCodeAccessExpired:

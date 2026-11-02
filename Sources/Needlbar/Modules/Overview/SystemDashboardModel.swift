@@ -144,6 +144,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let statusText: String?
         public let action: ProviderAuthenticationAction?
         public let keychainAccessAction: ProviderAuthenticationAction?
+        public let keychainAccessDetailText: String?
         public let apiBillingAction: ProviderAPIBillingAction?
         public let fable: FableQuotaDetail?
         public let quotaIsLastKnown: Bool
@@ -242,6 +243,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                 statusText: statusText,
                 action: popover.authenticationAction,
                 keychainAccessAction: popover.keychainAccessAction,
+                keychainAccessDetailText: popover.keychainAccessDetailText,
                 apiBillingAction: preference.apiBillingLinkVisible ? ProviderAPIBillingAction(provider: provider) : nil,
                 fable: Self.fableDetail(
                     provider: provider, metric: preference.metric, snapshot: providerSnapshot,

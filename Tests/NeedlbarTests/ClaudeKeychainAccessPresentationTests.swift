@@ -16,6 +16,7 @@ struct ClaudeKeychainAccessPresentationTests {
     nonisolated static let now = Date()
     nonisolated static let title = "Allow Keychain access"
     nonisolated static let reasonText = "Credential access unavailable"
+    nonisolated static let detail = "Choose Always Allow so background updates can keep reading it."
     nonisolated static let allReasons: [ClaudeQuotaFailureReason] = [
         .quotaAccessUnavailable, .credentialAccessUnavailable, .connectionUnavailable,
         .temporarilyLimited, .couldNotUpdateQuota, .claudeCodeAccessExpired,
@@ -35,6 +36,47 @@ struct ClaudeKeychainAccessPresentationTests {
             let healthy = try Self.claude(reason: nil, statusLine: statusLine)
             #expect(ProviderPopoverPresentation(snapshot: healthy, now: Self.now).keychainAccessAction == nil)
             #expect(Self.dashboardRow(healthy).keychainAccessAction == nil)
+        }
+    }
+
+    /// The guidance explains the dialog's Always Allow choice. It exists exactly
+    /// when the button does, so it can never describe a dialog nobody can open.
+    @Test func theGuidanceExistsExactlyWhenTheButtonDoes() throws {
+        for statusLine in [nil, Self.recentStatusLine()] {
+            for reason in Self.allReasons {
+                let expected: String? = reason == .credentialAccessUnavailable ? Self.detail : nil
+                let snapshot = try Self.claude(reason: reason, statusLine: statusLine)
+                let popover = ProviderPopoverPresentation(snapshot: snapshot, now: Self.now)
+                #expect(popover.keychainAccessDetailText == expected, "\(reason)")
+                #expect(Self.dashboardRow(snapshot).keychainAccessDetailText == expected, "\(reason)")
+                #expect((popover.keychainAccessDetailText != nil) == (popover.keychainAccessAction != nil), "\(reason)")
+            }
+            let healthy = try Self.claude(reason: nil, statusLine: statusLine)
+            #expect(ProviderPopoverPresentation(snapshot: healthy, now: Self.now).keychainAccessDetailText == nil)
+            #expect(Self.dashboardRow(healthy).keychainAccessDetailText == nil)
+        }
+        for provider in [ProviderID.codex, .cursor] {
+            let snapshot = ProviderSnapshot(
+                provider: provider, usage: nil, quota: nil, usageStatus: .fresh,
+                quotaStatus: .error(message: "denied", lastSuccessfulAt: nil), updatedAt: Self.now,
+                claudeQuotaFailureReason: .credentialAccessUnavailable)
+            #expect(ProviderPopoverPresentation(snapshot: snapshot, now: Self.now).keychainAccessDetailText == nil)
+        }
+    }
+
+    @Test func everySurfaceRendersTheGuidanceOnceWithTheButtonAndNeverWithout() throws {
+        for surface in Surface.allCases {
+            for statusLine in [nil, Self.recentStatusLine()] {
+                let offered = try surface.render(Self.claude(reason: .credentialAccessUnavailable, statusLine: statusLine))
+                #expect(offered.count(containing: Self.detail) == 1, "\(surface) \(offered.items)")
+
+                for reason in Self.allReasons where reason != .credentialAccessUnavailable {
+                    let rendered = try surface.render(Self.claude(reason: reason, statusLine: statusLine))
+                    #expect(rendered.count(containing: Self.detail) == 0, "\(surface) \(reason) showed the guidance")
+                }
+                let healthy = try surface.render(Self.claude(reason: nil, statusLine: statusLine))
+                #expect(healthy.count(containing: Self.detail) == 0, "\(surface) healthy showed the guidance")
+            }
         }
     }
 

@@ -318,6 +318,15 @@ public struct SettingsView: View {
                 if case let .allowClaudeKeychainAccess(title)? = claudeQuotaPresentation.value.keychainAccessAction {
                     Button(title) { actions.requestClaudeKeychainAccess() }
                         .disabled(actions.isRequestingClaudeKeychainAccess)
+                    if let detail = claudeQuotaPresentation.value.keychainAccessDetailText {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 220, alignment: .trailing)
+                            .accessibilityLabel(detail)
+                    }
                 }
             }
         }
