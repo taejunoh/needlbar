@@ -47,7 +47,7 @@ the fetched cache file's SHA-256 matched.
 
 Local-only receipt: the maintainer's installed v0.3.13 was backed up and the
 canonical app was replaced with v0.3.14. Three refreshes (startup and two
-scheduled, about 13 minutes in all) each finished within a second, and no
+scheduled, over about 12 minutes) each finished within a second, and no
 SecurityAgent process or log entry appeared. Each reported
 `keychainCredentialExpired`, so the background read returned the item without
 UI and the stored credential had expired; the renewal gap below applies.
