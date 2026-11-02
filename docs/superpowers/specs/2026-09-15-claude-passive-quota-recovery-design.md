@@ -21,6 +21,42 @@
 > the user to open Terminal or run a command, which narrowly relaxes the
 > earlier "no Terminal mention" guidance.
 
+> **Amendment — 2026-11-02:** Approved by the user. v0.3.14 made background
+> reads unable to show the Keychain dialog, so `Credential access unavailable`
+> became a state the app could not leave: its documents named `Sign in with
+> Claude` as the way out, but this design had already removed that button. This
+> deliberately amends "Do not replace it with instructions to ... approve
+> Keychain" and "Provide one optional `View Claude usage` action", for that one
+> reason only. The expired-access reason still offers the user no action.
+>
+> - **Action.** `Allow Keychain access` beside `View Claude usage`, for Claude
+>   only and only while the current failure reason is `Credential access
+>   unavailable`: dashboard row, Settings Connection row, and the provider
+>   popover view where it is hosted.
+> - **Read.** One click runs exactly one UI-allowed read through the existing
+>   `UserInitiatedAllowUI` path. Nothing automatic runs it: not timers, startup,
+>   wake, connectivity, popover opening, Retry or background refresh. The
+>   background no-UI rule is unchanged. No login starts and no credential is
+>   renewed.
+> - **Outcomes.** Success clears the failure and shows quota. Cancel or deny
+>   keeps the reason and the action, with no retry. An expired credential after
+>   a successful read shows the existing expired reason, with no action. While
+>   a read is in flight further clicks do nothing, so dialogs never stack.
+> - **Placement.** While status-line windows are recent the reason moves once to
+>   the direct-only Fable line, as the expired reason does, so the action is
+>   not left without its reason. The dashboard's standard row has no Fable line,
+>   so there the button's title stands alone, and its compact row keeps the
+>   reason under `Quota details`.
+> - **Single flight.** "Keep the existing ... single-flight behavior" is amended
+>   for this read only. A dialog stays open for as long as the user leaves it, so
+>   this read does not take the coordinator's quota slot; otherwise no provider
+>   could refresh until the dialog was answered. Background refreshes keep
+>   running beside it, and the Claude part of any attempt that overlapped the
+>   read is dropped, so an older answer cannot overwrite the user's.
+> - **Limits.** Not exercised against a real dialog. Which macOS choice keeps
+>   background reads working is not established here, so the reason can return
+>   at the next background refresh, and the action with it.
+
 ## Decision
 
 The user approved replacing repeated re-login guidance with last-known quota,

@@ -119,6 +119,8 @@ unchanged:
 
 - Claude's existing action title/help/accessibility identity remains `Sign in
   with Claude`.
+  *(Note 2026-11-02: this action was removed by the 2026-09-15 passive recovery
+  design.)*
 - Codex's existing action title/help/accessibility identity remains `Sign in
   with ChatGPT`.
 - The existing Claude and Codex callbacks and provider-managed browser-login
@@ -212,7 +214,9 @@ update focused tests to cover:
    Claude/Codex action titles remain `Sign in with Claude` and `Sign in with
    ChatGPT`, their provider-specific accessibility/help values remain exact,
    and each existing callback fires exactly once. Cursor Spending remains
-   `Open Cursor Spending`.
+   `Open Cursor Spending`. *(Note 2026-11-02: Claude's `Sign in with Claude`
+   action was removed by the 2026-09-15 passive recovery design; only the Codex
+   title remains current.)*
 7. Fable semantics, CPU graph/value alignment, value truncation/help,
    accessibility completeness, Settings, Analytics…, outside-click dismissal,
    stable anchor, and in-place resize regressions remain green.

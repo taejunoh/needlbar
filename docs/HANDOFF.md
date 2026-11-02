@@ -1,6 +1,7 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-11-02, updated after the v0.3.14 release (first written
+**Checkpoint:** 2026-11-02, updated after the v0.3.14 release and for the Claude
+Keychain access action, which is prepared and not released (first written
 2026-10-20, updated after the v0.3.10 release on 2026-10-21, for credential
 renewal increment 1, the v0.3.11 release and the status-line maximum age on
 2026-10-22, after the v0.3.12 release on 2026-10-23, after the v0.3.13
@@ -19,7 +20,8 @@ fresh installation/runtime verification.
   in PR #36 and its public record in PR #37, the Claude Keychain account match
   and background no-UI fix in PR #38, the v0.3.14 candidate in PR #39, the
   `macos-15` runner move in PR #40, and the v0.3.14 public record in PR #41.
-  Do not assume other old branches have been merged.
+  The Claude Keychain access action is in PR #42. Do not assume other old
+  branches have been merged.
 - For an isolated continuation, clone `main` into a new directory and
   initialize submodules as part of the clone:
 
@@ -123,9 +125,28 @@ ambiguity. Background quota updates no longer show a macOS Keychain access
 dialog: they disable the process-wide legacy-keychain interaction setting
 around the read and restore it, user-initiated reads never change it, and the
 Claude quota shows **Credential access unavailable** when access would need
-confirmation. Nothing else visible changes, and credential renewal is not
+confirmation. v0.3.14 has no in-app way to give that confirmation; its release
+notes first named a button that no longer existed and were corrected on
+2026-11-02. Nothing else visible changes, and credential renewal is not
 implemented. Whether the dialog stays suppressed in the field is only what the
 local observation in STATUS 2026-11-02 shows; no Keychain item was inspected.
+
+## Claude Keychain access action (prepared for v0.3.15, not released)
+
+In PR #42. While the reason is **Credential access unavailable**, **Allow Keychain
+access** appears beside **View Claude usage**. On the default dashboard row (compact,
+remaining metric) the visible label is **Usage** (**View Claude usage** is help and
+accessibility text), the button sits on its own line, and without recent status-line
+values the reason is inside the collapsed **Quota details**. A line beside the button
+suggests Always Allow; that choice is not verified to keep background reads working,
+so the state can return at the next background read, including when the dashboard is
+reopened. One click runs one `UserInitiatedAllowUI`
+read, and nothing automatic does; the background no-UI rule is unchanged. A dialog
+left open no longer stops Codex and Cursor: that read has its own in-flight flag
+instead of the coordinator's quota slot, and a background read only tries the
+Keychain lock. See STATUS 2026-11-02 and the same-dated amendments in the
+2026-09-15 passive recovery and 2026-09-16 failure-origin designs. It has not
+run against a real Keychain dialog.
 
 ## CI runners
 

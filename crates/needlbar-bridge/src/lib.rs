@@ -411,7 +411,13 @@ fn quota_operation_envelope(
 ) -> Envelope<quota::QuotaPayload> {
     let envelope =
         catch_unwind(operation).unwrap_or_else(|_| Envelope::failure(bridge_internal_error()));
-    if partial {
+    // An all-provider refresh that skipped Claude says nothing about Claude,
+    // so its last outcome is preserved like any other omitted provider's.
+    let claude_skipped = envelope
+        .data
+        .as_ref()
+        .is_some_and(|payload| !payload.claude_attempted);
+    if partial || claude_skipped {
         diagnostics::record_partial_quota(&envelope, Some(attempted_at));
     } else {
         diagnostics::record_quota(&envelope, Some(attempted_at));
@@ -1088,6 +1094,70 @@ mod tests {
         assert_eq!(claude["quotaStatus"], "available");
         assert_eq!(claude["lastQuotaAt"], success.generated_at);
         assert!(claude.get("claudeQuotaFailureOrigin").is_none());
+    }
+
+    #[test]
+    fn skipped_claude_read_preserves_claude_failure_diagnostics() {
+        let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let claude_failure = Envelope {
+            schema_version: SCHEMA_VERSION,
+            ok: true,
+            generated_at: "2026-11-02T12:00:00Z".to_owned(),
+            data: Some(quota::QuotaPayload {
+                providers: Vec::new(),
+                claude_failure_origin: Some(
+                    needlbar_quota::ClaudeQuotaFailureOrigin::KeychainCredentialExpired,
+                ),
+                claude_attempted: true,
+            }),
+            errors: vec![BridgeError {
+                provider: Some("claude".to_owned()),
+                code: "authenticationExpired".to_owned(),
+                message: "safe".to_owned(),
+            }],
+        };
+        diagnostics::record_quota(&claude_failure, Some("2026-11-02T11:59:59Z"));
+
+        // The all-provider refresh that ran while a Keychain access dialog was
+        // open: Codex and Cursor reported, Claude was skipped.
+        let envelope = quota_operation_envelope(
+            || {
+                Envelope::success(quota::QuotaPayload {
+                    providers: vec![
+                        needlbar_quota::ProviderQuotaSnapshot {
+                            provider: needlbar_quota::ProviderId::Codex,
+                            windows: Vec::new(),
+                        },
+                        needlbar_quota::ProviderQuotaSnapshot {
+                            provider: needlbar_quota::ProviderId::Cursor,
+                            windows: Vec::new(),
+                        },
+                    ],
+                    claude_failure_origin: None,
+                    claude_attempted: false,
+                })
+            },
+            "2026-11-02T12:00:30Z",
+            false,
+        );
+        assert!(envelope.ok);
+
+        let json = serde_json::to_value(Envelope::success(
+            diagnostics::DiagnosticsSnapshot::from_recorded_outcomes(),
+        ))
+        .expect("diagnostics JSON");
+        let providers = &json["data"]["providers"];
+        assert_eq!(providers[0]["quotaStatus"], "requiresAuthentication");
+        assert_eq!(providers[0]["quotaErrorCode"], "authenticationExpired");
+        assert_eq!(
+            providers[0]["claudeQuotaFailureOrigin"],
+            "keychainCredentialExpired"
+        );
+        assert_eq!(providers[0]["lastAttemptAt"], "2026-11-02T11:59:59Z");
+        assert_eq!(providers[1]["quotaStatus"], "available");
+        assert_eq!(providers[2]["quotaStatus"], "available");
     }
 
     #[test]

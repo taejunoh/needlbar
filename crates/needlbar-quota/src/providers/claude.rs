@@ -276,6 +276,7 @@ fn credential_error_to_quota_error(error: ClaudeCredentialError) -> QuotaError {
         ClaudeCredentialError::KeychainAmbiguous => {
             schema_error(ClaudeQuotaFailureOrigin::CredentialStoreAmbiguous)
         }
+        ClaudeCredentialError::KeychainBusy => QuotaError::claude_credential_busy(),
     }
 }
 
@@ -704,6 +705,36 @@ mod tests {
             .unwrap();
 
         assert_eq!(error.code, QuotaErrorCode::RequiresAuthentication);
+    }
+
+    /// Cancelling or denying the Keychain dialog is one safe outcome, read as
+    /// "Credential access unavailable", never as a missing or expired login.
+    #[test]
+    fn a_cancelled_or_denied_dialog_reads_as_credential_access_denied() {
+        for error in [
+            ClaudeCredentialError::Cancelled,
+            ClaudeCredentialError::PermissionDenied,
+            ClaudeCredentialError::InteractionNotAllowed,
+        ] {
+            let quota_error = credential_error_to_quota_error(error);
+
+            assert_eq!(quota_error.code, QuotaErrorCode::PermissionDenied);
+            assert_eq!(
+                quota_error.claude_failure_origin(),
+                Some(ClaudeQuotaFailureOrigin::CredentialAccessDenied)
+            );
+            assert!(!quota_error.is_claude_credential_busy());
+        }
+    }
+
+    /// A busy read describes no attempt, so it carries no failure origin.
+    #[test]
+    fn a_busy_keychain_read_is_marked_and_has_no_failure_origin() {
+        let quota_error = credential_error_to_quota_error(ClaudeCredentialError::KeychainBusy);
+
+        assert!(quota_error.is_claude_credential_busy());
+        assert_eq!(quota_error.provider, Some(ProviderId::Claude));
+        assert_eq!(quota_error.claude_failure_origin(), None);
     }
 
     #[test]

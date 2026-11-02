@@ -919,6 +919,36 @@ struct MenuBarControllerTests {
         ])
     }
 
+    @Test func theKeychainAccessActionDismissesThePanelAndRequestsAccessOnce() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        let presenter = FakeMenuPanelPresenter()
+        var requests = 0
+        var logins = 0
+        var usageOpens = 0
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            panelPresenter: presenter,
+            onProviderLoginRequested: { _ in logins += 1 },
+            onClaudeKeychainAccessRequested: { requests += 1 },
+            openClaudeUsage: {
+                usageOpens += 1
+                return true
+            }
+        )
+        presenter.markShownForTesting()
+
+        let handled = controller.performPresentedAuthenticationAction(
+            .allowClaudeKeychainAccess(title: "Allow Keychain access"), for: .claude)
+
+        #expect(handled)
+        #expect(requests == 1)
+        #expect(presenter.dismissCount == 1)
+        #expect(logins == 0, "no login flow starts")
+        #expect(usageOpens == 0)
+    }
+
     @Test func retryLeavesThePanelShown() {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
         var retries = 0
@@ -984,6 +1014,7 @@ private func makeMenuBarController(
     onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
     onRetryRequested: @escaping @MainActor () -> Void = {},
     onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
+    onClaudeKeychainAccessRequested: @escaping @MainActor () -> Void = {},
     onSettingsRequested: @escaping @MainActor () -> Void = {},
     onAnalyticsRequested: @escaping @MainActor () -> Void = {},
     openCursorSpending: @escaping @MainActor () -> Void = {},
@@ -1014,6 +1045,7 @@ private func makeMenuBarController(
         onModuleActivated: onModuleActivated,
         onRetryRequested: onRetryRequested,
         onProviderLoginRequested: onProviderLoginRequested,
+        onClaudeKeychainAccessRequested: onClaudeKeychainAccessRequested,
         onSettingsRequested: onSettingsRequested,
         onAnalyticsRequested: onAnalyticsRequested,
         openCursorSpending: openCursorSpending,

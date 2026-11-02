@@ -5,6 +5,7 @@ public enum ProviderAuthenticationAction: Equatable, Sendable {
     case browserLogin(title: String)
     case openCursorSpending(title: String)
     case openClaudeUsage(title: String)
+    case allowClaudeKeychainAccess(title: String)
 }
 
 public struct ClaudePopoverQuotaDetail: Equatable, Sendable, Identifiable {
@@ -57,6 +58,12 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
     public let fableIsLastKnown: Bool
     public let fableLastCheckedText: String?
     public let hasRecentClaudeQuota: Bool
+    /// Shown beside `authenticationAction`, only for Claude and only while the
+    /// current failure reason is "Credential access unavailable".
+    public let keychainAccessAction: ProviderAuthenticationAction?
+    /// The guidance line shown with `keychainAccessAction`: present exactly when
+    /// that action is, never otherwise.
+    public let keychainAccessDetailText: String?
 
     public init(snapshot: ProviderSnapshot, now: Date = .now) {
         provider = snapshot.provider
@@ -107,11 +114,15 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
             quotaUnavailable = !hasRecentClaudeQuota && main.isEmpty && projectedFallback.isEmpty
             let reason = snapshot.claudeQuotaFailureReason
             quotaFailureReasonText = hasRecentClaudeQuota ? nil : reason?.displayText
-            // While status-line windows are recent, an expired Claude Code access
-            // is shown once, on the direct-only Fable line it keeps from updating.
-            fableFailureReasonText = hasRecentClaudeQuota && reason == .claudeCodeAccessExpired
+            // While status-line windows are recent, an expired Claude Code access or
+            // an unavailable credential is shown once, on the direct-only Fable
+            // line it keeps from updating. The latter's action needs its reason.
+            fableFailureReasonText = hasRecentClaudeQuota
+                && (reason == .claudeCodeAccessExpired || reason == .credentialAccessUnavailable)
                 ? reason?.displayText : nil
             quotaFailureDetailText = reason?.detailText
+            keychainAccessAction = reason?.keychainAccessActionTitle.map { .allowClaudeKeychainAccess(title: $0) }
+            keychainAccessDetailText = keychainAccessAction == nil ? nil : reason?.keychainAccessActionDetail
             if hasRecentClaudeQuota {
                 resolvedQuotaFreshness = .fresh
             } else if (!main.isEmpty || !projectedFallback.isEmpty), snapshot.quotaStatus == .fresh {
@@ -136,6 +147,8 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
             quotaFailureDetailText = nil
             fableFailureReasonText = nil
             quotaLastCheckedText = nil
+            keychainAccessAction = nil
+            keychainAccessDetailText = nil
         }
         quotaFreshness = resolvedQuotaFreshness
     }
@@ -270,6 +283,18 @@ public struct ProviderPopoverView: View {
                 Text("\(presentation.quotaObservationLabel) \(lastChecked)").font(.caption).foregroundStyle(.secondary)
             }
 
+            if let keychainAccessAction = presentation.keychainAccessAction {
+                Button(keychainAccessAction.title) {
+                    _ = onAuthenticationAction(keychainAccessAction)
+                }
+                if let detail = presentation.keychainAccessDetailText {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel(detail)
+                }
+            }
             if let authenticationAction = presentation.authenticationAction {
                 Button(authenticationAction.title) {
                     if case .openClaudeUsage = authenticationAction {
@@ -359,7 +384,8 @@ struct ClaudeQuotaReasonLines: View {
 private extension ProviderAuthenticationAction {
     var title: String {
         switch self {
-        case let .browserLogin(title), let .openCursorSpending(title), let .openClaudeUsage(title): title
+        case let .browserLogin(title), let .openCursorSpending(title), let .openClaudeUsage(title),
+             let .allowClaudeKeychainAccess(title): title
         }
     }
 }

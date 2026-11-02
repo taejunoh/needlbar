@@ -159,6 +159,8 @@ fn collection_from_results(
                 claude_attempted |= snapshot.provider == ProviderId::Claude;
                 providers.push(snapshot);
             }
+            // The read did not run, so there is no Claude outcome to report.
+            Err(error) if error.is_claude_credential_busy() => {}
             Err(error) => {
                 if error.provider == Some(ProviderId::Claude) {
                     claude_attempted = true;

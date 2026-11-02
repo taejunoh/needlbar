@@ -115,6 +115,8 @@ pub struct QuotaError {
     claude_failure_origin: Option<ClaudeQuotaFailureOrigin>,
     #[serde(skip)]
     usage_endpoint_status: Option<ClaudeUsageEndpointStatus>,
+    #[serde(skip)]
+    claude_credential_busy: bool,
 }
 
 impl QuotaError {
@@ -130,7 +132,25 @@ impl QuotaError {
             retry_after: None,
             claude_failure_origin: None,
             usage_endpoint_status: None,
+            claude_credential_busy: false,
         }
+    }
+
+    /// A background Claude read that did not run because a user-initiated
+    /// Keychain read holds the sequence lock. It describes no attempt, so
+    /// collectors drop it rather than report a Claude outcome.
+    pub const fn claude_credential_busy() -> Self {
+        let mut error = Self::new(
+            Some(ProviderId::Claude),
+            QuotaErrorCode::ProviderUnavailable,
+            "Claude credential access is already in progress.",
+        );
+        error.claude_credential_busy = true;
+        error
+    }
+
+    pub const fn is_claude_credential_busy(&self) -> bool {
+        self.claude_credential_busy
     }
 
     pub(crate) const fn with_retry_after(mut self, retry_after: Option<Duration>) -> Self {

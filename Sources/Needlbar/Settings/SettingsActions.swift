@@ -6,16 +6,23 @@ import NeedlbarCore
 public final class SettingsActions: ObservableObject {
     @Published public private(set) var loginStates: [ProviderID: ProviderLoginState]
     @Published public private(set) var exportState: SnapshotExportState
+    @Published public private(set) var isRequestingClaudeKeychainAccess = false
 
     private let loginCoordinator: ProviderLoginCoordinator?
     private let snapshotExportController: SnapshotExportController?
+    private let claudeKeychainAccessOperation: (@Sendable () async -> Void)?
     private var cancellables: Set<AnyCancellable> = []
 
-    public init(loginCoordinator: ProviderLoginCoordinator, snapshotExportController: SnapshotExportController) {
+    public init(
+        loginCoordinator: ProviderLoginCoordinator,
+        snapshotExportController: SnapshotExportController,
+        claudeKeychainAccessOperation: (@Sendable () async -> Void)? = nil
+    ) {
         loginStates = Dictionary(uniqueKeysWithValues: ProviderID.allCases.map { ($0, loginCoordinator.state(for: $0)) })
         exportState = snapshotExportController.state
         self.loginCoordinator = loginCoordinator
         self.snapshotExportController = snapshotExportController
+        self.claudeKeychainAccessOperation = claudeKeychainAccessOperation
 
         loginCoordinator.objectWillChange
             .sink { [weak self, weak loginCoordinator] _ in
@@ -34,11 +41,12 @@ public final class SettingsActions: ObservableObject {
             .store(in: &cancellables)
     }
 
-    public init() {
+    public init(claudeKeychainAccessOperation: (@Sendable () async -> Void)? = nil) {
         loginStates = [:]
         exportState = .idle
         loginCoordinator = nil
         snapshotExportController = nil
+        self.claudeKeychainAccessOperation = claudeKeychainAccessOperation
     }
 
     public func loginState(for provider: ProviderID) -> ProviderLoginState {
@@ -53,6 +61,18 @@ public final class SettingsActions: ObservableObject {
         guard let loginCoordinator else { return }
         _ = loginCoordinator.connect(provider)
         replaceLoginStates(from: loginCoordinator)
+    }
+
+    /// One explicit click on "Allow Keychain access". Clicks on any surface
+    /// while one is running do nothing, and the operation's own result reaches
+    /// every surface through the Claude quota failure reason.
+    public func requestClaudeKeychainAccess() {
+        guard let claudeKeychainAccessOperation, !isRequestingClaudeKeychainAccess else { return }
+        isRequestingClaudeKeychainAccess = true
+        Task {
+            await claudeKeychainAccessOperation()
+            isRequestingClaudeKeychainAccess = false
+        }
     }
 
     public func exportSnapshot() {
