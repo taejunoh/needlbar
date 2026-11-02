@@ -15,6 +15,10 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
     /// A second explanatory line, shown only in the provider popover and Settings.
     public var detailText: String? { localizedDetailText(bundle: .main) }
 
+    /// The title of the explicit Keychain access action, for the one reason
+    /// that offers it. Every other reason offers the user no such action.
+    public var keychainAccessActionTitle: String? { localizedKeychainAccessActionTitle(bundle: .main) }
+
     func localizedDisplayText(bundle: Bundle) -> String {
         switch self {
         case .quotaAccessUnavailable: "Quota access unavailable"
@@ -43,6 +47,21 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
             )
         case .quotaAccessUnavailable, .credentialAccessUnavailable, .connectionUnavailable,
              .temporarilyLimited, .couldNotUpdateQuota:
+            nil
+        }
+    }
+
+    func localizedKeychainAccessActionTitle(bundle: Bundle) -> String? {
+        switch self {
+        case .credentialAccessUnavailable:
+            String(
+                localized: "claudeQuota.action.allowKeychainAccess",
+                defaultValue: "Allow Keychain access",
+                bundle: bundle,
+                comment: "Button shown with the Claude quota reason 'Credential access unavailable'. Clicking it asks macOS once for access to the Keychain item the Claude Code command-line tool saved, which may show a macOS dialog. It only ever runs after this click. Keep 'Keychain', the macOS name."
+            )
+        case .quotaAccessUnavailable, .connectionUnavailable, .temporarilyLimited,
+             .couldNotUpdateQuota, .claudeCodeAccessExpired:
             nil
         }
     }
