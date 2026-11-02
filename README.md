@@ -182,8 +182,10 @@ Without such an item, the only matching item is still used, and an item that
 cannot be identified still fails safely. Background quota updates no longer
 show a macOS Keychain access dialog, which used to stop Claude, Codex and
 Cursor quota updates until it was answered; when access would need
-confirmation, the Claude quota shows **Credential access unavailable** and
-**Sign in with Claude** asks for it as before. Nothing else visible changes.
+confirmation, the Claude quota shows **Credential access unavailable**. v0.3.14
+has no in-app action to give that confirmation, so that state stays until access
+is restored outside the app; Codex and Cursor quota updates are not affected.
+Nothing else visible changes.
 
 Credential renewal is not implemented, so expired Claude Code access still
 updates only after Claude Code runs in Terminal. Direct last-known values are
@@ -191,6 +193,22 @@ kept only in memory, so they are lost when Needlbar restarts. The status-line
 bridge receives values only from interactive terminal Claude Code sessions.
 Native overnight, quota-reset, sustained unattended, and native macOS 14
 acceptance remain unverified.
+
+### Claude Keychain access action (v0.3.15 prepared)
+
+The prepared v0.3.15 changes add one explicit action, **Allow Keychain access**,
+beside **View Claude usage** in the dashboard and the Settings Connection row
+while the Claude quota shows **Credential access unavailable**. One click asks
+macOS once for the `Claude Code-credentials` item, which may show the macOS
+Keychain dialog. Nothing else ever does:
+timers, startup, wake and background updates still cannot show that dialog.
+Codex and Cursor quota keep updating while the dialog is open. Allowing access
+shows the Claude quota; cancelling or denying keeps the same state and action,
+with no retry. Whether later background updates can read the item depends on
+what macOS keeps from that dialog, so the state can return, and the action with
+it. Expired Claude Code access offers no action, and credential renewal is
+not implemented. This has not been tried against a real Keychain dialog, and it
+is not part of any public release yet.
 
 ### Usage and quota monitoring
 

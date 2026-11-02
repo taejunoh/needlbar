@@ -80,6 +80,21 @@ Status: Approach and written specification approved on 2026-09-16.
 > query returned several matches or an empty list, a result had an
 > unexpected type, or the Keychain answered errSecParam.
 
+> **Amendment — 2026-11-02:** Approved by the user, with the explicit `Allow
+> Keychain access` action (see the amendment of the same date in
+> `2026-09-15-claude-passive-quota-recovery-design.md`). That action's read is a
+> Claude operation: it reads and reports this record once, and a cancelled or
+> denied dialog keeps origin `credentialAccessDenied`. The closed origin list is
+> unchanged. A background read that finds that read holding the Keychain lock
+> did not run, so it is not an attempt: it has no origin, it sets no
+> `lastAttemptAt`, and the record's Claude entry is preserved like any omitted
+> provider's. "Single-flight" above no longer covers every Claude attempt,
+> because this read runs beside background refreshes, and the coordinator
+> drops the Claude part of any attempt that overlapped it, with no diagnostics
+> read. A background attempt that had already passed the Keychain step can still
+> write the record just before the read's completion reads it; that could only
+> change which code-based reason shows, until the next refresh.
+
 ## Objective
 
 Identify the failing stage of the installed app's ordinary Claude quota refresh.

@@ -10,6 +10,15 @@
 > interactive Claude verification. Background interaction remains forbidden and
 > provider-owned credential storage is unchanged.
 
+> **CLAUDE CORRECTION — 2026-11-02:** The `Sign in with Claude` action described
+> below no longer exists: the approved 2026-09-15 passive recovery design removed
+> it from Claude's surfaces. Text below that relies on it is history. The only
+> explicit route to an interactive Keychain read is now **Allow Keychain
+> access**, shown only for `Credential access unavailable`; see the 2026-11-02
+> amendment in
+> [`2026-09-15-claude-passive-quota-recovery-design.md`](2026-09-15-claude-passive-quota-recovery-design.md).
+> Background interaction remains forbidden.
+
 > **SUPERSEDED FOR CURSOR — 2026-08-26:** This document is retained as historical design
 > record only. Its Cursor session-token, remote usage/quota, and paste/connection
 > requirements are inactive. The approved amendment
@@ -163,6 +172,13 @@ The Rust layer never launches interactive login, owns a provider callback, or st
 >   as Keychain permission required and runs the user-initiated read, which
 >   may prompt.
 >
+>   *Correction (2026-11-02):* that recovery sentence was wrong when written.
+>   The Sign in with Claude button had been removed by the 2026-09-15 passive
+>   recovery change (commit `114f42f`), so nothing in the app could run that
+>   read, and v0.3.14 shipped without an in-app way to give this confirmation.
+>   The **Allow Keychain access** action now runs it, once per click; see the
+>   correction at the top of this document.
+>
 > Which status macOS 27 returns when a legacy item would need UI has not
 > been observed. Apple's archived documentation names
 > errSecInteractionNotAllowed.
@@ -181,6 +197,15 @@ The Rust layer never launches interactive login, owns a provider callback, or st
 >   prompting.
 > - A background sequence waits while a user-initiated sequence holds the
 >   lock, including while a prompt is open.
+>
+>   *Corrected 2026-11-02:* no longer accepted. A background read now only tries
+>   the lock. If a user-initiated read holds it, the read reports the Keychain
+>   as busy without touching the interaction setting or issuing a query, and
+>   the all-provider collection omits Claude for that refresh. So a dialog left
+>   open cannot hold up Codex and Cursor on the joined thread, and a background
+>   read cannot disable interaction while that dialog is showing. A
+>   user-initiated read still waits for a background sequence, which cannot
+>   show a dialog.
 
 ### 3.4 Claude Keychain compatibility gate
 

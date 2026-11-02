@@ -53,6 +53,8 @@ Subsequent authorization (2026-09-03): the user approved one diagnostic macOS Ke
 
 Result of that one-shot authorization (2026-09-03): `UserInitiatedAllowUI` credential resolution returned `expired` after 4.868 seconds, before HTTP. No prompt was reported and no credential or HTTP body was printed or retained. The helper was returned to Trash without retry. That authorization is now consumed. Ask the user to complete provider-owned **Sign in with Claude** in Needlbar Settings; do not repeatedly request Keychain permission or silently refresh credentials. Task 0 stays unchecked until the renewed credential yields corroborating first-party semantics.
 
+Note (2026-11-02): **Sign in with Claude** was removed from Needlbar on 2026-09-15, so the instruction above is history, not a current step.
+
 **Passing evidence after the user completed sign-in:** at `2026-09-03T14:16:43.832932Z`, one bounded `BackgroundNoUI` request returned HTTP 200 in 3.902 seconds. Session percent 59 equaled five-hour utilization 59 and both reset timestamps matched exactly. Weekly-all percent 12 equaled seven-day utilization 12, again with equal resets. Exactly one Fable entry matched all four identity fields, with percent 14 and reset `2026-09-10T09:59:59.792368Z` (`is_active=false`, not an availability filter). These non-50 same-response comparisons close the approved meaning gate: Fable normalized usedPercent is 14 and derived remaining at capture was 86%. No new UI/login/refresh/retry occurred, no raw body/credential was retained, and the helper was returned to Trash. The earlier blocked instructions in this history are superseded by this passing result.
 
 ### Task 1: Protect existing headline and export projections

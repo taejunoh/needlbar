@@ -135,6 +135,8 @@ Settings controls visible modules and title metrics. Claude and Codex expose
 provider-owned browser sign-in actions (`claude auth login --claudeai` and
 `codex login`); Needlbar does not implement a second OAuth flow. Cursor has no
 Needlbar credential or connection workflow.
+*(Note 2026-11-02: Claude's sign-in action was removed by the 2026-09-15 passive
+recovery design; the README describes what Claude exposes now.)*
 
 ### Local snapshot export
 

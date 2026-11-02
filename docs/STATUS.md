@@ -1,5 +1,76 @@
 # Needlbar Development Status
 
+## 2026-11-02 Claude Keychain access action
+
+Defect: v0.3.14 disables legacy Keychain interaction for background reads, so
+a background refresh can no longer show the SecurityAgent dialog. When reading
+the `Claude Code-credentials` item needs confirmation, the quota shows
+"Credential access unavailable" with origin `credentialAccessDenied`. The
+documents written with that fix said Sign in with Claude recovers this state,
+but that button was removed on 2026-09-15 by the passive recovery change
+(commit `114f42f`). So the app had no way to grant access.
+
+Public notes corrected: the published v0.3.14 release body was corrected on
+2026-11-02 and `docs/releases/v0.3.14.md` now matches it byte for byte. The
+README states what v0.3.14 does. The 2026-10-30 entry on background reads below
+keeps the wrong sentence as history; the 2026-08-25 design carries a dated
+correction.
+
+Field evidence (local-only, maintainer's Mac): after the user ran
+`claude -p "hi"`, background refreshes went from `keychainCredentialExpired` to
+`credentialAccessDenied` in under a second, with no SecurityAgent activity. The
+cause, an access-list change when Claude Code rewrites the item, is inferred,
+not verified. No Keychain item was inspected, for that observation or this work.
+
+Decision (user, 2026-11-02): add an explicit user-initiated action on that state
+that performs the UI-allowed read. The background no-UI rule stays exactly as it
+is. This deliberately amends the passive recovery design; the expired-access
+reason still offers no action, and credential renewal is not implemented.
+
+- **Action.** `Allow Keychain access`, beside `View Claude usage`, for Claude
+  only and only while the reason is `credentialAccessUnavailable`: the dashboard
+  and the Settings Connection row, which the app presents, and the provider
+  popover view, which only the uninstantiated `LegacyMenuBarController` hosts.
+  With recent status-line windows the reason moves once to the Fable line, like
+  the expired reason.
+- **Read.** One click, one `UserInitiatedAllowUI` read through the existing
+  bridge export. Nothing automatic reaches it (tested for timer, wake,
+  connectivity, popover, manual refresh and restart). Further clicks while it
+  runs do nothing, including after a restart with the old dialog still open.
+- **Outcomes.** Success clears the failure. `Cancelled`, like permission denied,
+  already mapped to `permissionDenied` and `credentialAccessDenied`, so cancel
+  or deny keeps the reason and the action, with no retry. An expired credential
+  after the read shows the existing expired reason.
+
+Concurrency finding, for the dialog left open: the lock in the requirement was
+not the first thing to stall. The coordinator runs one quota task at a time, so
+a read in that slot queues every later refresh, and Codex and Cursor stop until
+the dialog is answered (reproduced by a test against that path). Below it,
+`KEYCHAIN_SEQUENCE` would then stall them again: `claude.fetch()` blocks
+synchronously inside `tokio::join!` on a single-threaded runtime, so the other
+two futures are never polled. Both are fixed:
+
+- The explicit read has its own in-flight flag instead of the quota slot, and
+  runs on a dispatch thread rather than the cooperative pool. Background
+  refreshes run beside it. Any attempt that overlapped it has its Claude part
+  dropped, so an older answer cannot overwrite the user's.
+- A background read only tries the lock. If it is held the read returns
+  `KeychainBusy`, the collection omits Claude, and Claude's diagnostics record
+  is preserved. It never reaches the interaction setting, so it cannot disable
+  interaction while the dialog is showing (tested with the fake interaction).
+  A user-initiated read still waits, briefly, for a background sequence.
+
+Not verified: nothing here ran against a real Keychain dialog, and the installed
+app was not replaced. Which status macOS 27 returns for Cancel or Deny, whether
+exactly one dialog appears, and what each macOS choice leaves for later
+background reads are open. Whether a one-time allow leaves the reason returning
+at the next background refresh is expected from the behavior above but not
+observed, and the copy does not explain it. The explicit read has no entry in
+the quota attempt log; its failures still reach `ClaudeQuotaFailureDiagnostic`.
+
+Next: review and merge. It is prepared for v0.3.15; the release candidate is a
+separate later PR, and no version, plist or `release.yml` changed here.
+
 ## 2026-11-02 v0.3.14 public artifact verified
 
 The independent tagged Release run `41080111388` (push of tag `v0.3.14`)
