@@ -20,8 +20,8 @@ fresh installation/runtime verification.
   in PR #36 and its public record in PR #37, the Claude Keychain account match
   and background no-UI fix in PR #38, the v0.3.14 candidate in PR #39, the
   `macos-15` runner move in PR #40, and the v0.3.14 public record in PR #41.
-  The Claude Keychain access action is in PR #42. Do not assume other old
-  branches have been merged.
+  The Claude Keychain access action is in PR #42 and the v0.3.15 release
+  candidate in PR #43. Do not assume other old branches have been merged.
 - For an isolated continuation, clone `main` into a new directory and
   initialize submodules as part of the clone:
 
