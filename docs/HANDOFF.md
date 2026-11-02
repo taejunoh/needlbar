@@ -20,7 +20,8 @@ fresh installation/runtime verification.
   in PR #36 and its public record in PR #37, the Claude Keychain account match
   and background no-UI fix in PR #38, the v0.3.14 candidate in PR #39, the
   `macos-15` runner move in PR #40, and the v0.3.14 public record in PR #41.
-  Do not assume other old branches have been merged.
+  The Claude Keychain access action is in PR #42. Do not assume other old
+  branches have been merged.
 - For an isolated continuation, clone `main` into a new directory and
   initialize submodules as part of the clone:
 
@@ -132,8 +133,8 @@ local observation in STATUS 2026-11-02 shows; no Keychain item was inspected.
 
 ## Claude Keychain access action (prepared for v0.3.15, not released)
 
-While the reason is **Credential access unavailable**, **Allow Keychain access**
-appears beside **View Claude usage**. One click runs one `UserInitiatedAllowUI`
+In PR #42. While the reason is **Credential access unavailable**, **Allow Keychain
+access** appears beside **View Claude usage**. One click runs one `UserInitiatedAllowUI`
 read, and nothing automatic does; the background no-UI rule is unchanged. A dialog
 left open no longer stops Codex and Cursor: that read has its own in-flight flag
 instead of the coordinator's quota slot, and a background read only tries the
