@@ -42,8 +42,8 @@ reason still offers no action, and credential renewal is not implemented.
   or deny keeps the reason and the action, with no retry. An expired credential
   after the read shows the existing expired reason.
 
-Concurrency finding, for the dialog left open: the lock in the requirement was
-not the first thing to stall. The coordinator runs one quota task at a time, so
+Concurrency finding, for the dialog left open: the Keychain lock was not the
+first thing to stall. The coordinator runs one quota task at a time, so
 a read in that slot queues every later refresh, and Codex and Cursor stop until
 the dialog is answered (reproduced by a test against that path). Below it,
 `KEYCHAIN_SEQUENCE` would then stall them again: `claude.fetch()` blocks

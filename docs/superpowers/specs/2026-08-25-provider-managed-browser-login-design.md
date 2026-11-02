@@ -204,8 +204,8 @@ The Rust layer never launches interactive login, owns a provider callback, or st
 >   the all-provider collection omits Claude for that refresh. So a dialog left
 >   open cannot hold up Codex and Cursor on the joined thread, and a background
 >   read cannot disable interaction while that dialog is showing. A
->   user-initiated read still waits for a background sequence, which cannot
->   show a dialog.
+>   user-initiated read still waits for a background sequence, which runs with
+>   interaction disabled.
 
 ### 3.4 Claude Keychain compatibility gate
 

@@ -328,12 +328,12 @@ fn resolve_keychain_with(
     })
 }
 
-/// A user-initiated read waits its turn; a background sequence never can open
-/// a dialog, so that wait is short. A background read never waits: the holder
-/// may be a user-initiated read with its dialog open for as long as the user
-/// leaves it, and the bridge joins all providers on one thread, so waiting
-/// here would stop Codex and Cursor too. Failing to take the lock also means a
-/// background read cannot disable interaction while that dialog is showing.
+/// A user-initiated read waits its turn; a background sequence runs with
+/// interaction disabled, so that wait is short. A background read never waits:
+/// the holder may be a user-initiated read with its dialog open for as long as
+/// the user leaves it, and the bridge joins all providers on one thread, so
+/// waiting here would stop Codex and Cursor too. Failing to take the lock also
+/// means a background read cannot disable interaction while that dialog shows.
 #[cfg(target_os = "macos")]
 fn lock_keychain_sequence(
     access: ClaudeCredentialAccess,
