@@ -63,9 +63,13 @@ two futures are never polled. Both are fixed:
 Not verified: nothing here ran against a real Keychain dialog, and the installed
 app was not replaced. Which status macOS 27 returns for Cancel or Deny, whether
 exactly one dialog appears, and what each macOS choice leaves for later
-background reads are open. Whether a one-time allow leaves the reason returning
-at the next background refresh is expected from the behavior above but not
-observed, and the copy does not explain it. The explicit read has no entry in
+background reads are open, including after Claude Code rewrites the item. The
+guidance beside the button only suggests Always Allow ("Choose Always Allow to
+let background updates read this Keychain item."); it does not say that choice
+keeps background reads working, and that stays unverified. Whether a one-time
+allow leaves the reason returning at the next background read (a scheduled
+refresh, or a popover open that triggers one) is expected from the behavior
+above but not observed. The explicit read has no entry in
 the quota attempt log; its failures still reach `ClaudeQuotaFailureDiagnostic`.
 
 Next: review and merge. It is prepared for v0.3.15; the release candidate is a

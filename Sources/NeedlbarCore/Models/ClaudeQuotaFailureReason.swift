@@ -75,9 +75,9 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
         case .credentialAccessUnavailable:
             String(
                 localized: "claudeQuota.action.allowKeychainAccess.detail",
-                defaultValue: "Choose Always Allow so background updates can keep reading it.",
+                defaultValue: "Choose Always Allow to let background updates read this Keychain item.",
                 bundle: bundle,
-                comment: "One line of guidance shown beside the 'Allow Keychain access' button, only while that button is shown. It explains the macOS dialog's 'Always Allow' choice: choosing it lets background updates keep reading the Keychain item. Keep 'Always Allow', the macOS button name."
+                comment: "One line of guidance shown beside the 'Allow Keychain access' button, only while that button is shown. It explains the macOS dialog's 'Always Allow' choice as a suggestion, not a promise about what macOS keeps afterwards. Keep 'Always Allow', the macOS button name."
             )
         case .quotaAccessUnavailable, .connectionUnavailable, .temporarilyLimited,
              .couldNotUpdateQuota, .claudeCodeAccessExpired:

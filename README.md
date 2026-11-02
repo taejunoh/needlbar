@@ -198,15 +198,20 @@ acceptance remain unverified.
 
 The prepared v0.3.15 changes add one explicit action, **Allow Keychain access**,
 beside **View Claude usage** in the dashboard and the Settings Connection row
-while the Claude quota shows **Credential access unavailable**. One click asks
-macOS once for the `Claude Code-credentials` item, which may show the macOS
-Keychain dialog; a line beside the button suggests choosing Always Allow. Nothing else ever does:
+while the Claude quota shows **Credential access unavailable**. On the default
+dashboard row (compact, remaining metric) the visible label is **Usage**
+(**View Claude usage** is its help and accessibility text), the new button sits
+on its own line, and without recent status-line values the reason is inside the
+collapsed **Quota details**. One click asks macOS once for the
+`Claude Code-credentials` item, which may show the macOS Keychain dialog; a line
+beside the button suggests choosing Always Allow. Nothing else ever does:
 timers, startup, wake and background updates still cannot show that dialog.
 Codex and Cursor quota keep updating while the dialog is open. Allowing access
 shows the Claude quota; cancelling or denying keeps the same state and action,
 with no retry. Whether later background updates can read the item depends on
-what macOS keeps from that dialog, so the state can return, and the action with
-it. Expired Claude Code access offers no action, and credential renewal is
+what macOS keeps from that dialog (the Always Allow suggestion is not verified
+to help), so the state can return at the next background read, including when
+the dashboard is reopened, and the action with it. Expired Claude Code access offers no action, and credential renewal is
 not implemented. This has not been tried against a real Keychain dialog, and it
 is not part of any public release yet.
 

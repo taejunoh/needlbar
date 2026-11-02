@@ -51,9 +51,14 @@ this recovery surface. A later scheduled quota refresh can replace the last-know
 it succeeds. Usage remains independently available while quota recovers.
 
 Prepared for the next release, not in v0.3.14: while the reason is **Credential access
-unavailable**, an **Allow Keychain access** action appears beside **View Claude usage**. One click
-runs one `UserInitiatedAllowUI` read of the same item, which may show the macOS Keychain dialog;
-a line beside the button suggests Always Allow. Nothing automatic runs it, and it never starts a
-login. v0.3.14 has no in-app way to give that confirmation. Expired access offers no action.
+unavailable**, an **Allow Keychain access** action appears beside **View Claude usage**. On the
+default dashboard row (compact, remaining metric) the visible label is **Usage**, with **View
+Claude usage** as its help and accessibility text; the new button sits on its own line, and without
+recent status-line values the reason is inside the collapsed **Quota details**. One click runs one
+`UserInitiatedAllowUI` read of the same item, which may show the macOS Keychain dialog; a line
+beside the button suggests Always Allow, which has not been verified to keep background reads
+working. The state can return at the next background read, including when the dashboard is
+reopened. Nothing automatic runs the dialog, and it never starts a login. v0.3.14 has no in-app way
+to give that confirmation. Expired access offers no action.
 
 Needlbar does not own Claude credentials and therefore does not provide a Claude Disconnect button. Sign out or revoke the provider session through Claude's supported controls; Needlbar will then show the safe authentication-required state on the next refresh.

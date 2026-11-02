@@ -16,7 +16,7 @@ struct ClaudeKeychainAccessPresentationTests {
     nonisolated static let now = Date()
     nonisolated static let title = "Allow Keychain access"
     nonisolated static let reasonText = "Credential access unavailable"
-    nonisolated static let detail = "Choose Always Allow so background updates can keep reading it."
+    nonisolated static let detail = "Choose Always Allow to let background updates read this Keychain item."
     nonisolated static let allReasons: [ClaudeQuotaFailureReason] = [
         .quotaAccessUnavailable, .credentialAccessUnavailable, .connectionUnavailable,
         .temporarilyLimited, .couldNotUpdateQuota, .claudeCodeAccessExpired,
