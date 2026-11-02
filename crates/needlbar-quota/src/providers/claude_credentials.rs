@@ -46,6 +46,10 @@ pub enum ClaudeCredentialError {
     /// match list was empty or held several items, a result had an unexpected
     /// type, or the Keychain rejected the query parameters (errSecParam).
     KeychainAmbiguous,
+    /// A background read found the Keychain sequence lock held, which in
+    /// practice means a user-initiated read may be waiting on its dialog. It
+    /// reports this instead of waiting; nothing was read.
+    KeychainBusy,
     KeychainExpired,
     FileExpired,
     FileMalformed,
@@ -221,6 +225,12 @@ impl ClaudeCredentialResolver for MacClaudeCredentialResolver {
 #[cfg(target_os = "macos")]
 const CLAUDE_KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 
+/// Serializes whole Keychain sequences in this process, so a background
+/// sequence that disables interaction can never overlap a user-initiated one
+/// that needs it, and two background sequences cannot restore out of order.
+#[cfg(target_os = "macos")]
+static KEYCHAIN_SEQUENCE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(target_os = "macos")]
 fn resolve_keychain(
     access: ClaudeCredentialAccess,
@@ -233,6 +243,7 @@ fn resolve_keychain(
         login_name.as_deref(),
         &mut |query, result| unsafe { SecItemCopyMatching(query, result) },
         &mut SystemKeychainUserInteraction,
+        &KEYCHAIN_SEQUENCE,
     )
 }
 
@@ -299,19 +310,10 @@ fn resolve_keychain_with(
     login_name: Option<&str>,
     copy_matching: &mut KeychainCopyMatching<'_>,
     interaction: &mut dyn KeychainUserInteraction,
+    sequence: &std::sync::Mutex<()>,
 ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
-    use std::sync::{Mutex, PoisonError};
-
-    /// Serializes whole Keychain sequences in this process, so a background
-    /// sequence that disables interaction can never overlap a user-initiated
-    /// one that needs it, and two background sequences cannot restore out of
-    /// order.
-    static KEYCHAIN_SEQUENCE: Mutex<()> = Mutex::new(());
-
     let payload = {
-        let _sequence = KEYCHAIN_SEQUENCE
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let _sequence = lock_keychain_sequence(access, sequence)?;
         // Declared after the lock, so it restores the setting before the
         // lock is released, on success, error and unwinding alike.
         let _no_ui = match access {
@@ -324,6 +326,31 @@ fn resolve_keychain_with(
         ClaudeCredentialError::Expired => ClaudeCredentialError::KeychainExpired,
         other => other,
     })
+}
+
+/// A user-initiated read waits its turn; a background sequence never can open
+/// a dialog, so that wait is short. A background read never waits: the holder
+/// may be a user-initiated read with its dialog open for as long as the user
+/// leaves it, and the bridge joins all providers on one thread, so waiting
+/// here would stop Codex and Cursor too. Failing to take the lock also means a
+/// background read cannot disable interaction while that dialog is showing.
+#[cfg(target_os = "macos")]
+fn lock_keychain_sequence(
+    access: ClaudeCredentialAccess,
+    sequence: &std::sync::Mutex<()>,
+) -> Result<std::sync::MutexGuard<'_, ()>, ClaudeCredentialError> {
+    use std::sync::{PoisonError, TryLockError};
+
+    match access {
+        ClaudeCredentialAccess::UserInitiatedAllowUI => {
+            Ok(sequence.lock().unwrap_or_else(PoisonError::into_inner))
+        }
+        ClaudeCredentialAccess::BackgroundNoUI => match sequence.try_lock() {
+            Ok(guard) => Ok(guard),
+            Err(TryLockError::Poisoned(poisoned)) => Ok(poisoned.into_inner()),
+            Err(TryLockError::WouldBlock) => Err(ClaudeCredentialError::KeychainBusy),
+        },
+    }
 }
 
 /// Disables Keychain user interaction for the life of the guard and then
@@ -893,6 +920,7 @@ mod tests {
             account: Lookup,
             service_only: Lookup,
             data_status: Option<OSStatus>,
+            data_payload: Option<&'static [u8]>,
             pub(super) queries: Vec<Query>,
             pub(super) ui_modes: Vec<CFStringRef>,
         }
@@ -903,6 +931,7 @@ mod tests {
                     account,
                     service_only,
                     data_status: None,
+                    data_payload: None,
                     queries: Vec::new(),
                     ui_modes: Vec::new(),
                 }
@@ -911,6 +940,12 @@ mod tests {
             /// Makes the data query fail with `status` instead of answering.
             pub(super) fn with_data_status(mut self, status: OSStatus) -> Self {
                 self.data_status = Some(status);
+                self
+            }
+
+            /// Answers the data query with exactly these bytes.
+            pub(super) fn with_data_payload(mut self, payload: &'static [u8]) -> Self {
+                self.data_payload = Some(payload);
                 self
             }
 
@@ -954,7 +989,8 @@ mod tests {
                         if let Some(status) = self.data_status {
                             return status;
                         }
-                        *result = hand_over(CFData::from_buffer(payload.as_bytes()).into_CFType());
+                        let payload = self.data_payload.unwrap_or(payload.as_bytes());
+                        *result = hand_over(CFData::from_buffer(payload).into_CFType());
                         return 0;
                     }
 
@@ -1105,6 +1141,7 @@ mod tests {
                 keychain.copy_matching(query, result)
             },
             interaction,
+            &std::sync::Mutex::new(()),
         )
         .map(|secret| secret.access_token().to_owned())
     }
@@ -1725,6 +1762,7 @@ mod tests {
                     panic!("synthetic query panic");
                 },
                 &mut interaction,
+                &std::sync::Mutex::new(()),
             )
             .is_ok()
         }));
@@ -1851,74 +1889,259 @@ mod tests {
         }
     }
 
+    /// One resolution on its own thread, against its own fakes and the shared
+    /// lock. `on_first_query` runs before the first Keychain query, standing
+    /// in for the time a dialog stays open. The steps the fake interaction
+    /// saw, and the number of queries, come back with the result.
     #[cfg(target_os = "macos")]
-    #[test]
-    fn concurrent_resolutions_are_serialized() {
-        use super::ClaudeCredentialAccess;
+    fn resolve_in_thread(
+        access: super::ClaudeCredentialAccess,
+        sequence: std::sync::Arc<std::sync::Mutex<()>>,
+        on_first_query: impl FnOnce() + Send + 'static,
+    ) -> std::thread::JoinHandle<ThreadResolution> {
         use fake_interaction::FakeInteraction;
         use fake_keychain::{FakeKeychain, Lookup};
+
+        std::thread::spawn(move || {
+            let mut keychain = FakeKeychain::new(
+                Lookup::Items(&["login-item"]),
+                Lookup::Items(&["only-item"]),
+            );
+            let mut interaction = FakeInteraction::new(true);
+            let mut on_first_query = Some(on_first_query);
+            let result = super::resolve_keychain_with(
+                access,
+                Some(TEST_LOGIN_NAME),
+                &mut |query, result| {
+                    if let Some(callback) = on_first_query.take() {
+                        callback();
+                    }
+                    keychain.copy_matching(query, result)
+                },
+                &mut interaction,
+                &sequence,
+            )
+            .map(|secret| secret.access_token().to_owned());
+            ThreadResolution {
+                result,
+                steps: interaction.steps(),
+                interaction_allowed: interaction.allowed(),
+                queries: keychain.queries.len(),
+            }
+        })
+    }
+
+    #[cfg(target_os = "macos")]
+    struct ThreadResolution {
+        result: Result<String, ClaudeCredentialError>,
+        steps: Vec<fake_interaction::Step>,
+        interaction_allowed: bool,
+        queries: usize,
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_user_initiated_read_waits_for_a_background_read_that_holds_the_lock() {
+        use super::ClaudeCredentialAccess;
         use std::{
             sync::{
                 atomic::{AtomicBool, Ordering},
-                mpsc, Arc,
+                mpsc, Arc, Mutex,
             },
             thread,
             time::Duration,
         };
 
-        fn resolve_in_thread(
-            access: ClaudeCredentialAccess,
-            on_first_query: impl FnOnce() + Send + 'static,
-        ) -> thread::JoinHandle<Result<String, ClaudeCredentialError>> {
-            thread::spawn(move || {
-                let mut keychain = FakeKeychain::new(
-                    Lookup::Items(&["login-item"]),
-                    Lookup::Items(&["only-item"]),
-                );
-                let mut interaction = FakeInteraction::new(true);
-                let mut on_first_query = Some(on_first_query);
-                super::resolve_keychain_with(
-                    access,
-                    Some(TEST_LOGIN_NAME),
-                    &mut |query, result| {
-                        if let Some(callback) = on_first_query.take() {
-                            callback();
-                        }
-                        keychain.copy_matching(query, result)
-                    },
-                    &mut interaction,
-                )
-                .map(|secret| secret.access_token().to_owned())
-            })
-        }
-
+        let sequence = Arc::new(Mutex::new(()));
         let (entered_tx, entered_rx) = mpsc::channel();
         let (release_tx, release_rx) = mpsc::channel::<()>();
-        let first = resolve_in_thread(ClaudeCredentialAccess::BackgroundNoUI, move || {
-            entered_tx.send(()).unwrap();
-            release_rx
-                .recv_timeout(Duration::from_secs(30))
-                .expect("the test releases the first resolution");
-        });
+        let first = resolve_in_thread(
+            ClaudeCredentialAccess::BackgroundNoUI,
+            Arc::clone(&sequence),
+            move || {
+                entered_tx.send(()).unwrap();
+                release_rx
+                    .recv_timeout(Duration::from_secs(30))
+                    .expect("the test releases the first resolution");
+            },
+        );
         entered_rx
             .recv_timeout(Duration::from_secs(30))
             .expect("the first resolution reaches its first query");
 
         let second_entered = Arc::new(AtomicBool::new(false));
         let second_flag = Arc::clone(&second_entered);
-        let second = resolve_in_thread(ClaudeCredentialAccess::UserInitiatedAllowUI, move || {
-            second_flag.store(true, Ordering::SeqCst);
-        });
+        let second = resolve_in_thread(
+            ClaudeCredentialAccess::UserInitiatedAllowUI,
+            Arc::clone(&sequence),
+            move || second_flag.store(true, Ordering::SeqCst),
+        );
         thread::sleep(Duration::from_millis(200));
         assert!(
             !second_entered.load(Ordering::SeqCst),
-            "a second resolution must wait for the first to finish"
+            "a user-initiated read must wait for the sequence to finish"
         );
 
         release_tx.send(()).unwrap();
-        assert_eq!(first.join().unwrap(), Ok("login-item".to_owned()));
-        assert_eq!(second.join().unwrap(), Ok("login-item".to_owned()));
+        assert_eq!(first.join().unwrap().result, Ok("login-item".to_owned()));
+        assert_eq!(second.join().unwrap().result, Ok("login-item".to_owned()));
         assert!(second_entered.load(Ordering::SeqCst));
+    }
+
+    /// The field incident was a blocked Keychain call holding up Codex and
+    /// Cursor, because the bridge joins all three on one thread. A background
+    /// read must therefore never wait behind a dialog, and must not flip the
+    /// process-wide interaction setting off while that dialog is showing.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_background_read_never_waits_for_an_open_dialog_or_touches_interaction() {
+        use super::ClaudeCredentialAccess;
+        use std::{
+            sync::{mpsc, Arc, Mutex},
+            time::Duration,
+        };
+
+        let sequence = Arc::new(Mutex::new(()));
+        let (dialog_open_tx, dialog_open_rx) = mpsc::channel();
+        let (answer_tx, answer_rx) = mpsc::channel::<()>();
+        let dialog = resolve_in_thread(
+            ClaudeCredentialAccess::UserInitiatedAllowUI,
+            Arc::clone(&sequence),
+            move || {
+                dialog_open_tx.send(()).unwrap();
+                answer_rx
+                    .recv_timeout(Duration::from_secs(30))
+                    .expect("the test answers the dialog");
+            },
+        );
+        dialog_open_rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("the user-initiated read reaches its first query");
+
+        let (finished_tx, finished_rx) = mpsc::channel();
+        let background_sequence = Arc::clone(&sequence);
+        std::thread::spawn(move || {
+            let finished = resolve_in_thread(
+                ClaudeCredentialAccess::BackgroundNoUI,
+                background_sequence,
+                || panic!("a background read must not query behind an open dialog"),
+            )
+            .join();
+            let _ = finished_tx.send(finished);
+        });
+        let background = finished_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("a background read must not wait for an open dialog")
+            .expect("the background read must not panic");
+
+        assert_eq!(background.result, Err(ClaudeCredentialError::KeychainBusy));
+        assert!(
+            background.steps.is_empty(),
+            "the interaction setting stays untouched: {:?}",
+            background.steps
+        );
+        assert!(background.interaction_allowed);
+        assert_eq!(background.queries, 0);
+
+        answer_tx.send(()).unwrap();
+        let dialog = dialog.join().unwrap();
+        assert_eq!(dialog.result, Ok("login-item".to_owned()));
+        assert!(
+            dialog.steps.is_empty(),
+            "the user-initiated read never touches the setting: {:?}",
+            dialog.steps
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_poisoned_lock_still_lets_both_modes_read() {
+        use super::ClaudeCredentialAccess;
+        use std::sync::{Arc, Mutex};
+
+        let sequence = Arc::new(Mutex::new(()));
+        let poisoning = Arc::clone(&sequence);
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoning.lock().unwrap();
+            panic!("synthetic panic while holding the lock");
+        })
+        .join();
+        assert!(sequence.is_poisoned());
+
+        for access in [
+            ClaudeCredentialAccess::BackgroundNoUI,
+            ClaudeCredentialAccess::UserInitiatedAllowUI,
+        ] {
+            let resolved = resolve_in_thread(access, Arc::clone(&sequence), || {})
+                .join()
+                .unwrap();
+            assert_eq!(resolved.result, Ok("login-item".to_owned()));
+        }
+    }
+
+    /// Cancelling or denying the dialog is final: it never falls back to the
+    /// service-only query or the credentials file, and is not retried.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn answering_the_dialog_with_cancel_or_deny_ends_the_read_without_a_retry() {
+        use super::ClaudeCredentialAccess;
+        use fake_keychain::{FakeKeychain, Lookup, Query};
+
+        for (status, expected) in [
+            (-128, ClaudeCredentialError::Cancelled),
+            (-25_293, ClaudeCredentialError::PermissionDenied),
+        ] {
+            let mut keychain = FakeKeychain::new(
+                Lookup::Items(&["login-item"]),
+                Lookup::Items(&["only-item"]),
+            )
+            .with_data_status(status);
+
+            assert_eq!(
+                resolve_with_fake(
+                    ClaudeCredentialAccess::UserInitiatedAllowUI,
+                    Some(TEST_LOGIN_NAME),
+                    &mut keychain
+                ),
+                Err(expected),
+                "status {status}"
+            );
+            assert_eq!(
+                keychain.queries,
+                [
+                    Query::Account(TEST_LOGIN_NAME.to_owned()),
+                    Query::Data("login-item".to_owned()),
+                ],
+                "status {status} reads once"
+            );
+        }
+    }
+
+    /// An expired credential comes back only after the read succeeded; the
+    /// dialog was answered, so it is reported as expired, not as denied.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn an_expired_credential_after_the_dialog_reports_keychain_expired() {
+        use super::ClaudeCredentialAccess;
+        use fake_interaction::FakeInteraction;
+        use fake_keychain::{FakeKeychain, Lookup};
+
+        let mut keychain = FakeKeychain::new(
+            Lookup::Items(&["login-item"]),
+            Lookup::Items(&["only-item"]),
+        )
+        .with_data_payload(br#"{"claudeAiOauth":{"accessToken":"token","expiresAt":1000}}"#);
+        let mut interaction = FakeInteraction::new(true);
+
+        assert_eq!(
+            resolve_with_fakes(
+                ClaudeCredentialAccess::UserInitiatedAllowUI,
+                Some(TEST_LOGIN_NAME),
+                &mut keychain,
+                &mut interaction
+            ),
+            Err(ClaudeCredentialError::KeychainExpired)
+        );
     }
 
     #[cfg(target_os = "macos")]

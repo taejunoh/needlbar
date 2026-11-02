@@ -101,6 +101,48 @@ async fn ordinary_all_provider_collection_uses_background_claude_credential_acce
     assert_eq!(collection.errors[0].provider.as_deref(), Some("claude"));
 }
 
+struct BusyClaudeResolver;
+
+impl ClaudeCredentialResolver for BusyClaudeResolver {
+    fn resolve(
+        &self,
+        _access: ClaudeCredentialAccess,
+    ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
+        Err(ClaudeCredentialError::KeychainBusy)
+    }
+}
+
+#[tokio::test]
+async fn busy_claude_keychain_read_is_skipped_while_codex_and_cursor_still_report() {
+    // A background read that finds a Keychain access dialog in progress is not
+    // a Claude outcome: it must not overwrite Claude's reason or diagnostics,
+    // and it must not hold up the two other providers joined with it.
+    let claude = ClaudeQuotaProvider::with_resolver(
+        Arc::new(BusyClaudeResolver),
+        RedactingHttpClient::new(),
+    );
+
+    let collection = collect_quota_with_providers(
+        Arc::new(claude),
+        Arc::new(FakeProvider {
+            result: Ok(successful_snapshot(ProviderId::Codex, "codex.primary")),
+        }),
+        Arc::new(FakeProvider {
+            result: Ok(successful_snapshot(ProviderId::Cursor, "cursor.plan")),
+        }),
+    )
+    .await;
+
+    assert_eq!(collection.providers.len(), 2);
+    assert!(collection
+        .providers
+        .iter()
+        .all(|snapshot| snapshot.provider != ProviderId::Claude));
+    assert!(collection.errors.is_empty(), "no Claude error is reported");
+    assert!(!collection.claude_attempted);
+    assert_eq!(collection.claude_failure_origin, None);
+}
+
 #[tokio::test]
 async fn claude_preflight_uses_only_claude_without_keychain_ui() {
     // This catches an explicit connection check that accidentally reuses the
