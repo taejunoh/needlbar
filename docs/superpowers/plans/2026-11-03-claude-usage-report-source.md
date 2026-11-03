@@ -18,7 +18,8 @@ Authoritative spec: `docs/superpowers/specs/2026-11-03-claude-usage-report-sourc
 - CLI locations, in order: `~/.local/bin/claude`, `/opt/homebrew/bin/claude`, `/usr/local/bin/claude`. First executable regular file after resolving symlinks. No shell and no `PATH` search.
 - Fixed argv, no user-derived text: `-p /usage --no-session-persistence --strict-mcp-config --settings {"disableAllHooks":true} --output-format stream-json --verbose`.
 - Process limits: a new empty temporary working directory deleted afterwards; `stdin` closed (`Stdio::null()`, immediate EOF); environment exactly `HOME`, `USER`, `LOGNAME`, `TMPDIR`, a fixed `PATH`, and `CLAUDE_CONFIG_DIR` only if the app already has it; 30-second deadline, then terminate the process group; 1 MiB of stdout, then terminate; stderr drained and discarded; cancelled on app stop; results from an older generation ignored.
-- Triggers: app start, manual refresh, a change in Claude Code's local usage records, passing the `resets_at` of a displayed window. Automatic runs at most once every 5 minutes, one at a time. Manual skips the interval and backoff but joins a run in flight. Opening the dashboard alone does not start a run.
+- Triggers: app start, manual refresh, a change in Claude Code's local usage records, passing the `resets_at` of a displayed window, and 15 minutes since the last run started (`.periodic`, last in priority; user decision, 2026-11-03). Automatic runs at most once every 5 minutes, one at a time. Manual skips the interval and backoff but joins a run in flight. Opening the dashboard alone does not start a run, and neither does waking the Mac or regaining a connection.
+- Freshness: a usage report reading is current for 20 minutes (`recentDirectInterval`, and the widget's Claude quota row), so the label does not flip before each periodic refresh. A failed run shows Last known at once. `recentStatusLineInterval` and `maximumStatusLineAge` do not change.
 - Backoff after consecutive automatic failures: 5, 10, 20, then 30 minutes. Any success resets it.
 - Parsing: read only `usage_report` (see Spec Deviation 1). Classify on `kind`. `session` is the five-hour window, `weekly_all` the seven-day window, `weekly_scoped` is Fable when `scope.model.display_name` equals `Fable` ignoring case. Every row is optional. Unknown kinds ignored, malformed rows skipped. `percent` is a used share; clamp finite values to 0-100, skip others. Null or missing `resets_at` shows no reset time. `rate_limits: null`, or `limits` null or empty, is no usage available. No `usage_report` at all is format changed.
 - Window IDs and titles stay `claude.session`/`Session`, `claude.weekly`/`Weekly`, `claude.fable.weekly`/`Fable weekly`, so export, widget and alert contracts are unchanged.
@@ -76,10 +77,29 @@ Claude gets its own slot, not the quota slot. `tokio::join!` in `collect_quota_w
 | Usage total changed | `finishUsageRefresh`, `:588-602` | n/a | Automatic request, deferred while capped |
 | A displayed `resets_at` passed | new 60-second tick | n/a | Automatic, evaluated by the tick |
 | Retryable failure, backoff elapsed | new 60-second tick | n/a | Automatic, evaluated by the tick |
+| 15 minutes since the last run started | new 60-second tick | n/a | Automatic, `.periodic`, last in priority, behind the interval and backoff |
 
 Because Claude leaves `.backgroundAll`, popover and wake lose Claude without changing their code. The tick reads only actor state, does no I/O, and exists only when a Claude repository is injected, so existing clock-sleeper tests are unaffected.
 
+**Sleep:** `Task.sleep` counts time asleep, so the first tick after a wake can find a periodic run overdue and start it within about a minute. That run is the tick's, logged `trigger=periodic`, not the wake handler's. The wake and popover tests hold the clock still with a run overdue, to prove their handlers start nothing, then let the tick start it.
+
+**Clock set back:** a negative age never makes the periodic run due, so it waits until the clock catches up or another trigger starts a run, which re-anchors it. A manual refresh always does.
+
+`QuotaRefreshTrigger` has one exhaustive `switch` in Sources or Tests: `backgroundRequestIsDue` at `RefreshCoordinator.swift:434-442`, updated in Task 6. `QuotaRecoveryRequestToken.submit` (`QuotaRefreshActivity.swift:59`) and `requestQuotaRefresh` (`RefreshCoordinator.swift:462-463`) compare with `==` and need no change.
+
 Tests that assume otherwise: `Tests/NeedlbarCoreTests/ClaudeKeychainAccessTests.swift:258-301` (popover, wake and timer reach Claude through `.backgroundAll`), `ClaudeAccessExpiredReasonTests.swift` (drives Claude through `popoverOpened`), and `RefreshCoordinatorTests.swift:94-144` (`expiryPreservesDirectSuccess…`, second attempt through `popoverOpened`). `timerPopoverAndManualQuotaPathsAlwaysUseBackgroundAllIntent` stays as is, and it now asserts the new rule. Task 7 ports or deletes these by name.
+
+### 3a. Freshness with a periodic run
+
+A periodic refresh falls due 15:00 after the last start, waits up to 60 s for the tick, and can take the 30-second deadline plus 1 s of termination, so the slowest refresh finishes 16:31 after the last start. Anything that labels a reading after 15 minutes would flip just before each refresh.
+
+| Place | Today | Change |
+|---|---|---|
+| `recentDirectInterval`, `ClaudeQuotaPresentationSelector.swift:33,88` | 15 minutes | 20 minutes (Task 8). Leaves 3:29 of margin |
+| `WidgetPresentation.freshnessHorizon`, `WidgetPresentation.swift:10,20,50`; `NeedlbarOverviewWidget.swift:61-69,130` | 15 minutes for every row | Claude quota row 20 minutes (Task 8). Codex and usage rows keep 15, because they refresh every 5 minutes and must not change |
+| `recentStatusLineInterval`, `maximumStatusLineAge`, `ClaudeQuotaPresentationSelector.swift:32,37` | 15 minutes, 24 hours | None |
+| Alerts, `QuotaNotificationService.swift:357`, `QuotaAlertPolicy.swift:175` | Admit a reading under 15 minutes old | None. They are evaluated when `applyQuota` publishes a new reading (`ProviderSnapshotStore.swift:71-82`), when its age is about zero |
+| Store status, `ProviderSnapshotStore.swift:301-304` | Does not age | None |
 
 ### 4. Removal inventory
 
@@ -121,15 +141,15 @@ Tests that assume otherwise: `Tests/NeedlbarCoreTests/ClaudeKeychainAccessTests.
 
 | Spec state | `QuotaErrorCode` | Origin (serialized) | Reason | Short copy | Auto-retry after backoff |
 |---|---|---|---|---|---|
-| CLI not found | `NotInstalled` | `claudeCliNotFound` | `.claudeCodeNotInstalled` | Install Claude Code to see quota | No, next trigger |
-| Signed out or no usage | `RequiresAuthentication` | `usageReportNoUsage` | `.claudeCodeSignInRequired` | Sign in with claude in Terminal | No, next trigger |
+| CLI not found | `NotInstalled` | `claudeCliNotFound` | `.claudeCodeNotInstalled` | Install Claude Code to see quota | No, next trigger (the periodic run counts) |
+| Signed out or no usage | `RequiresAuthentication` | `usageReportNoUsage` | `.claudeCodeSignInRequired` | Sign in with claude in Terminal | No, next trigger (the periodic run counts) |
 | Timed out | `ProviderUnavailable` | `usageProbeTimedOut` | `.claudeCodeCheckFailed` | Could not check Claude Code | Yes |
 | Output too large | `ProviderUnavailable` | `usageProbeOutputTooLarge` | `.claudeCodeCheckFailed` | same | Yes |
 | Process failure | `ProviderUnavailable` | `usageProbeFailed` | `.claudeCodeCheckFailed` | same | Yes |
 | Rate limited | `RateLimited` | `usageReportRateLimited` | `.temporarilyLimited` (existing) | Temporarily limited | Yes |
 | Format changed | `SchemaChanged` | `usageReportFormatChanged` | `.usageReportFormatChanged` | Could not read Claude Code's usage report | Yes |
 
-`ClaudeQuotaFailureDiagnostic` keeps its line and appends `durationMs= rows= unknownRows= skippedRows=` when a run summary exists. `QuotaRefreshDiagnostic` becomes the record of Claude runs only: it adds the same fields, new triggers `usageRecordsChanged`, `windowReset`, `backoffRetry`, and relabels `direct` as `usageReport` in the log. Row kinds are a closed enum, so a server-sent `kind` string never reaches a log; unknown kinds are only counted. The summary reaches Swift through `claudeUsageProbe` on the existing diagnostics record, which the coordinator already reads once per Claude operation (`RefreshCoordinator.swift:693-700`).
+`ClaudeQuotaFailureDiagnostic` keeps its line and appends `durationMs= rows= unknownRows= skippedRows=` when a run summary exists. `QuotaRefreshDiagnostic` becomes the record of Claude runs only: it adds the same fields, new triggers `usageRecordsChanged`, `windowReset`, `backoffRetry`, `periodic`, and relabels `direct` as `usageReport` in the log. Row kinds are a closed enum, so a server-sent `kind` string never reaches a log; unknown kinds are only counted. The summary reaches Swift through `claudeUsageProbe` on the existing diagnostics record, which the coordinator already reads once per Claude operation (`RefreshCoordinator.swift:693-700`).
 
 ### 7. Test mechanics
 
@@ -145,8 +165,9 @@ Tests that assume otherwise: `Tests/NeedlbarCoreTests/ClaudeKeychainAccessTests.
 2. **Sessions with no `usage_report` by design.** The public documentation says API-key sessions, usage-based billing and `claude setup-token` sessions deliver text without the field and suggests falling back to the text. Spec §7 forbids reading it and calls this format changed. This plan follows the spec, so those accounts see "Could not read Claude Code's usage report". Reported to the user.
 3. **Non-empty `limits` with no usable row** is not in the spec. This plan treats it as format changed. It invents nothing and keeps last known values.
 4. **Two rows mapping to one field** is not in the spec. This plan hides that field only, keeping the fail-closed rule at `crates/needlbar-quota/src/providers/claude.rs:213-215`.
-5. **Quiet periods.** `recentDirectInterval` stays 15 minutes (`ClaudeQuotaPresentationSelector.swift:33`). With no periodic run, a reading turns **Last known** 15 minutes after the last run when nothing triggers another. The spec allows this and §12 names it for web usage. It is unchanged here and observed in Task 14.
+5. **Quiet periods (user decision, 2026-11-03).** A periodic run every 15 minutes keeps readings current, and the spec now says so in §6 and §12. `recentDirectInterval` becomes 20 minutes so the label does not flip before each refresh (Decisions 3a). A reading turns **Last known** at once when a run fails, or once it is 20 minutes old with no newer success, for example after sleep. Up to 96 runs a day is an unmeasured cost, observed in Task 14.
 6. **Fable line text.** `Fable weekly · Unavailable` stays for a missing Fable row. It shows no value, so "a missing row hides that field only" holds in substance.
+7. **Widget freshness.** The decision named the selector, but `WidgetPresentation.freshnessHorizon` has the same 15-minute trap for the Claude quota row, so this plan gives that row 20 minutes too. Spec §6 states this. Reported to the user, because it goes beyond the named constant.
 
 ---
 
@@ -2496,7 +2517,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `QuotaRefreshTrigger`.
-- Produces: new triggers `.usageRecordsChanged`, `.windowReset`, `.backoffRetry`. `struct ClaudeUsageProbeSchedule` (internal): `static minimumInterval`, `static backoffSteps`, `pendingTrigger`, `mutating request(_ trigger: QuotaRefreshTrigger, now: Date, inFlight: Bool) -> Action` where `Action` is `.start` or `.none`; `dueTrigger(resetTimes: [Date], now: Date, inFlight: Bool) -> QuotaRefreshTrigger?`; `mutating recordStart(at: Date)`; `mutating recordSuccess()`; `mutating recordFailure(trigger: QuotaRefreshTrigger, at: Date, retriesWhenBackoffEnds: Bool)`.
+- Produces: new triggers `.usageRecordsChanged`, `.windowReset`, `.backoffRetry`, `.periodic`. `struct ClaudeUsageProbeSchedule` (internal): `static minimumInterval`, `static periodicInterval`, `static backoffSteps`, `pendingTrigger`, `mutating request(_ trigger: QuotaRefreshTrigger, now: Date, inFlight: Bool) -> Action` where `Action` is `.start` or `.none`; `dueTrigger(resetTimes: [Date], now: Date, inFlight: Bool) -> QuotaRefreshTrigger?`; `mutating recordStart(at: Date)`; `mutating recordSuccess()`; `mutating recordFailure(trigger: QuotaRefreshTrigger, at: Date, retriesWhenBackoffEnds: Bool)`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2575,11 +2596,14 @@ struct ClaudeUsageProbeScheduleTests {
         #expect(schedule.dueTrigger(resetTimes: [], now: at(310), inFlight: false) == .backoffRetry)
     }
 
-    @Test func notInstalledAndSignedOutWaitForTheNextTriggerUnderBackoff() {
+    @Test func notInstalledAndSignedOutDoNotRetryWhenBackoffEndsButRunOnTheNextTrigger() {
         var schedule = ClaudeUsageProbeSchedule()
         schedule.recordStart(at: start)
         schedule.recordFailure(trigger: .startup, at: start, retriesWhenBackoffEnds: false)
-        #expect(schedule.dueTrigger(resetTimes: [], now: at(7_200), inFlight: false) == nil)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(300), inFlight: false) == nil, "backoff ended, no retry")
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(899), inFlight: false) == nil)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(900), inFlight: false) == .periodic,
+                "the periodic run is a trigger like any other")
         #expect(schedule.request(.usageRecordsChanged, now: at(299), inFlight: false) == .none)
         #expect(schedule.dueTrigger(resetTimes: [], now: at(300), inFlight: false) == .usageRecordsChanged)
     }
@@ -2591,7 +2615,8 @@ struct ClaudeUsageProbeScheduleTests {
         #expect(schedule.dueTrigger(resetTimes: [reset], now: at(399), inFlight: false) == nil)
         #expect(schedule.dueTrigger(resetTimes: [reset], now: at(400), inFlight: false) == .windowReset)
         schedule.recordStart(at: at(400))
-        #expect(schedule.dueTrigger(resetTimes: [reset], now: at(9_000), inFlight: false) == nil,
+        #expect(schedule.dueTrigger(resetTimes: [reset], now: at(1_299), inFlight: false) == nil)
+        #expect(schedule.dueTrigger(resetTimes: [reset], now: at(9_000), inFlight: false) != .windowReset,
                 "a run that started at or after the reset has covered it, whatever it returned")
     }
 
@@ -2607,6 +2632,60 @@ struct ClaudeUsageProbeScheduleTests {
         schedule.recordStart(at: start)
         schedule.recordFailure(trigger: .startup, at: start, retriesWhenBackoffEnds: true)
         #expect(schedule.request(.usageRecordsChanged, now: at(-86_400), inFlight: false) == .start)
+    }
+
+    // MARK: - Periodic
+
+    @Test func aQuietScheduleIsDueEveryFifteenMinutes() {
+        var schedule = ClaudeUsageProbeSchedule()
+        schedule.recordStart(at: start)
+        schedule.recordSuccess()
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(899), inFlight: false) == nil)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(900), inFlight: false) == .periodic)
+        schedule.recordStart(at: at(900))
+        schedule.recordSuccess()
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(1_799), inFlight: false) == nil)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(1_800), inFlight: false) == .periodic)
+    }
+
+    @Test func thereIsNoPeriodicRunBeforeTheFirstRun() {
+        let schedule = ClaudeUsageProbeSchedule()
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(86_400), inFlight: false) == nil)
+    }
+
+    @Test func thePeriodicRunComesLastInPriority() {
+        var pending = ClaudeUsageProbeSchedule()
+        pending.recordStart(at: start)
+        _ = pending.request(.usageRecordsChanged, now: at(1), inFlight: false)
+        #expect(pending.dueTrigger(resetTimes: [], now: at(900), inFlight: false) == .usageRecordsChanged)
+
+        var reset = ClaudeUsageProbeSchedule()
+        reset.recordStart(at: start)
+        #expect(reset.dueTrigger(resetTimes: [at(500)], now: at(900), inFlight: false) == .windowReset)
+
+        var retry = ClaudeUsageProbeSchedule()
+        retry.recordStart(at: start)
+        retry.recordFailure(trigger: .startup, at: start, retriesWhenBackoffEnds: true)
+        #expect(retry.dueTrigger(resetTimes: [], now: at(900), inFlight: false) == .backoffRetry)
+    }
+
+    @Test func thePeriodicRunStaysBehindBackoffAndASingleRun() {
+        var schedule = ClaudeUsageProbeSchedule()
+        schedule.recordStart(at: start)
+        for _ in 0 ..< 3 {
+            schedule.recordFailure(trigger: .startup, at: start, retriesWhenBackoffEnds: false)
+        }
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(900), inFlight: false) == nil, "twenty minutes of backoff")
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(1_199), inFlight: false) == nil)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(1_200), inFlight: false) == .periodic)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(1_200), inFlight: true) == nil)
+    }
+
+    @Test func aClockSetBackwardsNeverMakesThePeriodicRunDue() {
+        var schedule = ClaudeUsageProbeSchedule()
+        schedule.recordStart(at: start)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(-1), inFlight: false) == nil)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(-86_400), inFlight: false) == nil)
     }
 }
 ```
@@ -2634,6 +2713,8 @@ struct ClaudeUsageProbeSchedule: Sendable, Equatable {
     }
 
     static let minimumInterval: TimeInterval = 5 * 60
+    /// Keeps readings current during quiet periods (user decision, 2026-11-03).
+    static let periodicInterval: TimeInterval = 15 * 60
     static let backoffSteps: [TimeInterval] = [5 * 60, 10 * 60, 20 * 60, 30 * 60]
 
     private(set) var lastStartedAt: Date?
@@ -2652,7 +2733,7 @@ struct ClaudeUsageProbeSchedule: Sendable, Equatable {
     }
 
     /// The automatic run that is due now, if any. A pending request comes
-    /// first, then a passed reset, then a retry after backoff.
+    /// first, then a passed reset, then a retry after backoff, then the periodic run.
     func dueTrigger(resetTimes: [Date], now: Date, inFlight: Bool) -> QuotaRefreshTrigger? {
         guard !inFlight, automaticRunIsAllowed(now: now) else { return nil }
         if let pendingTrigger { return pendingTrigger }
@@ -2660,7 +2741,8 @@ struct ClaudeUsageProbeSchedule: Sendable, Equatable {
             reset <= now && (lastStartedAt.map { $0 < reset } ?? true)
         }
         if resetPassed { return .windowReset }
-        return retryPending ? .backoffRetry : nil
+        if retryPending { return .backoffRetry }
+        return periodicRunIsDue(now: now) ? .periodic : nil
     }
 
     mutating func recordStart(at date: Date) {
@@ -2684,6 +2766,12 @@ struct ClaudeUsageProbeSchedule: Sendable, Equatable {
         backoffUntil = date.addingTimeInterval(step)
     }
 
+    /// A negative age means the clock was set back, so it never makes this due.
+    private func periodicRunIsDue(now: Date) -> Bool {
+        guard let lastStartedAt else { return false }
+        return now.timeIntervalSince(lastStartedAt) >= Self.periodicInterval
+    }
+
     private func automaticRunIsAllowed(now: Date) -> Bool {
         if let lastStartedAt {
             let age = now.timeIntervalSince(lastStartedAt)
@@ -2699,27 +2787,27 @@ struct ClaudeUsageProbeSchedule: Sendable, Equatable {
 }
 ```
 
-Note the pending rule: only `.startup` and `.usageRecordsChanged` go through `request`. `.windowReset` and `.backoffRetry` come from `dueTrigger`, are derived again on every tick and never become pending.
+Note the pending rule: only `.startup` and `.usageRecordsChanged` go through `request`. `.windowReset`, `.backoffRetry` and `.periodic` come from `dueTrigger`, are derived again on every tick and never become pending.
 
 In `Sources/NeedlbarCore/Refresh/QuotaRefreshActivity.swift:47-49`:
 
 ```swift
 public enum QuotaRefreshTrigger: String, Sendable, Equatable {
     case startup, scheduled, wake, connectivity, popover, manual
-    case usageRecordsChanged, windowReset, backoffRetry
+    case usageRecordsChanged, windowReset, backoffRetry, periodic
 }
 ```
 
-In `backgroundRequestIsDue` (`RefreshCoordinator.swift:440`) change the last case to:
+In `backgroundRequestIsDue` (`RefreshCoordinator.swift:440`), the only exhaustive `switch` over this enum, change the last case to:
 
 ```swift
-        case .startup, .manual, .popover, .usageRecordsChanged, .windowReset, .backoffRetry:
+        case .startup, .manual, .popover, .usageRecordsChanged, .windowReset, .backoffRetry, .periodic:
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `make swift-test SWIFT_TEST_FILTER=ClaudeUsageProbeScheduleTests`
-Expected: PASS, 10 tests.
+Expected: PASS, 15 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -2772,19 +2860,24 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.coordinator.stop()
     }
 
-    @Test func openingThePopoverAloneNeverStartsARun() async throws {
+    @Test func openingThePopoverAloneNeverStartsARunEvenWithOneOverdue() async throws {
         let harness = Harness()
         await harness.startedAndIdle()
+        // The clock jumps past the periodic interval without waking the tick.
         harness.clock.setNowWithoutWakingSleepers(Self.start.addingTimeInterval(3_600))
-        harness.other.scriptNothing()
         await harness.coordinator.popoverOpened()
         await harness.other.waitUntilCallCount(2)
         await settle(watchingFor: { harness.probe.callCount > 1 })
         #expect(harness.probe.callCount == 1)
+        // A run really was overdue: the tick starts it, not the popover.
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(2)
+        #expect(harness.events.values.last?.trigger == .periodic)
         await harness.coordinator.stop()
     }
 
-    @Test func wakeAndConnectivityNeverStartARun() async throws {
+    @Test func wakeAndConnectivityNeverStartARunEvenWithOneOverdue() async throws {
         let harness = Harness()
         await harness.startedAndIdle()
         let token = await harness.coordinator.recoveryRequestToken()
@@ -2794,16 +2887,37 @@ struct ClaudeUsageProbeCoordinatorTests {
         await token.submit(.connectivity)
         await settle(watchingFor: { harness.probe.callCount > 1 })
         #expect(harness.probe.callCount == 1)
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(2)
+        #expect(harness.events.values.last?.trigger == .periodic)
         await harness.coordinator.stop()
     }
 
-    @Test func timersAloneStartNoRunWithoutATrigger() async throws {
+    @Test func theFiveMinuteTimerStartsNoRunBeforeThePeriodicInterval() async throws {
         let harness = Harness()
         await harness.startedAndIdle()
-        await harness.advance(minutes: 16)
-        await harness.other.waitUntilCallCount(4) // Codex and Cursor keep their five-minute cadence.
+        await harness.advance(minutes: 14)
+        await harness.other.waitUntilCallCount(3) // Codex and Cursor keep their five-minute cadence.
         await settle(watchingFor: { harness.probe.callCount > 1 })
         #expect(harness.probe.callCount == 1)
+        await harness.coordinator.stop()
+    }
+
+    @Test func aQuietPeriodStartsAPeriodicRunEveryFifteenMinutes() async throws {
+        let harness = Harness()
+        await harness.startedAndIdle()
+        await harness.advance(minutes: 15)
+        await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(2)
+        await harness.advance(minutes: 14)
+        await settle(watchingFor: { harness.probe.callCount > 2 })
+        #expect(harness.probe.callCount == 2)
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(3)
+        await harness.waitUntilCompletedRuns(3)
+        #expect(harness.probe.startTimes.map { $0.timeIntervalSince(Self.start) } == [0, 900, 1_800])
+        #expect(harness.probe.triggersSeen(in: harness.events) == [.startup, .periodic, .periodic])
         await harness.coordinator.stop()
     }
 
@@ -2856,9 +2970,15 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.probe.waitUntilCallCount(2)
         await harness.waitUntilCompletedRuns(2)
         #expect(harness.events.values.last?.trigger == .windowReset)
-        await harness.advance(minutes: 10)
+        // Nothing runs again until the periodic interval from this run: not the same reset.
+        await harness.advance(minutes: 14)
         await settle(watchingFor: { harness.probe.callCount > 2 })
         #expect(harness.probe.callCount == 2)
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(3)
+        await harness.waitUntilCompletedRuns(3)
+        #expect(harness.probe.startTimes.last == reset.addingTimeInterval(900))
+        #expect(harness.events.values.last?.trigger == .periodic)
         await harness.coordinator.stop()
     }
 
@@ -2911,7 +3031,9 @@ struct ClaudeUsageProbeCoordinatorTests {
         let harness = Harness()
         for _ in 0 ..< 5 { harness.probe.script(.result(providerUnavailable())) }
         harness.probe.script(.result(try weeklyQuota(resetsAt: Self.start.addingTimeInterval(9_000_000))))
+        harness.probe.script(.result(providerUnavailable()))
         await harness.startedAndIdle()
+        // The waits of 20 and 30 minutes cross the periodic interval: backoff holds it back.
         for (index, minutes) in [5, 10, 20, 30, 30].enumerated() {
             await harness.advance(minutes: minutes - 1)
             await settle(watchingFor: { harness.probe.callCount > index + 1 })
@@ -2922,28 +3044,79 @@ struct ClaudeUsageProbeCoordinatorTests {
         }
         let offsets = harness.probe.startTimes.map { $0.timeIntervalSince(Self.start) }
         #expect(offsets == [0, 300, 900, 2_100, 3_900, 5_700])
+        #expect(harness.probe.triggersSeen(in: harness.events)
+            == [.startup, .backoffRetry, .backoffRetry, .backoffRetry, .backoffRetry, .backoffRetry])
         #expect(await harness.store.snapshot(for: .claude).claudeQuotaFailureReason == nil, "the last run succeeded")
-        await harness.advance(minutes: 40)
+
+        // Success clears the retry: the next run is the periodic one.
+        await harness.advance(minutes: 14)
         await settle(watchingFor: { harness.probe.callCount > 6 })
-        #expect(harness.probe.callCount == 6, "success clears the retry")
+        #expect(harness.probe.callCount == 6)
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(7)
+        await harness.waitUntilCompletedRuns(7)
+        #expect(harness.events.values.last?.trigger == .periodic)
+
+        // Success also reset the count: this failure waits five minutes, not thirty.
+        await harness.advance(minutes: 5)
+        await harness.probe.waitUntilCallCount(8)
+        #expect(harness.probe.startTimes.last == Self.start.addingTimeInterval(5_700 + 900 + 300))
         await harness.coordinator.stop()
     }
 
-    @Test func notInstalledAndNoUsageWaitForTheNextTrigger() async throws {
+    @Test func notInstalledAndNoUsageRetryOnlyOnATriggerAndUnderBackoff() async throws {
         for code in ["notInstalled", "requiresAuthentication"] {
             let harness = Harness(claudeTotal: 100)
             harness.probe.script(.result(claudeError(code)))
+            harness.probe.script(.result(claudeError(code)))
             await harness.startedAndIdle()
             await harness.waitUntilUsageApplied(100)
-            await harness.advance(minutes: 20)
+            // The five-minute backoff ends here and nothing retries by itself.
+            await harness.advance(minutes: 14)
             await settle(watchingFor: { harness.probe.callCount > 1 })
-            #expect(harness.probe.callCount == 1, "\(code) does not retry by itself")
+            #expect(harness.probe.callCount == 1, "\(code) does not retry when backoff ends")
 
+            await harness.advance(minutes: 1)
+            await harness.probe.waitUntilCallCount(2)
+            await harness.waitUntilCompletedRuns(2)
+            #expect(harness.events.values.last?.trigger == .periodic, "\(code)")
+
+            // The second failure backs off ten minutes, which also holds a real trigger.
             harness.usage.setClaudeTotal(250)
             await harness.coordinator.requestUsageRefresh()
-            await harness.probe.waitUntilCallCount(2)
+            await harness.waitUntilUsageApplied(250)
+            await harness.advance(minutes: 9)
+            await settle(watchingFor: { harness.probe.callCount > 2 })
+            #expect(harness.probe.callCount == 2, "\(code) waits for backoff")
+            await harness.advance(minutes: 1)
+            await harness.probe.waitUntilCallCount(3)
+            #expect(harness.probe.startTimes.last == Self.start.addingTimeInterval(1_500), "\(code)")
             await harness.coordinator.stop()
         }
+    }
+
+    @Test func aFailedPeriodicRunKeepsTheReadingAsLastKnownAndBacksOff() async throws {
+        let harness = Harness()
+        harness.probe.script(.result(try weeklyQuota(resetsAt: Self.start.addingTimeInterval(9_000_000))))
+        harness.probe.script(.result(providerUnavailable()))
+        await harness.startedAndIdle()
+        await harness.advance(minutes: 15)
+        await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(2)
+        #expect(harness.events.values.last?.trigger == .periodic)
+        #expect(harness.events.values.last?.outcome == .failure)
+        let selected = ClaudeQuotaPresentationSelector.select(
+            snapshot: await harness.store.snapshot(for: .claude), now: harness.clock.now).sevenDay
+        #expect(selected?.isLastKnown == true)
+        #expect(selected?.remainingPercent == 26)
+        #expect(selected?.observedAt == Self.start, "labelled with the time it was checked")
+
+        await harness.advance(minutes: 5)
+        await harness.probe.waitUntilCallCount(3)
+        await harness.waitUntilCompletedRuns(3)
+        #expect(harness.probe.startTimes.last == Self.start.addingTimeInterval(1_200))
+        #expect(harness.events.values.last?.trigger == .backoffRetry)
+        await harness.coordinator.stop()
     }
 
     // MARK: - Stop and generation
@@ -3216,9 +3389,10 @@ private final class ProbeRepository: QuotaRepository, @unchecked Sendable {
             lock.withLock { held = false }
             changes.signal()
         }
-        return try lock.withLock { () -> Outcome in
-            outcomes.isEmpty ? .result(.init(snapshots: [:], errors: [:])) : outcomes.removeFirst()
-        }.get()
+        // With nothing scripted a run succeeds. An empty result would count as a
+        // retryable failure and start a backoff retry at five minutes.
+        let scripted = lock.withLock { outcomes.isEmpty ? nil : outcomes.removeFirst() }
+        return try scripted?.get() ?? weeklyQuota(resetsAt: nil)
     }
 
     func cancelClaudeUsageReport(through runID: UInt64) {
@@ -3232,22 +3406,19 @@ private final class BackgroundRepository: QuotaRepository, @unchecked Sendable {
     private let changes = ConditionWaiters()
     private var calls = 0
     private var failure: (any Error)?
-    private var empty = false
 
     var callCount: Int { lock.withLock { calls } }
     func scriptFailure(_ error: any Error) { lock.withLock { failure = error } }
-    func scriptNothing() { lock.withLock { empty = true } }
     func waitUntilCallCount(_ expected: Int) async { await changes.wait { self.callCount >= expected } }
 
     func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
         guard intent == .backgroundAll else { throw BridgeFailure.nullPointer }
-        let (error, empty) = lock.withLock { () -> ((any Error)?, Bool) in
+        let error = lock.withLock { () -> (any Error)? in
             calls += 1
-            return (failure, self.empty)
+            return failure
         }
         changes.signal()
         if let error { throw error }
-        if empty { return .init(snapshots: [:], errors: [:]) }
         return .init(snapshots: [.codex: QuotaSnapshot(windows: [
             try QuotaWindow(id: "codex.primary", title: "Primary", usedPercent: 10, resetsAt: nil),
         ])], errors: [:])
@@ -3399,8 +3570,8 @@ In `Sources/NeedlbarCore/Refresh/RefreshCoordinator.swift`:
 Add below `popoverQuotaRefreshThreshold`:
 
 ```swift
-    /// How often a passed reset, a deferred usage change and a backoff retry are
-    /// checked. It reads only actor and store state.
+    /// How often a passed reset, a deferred usage change, a backoff retry and the
+    /// periodic run are checked. It reads only actor and store state.
     static let claudeUsageTickInterval: Duration = .seconds(60)
 ```
 
@@ -3485,7 +3656,7 @@ Add these methods after `beginQuotaRefresh`:
     }
 
     /// Starts the run that is due, if any: a deferred request, a displayed window
-    /// whose reset has passed, or a retry after backoff.
+    /// whose reset has passed, a retry after backoff, or the periodic run.
     private func evaluateClaudeUsageProbeTriggers(generation: UInt64) async {
         guard isRunning, generation == runGeneration, claudeUsageRepository != nil else { return }
         let snapshot = await store.snapshot(for: .claude)
@@ -3561,7 +3732,8 @@ Add these methods after `beginQuotaRefresh`:
                 claudeUsageSchedule.recordSuccess()
                 return
             }
-            // Not installed and no usage wait for the next trigger (spec §8).
+            // Not installed and no usage wait for the next trigger, which includes
+            // the periodic run (spec §8).
             let code = refresh.errors[.claude]?.code
             retries = code != "notInstalled" && code != "requiresAuthentication"
         }
@@ -3714,7 +3886,7 @@ Run `git rm Tests/NeedlbarCoreTests/ClaudeKeychainAccessTests.swift Tests/Needlb
 - [ ] **Step 6: Run the new tests**
 
 Run: `make swift-test SWIFT_TEST_FILTER=ClaudeUsageProbeCoordinatorTests`
-Expected: PASS, 21 tests.
+Expected: PASS, 23 tests.
 
 - [ ] **Step 7: Port the existing coordinator tests**
 
@@ -3825,16 +3997,16 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-## Task 8: Failure copy, source order and only-Fable presentation
+## Task 8: Failure copy, source order, freshness and only-Fable presentation
 
 **Files:**
-- Modify: `Sources/NeedlbarCore/Models/ClaudeQuotaFailureReason.swift`, `Sources/NeedlbarCore/Presentation/ClaudeQuotaPresentationSelector.swift:54-76`, `Sources/Needlbar/Modules/Provider/ProviderPopoverView.swift:114,120-122`, `Sources/Needlbar/Settings/SettingsView.swift:265`
-- Create: `Tests/NeedlbarCoreTests/ClaudeUsageReportReasonTests.swift`, `Tests/NeedlbarTests/ClaudeUsageReportPresentationTests.swift`
-- Modify: `Tests/NeedlbarCoreTests/RefreshCoordinatorTests.swift:894-906,946-958`, `Tests/NeedlbarCoreTests/ClaudeQuotaPresentationSelectorTests.swift`
+- Modify: `Sources/NeedlbarCore/Models/ClaudeQuotaFailureReason.swift`, `Sources/NeedlbarCore/Presentation/ClaudeQuotaPresentationSelector.swift:33,54-76`, `Sources/NeedlbarWidgetSupport/WidgetPresentation.swift:10-21,44-59`, `WidgetExtension/NeedlbarOverviewWidget.swift:61-69,130`, `Sources/Needlbar/Modules/Provider/ProviderPopoverView.swift:114,120-122`, `Sources/Needlbar/Settings/SettingsView.swift:265`
+- Create: `Tests/NeedlbarCoreTests/ClaudeUsageReportReasonTests.swift`, `Tests/NeedlbarCoreTests/ClaudeUsageFreshnessTests.swift`, `Tests/NeedlbarTests/ClaudeUsageReportPresentationTests.swift`
+- Modify: `Tests/NeedlbarCoreTests/RefreshCoordinatorTests.swift:894-906,946-958`, `Tests/NeedlbarCoreTests/ClaudeQuotaPresentationSelectorTests.swift:10-11,23`, `Tests/NeedlbarCoreTests/ClaudeUsageProbeCoordinatorTests.swift`, `Tests/NeedlbarTests/ClaudeQuotaFreshnessPresentationTests.swift:36,123,186-187,212-241,260`, `Tests/NeedlbarWidgetSupportTests/WidgetProjectionTests.swift`
 
 **Interfaces:**
-- Consumes: bridge error codes from Task 4.
-- Produces: `ClaudeQuotaFailureReason` cases `claudeCodeNotInstalled`, `claudeCodeSignInRequired`, `claudeCodeCheckFailed`, `usageReportFormatChanged`, keys `claudeQuota.reason.<case>` and `claudeQuota.reason.<case>.detail`. Selector: newest valid reading wins per window.
+- Consumes: bridge error codes from Task 4; `ClaudeUsageProbeSchedule.periodicInterval` (Task 6); `RefreshCoordinator.claudeUsageTickInterval` and the `Harness` in `ClaudeUsageProbeCoordinatorTests` (Task 7).
+- Produces: `ClaudeQuotaFailureReason` cases `claudeCodeNotInstalled`, `claudeCodeSignInRequired`, `claudeCodeCheckFailed`, `usageReportFormatChanged`, keys `claudeQuota.reason.<case>` and `claudeQuota.reason.<case>.detail`. Selector: newest valid reading wins per window; `recentDirectInterval` is 20 minutes. `WidgetPresentation.claudeQuotaFreshnessHorizon` and `WidgetPresentation.freshness(_ row: WidgetQuotaRow, now: Date)`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4265,7 +4437,29 @@ In `Tests/NeedlbarCoreTests/RefreshCoordinatorTests.swift`, in both tables (`ret
             ("schemaChanged", .usageReportFormatChanged),
 ```
 
-In `Tests/NeedlbarCoreTests/ClaudeQuotaPresentationSelectorTests.swift`, the test `failedDirectStreamRetainsValueAndTimestampButPrefersRecentBridge` still passes because its bridge reading is newer. Run the suites; if a test asserts that an older recent status line beats a newer last-known report, or that an older recent report beats a newer status line, change its expectation to the newest reading and name the test in the commit message, because spec §5 requires that.
+In `Tests/NeedlbarTests/ClaudeQuotaFreshnessPresentationTests.swift`, `ageBoundarySwitchesEverySurfaceFromDirectToCurrentBridge` asserts the old rule: its bridge reading is already newer than the report in the first frame. Run this once to make it assert the new rule across every surface:
+
+```bash
+/usr/bin/python3 -I - <<'PY'
+import pathlib
+path = pathlib.Path("Tests/NeedlbarTests/ClaudeQuotaFreshnessPresentationTests.swift")
+source = path.read_text()
+start = source.index("func ageBoundarySwitchesEverySurfaceFromDirectToCurrentBridge")
+end = source.index("    @Test", start)
+body = source[start:end]
+for old, new in [
+    ("func ageBoundarySwitchesEverySurfaceFromDirectToCurrentBridge", "func aNewerCurrentBridgeWinsOnEverySurfaceAcrossTheDirectAgeBoundary"),
+    ("receivedAt: success.addingTimeInterval(1)), sevenDay: nil)", "receivedAt: success.addingTimeInterval(800)), sevenDay: nil)"),
+    ('#expect(values == ["75%", "50%"])', '#expect(values == ["50%", "50%"])'),
+    ('#expect(sources == ["Claude usage", "Reported by Claude Code"])', '#expect(sources == ["Reported by Claude Code", "Reported by Claude Code"])'),
+]:
+    assert old in body, old
+    body = body.replace(old, new)
+path.write_text(source[:start] + body + source[end:])
+PY
+```
+
+In `Tests/NeedlbarCoreTests/ClaudeQuotaPresentationSelectorTests.swift`, the test `failedDirectStreamRetainsValueAndTimestampButPrefersRecentBridge` still passes because its bridge reading is newer. Run the suites; if another test asserts that an older recent status line beats a newer last-known report, or that an older recent report beats a newer status line, change its expectation to the newest reading and name the test in the commit message, because spec §5 requires that.
 
 - [ ] **Step 7: Run tests to verify they pass**
 
@@ -4275,11 +4469,251 @@ Expected: PASS for both new suites.
 Run: `make swift-test`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 8: Write the failing freshness tests**
+
+A run every 15 minutes through a 60-second tick with a run of up to 31 s finishes up to 16:31 after the last start, so a 15-minute window flips the label just before each refresh (Decisions 3a).
+
+`Tests/NeedlbarCoreTests/ClaudeUsageFreshnessTests.swift`:
+
+```swift
+import Foundation
+import Testing
+@testable import NeedlbarCore
+
+@Suite("ClaudeUsageFreshness")
+struct ClaudeUsageFreshnessTests {
+    private let success = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func report(status: DataStatus = .fresh) throws -> ProviderSnapshot {
+        ProviderSnapshot(
+            provider: .claude, usage: nil,
+            quota: QuotaSnapshot(windows: [try QuotaWindow(
+                id: "claude.weekly", title: "Weekly", usedPercent: 74, resetsAt: success.addingTimeInterval(86_400))]),
+            usageStatus: .fresh, quotaStatus: status, updatedAt: success, quotaLastSuccessfulAt: success)
+    }
+
+    @Test(arguments: [1_199.0, 1_200.0, 1_201.0])
+    func aReportStaysCurrentForTwentyMinutes(age: Double) throws {
+        let selected = ClaudeQuotaPresentationSelector.select(
+            snapshot: try report(), now: success.addingTimeInterval(age)).sevenDay
+        #expect(selected?.isLastKnown == (age >= 1_200))
+        #expect(selected?.observedAt == success)
+    }
+
+    @Test func theWindowOutlastsTheSlowestPeriodicRefresh() {
+        let tick = TimeInterval(RefreshCoordinator.claudeUsageTickInterval.components.seconds)
+        // The process deadline plus its termination grace, from `claude_usage_probe.rs`.
+        let slowestRun: TimeInterval = 30 + 1
+        #expect(ClaudeQuotaPresentationSelector.recentDirectInterval
+            > ClaudeUsageProbeSchedule.periodicInterval + tick + slowestRun)
+    }
+
+    @Test(arguments: [900.0, 1_199.0, 1_200.0, 7_200.0])
+    func aFailedRunIsLastKnownAtOnceAndKeepsItsCheckedTime(age: Double) throws {
+        let failed = try report(status: .error(message: "fixture", lastSuccessfulAt: success))
+        let selected = ClaudeQuotaPresentationSelector.select(
+            snapshot: failed, now: success.addingTimeInterval(age)).sevenDay
+        #expect(selected?.isLastKnown == true)
+        #expect(selected?.observedAt == success)
+        #expect(selected?.remainingPercent == 26)
+    }
+
+    @Test func theStatusLineWindowsDoNotChange() {
+        #expect(ClaudeQuotaPresentationSelector.recentStatusLineInterval == 15 * 60)
+        #expect(ClaudeQuotaPresentationSelector.maximumStatusLineAge == 24 * 60 * 60)
+    }
+}
+```
+
+Add to `ClaudeUsageProbeCoordinatorTests`, under `// MARK: - Backoff`:
+
+```swift
+    @Test func aReadingStaysCurrentUntilThePeriodicRefreshReplacesIt() async throws {
+        let far = Self.start.addingTimeInterval(9_000_000)
+        let harness = Harness()
+        harness.probe.script(.result(try weeklyQuota(resetsAt: far)))
+        harness.probe.script(.result(try weeklyQuota(resetsAt: far)))
+        await harness.startedAndIdle()
+        await harness.advance(minutes: 14)
+        // The slowest refresh finishes 991 s after the last start.
+        let beforeRefresh = ClaudeQuotaPresentationSelector.select(
+            snapshot: await harness.store.snapshot(for: .claude), now: Self.start.addingTimeInterval(991)).sevenDay
+        #expect(beforeRefresh?.isLastKnown == false)
+        #expect(beforeRefresh?.observedAt == Self.start)
+
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(2)
+        let afterRefresh = ClaudeQuotaPresentationSelector.select(
+            snapshot: await harness.store.snapshot(for: .claude), now: harness.clock.now).sevenDay
+        #expect(afterRefresh?.isLastKnown == false)
+        #expect(afterRefresh?.observedAt == Self.start.addingTimeInterval(900))
+        await harness.coordinator.stop()
+    }
+```
+
+Add to `WidgetProjectionTests` in `Tests/NeedlbarWidgetSupportTests/WidgetProjectionTests.swift`:
+
+```swift
+    @Test
+    func aClaudeQuotaRowStaysFreshForTwentyMinutesAndOthersForFifteen() throws {
+        let now = referenceDate
+        func quotaRow(_ provider: WidgetProvider, age: TimeInterval) throws -> WidgetQuotaRow {
+            try WidgetQuotaRow(provider: provider, stream: .fresh, lastSuccessfulAt: now.addingTimeInterval(-age), headline: nil)
+        }
+        #expect(WidgetPresentation.freshness(try quotaRow(.claude, age: 1_199), now: now) == .fresh)
+        #expect(WidgetPresentation.freshness(try quotaRow(.claude, age: 1_200), now: now) == .stale)
+        #expect(WidgetPresentation.freshness(try quotaRow(.codex, age: 899), now: now) == .fresh)
+        #expect(WidgetPresentation.freshness(try quotaRow(.codex, age: 900), now: now) == .stale)
+    }
+
+    @Test
+    func theNextDeadlineUsesTheClaudeQuotaRowsOwnHorizon() throws {
+        let projection = try WidgetProjection(
+            quotaRows: [
+                try WidgetQuotaRow(provider: .claude, stream: .fresh, lastSuccessfulAt: referenceDate, headline: nil),
+                try WidgetQuotaRow(provider: .codex, stream: .unavailable, lastSuccessfulAt: nil, headline: nil),
+            ],
+            usageRows: makeUnavailableUsageRows(),
+            today: unavailableToday
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        #expect(WidgetPresentation.nextDeadline(after: referenceDate, projection: projection, calendar: calendar)
+            == referenceDate.addingTimeInterval(1_200))
+    }
+```
+
+- [ ] **Step 9: Run tests to verify they fail**
+
+The widget tests call an overload that does not exist yet, so nothing compiles until Step 10 adds it. To see the freshness failures first, leave the two widget tests out of the file until Step 10.
+
+Run: `make swift-test SWIFT_TEST_FILTER=ClaudeUsageFreshnessTests`
+Expected: FAIL at `aReportStaysCurrentForTwentyMinutes(age: 1199.0)` and `theWindowOutlastsTheSlowestPeriodicRefresh`.
+
+- [ ] **Step 10: Change the freshness windows**
+
+Add the two widget tests from Step 8 if they were left out, then in `Sources/NeedlbarCore/Presentation/ClaudeQuotaPresentationSelector.swift`:
+
+```swift
+    /// Longer than the slowest periodic refresh, which can finish 16:31 after the
+    /// last run started, so the label does not flip just before each refresh.
+    public static let recentDirectInterval: TimeInterval = 20 * 60
+```
+
+Leave `recentStatusLineInterval` and `maximumStatusLineAge` as they are.
+
+In `Sources/NeedlbarWidgetSupport/WidgetPresentation.swift`, keep `freshnessHorizon` and change these parts. Existing callers of `freshness(_:lastSuccessfulAt:now:)` keep 15 minutes through the default:
+
+```swift
+    public static let freshnessHorizon: TimeInterval = 15 * 60
+    /// Claude quota can refresh only every 15 minutes, while Codex and usage refresh
+    /// every 5, so its row keeps the app's 20-minute window.
+    public static let claudeQuotaFreshnessHorizon: TimeInterval = 20 * 60
+
+    private static func quotaHorizon(for provider: WidgetProvider) -> TimeInterval {
+        provider == .claude ? claudeQuotaFreshnessHorizon : freshnessHorizon
+    }
+
+    public static func freshness(
+        _ state: WidgetStreamState,
+        lastSuccessfulAt: Date?,
+        now: Date,
+        horizon: TimeInterval = freshnessHorizon
+    ) -> WidgetDisplayFreshness {
+        guard let timestamp = lastSuccessfulAt, timestamp <= now else {
+            return .unavailable
+        }
+        return state == .fresh && now.timeIntervalSince(timestamp) < horizon ? .fresh : .stale
+    }
+
+    public static func freshness(_ row: WidgetQuotaRow, now: Date) -> WidgetDisplayFreshness {
+        freshness(row.stream, lastSuccessfulAt: row.lastSuccessfulAt, now: now, horizon: quotaHorizon(for: row.provider))
+    }
+```
+
+and in `nextDeadline`:
+
+```swift
+        let stale = projection.quotaRows.compactMap { row in
+            row.lastSuccessfulAt?.addingTimeInterval(quotaHorizon(for: row.provider))
+        } + projection.usageRows.compactMap { $0.lastSuccessfulAt?.addingTimeInterval(freshnessHorizon) }
+```
+
+In `WidgetExtension/NeedlbarOverviewWidget.swift`, `overallFreshnessLabel` becomes:
+
+```swift
+    private var overallFreshnessLabel: String {
+        guard let projection = entry.projection else { return "Quota unavailable" }
+        let quotaIsFresh = projection.quotaRows.allSatisfy {
+            WidgetPresentation.freshness($0, now: entry.date) == .fresh
+        }
+        let usageIsFresh = projection.usageRows.allSatisfy {
+            WidgetPresentation.freshness($0.stream, lastSuccessfulAt: $0.lastSuccessfulAt, now: entry.date) == .fresh
+        }
+        return quotaIsFresh && usageIsFresh ? "Fresh" : "Stale"
+    }
+```
+
+and in `quotaLine`, change the condition to `WidgetPresentation.freshness(row!, now: entry.date) == .fresh`.
+
+- [ ] **Step 11: Update the tests that pin the old boundary**
+
+Run this once from the repository root. It changes only tests of the direct window. These pin the status-line window and stay as they are: `ClaudeQuotaFreshnessPresentationTests.swift:127`, `ClaudeQuotaPresentationSelectorTests.swift:115-126,251-261`, `ClaudeStatusLineMaximumAgeTests.swift:76-82`, `ClaudeStatusLineMaximumAgePresentationTests.swift:107`, `PopoverPresentationTests.swift:273`, `SystemDashboardPopoverTests.swift:615`, `HeadlineQuotaSelectorTests.swift:95,124`. `ClaudeQuotaPresentationSelectorTests.swift:69` has a failed status, so its 1,000-second age does not matter.
 
 ```bash
-git add Sources/NeedlbarCore/Models/ClaudeQuotaFailureReason.swift Sources/NeedlbarCore/Presentation/ClaudeQuotaPresentationSelector.swift Sources/Needlbar/Modules/Provider/ProviderPopoverView.swift Sources/Needlbar/Settings/SettingsView.swift Tests/NeedlbarCoreTests/ClaudeUsageReportReasonTests.swift Tests/NeedlbarTests/ClaudeUsageReportPresentationTests.swift Tests/NeedlbarCoreTests/RefreshCoordinatorTests.swift Tests/NeedlbarCoreTests/ClaudeQuotaPresentationSelectorTests.swift
-git commit -m "feat: add usage report failure copy and newest-reading source order
+/usr/bin/python3 -I - <<'PY'
+import pathlib
+
+def edit(name, pairs):
+    path = pathlib.Path(name)
+    source = path.read_text()
+    for old, new, count in pairs:
+        assert source.count(old) == count, (old, source.count(old))
+        source = source.replace(old, new)
+    path.write_text(source)
+
+edit("Tests/NeedlbarCoreTests/ClaudeQuotaPresentationSelectorTests.swift", [
+    ('''    @Test(arguments: [899.0, 900.0, 901.0])
+    func directObservationExpiresAtStrictFifteenMinuteBoundary(age: Double) throws {''',
+     '''    @Test(arguments: [1_199.0, 1_200.0, 1_201.0])
+    func directObservationExpiresAtStrictTwentyMinuteBoundary(age: Double) throws {''', 1),
+    ("#expect(selected.fiveHour?.isLastKnown == (age >= 900))", "#expect(selected.fiveHour?.isLastKnown == (age >= 1_200))", 1),
+])
+edit("Tests/NeedlbarTests/ClaudeQuotaFreshnessPresentationTests.swift", [
+    # Lines 36, 224 and 260: the three tickers that cross the direct boundary.
+    ("TwoFrameQuotaClock(initial: success.addingTimeInterval(899))", "TwoFrameQuotaClock(initial: success.addingTimeInterval(1_199))", 3),
+    # Line 123.
+    ('("direct age", [try window()], success, nil, 899,', '("direct age", [try window()], success, nil, 1_199,', 1),
+    # Lines 186-187.
+    ("settings.reproject(at: now.addingTimeInterval(900))", "settings.reproject(at: now.addingTimeInterval(1_200))", 1),
+    ("dashboard.reproject(at: now.addingTimeInterval(900))", "dashboard.reproject(at: now.addingTimeInterval(1_200))", 1),
+])
+PY
+```
+
+- [ ] **Step 12: Run tests to verify they pass**
+
+Run: `make swift-test SWIFT_TEST_FILTER=ClaudeUsageFreshnessTests`
+Expected: PASS.
+
+Run: `make swift-test SWIFT_TEST_FILTER=ClaudeQuotaFreshnessPresentationTests`
+Expected: PASS.
+
+Run: `make swift-test SWIFT_TEST_FILTER=WidgetProjectionTests`
+Expected: PASS, including the unchanged `exactlyFifteenMinutesOldFreshValueIsStale`.
+
+Run: `make widget-extension-test`
+Expected: exits 0.
+
+Run: `make swift-test`
+Expected: PASS. If a test outside the Step 11 list fails because a Claude report between 15 and 20 minutes old is now current, change its age or expectation to match the 20-minute window and name it in the commit message.
+
+- [ ] **Step 13: Commit**
+
+```bash
+git add Sources/NeedlbarCore/Models/ClaudeQuotaFailureReason.swift Sources/NeedlbarCore/Presentation/ClaudeQuotaPresentationSelector.swift Sources/NeedlbarWidgetSupport/WidgetPresentation.swift WidgetExtension/NeedlbarOverviewWidget.swift Sources/Needlbar/Modules/Provider/ProviderPopoverView.swift Sources/Needlbar/Settings/SettingsView.swift Tests/NeedlbarCoreTests/ClaudeUsageReportReasonTests.swift Tests/NeedlbarCoreTests/ClaudeUsageFreshnessTests.swift Tests/NeedlbarCoreTests/ClaudeUsageProbeCoordinatorTests.swift Tests/NeedlbarTests/ClaudeUsageReportPresentationTests.swift Tests/NeedlbarTests/ClaudeQuotaFreshnessPresentationTests.swift Tests/NeedlbarWidgetSupportTests/WidgetProjectionTests.swift Tests/NeedlbarCoreTests/RefreshCoordinatorTests.swift Tests/NeedlbarCoreTests/ClaudeQuotaPresentationSelectorTests.swift
+git commit -m "feat: add usage report failure copy, source order and freshness window
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -5864,8 +6298,11 @@ the usage endpoint. It runs `/usage` through your installed `claude`
 (`~/.local/bin/claude`, `/opt/homebrew/bin/claude` or `/usr/local/bin/claude`,
 never through a shell) and reads the documented `usage_report` field, which is
 marked experimental. Runs happen at app start, on manual refresh, when Claude
-Code's local usage records change and when a displayed window's reset passes, at
-most once every 5 minutes, and opening the dashboard alone starts none. A run is
+Code's local usage records change, when a displayed window's reset passes, and
+after 15 minutes without a run, at most once every 5 minutes. Opening the dashboard
+alone starts none. A reading stays current for 20 minutes, and usage outside Claude
+Code appears within about 15 minutes while the app is running and the Mac is awake.
+That can mean up to 96 runs a day. A run is
 limited to 30 seconds and 1 MiB of output, works in an empty temporary directory,
 and its output is neither logged nor stored. The status line remains the second
 source and last-known values the third; a newer valid reading wins. A window the
@@ -5875,8 +6312,9 @@ with `claude` in Terminal and offers no button. Needlbar never runs `claude auth
 and writes no Claude configuration, though Claude Code may renew its own login
 during a run, and `claude` itself may show a Keychain prompt. **Allow Keychain
 access**, which an earlier prepared build had, is removed. This has not run for
-24 hours on a real machine, and duration, memory, CPU and any rate limit on
-`/usage` have not been measured. It is not part of any public release yet.
+24 hours on a real machine, and duration, memory, CPU, the cost of up to 96 runs a
+day and any rate limit on `/usage` have not been measured. It is not part of any
+public release yet.
 
 """
 source, count = re.subn(r"^### Claude Keychain access action \(v0\.3\.15 prepared\)\n.*?(?=^### )", lambda _: section, source, count=1, flags=re.M | re.S)
@@ -5886,12 +6324,12 @@ path.write_text(source)
 pathlib.Path("docs/releases/v0.3.15.md").write_text("""Needlbar v0.3.15 changes where the Claude quota comes from. It no longer reads Claude Code's Keychain item or credentials file and no longer calls the usage endpoint, so Needlbar stops causing Keychain dialogs of its own.
 
 - Needlbar now runs `/usage` through your installed Claude Code command-line tool and reads its usage report. The command is fixed and runs without a shell, in an empty temporary directory, for at most 30 seconds. Its output is not logged or stored.
-- Runs happen when Needlbar starts, when you refresh, when Claude Code's local usage records change, and when a displayed window's reset passes, at most once every 5 minutes. Opening the dashboard does not start one. After repeated failures Needlbar waits 5, 10, 20, then 30 minutes.
+- Runs happen when Needlbar starts, when you refresh, when Claude Code's local usage records change, when a displayed window's reset passes, and after 15 minutes without a run, at most once every 5 minutes. Opening the dashboard does not start one. After repeated failures Needlbar waits 5, 10, 20, then 30 minutes.
 - A window the report leaves out is hidden, never shown as zero. On accounts without a five-hour window, the quota shows the weekly windows.
 - The Claude Code status line stays as the second source and last-known values as the third, labelled with the time they were checked. A newer valid reading wins whichever source it came from.
 - Without Claude Code, Needlbar shows install guidance and the usage link. When Claude Code reports no usage, it says to sign in with `claude` in Terminal. It never runs `claude auth` or opens a login flow.
 
-Known limits: usage outside Claude Code, such as on the web, appears only at the next run, and a reading shows as last known once 15 minutes pass with no run. The usage report is marked experimental and can change, in which case Needlbar shows last-known values. API-key and usage-billed Claude Code sessions do not produce a usage report. Fable matching depends on a display label. Claude Code may renew its own login during a run, and `claude` itself may show a Keychain prompt. Native overnight, quota-reset, sustained unattended, and native macOS 14 acceptance remain unverified.
+Known limits: usage outside Claude Code, such as on the web, appears within about 15 minutes while Needlbar is running and the Mac is awake. That means up to 96 runs a day, whose memory and CPU cost has not been measured. A reading shows as last known after a failed run or once it is 20 minutes old. The usage report is marked experimental and can change, in which case Needlbar shows last-known values. API-key and usage-billed Claude Code sessions do not produce a usage report. Fable matching depends on a display label. Claude Code may renew its own login during a run, and `claude` itself may show a Keychain prompt. Native overnight, quota-reset, sustained unattended, and native macOS 14 acceptance remain unverified.
 """)
 
 path = pathlib.Path("docs/superpowers/plans/2026-11-02-v0.3.15-release.md")
@@ -5961,11 +6399,14 @@ reading wins regardless of source, and no source invents a value.
   environment of only `HOME`, `USER`, `LOGNAME`, `TMPDIR`, a fixed `PATH`, and `CLAUDE_CONFIG_DIR`
   if the app already has it; 30 seconds, then the process group is terminated; 1 MiB of standard
   output, then the same; standard error discarded; cancelled when the app stops.
-- **When:** at app start, on manual refresh, when Claude Code's local usage records change, and
-  when a displayed window's reset passes. Automatic runs happen at most once every 5 minutes and
-  only one at a time. Manual refresh skips the interval and backoff but joins a run in flight.
-  Opening the dashboard, waking the Mac and regaining a connection start no run.
+- **When:** at app start, on manual refresh, when Claude Code's local usage records change, when a
+  displayed window's reset passes, and after 15 minutes without a run. Automatic runs happen at most
+  once every 5 minutes and only one at a time. Manual refresh skips the interval and backoff but joins
+  a run in flight. Opening the dashboard, waking the Mac and regaining a connection start no run
+  themselves, though the once-a-minute check can find a run overdue after sleep and start it.
 - **After failures:** automatic runs wait 5, 10, 20, then 30 minutes. Any success resets this.
+- **Freshness:** a reading is current for 20 minutes, then **Last known**. A failed run shows **Last
+  known** at once. Status-line readings keep their own 15-minute recency and 24-hour maximum age.
 
 Needlbar never runs `claude auth`, never opens a login flow and never writes Claude configuration.
 Claude Code may renew its own login during a run, and `claude` itself may show a Keychain prompt.
@@ -5988,11 +6429,13 @@ clamped to 0-100. Everything else in the output is discarded without being logge
 | Rate limited | **Temporarily limited** and the last checked time | Last known | Backoff |
 | No readable report | **Could not read Claude Code's usage report** and the last checked time | Last known | Backoff |
 
-How a signed-out `claude` reports itself in this mode has not been observed. Until it is, a
-non-zero exit counts as a process failure, and only a null `rate_limits` or empty `limits` shows the
+The run after 15 minutes counts as a trigger, so the first two states are tried again about every
+15 minutes, further apart under backoff. How a signed-out `claude` reports itself in this mode has not
+been observed. Until it is, a non-zero exit counts as a process failure, and only a null `rate_limits` or empty `limits` shows the
 sign-in guidance. API-key, usage-billed and `claude setup-token` sessions produce no `usage_report`,
 so they show the no-readable-report state. Usage outside Claude Code, such as on the web, appears
-only at the next run, and a reading shows as last known once 15 minutes pass with no run.
+within about 15 minutes while the app is running and the Mac is awake. That means up to 96 runs a day,
+whose memory and CPU cost has not been measured.
 
 Diagnostics record the failure reason, the run duration and the row kinds seen, never tokens, output
 text or emails. The `ClaudeQuotaFailureDiagnostic` and `QuotaRefreshDiagnostic` log categories stay
@@ -6037,7 +6480,7 @@ replace("docs/architecture.md", [
     ("Claude OAuth evidence -> Anthropic usage API ───────┐\nCodex OAuth -> OpenAI usage API -> CLI RPC fallback ├─> quota envelope\nCursor quota unavailable; Settings/popover open Spending dashboard ─┘\n```\n",
      "Codex OAuth -> OpenAI usage API -> CLI RPC fallback ┐\nCursor quota unavailable; Settings/popover open Spending dashboard ┴─> quota envelope\n\nInstalled claude -> /usage -> usage_report ───────────> Claude quota envelope\n```\n"),
     ("Claude and Codex login are explicit user actions. After a successful provider CLI exit,\n`NeedlbarCore` requests a quota-only refresh for that provider. Claude's dedicated\npost-authentication bridge path may allow the exact provider-owned macOS Keychain item to\nbe read; ordinary background refresh always uses interaction-forbidden access. Codex uses\nits provider-specific quota path. A failed verification preserves the last-known-good\nquota state and does not mark all-provider background refresh fresh.\n",
-     "Codex login is an explicit user action. After a successful CLI exit, `NeedlbarCore` requests a\nquota-only refresh for Codex. A failed verification preserves the last-known-good quota state and\ndoes not mark the background refresh fresh.\n\nPrepared for the next release, not in v0.3.14: Claude has no login path. `RefreshCoordinator` runs\nClaude on its own slot, off the cooperative pool, under `ClaudeUsageProbeSchedule`: at app start, on\nmanual refresh, when the Claude total in the usage refresh changes, and when a displayed reset\npasses, at most once every 5 minutes with backoff. The Codex and Cursor refresh never waits for it.\nA stop cancels by run ID through `needlbar_claude_usage_report_cancel_through`, which signals the\nprocess group before returning.\n"),
+     "Codex login is an explicit user action. After a successful CLI exit, `NeedlbarCore` requests a\nquota-only refresh for Codex. A failed verification preserves the last-known-good quota state and\ndoes not mark the background refresh fresh.\n\nPrepared for the next release, not in v0.3.14: Claude has no login path. `RefreshCoordinator` runs\nClaude on its own slot, off the cooperative pool, under `ClaudeUsageProbeSchedule`: at app start, on\nmanual refresh, when the Claude total in the usage refresh changes, when a displayed reset passes,\nand after 15 minutes without a run, at most once every 5 minutes with backoff. The Codex and Cursor refresh never waits for it.\nA stop cancels by run ID through `needlbar_claude_usage_report_cancel_through`, which signals the\nprocess group before returning.\n"),
     ("const char *needlbar_claude_user_initiated_quota_snapshot_json(void);\n",
      "const char *needlbar_claude_usage_report_quota_snapshot_json(uint64_t run_id);\nvoid needlbar_claude_usage_report_cancel_through(uint64_t run_id);\n"),
     ("Credential resolution and provider responses stay in Rust and are redacted before any error crosses the bridge. The raw Claude credential is ephemeral and zeroizing inside\n`needlbar-quota`; it is never persisted by Needlbar or exported through the C ABI. Cursor\nhas no credential integration",
@@ -6071,11 +6514,13 @@ Claude's Keychain item or credentials file and no longer calls the usage endpoin
 through the installed `claude` and reads `usage_report`, with the status line second and last-known
 values third. **Allow Keychain access** and `requestClaudeKeychainAccess` are removed; that action
 never shipped. Runs have their own slot and schedule in `RefreshCoordinator`, so Codex and Cursor
-never wait for them, and the popover, wake and connectivity start none.
+never wait for them, and the popover, wake and connectivity start none. A periodic run after 15
+minutes without one keeps readings current (user decision, 2026-11-03), and a reading stays current
+for 20 minutes, including on the widget's Claude row.
 
 None of this has run for 24 hours on a real machine. Still open: how a signed-out `claude` reports
-itself in this mode, run duration, memory and CPU, whether `/usage` has its own rate limit, and
-whether 30 seconds is the right deadline. Those checks are user-run; see Task 14 of the plan.
+itself in this mode, run duration, memory and CPU, the cost of up to 96 runs a day, whether `/usage`
+has its own rate limit, and whether 30 seconds is the right deadline. Those checks are user-run; see Task 14 of the plan.
 
 **Release gate (spec §11):** before any public build, the user decides how to resolve the terms
 question in spec §3: ask Anthropic, or ship on a stated reading. Until then the build runs on this
@@ -6118,9 +6563,13 @@ Implements `docs/superpowers/specs/2026-11-03-claude-usage-report-source-design.
   **Allow Keychain access** action, which never shipped; the keychain sequencing; the Claude login,
   preflight and verification paths; the two matching C exports; and the Keychain crates as direct
   dependencies. Codex code is unchanged and its tests run in every gate.
-- **Runs.** App start, manual refresh, a changed Claude total in the usage refresh, and a passed reset
-  of a displayed window, at most once every 5 minutes, with backoff of 5, 10, 20, then 30 minutes.
-  The popover, wake, connectivity and the timer start none.
+- **Runs.** App start, manual refresh, a changed Claude total in the usage refresh, a passed reset of
+  a displayed window, and 15 minutes since the last run (user decision, 2026-11-03), at most once every
+  5 minutes, with backoff of 5, 10, 20, then 30 minutes. The popover, wake, connectivity and the
+  five-minute timer start none.
+- **Freshness.** A report reading is current for 20 minutes, because a refresh due at 15 can finish
+  about a minute and a half later. The widget's Claude quota row follows it; Codex, usage and the
+  status line keep their windows.
 - **Change detection.** The usage file watcher fires only for a root directory's own entries, for
   every provider, so it cannot see an append to a session file. The Claude total from the existing
   usage refresh serves instead, at most 5 minutes late. No new watcher was added.
@@ -6131,8 +6580,8 @@ Implements `docs/superpowers/specs/2026-11-03-claude-usage-report-source-design.
 
 Not established: no run on a real machine. A 24-hour run across a login renewal, how a signed-out
 `claude` reports itself, duration, memory, CPU, any rate limit on `/usage`, and the 30-second deadline
-are all user-run and open. A reading shows as last known once 15 minutes pass with no run; whether that
-is acceptable in daily use is also open. **Release gate:** no public build until the user resolves the
+are all user-run and open. So are the cost of up to 96 runs a day and whether the label stays steady
+across them. **Release gate:** no public build until the user resolves the
 terms question in spec §3. No Keychain item, credential file or cookie was read for this work, and no
 agent ran `claude`.
 
@@ -6274,7 +6723,7 @@ Run five times in Terminal, a minute or more apart, with normal login:
 /usr/bin/time -l claude -p /usage --no-session-persistence --strict-mcp-config --settings '{"disableAllHooks":true}' --output-format stream-json --verbose </dev/null 2>&1 >/dev/null | /usr/bin/grep -E 'real|maximum resident|user|sys'
 ```
 
-Record for each run: real seconds, maximum resident set size, user and system seconds. Report the numbers only.
+Record for each run: real seconds, maximum resident set size, user and system seconds. Report the numbers only. Multiply user plus system seconds by 96 for the worst-case CPU of a day.
 
 **30-second decision:** if any run takes more than 20 seconds, or a cold start after a login renewal comes near 30, the deadline changes in spec §6 before release and `UsageProbeLimits::default` changes with it, with a test. If all runs stay well under, record the numbers and keep 30 seconds.
 
@@ -6284,6 +6733,7 @@ Leave the installed build running through at least one login renewal by Claude C
 
 ```bash
 /usr/bin/log show --last 24h --style compact --predicate 'subsystem == "com.taejunoh.needlbar" AND category == "QuotaRefreshDiagnostic"' | /usr/bin/grep -c 'phase=completed'
+/usr/bin/log show --last 24h --style compact --predicate 'subsystem == "com.taejunoh.needlbar" AND category == "QuotaRefreshDiagnostic"' | /usr/bin/grep 'phase=completed' | /usr/bin/grep -c 'trigger=periodic'
 /usr/bin/log show --last 24h --style compact --predicate 'subsystem == "com.taejunoh.needlbar" AND category == "QuotaRefreshDiagnostic"' | /usr/bin/grep 'phase=completed' | /usr/bin/tail -n 40
 /usr/bin/log show --last 24h --style compact --predicate 'subsystem == "com.taejunoh.needlbar" AND category == "ClaudeQuotaFailureDiagnostic"' | /usr/bin/tail -n 40
 /usr/bin/log show --last 24h --style compact --predicate 'process == "SecurityAgent"' | /usr/bin/tail -n 40
@@ -6297,9 +6747,12 @@ Check and report:
 - [ ] `rows=` shows `weeklyAll,weeklyScoped` on this account, and no made-up session value appears.
 - [ ] Automatic `start=` times are never under 5 minutes apart; only `trigger=manual` may be closer.
 - [ ] `trigger=usageRecordsChanged` appears while Claude Code is in use and stops when it is idle, which also shows a run does not trigger itself.
-- [ ] Opening the dashboard adds no `quotaRefresh` line.
+- [ ] While idle and awake, `trigger=periodic` appears about every 15 minutes and nothing else does.
+- [ ] Opening the dashboard adds no `quotaRefresh` line of its own. A `trigger=periodic` line may still fall at the same moment.
 - [ ] Codex and Cursor quota keep updating during a run.
-- [ ] Whether **Last known** after 15 quiet minutes is acceptable day to day. If it is not, that is a design change for the user to approve, not a tweak.
+- [ ] The cost of up to 96 runs a day: the number of completed runs, their total `durationMs`, and the Step 6 memory and CPU figures scaled to that count, including any noticeable fan, battery or slowdown. If it is not acceptable, a longer interval is a design change for the user to approve.
+- [ ] Label stability: while runs succeed, the dashboard, Settings and the widget's Claude row stay current across each refresh and never flip to **Last known** or **Stale** just before one. **Last known** appears only after a failed run, or when the Mac slept past 20 minutes, until the next run finishes.
+- [ ] A signed-in session never shows **Sign in with claude in Terminal**. An `origin=usageReportNoUsage` or `origin=usageReportRateLimited` line while signed in suggests `/usage` has a limit at this rate; report it, because the first would show wrong guidance.
 - [ ] No token, email, output text or path appears in any of these lines.
 
 - [ ] **Step 8: USER-RUN: decide the release gate**
@@ -6321,7 +6774,9 @@ Only after the user reports Steps 5-7, an agent adds a dated, local-only receipt
 | §5 | Removed: button, copy, tests, `requestClaudeKeychainAccess`, sequencing | Task 10; lock in Task 12 |
 | §5 | Removed: login-path leftovers | Task 11 |
 | §5 | Unit boundaries and placement | Tasks 1, 2, 3, 6; Decisions 1 |
-| §6 | Four triggers, 5-minute cap, single run, manual joins, dashboard starts none | Tasks 6, 7; Decisions 2, 3 |
+| §6 | Five triggers, 5-minute cap, single run, manual joins; dashboard, wake and connectivity start none | Tasks 6, 7; Decisions 2, 3 |
+| §6 | Periodic run: 15 minutes, last in priority, behind the gate, never from a negative age, a trigger for every state | Task 6 `// MARK: - Periodic`; Task 7 `aQuietPeriodStartsAPeriodicRunEveryFifteenMinutes`, `notInstalledAndNoUsageRetryOnlyOnATriggerAndUnderBackoff`, `aFailedPeriodicRunKeepsTheReadingAsLastKnownAndBacksOff` |
+| §6 | 20-minute freshness, status line unchanged, widget's Claude row | Task 8 Steps 8-12; Decisions 3a |
 | §6 | Backoff 5, 10, 20, 30; success resets | Task 6; Task 7 `retryableFailuresBackOff…` |
 | §6 | Locator order, symlinks, no shell or `PATH` | Task 2; Task 12 source contract |
 | §6 | Fixed argv | Task 2 |
@@ -6333,12 +6788,12 @@ Only after the user reports Steps 5-7, an agent adds a dated, local-only receipt
 | §8 | Five states with copy and next attempt | Decisions 6; Tasks 3, 6, 7, 8 |
 | §8 | Signed-out behaviour until observed; user-run check | Task 3 test; Task 14 Step 5 |
 | §8 | No made-up zero; diagnostics contents | Task 8; Tasks 3, 4, 7 |
-| §9 | Each automated case | all rows, `session` missing, only Fable, percent over 100, malformed, unknown, null `rate_limits`, no report (Task 1); timeout, oversized, non-zero, CLI missing (Tasks 2, 3); interval, backoff, single run, manual join (Tasks 6, 7); no shell, argv, environment (Tasks 2, 12); source order, last known (Task 8); no secret in logs (Tasks 1, 3, 7, 9, 12); no Keychain or endpoint (Task 12) |
-| §9 | Real-machine acceptance | Task 14 Steps 5-7, user-run |
+| §9 | Each automated case | all rows, `session` missing, only Fable, percent over 100, malformed, unknown, null `rate_limits`, no report (Task 1); timeout, oversized, non-zero, CLI missing (Tasks 2, 3); interval, backoff, single run, manual join, periodic run (Tasks 6, 7); freshness boundary and label across a refresh (Task 8); no shell, argv, environment (Tasks 2, 12); source order, last known (Task 8); no secret in logs (Tasks 1, 3, 7, 9, 12); no Keychain or endpoint (Task 12) |
+| §9 | Real-machine acceptance, including the cost of up to 96 runs a day and label stability | Task 14 Steps 5-7, user-run |
 | §10 | Each listed document, dated notes | Task 13 |
 | §11 | Not tagged; new plan and notes; release gate; fallback | Task 13 notes and plan amendment; HANDOFF; Task 14 Step 8. The fallback (status line, last known, usage link) needs no code: it is what the app shows when `/usage` is not run, and removing the run is a later decision |
-| §12 | Known limits stated | `docs/providers/claude.md`, README, release notes in Task 13 |
+| §12 | Known limits stated, including usage outside Claude Code within about 15 minutes and up to 96 runs a day | `docs/providers/claude.md`, README, release notes in Task 13 |
 
 **Placeholder scan.** The only value left open is the counts in the Task 14 Step 3 line, printed by that run. Test-file edits by script name each test.
 
-**Type consistency, checked across tasks.** `ClaudeUsageReportProvider::with_parts(locator, environment, limits, control, run_id)`; `run_usage_probe(executable, environment, limits, control, run_id)`; `ClaudeUsageReportRun { result, summary }`; `collect_quota_with_providers(codex, cursor)` after Task 9; `QuotaRefreshIntent.claudeUsageReport(runID:)`; `QuotaRepository.cancelClaudeUsageReport(through:)`; `RustBridge.claudeUsageReportEnvelope(runID:)`; `ClaudeUsageProbeSchedule.request(_:now:inFlight:)`, `dueTrigger(resetTimes:now:inFlight:)`, `recordFailure(trigger:at:retriesWhenBackoffEnds:)`; `ClaudeQuotaFailureReason.init(errorCode:associatedOrigin:)` until Task 11, then `init(errorCode:)`, with the one test call updated by the Task 11 script.
+**Type consistency, checked across tasks.** `ClaudeUsageReportProvider::with_parts(locator, environment, limits, control, run_id)`; `run_usage_probe(executable, environment, limits, control, run_id)`; `ClaudeUsageReportRun { result, summary }`; `collect_quota_with_providers(codex, cursor)` after Task 9; `QuotaRefreshIntent.claudeUsageReport(runID:)`; `QuotaRepository.cancelClaudeUsageReport(through:)`; `RustBridge.claudeUsageReportEnvelope(runID:)`; `ClaudeUsageProbeSchedule.periodicInterval`, `request(_:now:inFlight:)`, `dueTrigger(resetTimes:now:inFlight:)`, `recordFailure(trigger:at:retriesWhenBackoffEnds:)`; `ClaudeQuotaFailureReason.init(errorCode:associatedOrigin:)` until Task 11, then `init(errorCode:)`, with the one test call updated by the Task 11 script.

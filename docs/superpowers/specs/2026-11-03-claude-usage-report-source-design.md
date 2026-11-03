@@ -6,6 +6,10 @@
 execution. It authorizes writing an implementation plan only. Implementation, merge,
 installation, tag, and release each still need the user's separate request.
 
+**Amended 2026-11-03:** The user chose to add a periodic run, so readings stay current
+during quiet periods and usage outside Claude Code appears within about 15 minutes. See
+§6 for the trigger and the 20-minute freshness window, and §12 for its cost.
+
 **Scope:** Replace how Needlbar obtains Claude quota. Codex, Cursor, local usage,
 and API billing are out of scope.
 
@@ -131,10 +135,23 @@ or `NeedlbarCore`, following existing structure.
 - manual refresh
 - a change in Claude Code's local usage records
 - passing the `resets_at` of a displayed window
+- 15 minutes since the last run started (periodic; user decision, 2026-11-03)
 
 Automatic runs happen at most once every 5 minutes. Only one runs at a time.
 Manual refresh skips the interval and backoff, but joins a run in flight. Opening
-the dashboard alone does not start a run.
+the dashboard alone does not start a run, and neither does waking the Mac or regaining
+a connection.
+
+The periodic run is a trigger like any other, last in priority, under the same interval,
+backoff, and single-run rules. It is checked about once a minute. A clock set backwards
+does not make it due. Time asleep counts, so a run that fell due during sleep can start
+within about a minute of waking.
+
+**Freshness:** a usage report reading is current for 20 minutes, then **Last known**. A
+refresh that is due at 15 minutes can finish about a minute and a half later, so a shorter
+window would flip the label just before each refresh. A failed run shows **Last known** at
+once. This applies wherever a Claude reading is labelled, including the widget's Claude
+quota row. The status line keeps its 15-minute recency and its 24-hour maximum age.
 
 **Backoff:** after consecutive automatic failures, wait 5, 10, 20, then 30 minutes.
 Any success resets it.
@@ -198,6 +215,9 @@ No new credential or raw output storage is added.
 | Rate limited | Last checked time | Last known | Backoff |
 | Format changed | Last checked time | Last known | Backoff |
 
+The periodic run counts as a trigger, so the first two states are tried again about every
+15 minutes, further apart under backoff. The others retry when backoff ends.
+
 How a signed-out `claude` reports itself in this mode has not been observed. The
 plan captures it in a user-run check before relying on it. Until then, a non-zero
 exit counts as a process failure, and only `rate_limits: null` or empty `limits`
@@ -215,6 +235,11 @@ duration, and the row kinds seen. They never record tokens, output text, or emai
 - `rate_limits` null; no `usage_report`
 - timeout; oversized output; non-zero exit; CLI missing
 - interval, backoff, single run, and manual join
+- periodic run: due at 15 minutes, last in priority, behind the interval and backoff, never
+  from a negative age; opening the dashboard, waking, and regaining a connection start none
+- signed-out and not-installed states retried on the periodic run, under backoff
+- the 20-minute freshness boundary, a label that stays current across a periodic refresh,
+  and **Last known** after a failed run
 - no shell use, and exact argv and environment
 - source order and last-known labelling
 - no secret or raw output in logs
@@ -226,6 +251,7 @@ duration, and the row kinds seen. They never record tokens, output text, or emai
 - Needlbar causes no `SecurityAgent` dialog.
 - Quota keeps updating after renewal with no user action.
 - Record run duration, peak memory, and CPU.
+- Record the cost of up to 96 runs a day, and whether the label stays current across them.
 - Confirm a `claude` prompt, if any, is noticed and recorded honestly.
 
 ## 10. Specification changes
@@ -262,11 +288,15 @@ If this design is approved, these are amended with dated notes rather than rewri
 This ends the Keychain approval loop in Needlbar. It does not promise that quota can
 never fail.
 
-- Usage outside Claude Code, such as on the web, appears only at the next run.
+- Usage outside Claude Code, such as on the web, appears within about 15 minutes while
+  the app is running and awake. This means up to 96 runs a day, whose memory and CPU cost
+  is unmeasured.
 - `usage_report` is experimental and can change; Needlbar then shows last known values.
 - Fable matching depends on a display label.
 - `claude` itself may show a Keychain prompt while running. None was logged in the one
   observed run, and an upstream report describes this happening.
 - Users without the CLI get status-line data and the usage link only.
 - Duration, memory, and CPU under repeated runs have not been measured.
-- Whether `/usage` has its own rate limit has not been measured.
+- Whether `/usage` has its own rate limit has not been measured. The periodic run makes
+  this more likely to matter. If a limit shows up as `rate_limits: null`, the app would
+  wrongly show the sign-in guidance.
