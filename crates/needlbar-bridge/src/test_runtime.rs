@@ -27,11 +27,7 @@ use crate::{
 };
 use tokscale_core::WorkspaceSessionReport;
 
-type AllQuotaProviders = (
-    Arc<dyn QuotaProvider>,
-    Arc<dyn QuotaProvider>,
-    Arc<dyn QuotaProvider>,
-);
+type BackgroundQuotaProviders = (Arc<dyn QuotaProvider>, Arc<dyn QuotaProvider>);
 
 #[derive(Clone)]
 struct FixtureRuntime {
@@ -648,17 +644,18 @@ pub fn usage_envelope() -> Option<Envelope<UsagePayload>> {
     Some(envelope)
 }
 
-/// Factory-level fixture injection. The exported ABI still runs its normal
-/// envelope and dedicated worker; only external provider construction changes.
-pub fn all_quota_providers() -> Option<AllQuotaProviders> {
+/// Factory-level fixture injection for the Codex and Cursor refresh.
+pub fn background_quota_providers() -> Option<BackgroundQuotaProviders> {
     let runtime = fixture_runtime()?;
+    let cursor_unavailable = || {
+        Err(QuotaError::new(
+            Some(ProviderId::Cursor),
+            QuotaErrorCode::ProviderUnavailable,
+            "Cursor personal quota is available in Cursor Spending.",
+        ))
+    };
     Some(match runtime.mode {
         FixtureMode::Integration => (
-            Arc::new(FixtureQuotaProvider::success(
-                ProviderId::Claude,
-                "claude.session",
-                20.0,
-            )),
             Arc::new(FixtureQuotaProvider::success(
                 ProviderId::Codex,
                 "codex.primary",
@@ -671,15 +668,10 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
             )),
         ),
         FixtureMode::Redaction {
-            claude_failure,
             codex_failure,
             cursor_failure,
+            ..
         } => (
-            Arc::new(FixtureQuotaProvider::failure(
-                ProviderId::Claude,
-                QuotaErrorCode::RequiresAuthentication,
-                claude_failure,
-            )),
             Arc::new(FixtureQuotaProvider::failure(
                 ProviderId::Codex,
                 QuotaErrorCode::NetworkUnavailable,
@@ -692,15 +684,9 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
             )),
         ),
         FixtureMode::ProviderVerification(fixture) => {
-            fixture.record_creation(ProviderId::Claude);
             fixture.record_creation(ProviderId::Codex);
             fixture.record_creation(ProviderId::Cursor);
             (
-                Arc::new(ProviderVerificationQuotaProvider::new(
-                    ProviderId::Claude,
-                    fixture.claude_result.clone(),
-                    fixture.clone(),
-                )),
                 Arc::new(ProviderVerificationQuotaProvider::new(
                     ProviderId::Codex,
                     fixture.codex_result.clone(),
@@ -708,21 +694,12 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
                 )),
                 Arc::new(ProviderVerificationQuotaProvider::new(
                     ProviderId::Cursor,
-                    Err(QuotaError::new(
-                        Some(ProviderId::Cursor),
-                        QuotaErrorCode::ProviderUnavailable,
-                        "Cursor personal quota is available in Cursor Spending.",
-                    )),
+                    cursor_unavailable(),
                     fixture,
                 )),
             )
         }
         FixtureMode::ProviderVerificationBlocking(blocking) => (
-            Arc::new(ProviderVerificationQuotaProvider::new(
-                ProviderId::Claude,
-                blocking.fixture.claude_result.clone(),
-                blocking.fixture.clone(),
-            )),
             Arc::new(ProviderVerificationQuotaProvider::new(
                 ProviderId::Codex,
                 blocking.fixture.codex_result.clone(),
@@ -730,19 +707,13 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
             )),
             Arc::new(ProviderVerificationQuotaProvider::new(
                 ProviderId::Cursor,
-                Err(QuotaError::new(
-                    Some(ProviderId::Cursor),
-                    QuotaErrorCode::ProviderUnavailable,
-                    "Cursor personal quota is available in Cursor Spending.",
-                )),
+                cursor_unavailable(),
                 blocking.fixture,
             )),
         ),
-        FixtureMode::ProviderVerificationPanic => (
-            Arc::new(PanicProvider),
-            Arc::new(PanicProvider),
-            Arc::new(PanicProvider),
-        ),
+        FixtureMode::ProviderVerificationPanic => {
+            (Arc::new(PanicProvider), Arc::new(PanicProvider))
+        }
     })
 }
 

@@ -12,10 +12,9 @@ use needlbar_bridge::quota::{
     ClaudeUserInitiatedQuotaSource,
 };
 use needlbar_quota::{
-    ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver, ClaudeOAuthSecret,
-    ClaudeQuotaProvider, ClaudeUsageProbeSummary, ClaudeUsageReportRun, ClaudeUsageRowKind,
-    ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaProvider, QuotaWindow,
-    RedactingHttpClient,
+    ClaudeCredentialAccess, ClaudeQuotaProvider, ClaudeUsageProbeSummary, ClaudeUsageReportRun,
+    ClaudeUsageRowKind, ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode,
+    QuotaProvider, QuotaWindow,
 };
 
 struct FakeProvider {
@@ -44,20 +43,6 @@ fn authentication_error() -> QuotaError {
     )
 }
 
-struct RecordingClaudeResolver {
-    accesses: Arc<Mutex<Vec<ClaudeCredentialAccess>>>,
-}
-
-impl ClaudeCredentialResolver for RecordingClaudeResolver {
-    fn resolve(
-        &self,
-        access: ClaudeCredentialAccess,
-    ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
-        self.accesses.lock().expect("accesses lock").push(access);
-        Err(ClaudeCredentialError::NotFound)
-    }
-}
-
 struct RecordingClaudeSource {
     accesses: Arc<Mutex<Vec<ClaudeCredentialAccess>>>,
     result: Result<ProviderQuotaSnapshot, QuotaError>,
@@ -71,79 +56,6 @@ impl ClaudeUserInitiatedQuotaSource for RecordingClaudeSource {
         self.accesses.lock().expect("accesses lock").push(access);
         Box::pin(async move { self.result.clone() })
     }
-}
-
-#[tokio::test]
-async fn ordinary_all_provider_collection_uses_background_claude_credential_access() {
-    // This catches an all-provider refresh that can accidentally trigger
-    // user-interactive Keychain access.
-    let accesses = Arc::new(Mutex::new(Vec::new()));
-    let claude = ClaudeQuotaProvider::with_resolver(
-        Arc::new(RecordingClaudeResolver {
-            accesses: Arc::clone(&accesses),
-        }),
-        RedactingHttpClient::new(),
-    );
-
-    let collection = collect_quota_with_providers(
-        Arc::new(claude),
-        Arc::new(FakeProvider {
-            result: Ok(successful_snapshot(ProviderId::Codex, "codex.primary")),
-        }),
-        Arc::new(FakeProvider {
-            result: Ok(successful_snapshot(ProviderId::Cursor, "cursor.plan")),
-        }),
-    )
-    .await;
-
-    assert_eq!(
-        *accesses.lock().expect("accesses lock"),
-        vec![ClaudeCredentialAccess::BackgroundNoUI]
-    );
-    assert_eq!(collection.providers.len(), 2);
-    assert_eq!(collection.errors[0].provider.as_deref(), Some("claude"));
-}
-
-struct BusyClaudeResolver;
-
-impl ClaudeCredentialResolver for BusyClaudeResolver {
-    fn resolve(
-        &self,
-        _access: ClaudeCredentialAccess,
-    ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
-        Err(ClaudeCredentialError::KeychainBusy)
-    }
-}
-
-#[tokio::test]
-async fn busy_claude_keychain_read_is_skipped_while_codex_and_cursor_still_report() {
-    // A background read that finds a Keychain access dialog in progress is not
-    // a Claude outcome: it must not overwrite Claude's reason or diagnostics,
-    // and it must not hold up the two other providers joined with it.
-    let claude = ClaudeQuotaProvider::with_resolver(
-        Arc::new(BusyClaudeResolver),
-        RedactingHttpClient::new(),
-    );
-
-    let collection = collect_quota_with_providers(
-        Arc::new(claude),
-        Arc::new(FakeProvider {
-            result: Ok(successful_snapshot(ProviderId::Codex, "codex.primary")),
-        }),
-        Arc::new(FakeProvider {
-            result: Ok(successful_snapshot(ProviderId::Cursor, "cursor.plan")),
-        }),
-    )
-    .await;
-
-    assert_eq!(collection.providers.len(), 2);
-    assert!(collection
-        .providers
-        .iter()
-        .all(|snapshot| snapshot.provider != ProviderId::Claude));
-    assert!(collection.errors.is_empty(), "no Claude error is reported");
-    assert!(!collection.claude_attempted);
-    assert_eq!(collection.claude_failure_origin, None);
 }
 
 #[tokio::test]
@@ -271,13 +183,8 @@ async fn claude_permission_denial_uses_safe_bridge_copy_without_token_data() {
 }
 
 #[tokio::test]
-async fn quota_collection_keeps_successes_and_stable_provider_order_when_codex_auth_fails() {
-    // This catches a collector that short-circuits on the first provider
-    // error, leaks failed providers into data, or returns completion order.
+async fn background_collection_never_names_claude_and_keeps_codex_and_cursor_independent() {
     let collection = collect_quota_with_providers(
-        Arc::new(FakeProvider {
-            result: Ok(successful_snapshot(ProviderId::Claude, "claude.session")),
-        }),
         Arc::new(FakeProvider {
             result: Err(authentication_error()),
         }),
@@ -286,34 +193,21 @@ async fn quota_collection_keeps_successes_and_stable_provider_order_when_codex_a
         }),
     )
     .await;
-    let envelope = envelope_from_collection(collection);
-    let value = serde_json::to_value(envelope).expect("quota envelope serializes");
-
-    assert_eq!(value["schemaVersion"], "needlbar.v1");
+    assert!(!collection.claude_attempted);
+    let value = serde_json::to_value(envelope_from_collection(collection)).expect("quota envelope");
     assert_eq!(value["ok"], true);
-    assert_eq!(value["data"]["providers"].as_array().unwrap().len(), 2);
-    assert_eq!(value["data"]["providers"][0]["provider"], "claude");
-    assert_eq!(value["data"]["providers"][1]["provider"], "cursor");
+    assert_eq!(value["data"]["providers"].as_array().unwrap().len(), 1);
+    assert_eq!(value["data"]["providers"][0]["provider"], "cursor");
     assert_eq!(value["errors"].as_array().unwrap().len(), 1);
     assert_eq!(value["errors"][0]["provider"], "codex");
     assert_eq!(value["errors"][0]["code"], "requiresAuthentication");
 }
 
 #[tokio::test]
-async fn quota_collection_with_only_provider_errors_is_a_successful_bridge_response() {
-    // This catches an envelope that reports a bridge failure merely because
-    // every independently-refreshable provider failed.
-    let codex_error = authentication_error();
+async fn background_collection_with_only_provider_errors_is_a_successful_bridge_response() {
     let collection = collect_quota_with_providers(
         Arc::new(FakeProvider {
-            result: Err(QuotaError::new(
-                Some(ProviderId::Claude),
-                QuotaErrorCode::RequiresAuthentication,
-                "Codex authentication was not available.",
-            )),
-        }),
-        Arc::new(FakeProvider {
-            result: Err(codex_error),
+            result: Err(authentication_error()),
         }),
         Arc::new(FakeProvider {
             result: Err(QuotaError::new(
@@ -324,16 +218,13 @@ async fn quota_collection_with_only_provider_errors_is_a_successful_bridge_respo
         }),
     )
     .await;
-    let envelope = envelope_from_collection(collection);
-    let value = serde_json::to_value(envelope).expect("quota envelope serializes");
-
+    let value = serde_json::to_value(envelope_from_collection(collection)).expect("quota envelope");
     assert_eq!(value["ok"], true);
     assert_eq!(value["data"]["providers"], serde_json::json!([]));
-    assert_eq!(value["errors"].as_array().unwrap().len(), 3);
-    assert_eq!(value["errors"][0]["provider"], "claude");
-    assert_eq!(value["errors"][1]["provider"], "codex");
-    assert_eq!(value["errors"][2]["provider"], "cursor");
-    assert_eq!(value["errors"][2]["code"], "providerUnavailable");
+    assert_eq!(value["errors"].as_array().unwrap().len(), 2);
+    assert_eq!(value["errors"][0]["provider"], "codex");
+    assert_eq!(value["errors"][1]["provider"], "cursor");
+    assert_eq!(value["errors"][1]["code"], "providerUnavailable");
 }
 
 struct ScriptedUsageReportSource {

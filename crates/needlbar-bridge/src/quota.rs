@@ -94,20 +94,18 @@ pub fn cancel_claude_usage_report_through(run_id: u64) {
     UsageProbeControl::shared().cancel_through(run_id);
 }
 
-/// Collects each independently-bounded provider concurrently. The explicit
-/// result order makes the JSON payload independent of provider completion
-/// timing.
+/// Collects Codex and Cursor concurrently. Claude has its own collection and
+/// slot, so a run of up to 30 seconds cannot hold these two.
 pub async fn collect_quota() -> QuotaCollection {
     #[cfg(feature = "bridge-test-runtime")]
-    if let Some((claude, codex, cursor)) = crate::test_runtime::all_quota_providers() {
-        return collect_quota_with_providers(claude, codex, cursor).await;
+    if let Some((codex, cursor)) = crate::test_runtime::background_quota_providers() {
+        return collect_quota_with_providers(codex, cursor).await;
     }
     #[cfg(feature = "bridge-test-runtime")]
     return test_runtime_unavailable_collection();
     #[cfg(not(feature = "bridge-test-runtime"))]
     {
         collect_quota_with_providers(
-            Arc::new(ClaudeQuotaProvider::new()),
             Arc::new(CodexQuotaProvider::new()),
             Arc::new(CursorQuotaProvider::new()),
         )
@@ -184,12 +182,11 @@ pub async fn collect_codex_with_provider(provider: Arc<dyn QuotaProvider>) -> Qu
 }
 
 pub async fn collect_quota_with_providers(
-    claude: Arc<dyn QuotaProvider>,
     codex: Arc<dyn QuotaProvider>,
     cursor: Arc<dyn QuotaProvider>,
 ) -> QuotaCollection {
-    let (claude, codex, cursor) = tokio::join!(claude.fetch(), codex.fetch(), cursor.fetch());
-    collection_from_results([claude, codex, cursor])
+    let (codex, cursor) = tokio::join!(codex.fetch(), cursor.fetch());
+    collection_from_results([codex, cursor])
 }
 
 fn collection_from_results(

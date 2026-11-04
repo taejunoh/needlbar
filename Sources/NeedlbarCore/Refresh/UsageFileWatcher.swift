@@ -172,7 +172,7 @@ private final class DirectoryFileEventSource: UsageFileEventSource, @unchecked S
     private var cancellationScheduled = false
 
     init?(directory: URL) {
-        let descriptor = open(directory.path, O_EVTONLY)
+        let descriptor = open(directory.path, O_EVTONLY | O_CLOEXEC)
         guard descriptor >= 0 else { return nil }
         self.descriptorLease = DescriptorLease(descriptor: descriptor)
     }

@@ -7,9 +7,10 @@ use std::{
 };
 
 use needlbar_bridge::{
-    needlbar_analytics_snapshot_json, needlbar_claude_user_initiated_quota_snapshot_json,
-    needlbar_codex_quota_snapshot_json, needlbar_diagnostics_json, needlbar_free_string,
-    needlbar_quota_snapshot_json, needlbar_usage_snapshot_json, test_runtime,
+    needlbar_analytics_snapshot_json, needlbar_claude_usage_report_quota_snapshot_json,
+    needlbar_claude_user_initiated_quota_snapshot_json, needlbar_codex_quota_snapshot_json,
+    needlbar_diagnostics_json, needlbar_free_string, needlbar_quota_snapshot_json,
+    needlbar_usage_snapshot_json, test_runtime,
 };
 use needlbar_quota::ProviderId;
 use tempfile::TempDir;
@@ -19,6 +20,10 @@ const CODEX_CANARY: &str = "CODEX-CANARY-SECRET";
 const CURSOR_CANARY: &str = "CURSOR-CANARY-SECRET";
 const RAW_PATH: &str = "/Users/alice/.config/needlbar/raw-token.json";
 const EMAIL: &str = "alice@example.com";
+
+unsafe extern "C" fn claude_usage_report_export() -> *const c_char {
+    needlbar_claude_usage_report_quota_snapshot_json(1)
+}
 
 #[test]
 fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
@@ -42,6 +47,7 @@ fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
     // releases the allocation through the actual exported free function.
     let usage = ffi_json(needlbar_usage_snapshot_json);
     let quota = ffi_json(needlbar_quota_snapshot_json);
+    let claude_report = ffi_json(claude_usage_report_export);
     let diagnostics = ffi_json(needlbar_diagnostics_json);
     let analytics = ffi_json(needlbar_analytics_snapshot_json);
     let error = test_runtime::error_envelope_json(format!(
@@ -50,6 +56,7 @@ fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
 
     assert_safe_output(&usage);
     assert_safe_output(&quota);
+    assert_safe_output(&claude_report);
     assert_safe_output(&diagnostics);
     assert_safe_output(&analytics);
     let analytics_value: serde_json::Value =
@@ -72,11 +79,18 @@ fn provider_credential_canaries_never_cross_real_bridge_envelopes() {
         quota_value["data"]["providers"].as_array().map(Vec::len),
         Some(0)
     );
-    assert_error_shape(&quota_value["errors"], "requiresAuthentication");
-    assert_eq!(quota_value["errors"][1]["code"], "networkUnavailable");
-    assert_eq!(quota_value["errors"][2]["provider"], "cursor");
-    assert_eq!(quota_value["errors"][2]["code"], "providerUnavailable");
-    assert!(quota_value["errors"][2].get("action").is_none());
+    assert!(quota_value["errors"]
+        .as_array()
+        .expect("quota errors")
+        .iter()
+        .all(|error| error["provider"] != "claude"));
+    assert_eq!(quota_value["errors"][0]["code"], "networkUnavailable");
+    assert_eq!(quota_value["errors"][1]["provider"], "cursor");
+    assert_eq!(quota_value["errors"][1]["code"], "providerUnavailable");
+    assert!(quota_value["errors"][1].get("action").is_none());
+    let claude_value: serde_json::Value =
+        serde_json::from_str(&claude_report).expect("Claude report JSON");
+    assert_error_shape(&claude_value["errors"], "requiresAuthentication");
 
     let diagnostics_value: serde_json::Value =
         serde_json::from_str(&diagnostics).expect("diagnostics JSON");
@@ -124,6 +138,30 @@ fn diagnostics_marks_cursor_provider_unavailable_as_unavailable_without_changing
     );
     assert_eq!(diagnostics["codex"]["quotaStatus"], "error");
     assert_eq!(diagnostics["codex"]["quotaErrorCode"], "networkUnavailable");
+}
+
+#[test]
+fn claude_diagnostics_name_the_usage_report_source_and_record_the_run() {
+    let _serial = test_runtime::serial_guard();
+    test_runtime::install_provider_verification_fixture(
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Claude,
+            "claude.weekly",
+            20.0,
+        )),
+        Ok(test_runtime::fixture_snapshot(
+            ProviderId::Codex,
+            "codex.primary",
+            50.0,
+        )),
+    );
+    let _clear = RuntimeCleanup;
+    let _ = ffi_json(claude_usage_report_export);
+    let diagnostics = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
+    assert_eq!(diagnostics["claude"]["quotaSource"], "usageReport");
+    assert_eq!(diagnostics["codex"]["quotaSource"], "oauth");
+    assert_eq!(diagnostics["claude"]["claudeUsageProbe"]["durationMs"], 1);
+    assert_eq!(diagnostics["claude"]["quotaStatus"], "available");
 }
 
 #[test]

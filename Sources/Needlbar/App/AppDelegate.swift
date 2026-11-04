@@ -191,6 +191,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             let refreshCoordinator = RefreshCoordinator(
                 usageRepository: RustUsageRepository(bridge: bridge),
                 quotaRepository: RustQuotaRepository(bridge: bridge),
+                claudeUsageRepository: RustQuotaRepository(bridge: bridge),
                 store: snapshotStore,
                 usageFileWatcher: usageFileWatcher,
                 statusLineRepository: ClaudeStatusLineCacheRepository(),

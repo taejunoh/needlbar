@@ -32,7 +32,8 @@ impl DiagnosticProvider {
     fn quota_source(self) -> QuotaSource {
         match self {
             Self::Cursor => QuotaSource::Unavailable,
-            Self::Claude | Self::Codex => QuotaSource::OAuth,
+            Self::Claude => QuotaSource::UsageReport,
+            Self::Codex => QuotaSource::OAuth,
         }
     }
 }
@@ -57,6 +58,8 @@ pub enum UsageSource {
 pub enum QuotaSource {
     #[serde(rename = "oauth")]
     OAuth,
+    #[serde(rename = "usageReport")]
+    UsageReport,
     Unavailable,
 }
 
