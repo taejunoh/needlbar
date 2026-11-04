@@ -360,8 +360,54 @@ async fn a_descendant_holding_stdout_after_exit_cannot_stall_the_run() {
     .unwrap();
     assert_eq!(output, b"report");
     assert!(started.elapsed() < Duration::from_secs(10));
-    let pid = fs::read_to_string(&held).unwrap();
-    let _ = Command::new("kill").arg(pid.trim()).status();
+    assert_pid_gone(&held).await;
+}
+
+#[tokio::test]
+async fn a_successful_run_leaves_no_process_in_the_group() {
+    let temp = TempDir::new().unwrap();
+    let left = temp.path().join("left.pid");
+    let script = fake_claude(
+        temp.path(),
+        &format!(
+            "/bin/sleep 30 >/dev/null 2>&1 </dev/null &\nprintf '%s\\n' \"$!\" > '{}'\nprintf 'report'",
+            left.display()
+        ),
+    );
+    let output = run_usage_probe(
+        &script,
+        &environment(),
+        limits(20_000),
+        &UsageProbeControl::new(),
+        1,
+    )
+    .await
+    .unwrap();
+    assert_eq!(output, b"report");
+    assert_pid_gone(&left).await;
+}
+
+#[tokio::test]
+async fn a_failed_exit_also_leaves_no_process_in_the_group() {
+    let temp = TempDir::new().unwrap();
+    let left = temp.path().join("left.pid");
+    let script = fake_claude(
+        temp.path(),
+        &format!(
+            "/bin/sleep 30 >/dev/null 2>&1 </dev/null &\nprintf '%s\\n' \"$!\" > '{}'\nexit 3",
+            left.display()
+        ),
+    );
+    let result = run_usage_probe(
+        &script,
+        &environment(),
+        limits(20_000),
+        &UsageProbeControl::new(),
+        1,
+    )
+    .await;
+    assert_eq!(result, Err(UsageProbeFailure::ExitedUnsuccessfully));
+    assert_pid_gone(&left).await;
 }
 
 #[tokio::test]
@@ -384,7 +430,12 @@ async fn cancelling_stops_the_process_and_an_already_cancelled_run_never_spawns(
             run_usage_probe(&script, &environment(), limits(25_000), &control, 5).await
         })
     };
+    let wait_deadline = Instant::now() + Duration::from_secs(10);
     while !started_marker.exists() {
+        assert!(
+            Instant::now() < wait_deadline,
+            "the fake claude never started"
+        );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     control.cancel_through(5);

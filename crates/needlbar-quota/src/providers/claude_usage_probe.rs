@@ -146,8 +146,11 @@ impl UsageProbeControl {
         true
     }
 
-    fn unregister(&self) {
-        self.lock().active = None;
+    fn unregister(&self, run_id: u64) {
+        let mut state = self.lock();
+        if matches!(state.active, Some((active_run, _)) if active_run == run_id) {
+            state.active = None;
+        }
     }
 
     async fn cancelled(&self, run_id: u64) {
@@ -234,10 +237,15 @@ pub async fn run_usage_probe(
         () = sleep_until(deadline) => Stop::TimedOut,
         stop = read_until_exit(&mut child, stdout, limits.max_stdout_bytes, &mut output) => stop,
     };
-    if !matches!(stop, Stop::Exited(_)) {
+    if matches!(stop, Stop::Exited(_)) {
+        // `claude` is reaped, but a descendant can outlive it. This job repeats
+        // every few minutes, so nothing may stay behind. ESRCH (an empty group)
+        // is the normal outcome and does not affect the result.
+        signal_group(process_group, libc::SIGKILL);
+    } else {
         terminate_group(&mut child, process_group).await;
     }
-    control.unregister();
+    control.unregister(run_id);
     stderr_drain.abort();
     let _ = stderr_drain.await;
 
