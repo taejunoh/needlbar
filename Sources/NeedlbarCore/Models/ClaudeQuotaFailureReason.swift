@@ -5,9 +5,6 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
     case connectionUnavailable
     case temporarilyLimited
     case couldNotUpdateQuota
-    /// The access Claude Code saved on this Mac has passed its expiry time.
-    /// Stored only for `authenticationExpired` with a local-expiry origin.
-    case claudeCodeAccessExpired
     /// No executable `claude` at the fixed locations.
     case claudeCodeNotInstalled
     /// `rate_limits` was null, or `limits` was null or empty.
@@ -28,13 +25,6 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
         case .connectionUnavailable: "Connection unavailable"
         case .temporarilyLimited: "Temporarily limited"
         case .couldNotUpdateQuota: "Could not update quota"
-        case .claudeCodeAccessExpired:
-            String(
-                localized: "claudeQuota.reason.claudeCodeAccessExpired",
-                defaultValue: "Claude Code access on this Mac expired",
-                bundle: bundle,
-                comment: "Claude quota reason, short form: the access the Claude Code command-line tool saved on this Mac has expired. A statement of fact; it offers the user no action."
-            )
         case .claudeCodeNotInstalled:
             String(
                 localized: "claudeQuota.reason.claudeCodeNotInstalled",
@@ -68,13 +58,6 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
 
     func localizedDetailText(bundle: Bundle) -> String? {
         switch self {
-        case .claudeCodeAccessExpired:
-            String(
-                localized: "claudeQuota.reason.claudeCodeAccessExpired.detail",
-                defaultValue: "Needlbar reads the access the Claude Code command-line tool saves on this Mac. The Claude desktop app does not renew it, so it updates after Claude Code runs in Terminal.",
-                bundle: bundle,
-                comment: "Explains the Claude quota reason as fact: Needlbar reads the access the Claude Code command-line tool saves, and the Claude desktop app does not renew it. Mentions Terminal only as a fact. Informational only; it offers the user no action."
-            )
         case .claudeCodeNotInstalled:
             String(
                 localized: "claudeQuota.reason.claudeCodeNotInstalled.detail",
@@ -96,22 +79,16 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
     }
 
 
-    /// Maps a completed attempt's Claude error code, plus the failure origin
-    /// associated with that same attempt, to a safe reason. Only a local
-    /// credential expiry changes the code-based mapping; HTTP 401/403 and every
-    /// other origin keep it.
-    init(errorCode: String, associatedOrigin: ClaudeQuotaFailureOrigin?) {
-        switch (errorCode, associatedOrigin) {
-        case ("authenticationExpired", .keychainCredentialExpired?),
-             ("authenticationExpired", .fileCredentialExpired?):
-            self = .claudeCodeAccessExpired
-        case ("notInstalled", _): self = .claudeCodeNotInstalled
-        case ("requiresAuthentication", _): self = .claudeCodeSignInRequired
-        case ("authenticationExpired", _): self = .quotaAccessUnavailable
-        case ("networkUnavailable", _): self = .connectionUnavailable
-        case ("rateLimited", _): self = .temporarilyLimited
-        case ("providerUnavailable", _): self = .claudeCodeCheckFailed
-        case ("schemaChanged", _): self = .usageReportFormatChanged
+    /// Maps a completed attempt's Claude error code to a safe reason.
+    init(errorCode: String) {
+        switch errorCode {
+        case "notInstalled": self = .claudeCodeNotInstalled
+        case "requiresAuthentication": self = .claudeCodeSignInRequired
+        case "authenticationExpired": self = .quotaAccessUnavailable
+        case "networkUnavailable": self = .connectionUnavailable
+        case "rateLimited": self = .temporarilyLimited
+        case "providerUnavailable": self = .claudeCodeCheckFailed
+        case "schemaChanged": self = .usageReportFormatChanged
         default: self = .couldNotUpdateQuota
         }
     }

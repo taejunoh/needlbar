@@ -1,9 +1,9 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use needlbar_quota::{
-    ClaudeCredentialAccess, ClaudeQuotaFailureOrigin, ClaudeQuotaProvider, ClaudeUsageProbeSummary,
-    ClaudeUsageReportProvider, ClaudeUsageReportRun, ProviderId, ProviderQuotaSnapshot, QuotaError,
-    QuotaErrorCode, QuotaProvider, UsageProbeControl,
+    ClaudeQuotaFailureOrigin, ClaudeUsageProbeSummary, ClaudeUsageReportProvider,
+    ClaudeUsageReportRun, ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode,
+    QuotaProvider, UsageProbeControl,
 };
 #[cfg(not(feature = "bridge-test-runtime"))]
 use needlbar_quota::{CodexQuotaProvider, CursorQuotaProvider};
@@ -26,27 +26,6 @@ pub struct QuotaCollection {
     pub claude_failure_origin: Option<ClaudeQuotaFailureOrigin>,
     pub claude_attempted: bool,
     pub claude_usage_probe: Option<ClaudeUsageProbeSummary>,
-}
-
-/// Narrow Claude boundary used by the explicit verification path. Keeping the
-/// credential access mode at this boundary makes it testable without exposing
-/// Claude credentials or a provider-selection parameter over the C ABI.
-pub trait ClaudeUserInitiatedQuotaSource: Send + Sync {
-    fn fetch_with_credential_access<'a>(
-        &'a self,
-        access: ClaudeCredentialAccess,
-    ) -> Pin<Box<dyn Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a>>;
-}
-
-impl ClaudeUserInitiatedQuotaSource for ClaudeQuotaProvider {
-    fn fetch_with_credential_access<'a>(
-        &'a self,
-        access: ClaudeCredentialAccess,
-    ) -> Pin<Box<dyn Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a>> {
-        Box::pin(ClaudeQuotaProvider::fetch_with_credential_access(
-            self, access,
-        ))
-    }
 }
 
 /// The Claude quota run. A dedicated collection, so a run of up to 30 seconds
@@ -111,55 +90,6 @@ pub async fn collect_quota() -> QuotaCollection {
         )
         .await
     }
-}
-
-/// Runs only the explicit Claude verification flow. Production construction is
-/// intentionally kept here so callers cannot accidentally request interactive
-/// Keychain access through the all-provider collector.
-pub async fn collect_claude_user_initiated() -> QuotaCollection {
-    #[cfg(feature = "bridge-test-runtime")]
-    if let Some(source) = crate::test_runtime::claude_user_initiated_source() {
-        return collect_claude_user_initiated_with_source(source).await;
-    }
-    #[cfg(feature = "bridge-test-runtime")]
-    return test_runtime_unavailable_collection();
-    #[cfg(not(feature = "bridge-test-runtime"))]
-    {
-        collect_claude_user_initiated_with_source(Arc::new(ClaudeQuotaProvider::new())).await
-    }
-}
-
-/// Runs a Claude-only connection preflight without allowing Keychain UI. This
-/// remains separate from the post-login verifier so an explicit connection
-/// click cannot accidentally prompt before the coordinator classifies the
-/// existing authentication state.
-pub async fn collect_claude_preflight() -> QuotaCollection {
-    #[cfg(feature = "bridge-test-runtime")]
-    if let Some(source) = crate::test_runtime::claude_user_initiated_source() {
-        return collect_claude_preflight_with_source(source).await;
-    }
-    #[cfg(feature = "bridge-test-runtime")]
-    return test_runtime_unavailable_collection();
-    #[cfg(not(feature = "bridge-test-runtime"))]
-    {
-        collect_claude_preflight_with_source(Arc::new(ClaudeQuotaProvider::new())).await
-    }
-}
-
-pub async fn collect_claude_preflight_with_source(
-    source: Arc<dyn ClaudeUserInitiatedQuotaSource>,
-) -> QuotaCollection {
-    collection_from_results([source
-        .fetch_with_credential_access(ClaudeCredentialAccess::BackgroundNoUI)
-        .await])
-}
-
-pub async fn collect_claude_user_initiated_with_source(
-    source: Arc<dyn ClaudeUserInitiatedQuotaSource>,
-) -> QuotaCollection {
-    collection_from_results([source
-        .fetch_with_credential_access(ClaudeCredentialAccess::UserInitiatedAllowUI)
-        .await])
 }
 
 /// Runs only Codex quota collection. It does not construct Claude or Cursor

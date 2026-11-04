@@ -201,9 +201,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             let loginCoordinator = ProviderLoginCoordinator(
                 refreshQuota: { provider in
                     await refreshCoordinator.refreshQuota(afterUserAuthenticationFor: provider)
-                },
-                preflightClaudeLogin: {
-                    await refreshCoordinator.preflightClaudeLogin()
                 }
             )
             let snapshotExportController = SnapshotExportController(

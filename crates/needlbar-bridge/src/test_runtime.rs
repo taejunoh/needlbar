@@ -161,7 +161,7 @@ pub struct ProviderVerificationFixture {
 
 #[derive(Default)]
 struct ProviderVerificationObservations {
-    claude_accesses: Vec<needlbar_quota::ClaudeCredentialAccess>,
+    claude_fetches: usize,
     codex_fetches: usize,
     claude_creations: usize,
     codex_creations: usize,
@@ -169,19 +169,11 @@ struct ProviderVerificationObservations {
 }
 
 impl ProviderVerificationFixture {
-    pub fn claude_accesses(&self) -> Vec<&'static str> {
+    pub fn claude_fetches(&self) -> usize {
         self.observations
             .lock()
             .expect("provider verification observations lock")
-            .claude_accesses
-            .iter()
-            .map(|access| match access {
-                needlbar_quota::ClaudeCredentialAccess::BackgroundNoUI => "backgroundNoUI",
-                needlbar_quota::ClaudeCredentialAccess::UserInitiatedAllowUI => {
-                    "userInitiatedAllowUI"
-                }
-            })
-            .collect()
+            .claude_fetches
     }
 
     pub fn codex_fetches(&self) -> usize {
@@ -224,12 +216,11 @@ impl ProviderVerificationFixture {
         }
     }
 
-    fn record_claude_access(&self, access: needlbar_quota::ClaudeCredentialAccess) {
+    fn record_claude_fetch(&self) {
         self.observations
             .lock()
             .expect("provider verification observations lock")
-            .claude_accesses
-            .push(access);
+            .claude_fetches += 1;
     }
 
     fn record_codex_fetch(&self) {
@@ -717,64 +708,74 @@ pub fn background_quota_providers() -> Option<BackgroundQuotaProviders> {
     })
 }
 
-/// Reuses the existing Claude fixtures for the usage report export.
-pub fn claude_usage_report_source() -> Option<Arc<dyn quota::ClaudeUsageReportSource>> {
-    Some(Arc::new(FixtureUsageReportSource {
-        fixture: claude_user_initiated_source()?,
-    }))
+fn fixture_summary() -> needlbar_quota::ClaudeUsageProbeSummary {
+    needlbar_quota::ClaudeUsageProbeSummary {
+        duration_ms: 1,
+        row_kinds: vec![needlbar_quota::ClaudeUsageRowKind::Session],
+        unknown_row_count: 0,
+        skipped_row_count: 0,
+    }
 }
 
-struct FixtureUsageReportSource {
-    fixture: Arc<dyn quota::ClaudeUserInitiatedQuotaSource>,
+type UsageReportFuture<'a> = std::pin::Pin<
+    Box<dyn std::future::Future<Output = needlbar_quota::ClaudeUsageReportRun> + Send + 'a>,
+>;
+
+enum FixtureUsageReportSource {
+    Scripted(Result<ProviderQuotaSnapshot, QuotaError>),
+    Recording(ProviderVerificationFixture),
+    Blocking(BlockingClaudeFixture),
+    Panicking,
 }
 
 impl quota::ClaudeUsageReportSource for FixtureUsageReportSource {
-    fn run_usage_report<'a>(
-        &'a self,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = needlbar_quota::ClaudeUsageReportRun> + Send + 'a>,
-    > {
+    fn run_usage_report<'a>(&'a self) -> UsageReportFuture<'a> {
         Box::pin(async move {
+            let result = match self {
+                Self::Scripted(result) => result.clone(),
+                Self::Recording(fixture) => {
+                    fixture.record_claude_fetch();
+                    fixture.claude_result.clone()
+                }
+                Self::Blocking(blocking) => {
+                    blocking.fixture.record_claude_fetch();
+                    blocking.wait_for_release();
+                    blocking.fixture.claude_result.clone()
+                }
+                Self::Panicking => panic!("provider verification fixture panic"),
+            };
             needlbar_quota::ClaudeUsageReportRun {
-                result: self
-                    .fixture
-                    .fetch_with_credential_access(
-                        needlbar_quota::ClaudeCredentialAccess::BackgroundNoUI,
-                    )
-                    .await,
-                summary: Some(needlbar_quota::ClaudeUsageProbeSummary {
-                    duration_ms: 1,
-                    row_kinds: vec![needlbar_quota::ClaudeUsageRowKind::Session],
-                    unknown_row_count: 0,
-                    skipped_row_count: 0,
-                }),
+                result,
+                summary: Some(fixture_summary()),
             }
         })
     }
 }
 
-pub fn claude_user_initiated_source() -> Option<Arc<dyn quota::ClaudeUserInitiatedQuotaSource>> {
+pub fn claude_usage_report_source() -> Option<Arc<dyn quota::ClaudeUsageReportSource>> {
     let runtime = fixture_runtime()?;
-    Some(match runtime.mode {
-        FixtureMode::Integration => Arc::new(FixtureClaudeUserInitiatedSource::success(
+    Some(Arc::new(match runtime.mode {
+        FixtureMode::Integration => FixtureUsageReportSource::Scripted(Ok(fixture_snapshot(
+            ProviderId::Claude,
             "claude.session",
             20.0,
-        )),
+        ))),
         FixtureMode::Redaction { claude_failure, .. } => {
-            Arc::new(FixtureClaudeUserInitiatedSource::failure(
+            FixtureUsageReportSource::Scripted(Err(QuotaError::new(
+                Some(ProviderId::Claude),
                 QuotaErrorCode::RequiresAuthentication,
-                claude_failure,
-            ))
+                Box::leak(claude_failure.into_boxed_str()),
+            )))
         }
         FixtureMode::ProviderVerification(fixture) => {
             fixture.record_creation(ProviderId::Claude);
-            Arc::new(ProviderVerificationClaudeSource::new(fixture))
+            FixtureUsageReportSource::Recording(fixture)
         }
         FixtureMode::ProviderVerificationBlocking(blocking) => {
-            Arc::new(BlockingClaudeSource { blocking })
+            FixtureUsageReportSource::Blocking(blocking)
         }
-        FixtureMode::ProviderVerificationPanic => Arc::new(PanicClaudeSource),
-    })
+        FixtureMode::ProviderVerificationPanic => FixtureUsageReportSource::Panicking,
+    }))
 }
 
 pub fn codex_quota_provider() -> Option<Arc<dyn QuotaProvider>> {
@@ -816,90 +817,6 @@ fn fixture_runtime() -> Option<FixtureRuntime> {
         .clone()
 }
 
-struct FixtureClaudeUserInitiatedSource {
-    result: Result<ProviderQuotaSnapshot, QuotaError>,
-}
-
-impl FixtureClaudeUserInitiatedSource {
-    fn success(window_id: &str, used_percent: f64) -> Self {
-        Self {
-            result: Ok(fixture_snapshot(
-                ProviderId::Claude,
-                window_id,
-                used_percent,
-            )),
-        }
-    }
-
-    fn failure(code: QuotaErrorCode, source_detail: String) -> Self {
-        Self {
-            result: Err(QuotaError::new(
-                Some(ProviderId::Claude),
-                code,
-                Box::leak(source_detail.into_boxed_str()),
-            )),
-        }
-    }
-}
-
-impl quota::ClaudeUserInitiatedQuotaSource for FixtureClaudeUserInitiatedSource {
-    fn fetch_with_credential_access<'a>(
-        &'a self,
-        _access: needlbar_quota::ClaudeCredentialAccess,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a,
-        >,
-    > {
-        Box::pin(async move { self.result.clone() })
-    }
-}
-
-struct ProviderVerificationClaudeSource {
-    fixture: ProviderVerificationFixture,
-}
-
-struct BlockingClaudeSource {
-    blocking: BlockingClaudeFixture,
-}
-
-impl quota::ClaudeUserInitiatedQuotaSource for BlockingClaudeSource {
-    fn fetch_with_credential_access<'a>(
-        &'a self,
-        access: needlbar_quota::ClaudeCredentialAccess,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a,
-        >,
-    > {
-        self.blocking.fixture.record_claude_access(access);
-        Box::pin(async move {
-            self.blocking.wait_for_release();
-            self.blocking.fixture.claude_result.clone()
-        })
-    }
-}
-
-impl ProviderVerificationClaudeSource {
-    fn new(fixture: ProviderVerificationFixture) -> Self {
-        Self { fixture }
-    }
-}
-
-impl quota::ClaudeUserInitiatedQuotaSource for ProviderVerificationClaudeSource {
-    fn fetch_with_credential_access<'a>(
-        &'a self,
-        access: needlbar_quota::ClaudeCredentialAccess,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a,
-        >,
-    > {
-        self.fixture.record_claude_access(access);
-        Box::pin(async move { self.fixture.claude_result.clone() })
-    }
-}
-
 struct ProviderVerificationQuotaProvider {
     provider: ProviderId,
     result: Result<ProviderQuotaSnapshot, QuotaError>,
@@ -924,9 +841,7 @@ impl ProviderVerificationQuotaProvider {
 impl QuotaProvider for ProviderVerificationQuotaProvider {
     async fn fetch(&self) -> Result<ProviderQuotaSnapshot, QuotaError> {
         match self.provider {
-            ProviderId::Claude => self
-                .fixture
-                .record_claude_access(needlbar_quota::ClaudeCredentialAccess::BackgroundNoUI),
+            ProviderId::Claude => self.fixture.record_claude_fetch(),
             ProviderId::Codex => self.fixture.record_codex_fetch(),
             ProviderId::Cursor => {}
         }
@@ -940,21 +855,6 @@ struct PanicProvider;
 impl QuotaProvider for PanicProvider {
     async fn fetch(&self) -> Result<ProviderQuotaSnapshot, QuotaError> {
         panic!("provider verification fixture panic")
-    }
-}
-
-struct PanicClaudeSource;
-
-impl quota::ClaudeUserInitiatedQuotaSource for PanicClaudeSource {
-    fn fetch_with_credential_access<'a>(
-        &'a self,
-        _access: needlbar_quota::ClaudeCredentialAccess,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a,
-        >,
-    > {
-        Box::pin(async { panic!("provider verification fixture panic") })
     }
 }
 

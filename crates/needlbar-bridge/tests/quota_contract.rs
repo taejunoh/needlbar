@@ -6,15 +6,12 @@ use std::{
 
 use async_trait::async_trait;
 use needlbar_bridge::quota::{
-    collect_claude_preflight_with_source, collect_claude_usage_report_with_source,
-    collect_claude_user_initiated_with_source, collect_codex_with_provider,
+    collect_claude_usage_report_with_source, collect_codex_with_provider,
     collect_quota_with_providers, envelope_from_collection, ClaudeUsageReportSource,
-    ClaudeUserInitiatedQuotaSource,
 };
 use needlbar_quota::{
-    ClaudeCredentialAccess, ClaudeQuotaProvider, ClaudeUsageProbeSummary, ClaudeUsageReportRun,
-    ClaudeUsageRowKind, ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode,
-    QuotaProvider, QuotaWindow,
+    ClaudeUsageProbeSummary, ClaudeUsageReportRun, ClaudeUsageRowKind, ProviderId,
+    ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaProvider, QuotaWindow,
 };
 
 struct FakeProvider {
@@ -43,87 +40,26 @@ fn authentication_error() -> QuotaError {
     )
 }
 
-struct RecordingClaudeSource {
-    accesses: Arc<Mutex<Vec<ClaudeCredentialAccess>>>,
-    result: Result<ProviderQuotaSnapshot, QuotaError>,
-}
-
-impl ClaudeUserInitiatedQuotaSource for RecordingClaudeSource {
-    fn fetch_with_credential_access<'a>(
-        &'a self,
-        access: ClaudeCredentialAccess,
-    ) -> Pin<Box<dyn Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a>> {
-        self.accesses.lock().expect("accesses lock").push(access);
-        Box::pin(async move { self.result.clone() })
-    }
-}
-
 #[tokio::test]
-async fn claude_preflight_uses_only_claude_without_keychain_ui() {
-    // This catches an explicit connection check that accidentally reuses the
-    // UI-capable post-login verifier or fans out to other providers.
-    let accesses = Arc::new(Mutex::new(Vec::new()));
-    let collection = collect_claude_preflight_with_source(Arc::new(RecordingClaudeSource {
-        accesses: Arc::clone(&accesses),
-        result: Ok(successful_snapshot(ProviderId::Claude, "claude.session")),
-    }))
-    .await;
-    let value = serde_json::to_value(envelope_from_collection(collection))
-        .expect("Claude preflight envelope serializes");
-
-    assert_eq!(
-        *accesses.lock().expect("accesses lock"),
-        vec![ClaudeCredentialAccess::BackgroundNoUI]
-    );
-    assert_eq!(value["data"]["providers"].as_array().map(Vec::len), Some(1));
-    assert_eq!(value["data"]["providers"][0]["provider"], "claude");
-    assert_eq!(value["errors"], serde_json::json!([]));
-}
-
-#[tokio::test]
-async fn claude_user_initiated_collection_uses_only_claude_with_ui_access() {
-    // This catches a verification path that either falls back to all providers
-    // or drops the explicit user-initiated Keychain access mode.
-    let accesses = Arc::new(Mutex::new(Vec::new()));
-    let collection = collect_claude_user_initiated_with_source(Arc::new(RecordingClaudeSource {
-        accesses: Arc::clone(&accesses),
-        result: Ok(successful_snapshot(ProviderId::Claude, "claude.session")),
-    }))
-    .await;
-    let value = serde_json::to_value(envelope_from_collection(collection))
-        .expect("Claude envelope serializes");
-
-    assert_eq!(
-        *accesses.lock().expect("accesses lock"),
-        vec![ClaudeCredentialAccess::UserInitiatedAllowUI]
-    );
-    assert_eq!(value["data"]["providers"].as_array().map(Vec::len), Some(1));
-    assert_eq!(value["data"]["providers"][0]["provider"], "claude");
-    assert_eq!(value["errors"], serde_json::json!([]));
-}
-
-#[tokio::test]
-async fn bridge_keeps_fable_as_an_additive_claude_window() {
-    let accesses = Arc::new(Mutex::new(Vec::new()));
-    let collection = collect_claude_user_initiated_with_source(Arc::new(RecordingClaudeSource {
-        accesses: Arc::clone(&accesses),
-        result: Ok(ClaudeQuotaProvider::parse_usage_payload(include_str!(
-            "../../../Fixtures/quota/claude/usage-fable-success.json"
-        ))
-        .unwrap()),
+async fn bridge_carries_only_the_windows_the_report_gave() {
+    let snapshot = ProviderQuotaSnapshot {
+        provider: ProviderId::Claude,
+        windows: vec![
+            QuotaWindow::new("claude.weekly", "Weekly", 74.0, None).unwrap(),
+            QuotaWindow::new("claude.fable.weekly", "Fable weekly", 0.0, None).unwrap(),
+        ],
+    };
+    let collection = collect_claude_usage_report_with_source(Arc::new(ScriptedUsageReportSource {
+        result: Ok(snapshot),
+        summary: Some(fixture_summary()),
     }))
     .await;
     let value = serde_json::to_value(envelope_from_collection(collection)).unwrap();
     let windows = &value["data"]["providers"][0]["windows"];
-    assert_eq!(
-        *accesses.lock().unwrap(),
-        vec![ClaudeCredentialAccess::UserInitiatedAllowUI]
-    );
-    assert_eq!(windows.as_array().map(Vec::len), Some(3));
-    assert_eq!(windows[2]["id"], "claude.fable.weekly");
-    assert_eq!(windows[2]["usedPercent"].as_f64(), Some(25.0));
-    assert_eq!(windows[2]["resetsAt"], "2030-02-09T01:00:00Z");
-    assert_eq!(value["errors"], serde_json::json!([]));
+    assert_eq!(windows.as_array().map(Vec::len), Some(2));
+    assert_eq!(windows[0]["id"], "claude.weekly");
+    assert_eq!(windows[1]["id"], "claude.fable.weekly");
+    assert_eq!(windows[1]["usedPercent"].as_f64(), Some(0.0));
 }
 
 #[tokio::test]
@@ -152,34 +88,6 @@ async fn codex_only_collection_invokes_only_its_injected_provider() {
     assert_eq!(*calls.lock().expect("calls lock"), 1);
     assert_eq!(value["data"]["providers"].as_array().map(Vec::len), Some(1));
     assert_eq!(value["data"]["providers"][0]["provider"], "codex");
-}
-
-#[tokio::test]
-async fn claude_permission_denial_uses_safe_bridge_copy_without_token_data() {
-    // This catches forwarding an upstream Keychain detail or accidentally
-    // serializing failed Claude data into the provider payload.
-    let canary = "CLAUDE-KEYCHAIN-CANARY";
-    let collection = collect_claude_user_initiated_with_source(Arc::new(RecordingClaudeSource {
-        accesses: Arc::new(Mutex::new(Vec::new())),
-        result: Err(QuotaError::new(
-            Some(ProviderId::Claude),
-            QuotaErrorCode::PermissionDenied,
-            Box::leak(format!("denied {canary}").into_boxed_str()),
-        )),
-    }))
-    .await;
-    let json = serde_json::to_string(&envelope_from_collection(collection))
-        .expect("Claude permission envelope serializes");
-    let value: serde_json::Value = serde_json::from_str(&json).expect("Claude permission JSON");
-
-    assert_eq!(value["data"]["providers"], serde_json::json!([]));
-    assert_eq!(value["errors"][0]["provider"], "claude");
-    assert_eq!(value["errors"][0]["code"], "permissionDenied");
-    assert_eq!(
-        value["errors"][0]["message"],
-        "Provider credential access was denied."
-    );
-    assert!(!json.contains(canary));
 }
 
 #[tokio::test]

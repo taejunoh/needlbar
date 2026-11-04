@@ -470,17 +470,13 @@ public struct SettingsView: View {
     private func loginStatusCopy(for provider: ProviderID) -> String {
         switch actions.loginState(for: provider) {
         case .idle:
-            provider == .claude
-                ? "Checks your existing Claude sign-in first. macOS may request access to Claude Code credentials."
-                : "Sign in opens the provider's browser flow."
+            "Sign in opens the provider's browser flow."
         case .launching:
             "Starting sign-in…"
         case .awaitingBrowser:
             "Continue sign-in in your browser."
         case .refreshingQuota:
-            provider == .claude
-                ? "macOS may request access to Claude Code credentials."
-                : "Verifying quota…"
+            "Verifying quota…"
         case .connected:
             "Connected."
         case let .failed(failure):

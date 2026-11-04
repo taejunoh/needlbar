@@ -20,30 +20,3 @@ public struct ClaudeQuotaCompletionDiagnostics: Sendable {
         self.report = report
     }
 }
-
-enum ClaudeQuotaFailureOriginAssociation {
-    /// Returns the record's closed origin only when it describes the attempt
-    /// being completed. The bridge writes `lastAttemptAt` in whole seconds when
-    /// the operation begins, so the attempt start is truncated before comparing.
-    /// Any mismatch, missing field, or failed read yields `nil`, which keeps the
-    /// code-based reason. Nothing is inferred from elapsed time or UI state.
-    static func origin(
-        in read: ClaudeQuotaDiagnosticsRead?,
-        attemptStartedAt: Date,
-        attemptGeneration: UInt64,
-        currentGeneration: UInt64,
-        claudeResultFailed: Bool
-    ) -> ClaudeQuotaFailureOrigin? {
-        guard claudeResultFailed,
-              attemptGeneration == currentGeneration,
-              case .success(let envelope)? = read,
-              let record = envelope.data?.providers.first(where: { $0.provider == .claude }),
-              record.quotaStatus != .available,
-              let origin = record.claudeQuotaFailureOrigin,
-              let recordedAttemptAt = record.lastAttemptAt,
-              attemptStartedAt.timeIntervalSince1970.isFinite
-        else { return nil }
-        let attemptSecond = Date(timeIntervalSince1970: attemptStartedAt.timeIntervalSince1970.rounded(.down))
-        return recordedAttemptAt >= attemptSecond ? origin : nil
-    }
-}

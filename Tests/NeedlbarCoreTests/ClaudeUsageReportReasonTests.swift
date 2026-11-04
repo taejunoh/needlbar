@@ -16,7 +16,7 @@ struct ClaudeUsageReportReasonTests {
         ("", .couldNotUpdateQuota),
     ])
     func eachBridgeCodeMapsToItsStateFromTheSpec(code: String, expected: ClaudeQuotaFailureReason) {
-        #expect(ClaudeQuotaFailureReason(errorCode: code, associatedOrigin: nil) == expected)
+        #expect(ClaudeQuotaFailureReason(errorCode: code) == expected)
     }
 
     @Test func theGuidanceIsInTheShortTextBecauseTheDashboardShowsNoDetailLine() {

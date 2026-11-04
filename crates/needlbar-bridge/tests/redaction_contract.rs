@@ -8,9 +8,8 @@ use std::{
 
 use needlbar_bridge::{
     needlbar_analytics_snapshot_json, needlbar_claude_usage_report_quota_snapshot_json,
-    needlbar_claude_user_initiated_quota_snapshot_json, needlbar_codex_quota_snapshot_json,
-    needlbar_diagnostics_json, needlbar_free_string, needlbar_quota_snapshot_json,
-    needlbar_usage_snapshot_json, test_runtime,
+    needlbar_codex_quota_snapshot_json, needlbar_diagnostics_json, needlbar_free_string,
+    needlbar_quota_snapshot_json, needlbar_usage_snapshot_json, test_runtime,
 };
 use needlbar_quota::ProviderId;
 use tempfile::TempDir;
@@ -185,7 +184,7 @@ fn provider_verification_exports_are_isolated_redacted_panic_contained_and_freed
     );
     let _clear = RuntimeCleanup;
 
-    let claude = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let claude = ffi_json(claude_usage_report_export);
     let codex = ffi_json(needlbar_codex_quota_snapshot_json);
     let claude_value: serde_json::Value = serde_json::from_str(&claude).expect("Claude JSON");
     let codex_value: serde_json::Value = serde_json::from_str(&codex).expect("Codex JSON");
@@ -199,7 +198,7 @@ fn provider_verification_exports_are_isolated_redacted_panic_contained_and_freed
         Some(1)
     );
     assert_eq!(codex_value["data"]["providers"][0]["provider"], "codex");
-    assert_eq!(fixture.claude_accesses(), vec!["userInitiatedAllowUI"]);
+    assert_eq!(fixture.claude_fetches(), 1);
     assert_eq!(fixture.codex_fetches(), 1);
     assert_eq!(fixture.claude_creations(), 1);
     assert_eq!(fixture.codex_creations(), 1);
@@ -213,7 +212,7 @@ fn provider_verification_exports_are_isolated_redacted_panic_contained_and_freed
             50.0,
         )),
     );
-    let denied_json = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let denied_json = ffi_json(claude_usage_report_export);
     let diagnostics = ffi_json(needlbar_diagnostics_json);
     let denied_value: serde_json::Value = serde_json::from_str(&denied_json).expect("denied JSON");
     assert_eq!(denied_value["data"]["providers"], serde_json::json!([]));
@@ -225,11 +224,11 @@ fn provider_verification_exports_are_isolated_redacted_panic_contained_and_freed
     );
     assert!(!denied_json.contains(canary));
     assert!(!diagnostics.contains(canary));
-    assert_eq!(denied.claude_accesses(), vec!["userInitiatedAllowUI"]);
+    assert_eq!(denied.claude_fetches(), 1);
 
     test_runtime::install_provider_verification_panic_fixture();
     for export in [
-        needlbar_claude_user_initiated_quota_snapshot_json,
+        claude_usage_report_export,
         needlbar_codex_quota_snapshot_json,
     ] {
         let json = ffi_json(export);
@@ -267,7 +266,7 @@ fn analytics_does_not_construct_or_fetch_quota_providers_or_mutate_cursor_cache(
     assert_eq!(fixture.claude_creations(), 0);
     assert_eq!(fixture.codex_creations(), 0);
     assert_eq!(fixture.cursor_creations(), 0);
-    assert!(fixture.claude_accesses().is_empty());
+    assert_eq!(fixture.claude_fetches(), 0);
     assert_eq!(fixture.codex_fetches(), 0);
     assert!(!analytics.contains("CURSOR-CACHE-CANARY"));
     assert_safe_output(&analytics);
@@ -353,7 +352,7 @@ fn provider_verification_preserves_unrelated_diagnostics_and_records_permission_
 
     let _ = ffi_json(needlbar_quota_snapshot_json);
     let baseline = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
-    let _ = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let _ = ffi_json(claude_usage_report_export);
     let after_claude = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
     assert_eq!(after_claude["codex"], baseline["codex"]);
     assert_eq!(after_claude["cursor"], baseline["cursor"]);
@@ -373,10 +372,10 @@ fn provider_verification_preserves_unrelated_diagnostics_and_records_permission_
             50.0,
         )),
     );
-    let _ = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let _ = ffi_json(claude_usage_report_export);
     let diagnostics = diagnostics_by_provider(&ffi_json(needlbar_diagnostics_json));
     assert_eq!(diagnostics["claude"]["quotaErrorCode"], "permissionDenied");
-    assert_eq!(denied.claude_accesses(), vec!["userInitiatedAllowUI"]);
+    assert_eq!(denied.claude_fetches(), 1);
     assert_eq!(fixture.cursor_creations(), 1);
 }
 
@@ -401,15 +400,15 @@ fn provider_verification_fixture_is_scoped_through_worker_and_tracks_real_ffi_al
     );
     test_runtime::reset_ffi_allocation_counts();
 
-    let pointer = unsafe { needlbar_claude_user_initiated_quota_snapshot_json() };
+    let pointer = unsafe { claude_usage_report_export() };
     assert!(!pointer.is_null());
     assert_eq!(test_runtime::ffi_allocation_counts(), (1, 0, 0));
     unsafe { needlbar_free_string(pointer) };
     assert_eq!(test_runtime::ffi_allocation_counts(), (1, 1, 0));
-    assert_eq!(fixture.claude_accesses(), vec!["userInitiatedAllowUI"]);
+    assert_eq!(fixture.claude_fetches(), 1);
 
     let worker_fixture = scope.install_blocking_claude_fixture();
-    let call = std::thread::spawn(|| ffi_json(needlbar_claude_user_initiated_quota_snapshot_json));
+    let call = std::thread::spawn(|| ffi_json(claude_usage_report_export));
     worker_fixture.wait_until_fetch_started();
     scope.clear();
     worker_fixture.allow_fetch_to_finish();
@@ -436,7 +435,7 @@ fn c_clear_zero_cannot_clear_a_rust_owned_fixture() {
     );
 
     assert!(!test_runtime::needlbar_test_clear_fixture_runtime(0));
-    let json = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let json = ffi_json(claude_usage_report_export);
     let value: serde_json::Value = serde_json::from_str(&json).expect("Claude JSON");
     assert_eq!(value["data"]["providers"][0]["provider"], "claude");
 }
@@ -479,7 +478,7 @@ fn c_fixture_sessions_reject_cross_client_clear_and_never_fall_back_to_productio
     });
 
     barrier.wait();
-    let owner_json = ffi_json(needlbar_claude_user_initiated_quota_snapshot_json);
+    let owner_json = ffi_json(claude_usage_report_export);
     let owner_value: serde_json::Value = serde_json::from_str(&owner_json).expect("owner JSON");
     assert_eq!(owner_value["data"]["providers"][0]["provider"], "claude");
 

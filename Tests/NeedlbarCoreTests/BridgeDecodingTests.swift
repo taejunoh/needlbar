@@ -276,7 +276,7 @@ import Testing
     let returnedPointer = try CStringPointer(quotaCString(provider: "claude"))
     let bridge = RustBridge(
         quotaCall: { calls.record("background"); return returnedPointer.pointer },
-        claudeUserInitiatedQuotaCall: { calls.record("claude"); return quotaCString(provider: "claude") },
+        claudeUsageReportQuotaCall: { _ in calls.record("claude"); return quotaCString(provider: "claude") },
         codexQuotaCall: { calls.record("codex"); return quotaCString(provider: "codex") },
         free: { frees.release($0) }
     )
@@ -288,40 +288,20 @@ import Testing
     #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
 }
 
-@Test func claudeUserInitiatedQuotaRefreshUsesOnlyClaudeBridgeCallAndFreesOnce() throws {
+@Test func usageReportRefreshUsesOnlyClaudeBridgeCallAndFreesOnce() throws {
     let calls = CallRecorder()
     let frees = FreeRecorder()
     let returnedPointer = try CStringPointer(quotaCString(provider: "claude"))
     let bridge = RustBridge(
         quotaCall: { calls.record("background"); return quotaCString(provider: "claude") },
-        claudeUserInitiatedQuotaCall: { calls.record("claude"); return returnedPointer.pointer },
+        claudeUsageReportQuotaCall: { _ in calls.record("claude"); return returnedPointer.pointer },
         codexQuotaCall: { calls.record("codex"); return quotaCString(provider: "codex") },
         free: { frees.release($0) }
     )
 
-    let result = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+    let result = try RustQuotaRepository(bridge: bridge).refresh(intent: .claudeUsageReport(runID: 1))
 
     #expect(calls.values == ["claude"])
-    #expect(Set(result.snapshots.keys) == [.claude])
-    #expect(frees.count == 1)
-    #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
-}
-
-@Test func claudePreflightQuotaRefreshUsesOnlyTheSilentClaudeBridgeCallAndFreesOnce() throws {
-    let calls = CallRecorder()
-    let frees = FreeRecorder()
-    let returnedPointer = try CStringPointer(quotaCString(provider: "claude"))
-    let bridge = RustBridge(
-        quotaCall: { calls.record("background"); return quotaCString(provider: "claude") },
-        claudePreflightQuotaCall: { calls.record("preflight"); return returnedPointer.pointer },
-        claudeUserInitiatedQuotaCall: { calls.record("claude"); return quotaCString(provider: "claude") },
-        codexQuotaCall: { calls.record("codex"); return quotaCString(provider: "codex") },
-        free: { frees.release($0) }
-    )
-
-    let result = try RustQuotaRepository(bridge: bridge).refresh(intent: .claudePreflight)
-
-    #expect(calls.values == ["preflight"])
     #expect(Set(result.snapshots.keys) == [.claude])
     #expect(frees.count == 1)
     #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
@@ -333,7 +313,7 @@ import Testing
     let returnedPointer = try CStringPointer(quotaCString(provider: "codex"))
     let bridge = RustBridge(
         quotaCall: { calls.record("background"); return quotaCString(provider: "claude") },
-        claudeUserInitiatedQuotaCall: { calls.record("claude"); return quotaCString(provider: "claude") },
+        claudeUsageReportQuotaCall: { _ in calls.record("claude"); return quotaCString(provider: "claude") },
         codexQuotaCall: { calls.record("codex"); return returnedPointer.pointer },
         free: { frees.release($0) }
     )
@@ -350,7 +330,7 @@ import Testing
     let calls = CallRecorder()
     let bridge = RustBridge(
         quotaCall: { calls.record("background"); return quotaCString(provider: "cursor") },
-        claudeUserInitiatedQuotaCall: { calls.record("claude"); return quotaCString(provider: "claude") },
+        claudeUsageReportQuotaCall: { _ in calls.record("claude"); return quotaCString(provider: "claude") },
         codexQuotaCall: { calls.record("codex"); return quotaCString(provider: "codex") }
     )
 
@@ -376,13 +356,13 @@ import Testing
     let frees = FreeRecorder()
     let bridge = RustBridge(
         quotaCall: { quotaCString(provider: "claude") },
-        claudeUserInitiatedQuotaCall: { quotaCString(provider: "codex") },
+        claudeUsageReportQuotaCall: { _ in quotaCString(provider: "codex") },
         codexQuotaCall: { quotaCString(provider: "claude") },
         free: { frees.release($0) }
     )
 
     #expect(throws: BridgeFailure.self) {
-        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .claudeUsageReport(runID: 1))
     }
     #expect(frees.count == 1)
 }
@@ -393,27 +373,14 @@ import Testing
     {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-08-25T12:00:00Z","data":{"providers":[]},"errors":[{"provider":"other","code":"permissionDenied","message":"denied"}]}
     """
     let bridge = RustBridge(
-        claudeUserInitiatedQuotaCall: { makeCString(Array(payload.utf8).map(CChar.init) + [0]) },
+        claudeUsageReportQuotaCall: { _ in makeCString(Array(payload.utf8).map(CChar.init) + [0]) },
         free: { frees.release($0) }
     )
 
     #expect(throws: BridgeFailure.self) {
-        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .claudeUsageReport(runID: 1))
     }
     #expect(frees.count == 1)
-}
-
-@Test func claudePreflightRejectsMultipleCurrentErrorsInsteadOfSelectingOne() throws {
-    let payload = """
-    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-09-12T12:00:00Z","data":{"providers":[]},"errors":[{"provider":"claude","code":"requiresAuthentication","message":"sign in"},{"provider":"claude","code":"permissionDenied","message":"denied"}]}
-    """
-    let bridge = RustBridge(
-        claudePreflightQuotaCall: { makeCString(Array(payload.utf8).map(CChar.init) + [0]) }
-    )
-
-    #expect(throws: BridgeFailure.self) {
-        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .claudePreflight)
-    }
 }
 
 @Test func dedicatedQuotaRefreshRejectsAnEmptySuccessfulEnvelopeAndFreesThatExactPointer() throws {
@@ -423,12 +390,12 @@ import Testing
     """
     let returnedPointer = try CStringPointer(makeCString(Array(payload.utf8).map(CChar.init) + [0]))
     let bridge = RustBridge(
-        claudeUserInitiatedQuotaCall: { returnedPointer.pointer },
+        claudeUsageReportQuotaCall: { _ in returnedPointer.pointer },
         free: { frees.release($0) }
     )
 
     #expect(throws: BridgeFailure.self) {
-        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .claudeUsageReport(runID: 1))
     }
     #expect(frees.count == 1)
     #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])
@@ -441,11 +408,11 @@ import Testing
     """
     let returnedPointer = try CStringPointer(makeCString(Array(payload.utf8).map(CChar.init) + [0]))
     let bridge = RustBridge(
-        claudeUserInitiatedQuotaCall: { returnedPointer.pointer },
+        claudeUsageReportQuotaCall: { _ in returnedPointer.pointer },
         free: { frees.release($0) }
     )
 
-    let result = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+    let result = try RustQuotaRepository(bridge: bridge).refresh(intent: .claudeUsageReport(runID: 1))
 
     #expect(result.snapshots.isEmpty)
     #expect(result.errors[.claude]?.provider == ProviderID.claude.rawValue)
@@ -461,12 +428,12 @@ import Testing
     """
     let returnedPointer = try CStringPointer(makeCString(Array(payload.utf8).map(CChar.init) + [0]))
     let bridge = RustBridge(
-        claudeUserInitiatedQuotaCall: { returnedPointer.pointer },
+        claudeUsageReportQuotaCall: { _ in returnedPointer.pointer },
         free: { frees.release($0) }
     )
 
     #expect(throws: BridgeFailure.self) {
-        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .userInitiated(provider: .claude))
+        _ = try RustQuotaRepository(bridge: bridge).refresh(intent: .claudeUsageReport(runID: 1))
     }
     #expect(frees.count == 1)
     #expect(frees.pointerIdentities == [pointerIdentity(returnedPointer.pointer)])

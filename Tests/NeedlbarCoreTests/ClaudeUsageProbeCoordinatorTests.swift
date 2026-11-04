@@ -523,6 +523,24 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.coordinator.stop()
     }
 
+    @Test(arguments: [
+        ("requiresAuthentication", ClaudeQuotaFailureReason.claudeCodeSignInRequired),
+        ("notInstalled", .claudeCodeNotInstalled),
+        ("providerUnavailable", .claudeCodeCheckFailed),
+        ("rateLimited", .temporarilyLimited),
+        ("schemaChanged", .usageReportFormatChanged),
+        ("unknown-code", .couldNotUpdateQuota),
+    ])
+    func aBridgeFailureThrownByARunMapsToItsSafeReason(code: String, expected: ClaudeQuotaFailureReason) async throws {
+        let harness = Harness()
+        harness.probe.script(.failure(BridgeFailure.bridgeFailed([
+            .init(provider: "claude", code: code, message: canaryMessage, action: nil),
+        ])))
+        await harness.startedAndIdle()
+        #expect(await harness.store.snapshot(for: .claude).claudeQuotaFailureReason == expected)
+        await harness.coordinator.stop()
+    }
+
     /// The failure reason is a closed enum and an attempt event has no message
     /// field, so a server message cannot become either. The coordinator does store
     /// the error's message in the failure status, so this does not prove that

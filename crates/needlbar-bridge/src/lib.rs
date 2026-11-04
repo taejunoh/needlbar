@@ -335,37 +335,6 @@ pub unsafe extern "C" fn needlbar_quota_snapshot_json() -> *const c_char {
 /// # Safety
 ///
 /// The returned non-null pointer is Rust-owned and must be passed exactly once
-/// to [`needlbar_free_string`]. This export performs Claude-only verification
-/// with Keychain interaction forbidden.
-#[no_mangle]
-pub unsafe extern "C" fn needlbar_claude_preflight_quota_snapshot_json() -> *const c_char {
-    cursor_credential_cleanup::schedule_obsolete_cursor_session_cleanup();
-    let attempted_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-    ffi_envelope(|| {
-        quota_operation_envelope(ffi_claude_preflight_quota_envelope, &attempted_at, true)
-    })
-}
-
-/// # Safety
-///
-/// The returned non-null pointer is Rust-owned and must be passed exactly once
-/// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
-#[no_mangle]
-pub unsafe extern "C" fn needlbar_claude_user_initiated_quota_snapshot_json() -> *const c_char {
-    cursor_credential_cleanup::schedule_obsolete_cursor_session_cleanup();
-    let attempted_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-    ffi_envelope(|| {
-        quota_operation_envelope(
-            ffi_claude_user_initiated_quota_envelope,
-            &attempted_at,
-            true,
-        )
-    })
-}
-
-/// # Safety
-///
-/// The returned non-null pointer is Rust-owned and must be passed exactly once
 /// to [`needlbar_free_string`]. `run_id` is at least 1 and larger than any ID
 /// already passed to [`needlbar_claude_usage_report_cancel_through`].
 #[no_mangle]
@@ -414,14 +383,6 @@ fn ffi_usage_envelope() -> Envelope<usage::UsagePayload> {
 
 fn ffi_quota_envelope() -> Envelope<quota::QuotaPayload> {
     quota_envelope()
-}
-
-fn ffi_claude_user_initiated_quota_envelope() -> Envelope<quota::QuotaPayload> {
-    claude_user_initiated_quota_envelope()
-}
-
-fn ffi_claude_preflight_quota_envelope() -> Envelope<quota::QuotaPayload> {
-    claude_preflight_quota_envelope()
 }
 
 fn ffi_codex_quota_envelope() -> Envelope<quota::QuotaPayload> {
@@ -548,20 +509,6 @@ pub(crate) fn ffi_allocation_counts() -> (usize, usize, usize) {
 
 fn quota_envelope() -> Envelope<quota::QuotaPayload> {
     match collect_quota_on_bridge_thread(|| Box::pin(quota::collect_quota())) {
-        Ok(collection) => quota::envelope_from_collection(collection),
-        Err(error) => Envelope::failure(error),
-    }
-}
-
-fn claude_user_initiated_quota_envelope() -> Envelope<quota::QuotaPayload> {
-    match collect_quota_on_bridge_thread(|| Box::pin(quota::collect_claude_user_initiated())) {
-        Ok(collection) => quota::envelope_from_collection(collection),
-        Err(error) => Envelope::failure(error),
-    }
-}
-
-fn claude_preflight_quota_envelope() -> Envelope<quota::QuotaPayload> {
-    match collect_quota_on_bridge_thread(|| Box::pin(quota::collect_claude_preflight())) {
         Ok(collection) => quota::envelope_from_collection(collection),
         Err(error) => Envelope::failure(error),
     }
@@ -925,76 +872,6 @@ mod tests {
                 name
             );
             assert!(!json.to_string().contains("CLAUDE-RAW-ERROR-CANARY"));
-        }
-    }
-
-    #[test]
-    fn real_claude_credential_failures_reach_diagnostics_as_split_origins() {
-        use needlbar_quota::{
-            ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver,
-            ClaudeOAuthSecret, ClaudeQuotaProvider, RedactingHttpClient,
-        };
-
-        struct FailingResolver(ClaudeCredentialError);
-
-        impl ClaudeCredentialResolver for FailingResolver {
-            fn resolve(
-                &self,
-                _access: ClaudeCredentialAccess,
-            ) -> Result<ClaudeOAuthSecret, ClaudeCredentialError> {
-                Err(self.0)
-            }
-        }
-
-        let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("test runtime");
-        for (credential_error, code, origin) in [
-            (
-                ClaudeCredentialError::KeychainAmbiguous,
-                "schemaChanged",
-                "credentialStoreAmbiguous",
-            ),
-            (
-                ClaudeCredentialError::Malformed,
-                "schemaChanged",
-                "credentialFormatUnrecognized",
-            ),
-            (
-                ClaudeCredentialError::FileMalformed,
-                "requiresAuthentication",
-                "credentialFormatUnrecognized",
-            ),
-            (
-                ClaudeCredentialError::FileReadFailed,
-                "requiresAuthentication",
-                "otherFailure",
-            ),
-        ] {
-            let source = std::sync::Arc::new(ClaudeQuotaProvider::with_resolver(
-                std::sync::Arc::new(FailingResolver(credential_error)),
-                RedactingHttpClient::new(),
-            ));
-            let collection = runtime.block_on(quota::collect_claude_preflight_with_source(source));
-            let envelope = quota::envelope_from_collection(collection);
-
-            diagnostics::record_partial_quota(&envelope, Some("2026-10-29T11:59:59Z"));
-            let json = serde_json::to_value(Envelope::success(
-                diagnostics::DiagnosticsSnapshot::from_recorded_outcomes(),
-            ))
-            .expect("diagnostics JSON");
-            let claude = &json["data"]["providers"][0];
-
-            assert_eq!(claude["quotaErrorCode"], code, "{credential_error:?}");
-            assert_eq!(
-                claude["claudeQuotaFailureOrigin"], origin,
-                "{credential_error:?}"
-            );
-            assert_eq!(claude["lastAttemptAt"], "2026-10-29T11:59:59Z");
         }
     }
 

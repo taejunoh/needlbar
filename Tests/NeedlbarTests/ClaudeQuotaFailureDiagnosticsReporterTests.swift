@@ -234,11 +234,7 @@ import NeedlbarCore
             quotaCalls.increment()
             return nil
         },
-        claudePreflightQuotaCall: {
-            quotaCalls.increment()
-            return nil
-        },
-        claudeUserInitiatedQuotaCall: {
+        claudeUsageReportQuotaCall: { _ in
             quotaCalls.increment()
             return nil
         },

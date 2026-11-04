@@ -9,8 +9,8 @@ public struct QuotaRefreshResult: Sendable {
 }
 
 public enum QuotaRefreshIntent: Equatable, Sendable {
+    /// Codex and Cursor. Claude never runs here.
     case backgroundAll
-    case claudePreflight
     case userInitiated(provider: ProviderID)
     /// One `claude -p /usage` run. `runID` lets a later cancel reach it even
     /// before it starts.
@@ -19,10 +19,7 @@ public enum QuotaRefreshIntent: Equatable, Sendable {
 
 extension QuotaRefreshIntent {
     var includesClaude: Bool {
-        switch self {
-        case .claudePreflight, .userInitiated(provider: .claude), .claudeUsageReport: true
-        case .backgroundAll, .userInitiated: false
-        }
+        if case .claudeUsageReport = self { true } else { false }
     }
 }
 
@@ -54,10 +51,8 @@ public struct RustQuotaRepository: QuotaRepository, Sendable {
         switch intent {
         case .backgroundAll:
             return try refreshAggregate(bridge.quotaEnvelope())
-        case .claudePreflight:
-            return try refreshDedicated(bridge.claudePreflightQuotaEnvelope(), for: .claude)
         case .userInitiated(provider: .claude):
-            return try refreshDedicated(bridge.claudeUserInitiatedQuotaEnvelope(), for: .claude)
+            throw safeFailure(provider: .claude, code: "unsupportedProvider", message: "Claude quota updates through Claude Code's usage report.")
         case .claudeUsageReport(let runID):
             return try refreshDedicated(bridge.claudeUsageReportEnvelope(runID: runID), for: .claude)
         case .userInitiated(provider: .codex):

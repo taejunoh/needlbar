@@ -40,4 +40,26 @@ struct ClaudeUsageReportSourceContractTests {
             "Credential access unavailable",
         ])
     }
+
+    @Test func needlbarNeverRunsClaudeAuthOrAPreflight() throws {
+        try Self.expectAbsent([
+            "\"auth\", \"login\"",
+            "--claudeai",
+            "preflightClaudeLogin",
+            "ClaudeLoginPreflightOutcome",
+            "claudePreflight",
+            "claudeUserInitiated",
+            "needlbar_claude_preflight",
+            "needlbar_claude_user_initiated",
+            "macOS may request access to Claude Code credentials",
+            "claudeCodeAccessExpired",
+            "ClaudeQuotaFailureOriginAssociation",
+        ])
+    }
+
+    @Test func productionInjectsTheUsageReportRepository() throws {
+        let appDelegate = Self.root.appendingPathComponent("Sources/Needlbar/App/AppDelegate.swift")
+        let text = try String(contentsOf: appDelegate, encoding: .utf8)
+        #expect(text.contains("claudeUsageRepository: RustQuotaRepository(bridge: bridge)"))
+    }
 }
