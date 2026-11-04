@@ -46,6 +46,7 @@ public struct QuotaAttemptEvent: Sendable, Equatable {
 
 public enum QuotaRefreshTrigger: String, Sendable, Equatable {
     case startup, scheduled, wake, connectivity, popover, manual
+    case usageRecordsChanged, windowReset, backoffRetry, periodic
 }
 
 public struct QuotaRecoveryRequestToken: Sendable {

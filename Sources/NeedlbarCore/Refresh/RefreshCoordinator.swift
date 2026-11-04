@@ -437,7 +437,7 @@ public actor RefreshCoordinator {
         case .scheduled:
             guard let scheduledDueAt, let last = backgroundAttemptClock.latest else { return true }
             return last < scheduledDueAt
-        case .startup, .manual, .popover:
+        case .startup, .manual, .popover, .usageRecordsChanged, .windowReset, .backoffRetry, .periodic:
             return true
         }
     }
