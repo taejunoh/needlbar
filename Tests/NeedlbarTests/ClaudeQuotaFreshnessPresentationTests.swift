@@ -33,7 +33,7 @@ private final class TwoFrameQuotaClock: ClockLike, @unchecked Sendable {
         let settings = SettingsClaudeQuotaPresentation(snapshot: combined, now: success)
         var frames: [[Bool]] = []
         await QuotaPresentationTicker.run(
-            clock: TwoFrameQuotaClock(initial: success.addingTimeInterval(899))) { now in
+            clock: TwoFrameQuotaClock(initial: success.addingTimeInterval(1_199))) { now in
             settings.update(snapshot: combined, now: now)
             let popover = ProviderPopoverPresentation(snapshot: snapshot, now: now)
             let dashboard = SystemDashboardPresentation(snapshot: combined, configuration: .init(), now: now)
@@ -120,7 +120,7 @@ private final class TwoFrameQuotaClock: ClockLike, @unchecked Sendable {
         let bridge = StatusLineQuotaRecord(schemaVersion: 1, generation: generation,
             fiveHour: .init(usedPercent: 50, resetsAt: nil, receivedAt: success), sevenDay: nil)
         let cases: [(String, [QuotaWindow], Date?, StatusLineQuotaRecord?, TimeInterval, [[Bool]])] = [
-            ("direct age", [try window()], success, nil, 899, [[false, false], [true, false]]),
+            ("direct age", [try window()], success, nil, 1_199, [[false, false], [true, false]]),
             ("direct reset", [try window(reset: success.addingTimeInterval(100))], success, nil, 99,
              [[false, false], [true, false]]),
             // Bridge receipt semantics retain the existing inclusive 15-minute boundary.
@@ -183,8 +183,8 @@ private final class TwoFrameQuotaClock: ClockLike, @unchecked Sendable {
         configuration.ai[.codex]?.dashboardVisible = false
         settings.update(snapshot: latest, now: now)
         dashboard.update(snapshot: latest, configuration: configuration)
-        settings.reproject(at: now.addingTimeInterval(900))
-        dashboard.reproject(at: now.addingTimeInterval(900))
+        settings.reproject(at: now.addingTimeInterval(1_200))
+        dashboard.reproject(at: now.addingTimeInterval(1_200))
         #expect(settings.value.quotaIsLastKnown)
         #expect(settings.value.lastKnownQuotaRemaining == "75%")
         #expect(dashboard.presentation.ai.first { $0.provider == .claude }?.quotaLastKnownRemaining == "75%")
@@ -209,10 +209,10 @@ private final class TwoFrameQuotaClock: ClockLike, @unchecked Sendable {
         #expect(updates == countAtCancellation)
     }
 
-    @Test @MainActor func ageBoundarySwitchesEverySurfaceFromDirectToCurrentBridge() async throws {
+    @Test @MainActor func aNewerCurrentBridgeWinsOnEverySurfaceAcrossTheDirectAgeBoundary() async throws {
         let success = Date(timeIntervalSince1970: 1_800_000_000)
         let bridge = StatusLineQuotaRecord(schemaVersion: 1, generation: UUID(),
-            fiveHour: .init(usedPercent: 50, resetsAt: nil, receivedAt: success.addingTimeInterval(1)), sevenDay: nil)
+            fiveHour: .init(usedPercent: 50, resetsAt: nil, receivedAt: success.addingTimeInterval(800)), sevenDay: nil)
         let provider = ProviderSnapshot(provider: .claude, usage: nil, quota: .init(windows: [try window()]),
             usageStatus: .unavailable, quotaStatus: .fresh, updatedAt: success,
             quotaLastSuccessfulAt: success, claudeStatusLineQuota: bridge)
@@ -221,7 +221,7 @@ private final class TwoFrameQuotaClock: ClockLike, @unchecked Sendable {
         let dashboard = SystemDashboardModel(snapshot: snapshot, configuration: .init())
         var values: [String?] = []
         var sources: [String?] = []
-        await QuotaPresentationTicker.run(clock: TwoFrameQuotaClock(initial: success.addingTimeInterval(899))) { now in
+        await QuotaPresentationTicker.run(clock: TwoFrameQuotaClock(initial: success.addingTimeInterval(1_199))) { now in
             settings.reproject(at: now)
             dashboard.reproject(at: now)
             let popover = ProviderPopoverPresentation(snapshot: provider, now: now)
@@ -234,8 +234,8 @@ private final class TwoFrameQuotaClock: ClockLike, @unchecked Sendable {
             #expect(popover.quotaSourceText == settings.value.quotaSourceText)
             #expect(dashboard.presentation.ai.first { $0.provider == .claude }?.quotaSourceText == settings.value.quotaSourceText)
         }
-        #expect(values == ["75%", "50%"])
-        #expect(sources == ["Claude usage", "Reported by Claude Code"])
+        #expect(values == ["50%", "50%"])
+        #expect(sources == ["Reported by Claude Code", "Reported by Claude Code"])
     }
 
     @Test @MainActor func coordinatorCallsStayFrozenWhileCachedSurfacesAge() async throws {
@@ -257,7 +257,7 @@ private final class TwoFrameQuotaClock: ClockLike, @unchecked Sendable {
         let calls = repository.callCount
         #expect(calls == 1)
         var frames: [Bool] = []
-        await QuotaPresentationTicker.run(clock: TwoFrameQuotaClock(initial: success.addingTimeInterval(899))) { now in
+        await QuotaPresentationTicker.run(clock: TwoFrameQuotaClock(initial: success.addingTimeInterval(1_199))) { now in
             settings.reproject(at: now)
             dashboard.reproject(at: now)
             frames.append(settings.value.quotaIsLastKnown)

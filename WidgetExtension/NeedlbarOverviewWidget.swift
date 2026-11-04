@@ -61,11 +61,13 @@ struct OverviewWidgetView: View {
 
     private var overallFreshnessLabel: String {
         guard let projection = entry.projection else { return "Quota unavailable" }
-        let rows = projection.quotaRows.map { ($0.stream, $0.lastSuccessfulAt) }
-            + projection.usageRows.map { ($0.stream, $0.lastSuccessfulAt) }
-        return rows.allSatisfy {
-            WidgetPresentation.freshness($0.0, lastSuccessfulAt: $0.1, now: entry.date) == .fresh
-        } ? "Fresh" : "Stale"
+        let quotaIsFresh = projection.quotaRows.allSatisfy {
+            WidgetPresentation.freshness($0, now: entry.date) == .fresh
+        }
+        let usageIsFresh = projection.usageRows.allSatisfy {
+            WidgetPresentation.freshness($0.stream, lastSuccessfulAt: $0.lastSuccessfulAt, now: entry.date) == .fresh
+        }
+        return quotaIsFresh && usageIsFresh ? "Fresh" : "Stale"
     }
 
     private var todayLabel: String {
@@ -127,7 +129,7 @@ struct OverviewWidgetView: View {
                 Spacer()
                 Text(reset)
             }
-            Text(WidgetPresentation.freshness(row!.stream, lastSuccessfulAt: row!.lastSuccessfulAt, now: entry.date) == .fresh
+            Text(WidgetPresentation.freshness(row!, now: entry.date) == .fresh
                 ? "Fresh · \(row!.lastSuccessfulAt.map { formatter.string(from: $0) } ?? "—")"
                 : "Stale · \(row!.lastSuccessfulAt.map { formatter.string(from: $0) } ?? "—")")
                 .font(.caption2)

@@ -855,14 +855,14 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
 
     @Test func returnedClaudeQuotaErrorsMapOnlyAllowlistedCodesToSafeReasons() async throws {
         let cases: [(String, ClaudeQuotaFailureReason)] = [
-            ("requiresAuthentication", .quotaAccessUnavailable),
+            ("requiresAuthentication", .claudeCodeSignInRequired),
             ("authenticationExpired", .quotaAccessUnavailable),
             ("permissionDenied", .credentialAccessUnavailable),
             ("networkUnavailable", .connectionUnavailable),
             ("rateLimited", .temporarilyLimited),
-            ("notInstalled", .couldNotUpdateQuota),
-            ("providerUnavailable", .couldNotUpdateQuota),
-            ("schemaChanged", .couldNotUpdateQuota),
+            ("notInstalled", .claudeCodeNotInstalled),
+            ("providerUnavailable", .claudeCodeCheckFailed),
+            ("schemaChanged", .usageReportFormatChanged),
             ("internalError", .couldNotUpdateQuota),
             ("", .couldNotUpdateQuota),
             ("unknown-code", .couldNotUpdateQuota),
@@ -906,14 +906,14 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
         try quota.releaseNext(with: .init(snapshots: [:], errors: [:]))
 
         let cases: [(String, ClaudeQuotaFailureReason)] = [
-            ("requiresAuthentication", .quotaAccessUnavailable),
+            ("requiresAuthentication", .claudeCodeSignInRequired),
             ("authenticationExpired", .quotaAccessUnavailable),
             ("permissionDenied", .credentialAccessUnavailable),
             ("networkUnavailable", .connectionUnavailable),
             ("rateLimited", .temporarilyLimited),
-            ("notInstalled", .couldNotUpdateQuota),
-            ("providerUnavailable", .couldNotUpdateQuota),
-            ("schemaChanged", .couldNotUpdateQuota),
+            ("notInstalled", .claudeCodeNotInstalled),
+            ("providerUnavailable", .claudeCodeCheckFailed),
+            ("schemaChanged", .usageReportFormatChanged),
             ("internalError", .couldNotUpdateQuota),
             ("", .couldNotUpdateQuota),
             ("unknown-code", .couldNotUpdateQuota),

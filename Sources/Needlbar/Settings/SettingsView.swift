@@ -262,7 +262,7 @@ public struct SettingsView: View {
             ProviderBrandIcon(provider: .claude, accessibility: .decorative)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Claude")
-                Text("Quota uses your existing Claude sign-in. Browser authentication remains provider-owned.")
+                Text("Quota comes from Claude Code's /usage report, run on this Mac. Sign-in stays with Claude Code.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 6)

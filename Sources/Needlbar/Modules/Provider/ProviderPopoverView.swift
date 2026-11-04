@@ -111,15 +111,14 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
             quotaObservationLabel = primary?.source == .claudeCodeStatusLine ? "Received locally" : "Last checked"
             quotaLastCheckedText = primary?.observedAt.map(Self.localizedDateTime)
             quotaIsLastKnown = !hasRecentClaudeQuota && (!main.isEmpty || !projectedFallback.isEmpty)
-            quotaUnavailable = !hasRecentClaudeQuota && main.isEmpty && projectedFallback.isEmpty
+            quotaUnavailable = !hasRecentClaudeQuota && main.isEmpty && projectedFallback.isEmpty && selected.fable == nil
             let reason = snapshot.claudeQuotaFailureReason
             quotaFailureReasonText = hasRecentClaudeQuota ? nil : reason?.displayText
-            // While status-line windows are recent, an expired Claude Code access or
-            // an unavailable credential is shown once, on the direct-only Fable
-            // line it keeps from updating. The latter's action needs its reason.
-            fableFailureReasonText = hasRecentClaudeQuota
-                && (reason == .claudeCodeAccessExpired || reason == .credentialAccessUnavailable)
-                ? reason?.displayText : nil
+            // While status-line windows are recent, a reason the user can act on is
+            // shown once, on the Fable line it keeps from updating.
+            let reasonSitsOnTheFableLine = reason == .claudeCodeAccessExpired || reason == .credentialAccessUnavailable
+                || reason == .claudeCodeNotInstalled || reason == .claudeCodeSignInRequired
+            fableFailureReasonText = hasRecentClaudeQuota && reasonSitsOnTheFableLine ? reason?.displayText : nil
             quotaFailureDetailText = reason?.detailText
             keychainAccessAction = reason?.keychainAccessActionTitle.map { .allowClaudeKeychainAccess(title: $0) }
             keychainAccessDetailText = keychainAccessAction == nil ? nil : reason?.keychainAccessActionDetail

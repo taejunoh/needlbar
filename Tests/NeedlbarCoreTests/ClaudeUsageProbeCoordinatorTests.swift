@@ -187,6 +187,29 @@ struct ClaudeUsageProbeCoordinatorTests {
 
     // MARK: - Backoff
 
+    @Test func aReadingStaysCurrentUntilThePeriodicRefreshReplacesIt() async throws {
+        let far = Self.start.addingTimeInterval(9_000_000)
+        let harness = Harness()
+        harness.probe.script(.result(try weeklyQuota(resetsAt: far)))
+        harness.probe.script(.result(try weeklyQuota(resetsAt: far)))
+        await harness.startedAndIdle()
+        await harness.advance(minutes: 14)
+        // The slowest refresh finishes 991 s after the last start.
+        let beforeRefresh = ClaudeQuotaPresentationSelector.select(
+            snapshot: await harness.store.snapshot(for: .claude), now: Self.start.addingTimeInterval(991)).sevenDay
+        #expect(beforeRefresh?.isLastKnown == false)
+        #expect(beforeRefresh?.observedAt == Self.start)
+
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(2)
+        let afterRefresh = ClaudeQuotaPresentationSelector.select(
+            snapshot: await harness.store.snapshot(for: .claude), now: harness.clock.now).sevenDay
+        #expect(afterRefresh?.isLastKnown == false)
+        #expect(afterRefresh?.observedAt == Self.start.addingTimeInterval(900))
+        await harness.coordinator.stop()
+    }
+
     @Test func retryableFailuresBackOffFiveTenTwentyThenThirtyAndSuccessResets() async throws {
         let harness = Harness()
         for _ in 0 ..< 5 { harness.probe.script(.result(providerUnavailable())) }
