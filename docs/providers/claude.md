@@ -32,7 +32,9 @@ reading wins regardless of source, and no source invents a value.
   `PATH` search, so shell functions and aliases never apply.
 - **Command:** `claude -p /usage --no-session-persistence --strict-mcp-config --settings
   {"disableAllHooks":true} --output-format stream-json --verbose`, with no user-derived text.
-- **Limits:** a new empty temporary working directory, deleted afterwards; no standard input; an
+- **Limits:** one fixed working directory, `<TMPDIR>/needlbar-claude-usage`, created with mode 0700,
+  refused if it is a symlink or not a directory, and emptied before each run (the CLI keeps records
+  per working directory, so a new folder per run could accumulate); no standard input; an
   environment of only `HOME`, `USER`, `LOGNAME`, `TMPDIR`, a fixed `PATH`, and `CLAUDE_CONFIG_DIR`
   if the app already has it; 30 seconds, then the process group is terminated; 1 MiB of standard
   output, then the same; standard error discarded; cancelled when the app stops. After any exit,

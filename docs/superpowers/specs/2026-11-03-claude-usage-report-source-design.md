@@ -175,7 +175,13 @@ claude -p /usage --no-session-persistence --strict-mcp-config
 
 **Limits:**
 
-- a new empty temporary directory as the working directory, deleted afterwards
+- one fixed working directory, `<TMPDIR>/needlbar-claude-usage`, created with mode 0700 if
+  absent, checked with `symlink_metadata` to be a real directory and not a symlink (a launch
+  failure otherwise, and nothing runs), and emptied before each run. Only one run happens at
+  a time. *Amended 2026-11-03 (whole-branch review):* this replaces a new temporary directory
+  per run. The CLI keeps records per working directory, and up to 288 new directories a day
+  could grow the user's Claude Code folders without limit. That growth is unverified, and one
+  fixed folder rules it out cheaply.
 - `stdin` closed
 - a minimal environment: `HOME`, `USER`, `LOGNAME`, `TMPDIR`, a fixed `PATH`, and
   `CLAUDE_CONFIG_DIR` only if the app already has it

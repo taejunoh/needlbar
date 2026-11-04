@@ -110,8 +110,8 @@ Usage and quota have separate network behavior:
   the user's installed `claude` automatically, without a click: at app start, when Claude Code's local
   usage records change, after a displayed window resets, on backoff retries and every 15 minutes, as
   well as on manual refresh. Claude Code may renew its own login during such a run. Each run executes
-  `/usage` through the user's installed `claude`, with a fixed command, no shell, an empty temporary
-  directory, a minimal environment and a 30-second limit. Any network use, login renewal or Keychain
+  `/usage` through the user's installed `claude`, with a fixed command, no shell, one fixed working
+  folder in the temporary directory that is emptied before each run, a minimal environment and a 30-second limit. Any network use, login renewal or Keychain
   prompt during that run belongs to `claude`. Needlbar reads only the `usage_report` field and an
   error label, and discards the rest without logging or storing it. It reads no Claude Keychain item
   or credential file. v0.3.14 still uses the Anthropic usage endpoint with existing local evidence.

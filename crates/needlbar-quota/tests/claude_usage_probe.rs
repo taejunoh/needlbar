@@ -38,15 +38,23 @@ fn fake_claude(directory: &Path, body: &str) -> PathBuf {
 }
 
 fn environment() -> UsageProbeEnvironment {
+    environment_in(Path::new("/tmp"))
+}
+
+/// An environment whose `TMPDIR` is private to one test, so the fixed working
+/// directory under it cannot be shared with another test running in parallel.
+fn environment_in(tmpdir: &Path) -> UsageProbeEnvironment {
     UsageProbeEnvironment::from_lookup(|name| match name {
         "HOME" => Some(OsString::from("/tmp/needlbar-fake-home")),
         "USER" => Some(OsString::from("fake-user")),
         "LOGNAME" => Some(OsString::from("fake-login")),
-        "TMPDIR" => Some(OsString::from("/tmp")),
+        "TMPDIR" => Some(tmpdir.as_os_str().to_owned()),
         "ANTHROPIC_API_KEY" | "CLAUDE_CODE_OAUTH_TOKEN" | "OTHER" => Some(OsString::from("LEAK")),
         _ => None,
     })
 }
+
+const WORKING_DIRECTORY_NAME: &str = "needlbar-claude-usage";
 
 fn limits(deadline_ms: u64) -> UsageProbeLimits {
     UsageProbeLimits {
@@ -164,8 +172,10 @@ fn environment_is_an_allowlist_with_a_fixed_path() {
 }
 
 #[tokio::test]
-async fn runs_with_the_exact_argv_environment_stdin_and_a_fresh_directory_it_deletes() {
+async fn runs_with_the_exact_argv_environment_stdin_and_the_fixed_empty_directory() {
     let temp = TempDir::new().unwrap();
+    let tmpdir = temp.path().join("tmp");
+    fs::create_dir(&tmpdir).unwrap();
     let record = temp.path().join("record");
     fs::create_dir(&record).unwrap();
     let record_text = record.display();
@@ -183,7 +193,7 @@ printf 'report-bytes'"#
 
     let output = run_usage_probe(
         &script,
-        &environment(),
+        &environment_in(&tmpdir),
         limits(10_000),
         &UsageProbeControl::new(),
         1,
@@ -237,10 +247,128 @@ printf 'report-bytes'"#
     assert_eq!(fs::read_to_string(record.join("entries")).unwrap(), "");
     assert_eq!(fs::read_to_string(record.join("stdin")).unwrap(), "");
     let cwd = fs::read_to_string(record.join("cwd")).unwrap();
-    assert!(
-        !Path::new(cwd.trim()).exists(),
-        "working directory was not deleted"
+    let expected = tmpdir.join(WORKING_DIRECTORY_NAME);
+    assert_eq!(
+        fs::canonicalize(cwd.trim()).unwrap(),
+        fs::canonicalize(&expected).unwrap()
     );
+    // The folder is kept for the next run, private to the user.
+    assert!(expected.is_dir());
+    assert_eq!(
+        fs::metadata(&expected).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+}
+
+#[tokio::test]
+async fn every_run_uses_the_same_directory_and_starts_with_it_empty() {
+    let temp = TempDir::new().unwrap();
+    let tmpdir = temp.path().join("tmp");
+    fs::create_dir(&tmpdir).unwrap();
+    let record = temp.path().join("record");
+    fs::create_dir(&record).unwrap();
+    let record_text = record.display();
+    // Each run lists what it finds, then leaves a file, a nested folder and a
+    // dangling link behind for the next run to clear.
+    let script = fake_claude(
+        temp.path(),
+        &format!(
+            r#"pwd >> '{record_text}/cwd'
+/bin/ls -A >> '{record_text}/entries'
+/usr/bin/touch leftover
+/bin/mkdir -p nested/inner
+/usr/bin/touch nested/inner/file
+/bin/ln -s /nonexistent dangling"#
+        ),
+    );
+    let control = UsageProbeControl::new();
+
+    for run_id in 1..=3 {
+        run_usage_probe(
+            &script,
+            &environment_in(&tmpdir),
+            limits(10_000),
+            &control,
+            run_id,
+        )
+        .await
+        .unwrap();
+    }
+
+    let cwd = fs::read_to_string(record.join("cwd")).unwrap();
+    let directories: Vec<_> = cwd.lines().collect();
+    assert_eq!(directories.len(), 3);
+    assert!(directories.iter().all(|line| *line == directories[0]));
+    assert_eq!(
+        fs::canonicalize(directories[0]).unwrap(),
+        fs::canonicalize(tmpdir.join(WORKING_DIRECTORY_NAME)).unwrap()
+    );
+    assert_eq!(
+        fs::read_to_string(record.join("entries")).unwrap(),
+        "",
+        "a run found something left by the previous one"
+    );
+    // The last run's leftovers are still there until the next run clears them.
+    assert!(tmpdir
+        .join(WORKING_DIRECTORY_NAME)
+        .join("leftover")
+        .exists());
+    let siblings: Vec<_> = fs::read_dir(&tmpdir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(siblings, [OsString::from(WORKING_DIRECTORY_NAME)]);
+}
+
+#[tokio::test]
+async fn a_symlink_in_place_of_the_directory_is_a_launch_failure_and_nothing_runs() {
+    let temp = TempDir::new().unwrap();
+    let tmpdir = temp.path().join("tmp");
+    let elsewhere = temp.path().join("elsewhere");
+    fs::create_dir(&tmpdir).unwrap();
+    fs::create_dir(&elsewhere).unwrap();
+    fs::write(elsewhere.join("canary"), "keep").unwrap();
+    symlink(&elsewhere, tmpdir.join(WORKING_DIRECTORY_NAME)).unwrap();
+    let ran = temp.path().join("ran");
+    let script = fake_claude(temp.path(), &format!("touch '{}'", ran.display()));
+
+    let result = run_usage_probe(
+        &script,
+        &environment_in(&tmpdir),
+        limits(10_000),
+        &UsageProbeControl::new(),
+        1,
+    )
+    .await;
+
+    assert_eq!(result, Err(UsageProbeFailure::LaunchFailed));
+    assert!(!ran.exists(), "claude ran despite the symlink");
+    assert_eq!(
+        fs::read_to_string(elsewhere.join("canary")).unwrap(),
+        "keep"
+    );
+}
+
+#[tokio::test]
+async fn a_regular_file_in_place_of_the_directory_is_a_launch_failure_and_nothing_runs() {
+    let temp = TempDir::new().unwrap();
+    let tmpdir = temp.path().join("tmp");
+    fs::create_dir(&tmpdir).unwrap();
+    fs::write(tmpdir.join(WORKING_DIRECTORY_NAME), "not a directory").unwrap();
+    let ran = temp.path().join("ran");
+    let script = fake_claude(temp.path(), &format!("touch '{}'", ran.display()));
+
+    let result = run_usage_probe(
+        &script,
+        &environment_in(&tmpdir),
+        limits(10_000),
+        &UsageProbeControl::new(),
+        1,
+    )
+    .await;
+
+    assert_eq!(result, Err(UsageProbeFailure::LaunchFailed));
+    assert!(!ran.exists());
 }
 
 #[tokio::test]

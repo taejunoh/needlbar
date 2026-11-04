@@ -207,7 +207,7 @@ after 15 minutes without a run, at most once every 5 minutes. Opening the dashbo
 alone starts none. A reading stays current for 20 minutes, and usage outside Claude
 Code appears within about 15 minutes while the app is running and the Mac is awake.
 That can mean about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart. A run is
-limited to 30 seconds and 1 MiB of output, works in an empty temporary directory,
+limited to 30 seconds and 1 MiB of output, works in one fixed folder in the temporary directory that is emptied before each run,
 and its output is neither logged nor stored. After any exit Needlbar ends the process group it
 started; a process that moved to its own session or group is not covered. The status line remains the second
 source and last-known values the third; a newer valid reading wins. A window the

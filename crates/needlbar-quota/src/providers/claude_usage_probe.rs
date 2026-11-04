@@ -3,7 +3,10 @@
 
 use std::{
     ffi::OsString,
-    path::Path,
+    fs::{self, DirBuilder},
+    io::ErrorKind,
+    os::unix::fs::DirBuilderExt,
+    path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
     sync::{Arc, LazyLock, Mutex},
     time::Duration,
@@ -28,6 +31,9 @@ pub const USAGE_PROBE_ARGUMENTS: [&str; 9] = [
     "--verbose",
 ];
 
+/// The one folder every run works in, under `TMPDIR`. The CLI keeps records per
+/// working directory, so a new folder per run could grow without limit.
+const WORKING_DIRECTORY_NAME: &str = "needlbar-claude-usage";
 const USAGE_PROBE_PATH: &str = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 const TERMINATION_GRACE: Duration = Duration::from_millis(500);
 /// A descendant can keep the stdout pipe open after `claude` itself exits.
@@ -79,6 +85,18 @@ impl UsageProbeEnvironment {
 
     pub fn from_process() -> Self {
         Self::from_lookup(|name| std::env::var_os(name))
+    }
+
+    /// `<TMPDIR>/needlbar-claude-usage`. `TMPDIR` comes from this environment,
+    /// which the app copies from its own, and falls back to the system temporary
+    /// directory (which itself reads `TMPDIR`, then uses `/tmp`).
+    pub fn working_directory(&self) -> PathBuf {
+        let base = self
+            .values
+            .iter()
+            .find(|(name, value)| *name == "TMPDIR" && !value.is_empty())
+            .map_or_else(std::env::temp_dir, |(_, value)| PathBuf::from(value));
+        base.join(WORKING_DIRECTORY_NAME)
     }
 
     pub fn pairs(&self) -> &[(&'static str, OsString)] {
@@ -191,16 +209,12 @@ pub async fn run_usage_probe(
     if control.is_cancelled(run_id) {
         return Err(UsageProbeFailure::Cancelled);
     }
-    // Deleted when this function returns, on every path.
-    let working_directory = tempfile::Builder::new()
-        .prefix("needlbar-claude-usage-")
-        .tempdir()
-        .map_err(|_| UsageProbeFailure::LaunchFailed)?;
+    let working_directory = prepare_working_directory(&environment.working_directory())?;
     let deadline = Instant::now() + limits.deadline;
     let mut command = Command::new(executable);
     command
         .args(USAGE_PROBE_ARGUMENTS)
-        .current_dir(working_directory.path())
+        .current_dir(&working_directory)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -256,6 +270,37 @@ pub async fn run_usage_probe(
         Stop::OutputTooLarge => Err(UsageProbeFailure::OutputTooLarge),
         Stop::Cancelled => Err(UsageProbeFailure::Cancelled),
     }
+}
+
+/// Creates the folder with mode 0700 if it is absent, refuses anything that is
+/// not a real directory (a symlink or a file), and empties it. Only one run
+/// happens at a time, so nothing else is using it.
+fn prepare_working_directory(path: &Path) -> Result<PathBuf, UsageProbeFailure> {
+    match DirBuilder::new().mode(0o700).create(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+        Err(_) => return Err(UsageProbeFailure::LaunchFailed),
+    }
+    // `symlink_metadata` does not follow a link, so a link is not a directory.
+    let metadata = fs::symlink_metadata(path).map_err(|_| UsageProbeFailure::LaunchFailed)?;
+    if !metadata.file_type().is_dir() {
+        return Err(UsageProbeFailure::LaunchFailed);
+    }
+    let entries = fs::read_dir(path).map_err(|_| UsageProbeFailure::LaunchFailed)?;
+    for entry in entries {
+        let entry = entry.map_err(|_| UsageProbeFailure::LaunchFailed)?;
+        let file_type = entry
+            .file_type()
+            .map_err(|_| UsageProbeFailure::LaunchFailed)?;
+        // A link is removed, never followed.
+        let removed = if file_type.is_dir() {
+            fs::remove_dir_all(entry.path())
+        } else {
+            fs::remove_file(entry.path())
+        };
+        removed.map_err(|_| UsageProbeFailure::LaunchFailed)?;
+    }
+    Ok(path.to_path_buf())
 }
 
 async fn read_until_exit(

@@ -15,6 +15,13 @@
 > detail "If this continues, run claude in Terminal to check its sign-in." The decision table in
 > Decisions 6 and Task 14 Step 5 are updated; other code blocks are kept as the record of what
 > was first written.
+>
+> **Amendment — 2026-11-03 (whole-branch review):** the probe's working directory is one fixed
+> folder, `<TMPDIR>/needlbar-claude-usage`, not a `tempfile` directory per run, because the CLI keeps
+> records per working directory. Task 2's `tempfile::Builder` block and its "fresh directory it
+> deletes" test are superseded: the folder is created with mode 0700, refused if a symlink or not a
+> directory, and emptied before each run, and tests assert the same directory and an empty start.
+> `tempfile` stays a dev-dependency only.
 
 ## Global Constraints
 
@@ -25,7 +32,7 @@ Authoritative spec: `docs/superpowers/specs/2026-11-03-claude-usage-report-sourc
 - Tests never spawn the real `claude`. Rust tests inject a fake executable through `ClaudeCliLocator::with_candidates`. Never call `needlbar_claude_usage_report_quota_snapshot_json` from a test built without `bridge-test-runtime`, because CI also runs `cargo test --workspace` (`.github/workflows/ci.yml:46`).
 - CLI locations, in order: `~/.local/bin/claude`, `/opt/homebrew/bin/claude`, `/usr/local/bin/claude`. First executable regular file after resolving symlinks. No shell and no `PATH` search.
 - Fixed argv, no user-derived text: `-p /usage --no-session-persistence --strict-mcp-config --settings {"disableAllHooks":true} --output-format stream-json --verbose`.
-- Process limits: a new empty temporary working directory deleted afterwards; `stdin` closed (`Stdio::null()`, immediate EOF); environment exactly `HOME`, `USER`, `LOGNAME`, `TMPDIR`, a fixed `PATH`, and `CLAUDE_CONFIG_DIR` only if the app already has it; 30-second deadline, then terminate the process group; 1 MiB of stdout, then terminate; stderr drained and discarded; cancelled on app stop; results from an older generation ignored.
+- Process limits: one fixed working directory `<TMPDIR>/needlbar-claude-usage` (amended 2026-11-03: was a new temporary directory per run), created with mode 0700, refused if a symlink or not a directory, emptied before each run; `stdin` closed (`Stdio::null()`, immediate EOF); environment exactly `HOME`, `USER`, `LOGNAME`, `TMPDIR`, a fixed `PATH`, and `CLAUDE_CONFIG_DIR` only if the app already has it; 30-second deadline, then terminate the process group; 1 MiB of stdout, then terminate; stderr drained and discarded; cancelled on app stop; results from an older generation ignored.
 - Triggers: app start, manual refresh, a change in Claude Code's local usage records, passing the `resets_at` of a displayed window, and 15 minutes since the last run started (`.periodic`, last in priority; user decision, 2026-11-03). Automatic runs at most once every 5 minutes, one at a time. Manual skips the interval and backoff but joins a run in flight. Opening the dashboard alone does not start a run, and neither does waking the Mac or regaining a connection.
 - Freshness: a usage report reading is current for 20 minutes (`recentDirectInterval`, and the widget's Claude quota row), so the label does not flip before each periodic refresh. A failed run shows Last known at once. `recentStatusLineInterval` and `maximumStatusLineAge` do not change.
 - Backoff after consecutive automatic failures: 5, 10, 20, then 30 minutes. Any success resets it.
@@ -6311,7 +6318,7 @@ after 15 minutes without a run, at most once every 5 minutes. Opening the dashbo
 alone starts none. A reading stays current for 20 minutes, and usage outside Claude
 Code appears within about 15 minutes while the app is running and the Mac is awake.
 That can mean about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart. A run is
-limited to 30 seconds and 1 MiB of output, works in an empty temporary directory,
+limited to 30 seconds and 1 MiB of output, works in one fixed folder in the temporary directory that is emptied before each run,
 and its output is neither logged nor stored. The status line remains the second
 source and last-known values the third; a newer valid reading wins. A window the
 report omits is hidden, not shown as zero. Without Claude Code the app shows
@@ -6330,7 +6337,7 @@ path.write_text(source)
 
 pathlib.Path("docs/releases/v0.3.15.md").write_text("""Needlbar v0.3.15 changes where the Claude quota comes from. It no longer reads Claude Code's Keychain item or credentials file and no longer calls the usage endpoint, so Needlbar stops causing Keychain dialogs of its own.
 
-- Needlbar now runs `/usage` through your installed Claude Code command-line tool and reads its usage report. The command is fixed and runs without a shell, in an empty temporary directory, for at most 30 seconds. Its output is not logged or stored.
+- Needlbar now runs `/usage` through your installed Claude Code command-line tool and reads its usage report. The command is fixed and runs without a shell, in one fixed folder in the temporary directory that is emptied before each run, for at most 30 seconds. Its output is not logged or stored.
 - Runs happen when Needlbar starts, when you refresh, when Claude Code's local usage records change, when a displayed window's reset passes, and after 15 minutes without a run, at most once every 5 minutes. Opening the dashboard does not start one. After repeated failures Needlbar waits 5, 10, 20, then 30 minutes.
 - A window the report leaves out is hidden, never shown as zero. On accounts without a five-hour window, the quota shows the weekly windows.
 - The Claude Code status line stays as the second source and last-known values as the third, labelled with the time they were checked. A newer valid reading wins whichever source it came from.
@@ -6402,7 +6409,7 @@ reading wins regardless of source, and no source invents a value.
   `PATH` search, so shell functions and aliases never apply.
 - **Command:** `claude -p /usage --no-session-persistence --strict-mcp-config --settings
   {"disableAllHooks":true} --output-format stream-json --verbose`, with no user-derived text.
-- **Limits:** a new empty temporary working directory, deleted afterwards; no standard input; an
+- **Limits:** one fixed working directory, `<TMPDIR>/needlbar-claude-usage`, created with mode 0700, refused if it is a symlink or not a directory, and emptied before each run; no standard input; an
   environment of only `HOME`, `USER`, `LOGNAME`, `TMPDIR`, a fixed `PATH`, and `CLAUDE_CONFIG_DIR`
   if the app already has it; 30 seconds, then the process group is terminated; 1 MiB of standard
   output, then the same; standard error discarded; cancelled when the app stops.
@@ -6469,7 +6476,7 @@ replace("docs/privacy.md", [
     ("- Claude and Codex browser sign-in is explicit. Their buttons launch the installed provider\n  CLI, which owns browser navigation, OAuth callbacks, refresh, and credential storage.\n",
      "- Codex browser sign-in is explicit. Its button launches the installed provider CLI, which owns\n  browser navigation, OAuth callbacks, refresh, and credential storage. Prepared for the next\n  release, not in v0.3.14: Needlbar has no Claude sign-in and never runs `claude auth`.\n"),
     ("- Claude quota uses the Anthropic OAuth usage endpoint with existing local OAuth evidence.\n  Background Keychain access is interaction-forbidden and never prompts. Only the explicit\n  post-login Claude verification path may allow a macOS Keychain permission prompt.\n",
-     "- Prepared for the next release, not in v0.3.14: Needlbar makes no Claude network request. It runs\n  `/usage` through the user's installed `claude`, with a fixed command, no shell, an empty temporary\n  directory, a minimal environment and a 30-second limit. Any network use, login renewal or Keychain\n  prompt during that run belongs to `claude`. Needlbar reads only the `usage_report` field and an\n  error label, and discards the rest without logging or storing it. It reads no Claude Keychain item\n  or credential file. v0.3.14 still uses the Anthropic usage endpoint with existing local evidence.\n"),
+     "- Prepared for the next release, not in v0.3.14: Needlbar makes no Claude network request. It runs\n  `/usage` through the user's installed `claude`, with a fixed command, no shell, one fixed working\n  folder in the temporary directory that is emptied before each run, a minimal environment and a 30-second limit. Any network use, login renewal or Keychain\n  prompt during that run belongs to `claude`. Needlbar reads only the `usage_report` field and an\n  error label, and discards the rest without logging or storing it. It reads no Claude Keychain item\n  or credential file. v0.3.14 still uses the Anthropic usage endpoint with existing local evidence.\n"),
     ("Needlbar does not log authorization headers,\ncookies, response bodies, prompt text, response text, or source code. Raw Claude credential\nmaterial is held only ephemerally inside the Rust quota adapter, with zeroizing storage where\nNeedlbar owns the buffer; it is not persisted by Needlbar, copied into Swift, or exposed\nthrough the C ABI. A failed request",
      "Needlbar does not log authorization headers,\ncookies, response bodies, prompt text, response text, command output, or source code. A failed request"),
     ("Claude and Codex use provider-native CLI/browser sign-in. Needlbar does not own their\ncredentials and has no separate disconnect action; sign out or revoke access through the\nprovider's supported app/CLI controls, then retry in Needlbar. If the CLI is not installed,\nNeedlbar reports a provider-scoped failure and leaves other providers available. If Claude\nKeychain access is denied or cancelled, grant access in macOS when appropriate or complete\nprovider re-authentication, then retry; Needlbar does not broaden the Keychain query or fall\nback to browser-cookie crawling.\n",
@@ -6787,7 +6794,7 @@ Only after the user reports Steps 5-7, an agent adds a dated, local-only receipt
 | §6 | Backoff 5, 10, 20, 30; success resets | Task 6; Task 7 `retryableFailuresBackOff…` |
 | §6 | Locator order, symlinks, no shell or `PATH` | Task 2; Task 12 source contract |
 | §6 | Fixed argv | Task 2 |
-| §6 | Empty temp directory, stdin, environment, deadline, 1 MiB, stderr, cancel, generation | Task 2; Task 4 cancel export; Task 7 `stopCancels…`, `restartWaits…` |
+| §6 | Fixed emptied working directory, stdin, environment, deadline, 1 MiB, stderr, cancel, generation | Task 2; Task 4 cancel export; Task 7 `stopCancels…`, `restartWaits…` |
 | §6 | Real duration measured; deadline change goes in the spec | Task 14 Step 6 |
 | §6 | No `claude auth`, no login flow, no config write | Task 11; source contract |
 | §7 | Parsing rules, including `session` key vs `session` row | Task 1 |
