@@ -36,6 +36,8 @@ across them. **Release gate:** no public build until the user resolves the
 terms question in spec §3. No Keychain item, credential file or cookie was read for this work, and no
 agent ran `claude`.
 
+Local verification on this branch: `make test` and `cargo test --workspace` passed (827 Swift and 159 Rust workspace tests with the fixture feature, 140 without it, plus 1401 vendored tokscale-core tests in `make test`). All process tests used a fake `claude`. `make package`, `scripts/smoke-app.sh` and the CI-only `cargo clippy` step were not run.
+
 ## 2026-11-02 Claude Keychain access action
 
 Defect: v0.3.14 disables legacy Keychain interaction for background reads, so
