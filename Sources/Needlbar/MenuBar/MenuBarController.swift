@@ -93,7 +93,6 @@ private final class LegacyMenuBarController: NSObject {
     private let onModuleActivated: @MainActor (MenuModuleID) -> Void
     private let onRetryRequested: @MainActor () -> Void
     private let onProviderLoginRequested: @MainActor (ProviderID) -> Void
-    private let onClaudeKeychainAccessRequested: @MainActor () -> Void
     private let onSettingsRequested: @MainActor () -> Void
     private let onAnalyticsRequested: @MainActor () -> Void
     private let openCursorSpending: @MainActor () -> Void
@@ -125,7 +124,6 @@ private final class LegacyMenuBarController: NSObject {
         onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
         onRetryRequested: @escaping @MainActor () -> Void = {},
         onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
-        onClaudeKeychainAccessRequested: @escaping @MainActor () -> Void = {},
         onSettingsRequested: @escaping @MainActor () -> Void = {},
         onAnalyticsRequested: @escaping @MainActor () -> Void = {},
         openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() },
@@ -139,7 +137,6 @@ private final class LegacyMenuBarController: NSObject {
         self.onModuleActivated = onModuleActivated
         self.onRetryRequested = onRetryRequested
         self.onProviderLoginRequested = onProviderLoginRequested
-        self.onClaudeKeychainAccessRequested = onClaudeKeychainAccessRequested
         self.onSettingsRequested = onSettingsRequested
         self.onAnalyticsRequested = onAnalyticsRequested
         self.openCursorSpending = openCursorSpending
@@ -182,7 +179,6 @@ private final class LegacyMenuBarController: NSObject {
         onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
         onRetryRequested: @escaping @MainActor () -> Void = {},
         onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
-        onClaudeKeychainAccessRequested: @escaping @MainActor () -> Void = {},
         onSettingsRequested: @escaping @MainActor () -> Void = {},
         onAnalyticsRequested: @escaping @MainActor () -> Void = {},
         openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() }
@@ -202,7 +198,6 @@ private final class LegacyMenuBarController: NSObject {
             onModuleActivated: onModuleActivated,
             onRetryRequested: onRetryRequested,
             onProviderLoginRequested: onProviderLoginRequested,
-            onClaudeKeychainAccessRequested: onClaudeKeychainAccessRequested,
             onSettingsRequested: onSettingsRequested,
             onAnalyticsRequested: onAnalyticsRequested,
             openCursorSpending: openCursorSpending
@@ -445,9 +440,6 @@ private final class LegacyMenuBarController: NSObject {
             return true
         case .openClaudeUsage:
             return openClaudeUsage()
-        case .allowClaudeKeychainAccess:
-            onClaudeKeychainAccessRequested()
-            return true
         }
     }
 
@@ -469,7 +461,6 @@ public final class MenuBarController: NSObject {
     private let onModuleActivated: @MainActor (MenuModuleID) -> Void
     private let onRetryRequested: @MainActor () -> Void
     private let onProviderLoginRequested: @MainActor (ProviderID) -> Void
-    private let onClaudeKeychainAccessRequested: @MainActor () -> Void
     private let onSettingsRequested: @MainActor () -> Void
     private let onAnalyticsRequested: @MainActor () -> Void
     private let openCursorSpending: @MainActor () -> Void
@@ -509,7 +500,6 @@ public final class MenuBarController: NSObject {
         onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
         onRetryRequested: @escaping @MainActor () -> Void = {},
         onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
-        onClaudeKeychainAccessRequested: @escaping @MainActor () -> Void = {},
         onSettingsRequested: @escaping @MainActor () -> Void = {},
         onAnalyticsRequested: @escaping @MainActor () -> Void = {},
         openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() },
@@ -527,7 +517,6 @@ public final class MenuBarController: NSObject {
         self.onModuleActivated = onModuleActivated
         self.onRetryRequested = onRetryRequested
         self.onProviderLoginRequested = onProviderLoginRequested
-        self.onClaudeKeychainAccessRequested = onClaudeKeychainAccessRequested
         self.onSettingsRequested = onSettingsRequested
         self.onAnalyticsRequested = onAnalyticsRequested
         self.openCursorSpending = openCursorSpending
@@ -573,7 +562,6 @@ public final class MenuBarController: NSObject {
         onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
         onRetryRequested: @escaping @MainActor () -> Void = {},
         onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
-        onClaudeKeychainAccessRequested: @escaping @MainActor () -> Void = {},
         onSettingsRequested: @escaping @MainActor () -> Void = {},
         onAnalyticsRequested: @escaping @MainActor () -> Void = {},
         openCursorSpending: @escaping @MainActor () -> Void = { _ = CursorSpendingAction.open() },
@@ -597,7 +585,6 @@ public final class MenuBarController: NSObject {
             onModuleActivated: onModuleActivated,
             onRetryRequested: onRetryRequested,
             onProviderLoginRequested: onProviderLoginRequested,
-            onClaudeKeychainAccessRequested: onClaudeKeychainAccessRequested,
             onSettingsRequested: onSettingsRequested,
             onAnalyticsRequested: onAnalyticsRequested,
             openCursorSpending: openCursorSpending,
@@ -786,9 +773,6 @@ public final class MenuBarController: NSObject {
             onClaudeUsageStateChanged: { [weak self] state in
                 self?.displayedClaudeUsageStateDidChange(state)
             },
-            onClaudeKeychainAccessAction: { [weak self] action in
-                self?.performPresentedAuthenticationAction(action, for: .claude)
-            },
             onQuotaDetailsExpansionChanged: { [weak self] in
                 self?.resizeDisplayedDashboardIfNeeded()
             }
@@ -925,9 +909,6 @@ public final class MenuBarController: NSObject {
             return true
         case .openClaudeUsage:
             return openClaudeUsage()
-        case .allowClaudeKeychainAccess:
-            onClaudeKeychainAccessRequested()
-            return true
         }
     }
 

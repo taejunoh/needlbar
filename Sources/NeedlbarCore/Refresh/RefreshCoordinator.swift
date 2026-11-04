@@ -105,12 +105,6 @@ public actor RefreshCoordinator {
     private var completingUserQuotaWaiters: [ProviderID: [UserQuotaWaiter]] = [:]
     private var claudePreflightWaiters: [ClaudePreflightWaiter] = []
     private var completingClaudePreflightWaiters: [ClaudePreflightWaiter] = []
-    /// True while the explicit Keychain access read is blocked in its bridge
-    /// call. It outlives `stop()`, because macOS may still show that dialog.
-    private var claudeKeychainAccessInFlight = false
-    /// Changes when that read starts and when it returns, so an attempt can
-    /// tell whether it overlapped one.
-    private var claudeKeychainAccessEpoch: UInt64 = 0
 
     public init(
         usageRepository: any UsageRepository,
@@ -287,8 +281,6 @@ public actor RefreshCoordinator {
 
     public func refreshQuota(afterUserAuthenticationFor provider: ProviderID) async -> Bool {
         guard isRunning, provider == .claude || provider == .codex else { return false }
-        // The explicit Keychain access read has a dialog open; do not stack another.
-        if provider == .claude, claudeKeychainAccessInFlight { return false }
         return await withCheckedContinuation { continuation in
             let intent = QuotaRefreshIntent.userInitiated(provider: provider)
             let waiter = UserQuotaWaiter(
@@ -323,35 +315,6 @@ public actor RefreshCoordinator {
                 queuedUserInitiatedProviders.insert(provider)
             }
         }
-    }
-
-    /// Runs one UI-allowed Claude read for an explicit "Allow Keychain access"
-    /// click; nothing automatic may call this. A macOS dialog can stay open for
-    /// as long as the user leaves it, so the read does not take the quota slot
-    /// and does not occupy a cooperative pool thread: background refreshes of
-    /// Codex and Cursor keep running meanwhile. Returns whether direct Claude
-    /// quota was applied. A click while a read is in flight runs nothing, so
-    /// dialogs never stack.
-    public func requestClaudeKeychainAccess() async -> Bool {
-        let intent = QuotaRefreshIntent.userInitiated(provider: .claude)
-        guard isRunning, !claudeKeychainAccessInFlight, activeQuotaIntent != intent else { return false }
-        claudeKeychainAccessInFlight = true
-        claudeKeychainAccessEpoch &+= 1
-        let generation = runGeneration
-        let startedAt = clock.now
-        let repository = quotaRepository
-        let result = await withCheckedContinuation { (continuation: CheckedContinuation<Result<QuotaRefreshResult, Error>, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: Result { try repository.refresh(intent: intent) })
-            }
-        }
-        claudeKeychainAccessInFlight = false
-        claudeKeychainAccessEpoch &+= 1
-        var application = QuotaApplication()
-        await applyQuotaResult(result, intent: intent, applyResult: true, generation: generation,
-                               attempt: nil, claudeAttemptStartedAt: startedAt, excludingClaude: false,
-                               into: &application)
-        return generation == runGeneration && application.verificationSucceeded
     }
 
     /// Performs one serialized, Claude-only, no-UI quota check for an
@@ -558,7 +521,6 @@ public actor RefreshCoordinator {
         let clock = clock
         let backgroundAttemptClock = backgroundAttemptClock
         let ledger = quotaAttemptLedger
-        let keychainAccessEpoch = claudeKeychainAccessEpoch
         let id = UUID()
         ledger.reserve(id: id, generation: generation, trigger: trigger)
         quotaTask = Task { [weak self, repository, intent, clock, backgroundAttemptClock, ledger] in
@@ -567,14 +529,12 @@ public actor RefreshCoordinator {
                 backgroundClock: intent == .backgroundAll ? backgroundAttemptClock : nil
             ) else {
                 await self?.finishQuotaRefresh(.failure(CancellationError()), intent: intent,
-                                              applyResult: false, generation: generation, attempt: nil,
-                                              keychainAccessEpoch: keychainAccessEpoch)
+                                              applyResult: false, generation: generation, attempt: nil)
                 return
             }
             let result = Result { try repository.refresh(intent: intent) }
             await self?.finishQuotaRefresh(result, intent: intent, applyResult: !Task.isCancelled,
-                                          generation: generation, attempt: attempt,
-                                          keychainAccessEpoch: keychainAccessEpoch)
+                                          generation: generation, attempt: attempt)
         }
     }
 
@@ -648,7 +608,7 @@ public actor RefreshCoordinator {
         var application = QuotaApplication()
         await applyQuotaResult(result, intent: .claudeUsageReport(runID: generation), applyResult: true,
                                generation: generation, attempt: attempt,
-                               claudeAttemptStartedAt: attempt?.startedAt, excludingClaude: false,
+                               claudeAttemptStartedAt: attempt?.startedAt,
                                into: &application)
     }
 
@@ -774,8 +734,7 @@ public actor RefreshCoordinator {
         intent: QuotaRefreshIntent,
         applyResult: Bool,
         generation: UInt64,
-        attempt: QuotaAttemptEvent?,
-        keychainAccessEpoch: UInt64
+        attempt: QuotaAttemptEvent?
     ) async {
         var application = QuotaApplication()
         let verifiedProvider: ProviderID?
@@ -816,34 +775,23 @@ public actor RefreshCoordinator {
             drainQueuedQuotaRefreshes()
         }
 
-        // An attempt that overlapped the explicit Keychain access read has
-        // nothing to say about Claude: it found the Keychain busy, or its
-        // answer may predate the one the user just gave.
-        let overlappedKeychainAccess = claudeKeychainAccessInFlight || keychainAccessEpoch != claudeKeychainAccessEpoch
         await applyQuotaResult(result, intent: intent, applyResult: applyResult, generation: generation,
                                attempt: attempt, claudeAttemptStartedAt: attempt?.startedAt,
-                               excludingClaude: intent.includesClaude && overlappedKeychainAccess,
                                into: &application)
     }
 
-    /// Stores one attempt's result. `attempt` is the ledger's record of it, and
-    /// the explicit Keychain access read, which has no ledger slot, passes nil.
+    /// Stores one attempt's result. `attempt` is the ledger's record of it.
     private func applyQuotaResult(
-        _ fullResult: Result<QuotaRefreshResult, Error>,
+        _ result: Result<QuotaRefreshResult, Error>,
         intent: QuotaRefreshIntent,
         applyResult: Bool,
         generation: UInt64,
         attempt: QuotaAttemptEvent?,
         claudeAttemptStartedAt: Date?,
-        excludingClaude: Bool,
         into application: inout QuotaApplication
     ) async {
         guard applyResult, generation == runGeneration else { return }
-        let includesClaude = intent.includesClaude && !excludingClaude
-        let result = excludingClaude
-            ? fullResult.map { QuotaRefreshResult(snapshots: $0.snapshots.filter { $0.key != .claude },
-                                                  errors: $0.errors.filter { $0.key != .claude }) }
-            : fullResult
+        let includesClaude = intent.includesClaude
         // Read the bridge diagnostics record once for this Claude operation,
         // before storing its reason, and share that read with the reporter.
         var claudeDiagnosticsRead: ClaudeQuotaDiagnosticsRead?
@@ -863,7 +811,7 @@ public actor RefreshCoordinator {
         }
         switch result {
         case .success(let refresh):
-            if intent == .claudePreflight, !excludingClaude {
+            if intent == .claudePreflight {
                 application.preflightOutcome = claudePreflightOutcome(for: refresh)
             }
             let refreshedAt = clock.now
@@ -892,14 +840,13 @@ public actor RefreshCoordinator {
                 application.verificationSucceeded = refresh.snapshots[provider] != nil
             }
         case .failure(let error):
-            if intent == .claudePreflight, !excludingClaude {
+            if intent == .claudePreflight {
                 application.preflightOutcome = claudePreflightOutcome(for: error)
             }
             if let bridgeFailure = error as? BridgeFailure,
                case .bridgeFailed(let bridgeErrors) = bridgeFailure
             {
-                var requested = Set(requestedProviders(for: intent))
-                if excludingClaude { requested.remove(.claude) }
+                let requested = Set(requestedProviders(for: intent))
                 let matchingErrors = bridgeErrors.filter {
                     guard let provider = $0.providerID else { return false }
                     return requested.contains(provider)
@@ -919,7 +866,7 @@ public actor RefreshCoordinator {
                 }
             }
             let status = DataStatus.error(message: String(describing: error), lastSuccessfulAt: nil)
-            for provider in requestedProviders(for: intent) where !(excludingClaude && provider == .claude) {
+            for provider in requestedProviders(for: intent) {
                 guard generation == runGeneration, applyResult else { return }
                 await store.markQuotaFailure(
                     for: provider,

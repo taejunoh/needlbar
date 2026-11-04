@@ -315,19 +315,6 @@ public struct SettingsView: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
                 Button("View Claude usage") { claudeUsageState.openUsage(openClaudeUsage) }
-                if case let .allowClaudeKeychainAccess(title)? = claudeQuotaPresentation.value.keychainAccessAction {
-                    Button(title) { actions.requestClaudeKeychainAccess() }
-                        .disabled(actions.isRequestingClaudeKeychainAccess)
-                    if let detail = claudeQuotaPresentation.value.keychainAccessDetailText {
-                        Text(detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.trailing)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: 220, alignment: .trailing)
-                            .accessibilityLabel(detail)
-                    }
-                }
             }
         }
         .frame(minHeight: 54)

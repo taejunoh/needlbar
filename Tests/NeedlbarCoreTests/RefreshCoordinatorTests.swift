@@ -857,7 +857,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
         let cases: [(String, ClaudeQuotaFailureReason)] = [
             ("requiresAuthentication", .claudeCodeSignInRequired),
             ("authenticationExpired", .quotaAccessUnavailable),
-            ("permissionDenied", .credentialAccessUnavailable),
+            ("permissionDenied", .couldNotUpdateQuota),
             ("networkUnavailable", .connectionUnavailable),
             ("rateLimited", .temporarilyLimited),
             ("notInstalled", .claudeCodeNotInstalled),
@@ -908,7 +908,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
         let cases: [(String, ClaudeQuotaFailureReason)] = [
             ("requiresAuthentication", .claudeCodeSignInRequired),
             ("authenticationExpired", .quotaAccessUnavailable),
-            ("permissionDenied", .credentialAccessUnavailable),
+            ("permissionDenied", .couldNotUpdateQuota),
             ("networkUnavailable", .connectionUnavailable),
             ("rateLimited", .temporarilyLimited),
             ("notInstalled", .claudeCodeNotInstalled),

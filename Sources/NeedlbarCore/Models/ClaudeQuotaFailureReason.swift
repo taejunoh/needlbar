@@ -2,7 +2,6 @@ import Foundation
 
 public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
     case quotaAccessUnavailable
-    case credentialAccessUnavailable
     case connectionUnavailable
     case temporarilyLimited
     case couldNotUpdateQuota
@@ -23,18 +22,9 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
     /// A second explanatory line, shown only in the provider popover and Settings.
     public var detailText: String? { localizedDetailText(bundle: .main) }
 
-    /// The title of the explicit Keychain access action, for the one reason
-    /// that offers it. Every other reason offers the user no such action.
-    public var keychainAccessActionTitle: String? { localizedKeychainAccessActionTitle(bundle: .main) }
-
-    /// One line shown beside the Keychain access button, for the one reason
-    /// that offers it, and never otherwise.
-    public var keychainAccessActionDetail: String? { localizedKeychainAccessActionDetail(bundle: .main) }
-
     func localizedDisplayText(bundle: Bundle) -> String {
         switch self {
         case .quotaAccessUnavailable: "Quota access unavailable"
-        case .credentialAccessUnavailable: "Credential access unavailable"
         case .connectionUnavailable: "Connection unavailable"
         case .temporarilyLimited: "Temporarily limited"
         case .couldNotUpdateQuota: "Could not update quota"
@@ -99,43 +89,12 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
                 bundle: bundle,
                 comment: "Second line for the sign-in reason, shown in the provider popover and Settings."
             )
-        case .quotaAccessUnavailable, .credentialAccessUnavailable, .connectionUnavailable,
+        case .quotaAccessUnavailable, .connectionUnavailable,
              .temporarilyLimited, .couldNotUpdateQuota, .claudeCodeCheckFailed, .usageReportFormatChanged:
             nil
         }
     }
 
-    func localizedKeychainAccessActionTitle(bundle: Bundle) -> String? {
-        switch self {
-        case .credentialAccessUnavailable:
-            String(
-                localized: "claudeQuota.action.allowKeychainAccess",
-                defaultValue: "Allow Keychain access",
-                bundle: bundle,
-                comment: "Button shown with the Claude quota reason 'Credential access unavailable'. Clicking it asks macOS once for access to the Keychain item the Claude Code command-line tool saved, which may show a macOS dialog. It only ever runs after this click. Keep 'Keychain', the macOS name."
-            )
-        case .quotaAccessUnavailable, .connectionUnavailable, .temporarilyLimited,
-             .couldNotUpdateQuota, .claudeCodeAccessExpired, .claudeCodeNotInstalled,
-             .claudeCodeSignInRequired, .claudeCodeCheckFailed, .usageReportFormatChanged:
-            nil
-        }
-    }
-
-    func localizedKeychainAccessActionDetail(bundle: Bundle) -> String? {
-        switch self {
-        case .credentialAccessUnavailable:
-            String(
-                localized: "claudeQuota.action.allowKeychainAccess.detail",
-                defaultValue: "Choose Always Allow to let background updates read this Keychain item.",
-                bundle: bundle,
-                comment: "One line of guidance shown beside the 'Allow Keychain access' button, only while that button is shown. It explains the macOS dialog's 'Always Allow' choice as a suggestion, not a promise about what macOS keeps afterwards. Keep 'Always Allow', the macOS button name."
-            )
-        case .quotaAccessUnavailable, .connectionUnavailable, .temporarilyLimited,
-             .couldNotUpdateQuota, .claudeCodeAccessExpired, .claudeCodeNotInstalled,
-             .claudeCodeSignInRequired, .claudeCodeCheckFailed, .usageReportFormatChanged:
-            nil
-        }
-    }
 
     /// Maps a completed attempt's Claude error code, plus the failure origin
     /// associated with that same attempt, to a safe reason. Only a local
@@ -149,7 +108,6 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
         case ("notInstalled", _): self = .claudeCodeNotInstalled
         case ("requiresAuthentication", _): self = .claudeCodeSignInRequired
         case ("authenticationExpired", _): self = .quotaAccessUnavailable
-        case ("permissionDenied", _): self = .credentialAccessUnavailable
         case ("networkUnavailable", _): self = .connectionUnavailable
         case ("rateLimited", _): self = .temporarilyLimited
         case ("providerUnavailable", _): self = .claudeCodeCheckFailed
