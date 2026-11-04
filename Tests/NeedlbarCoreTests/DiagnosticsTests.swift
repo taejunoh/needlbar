@@ -141,3 +141,25 @@ import Testing
         _ = try BridgeDecoder().decodeDiagnosticsEnvelope(Data(invalidOrigin.utf8))
     }
 }
+
+@Test func diagnosticsDecoderAcceptsTheUsageReportSourceOriginsAndRunSummary() throws {
+    for origin in [
+        "claudeCliNotFound", "usageReportNoUsage", "usageProbeTimedOut", "usageProbeOutputTooLarge",
+        "usageProbeFailed", "usageReportRateLimited", "usageReportFormatChanged",
+    ] {
+        let payload = """
+        {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-11-03T12:00:00Z","data":{"providers":[{"provider":"claude","usageStatus":"available","quotaStatus":"error","usageSource":"local","quotaSource":"usageReport","lastAttemptAt":"2026-11-03T11:59:59Z","claudeQuotaFailureOrigin":"\(origin)","claudeUsageProbe":{"durationMs":1832,"rowKinds":["weeklyAll","weeklyScoped"],"unknownRowCount":1,"skippedRowCount":2}}]},"errors":[]}
+        """
+        let provider = try #require(BridgeDecoder().decodeDiagnosticsEnvelope(Data(payload.utf8)).data?.providers.first)
+        #expect(provider.claudeQuotaFailureOrigin?.rawValue == origin)
+        #expect(provider.quotaSource == .usageReport)
+        #expect(provider.claudeUsageProbe == ClaudeUsageProbeDiagnostics(
+            durationMs: 1_832, rowKinds: [.weeklyAll, .weeklyScoped], unknownRowCount: 1, skippedRowCount: 2))
+        #expect(provider.claudeUsageProbe?.logFields == "durationMs=1832 rows=weeklyAll,weeklyScoped unknownRows=1 skippedRows=2")
+    }
+}
+
+@Test func anEmptyRunSummaryLogsNoRows() {
+    #expect(ClaudeUsageProbeDiagnostics(durationMs: 3, rowKinds: [], unknownRowCount: 0, skippedRowCount: 0).logFields
+        == "durationMs=3 rows=none unknownRows=0 skippedRows=0")
+}

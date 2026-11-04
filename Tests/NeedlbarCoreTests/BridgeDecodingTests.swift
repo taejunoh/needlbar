@@ -570,3 +570,28 @@ private func diagnosticsCString(
     """
     return makeCString(Array(json.utf8).map(CChar.init) + [0])
 }
+
+@Test func claudeUsageReportRefreshPassesTheRunIDUsesOnlyItsBridgeCallAndFreesOnce() throws {
+    let calls = CallRecorder()
+    let frees = FreeRecorder()
+    let returnedPointer = try CStringPointer(quotaCString(provider: "claude"))
+    let bridge = RustBridge(
+        quotaCall: { calls.record("background"); return quotaCString(provider: "claude") },
+        claudeUsageReportQuotaCall: { runID in calls.record("report-\(runID)"); return returnedPointer.pointer },
+        codexQuotaCall: { calls.record("codex"); return quotaCString(provider: "codex") },
+        free: { frees.release($0) }
+    )
+
+    let result = try RustQuotaRepository(bridge: bridge).refresh(intent: .claudeUsageReport(runID: 42))
+
+    #expect(calls.values == ["report-42"])
+    #expect(Set(result.snapshots.keys) == [.claude])
+    #expect(frees.count == 1)
+}
+
+@Test func claudeUsageReportCancelReachesTheBridgeWithTheRunID() {
+    let calls = CallRecorder()
+    let bridge = RustBridge(claudeUsageReportCancelCall: { runID in calls.record("cancel-\(runID)") })
+    RustQuotaRepository(bridge: bridge).cancelClaudeUsageReport(through: 9)
+    #expect(calls.values == ["cancel-9"])
+}

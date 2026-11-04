@@ -11,6 +11,8 @@ public struct RustBridge: Sendable {
     private let analyticsCall: BridgeJSONCall
     private let claudePreflightQuotaCall: BridgeJSONCall
     private let claudeUserInitiatedQuotaCall: BridgeJSONCall
+    private let claudeUsageReportQuotaCall: @Sendable (UInt64) -> UnsafePointer<CChar>?
+    private let claudeUsageReportCancelCall: @Sendable (UInt64) -> Void
     private let codexQuotaCall: BridgeJSONCall
     private let diagnosticsCall: BridgeJSONCall
     private let free: BridgeStringFree
@@ -22,6 +24,8 @@ public struct RustBridge: Sendable {
         analyticsCall: @escaping BridgeJSONCall = { needlbar_analytics_snapshot_json() },
         claudePreflightQuotaCall: @escaping BridgeJSONCall = { needlbar_claude_preflight_quota_snapshot_json() },
         claudeUserInitiatedQuotaCall: @escaping BridgeJSONCall = { needlbar_claude_user_initiated_quota_snapshot_json() },
+        claudeUsageReportQuotaCall: @escaping @Sendable (UInt64) -> UnsafePointer<CChar>? = { needlbar_claude_usage_report_quota_snapshot_json($0) },
+        claudeUsageReportCancelCall: @escaping @Sendable (UInt64) -> Void = { needlbar_claude_usage_report_cancel_through($0) },
         codexQuotaCall: @escaping BridgeJSONCall = { needlbar_codex_quota_snapshot_json() },
         diagnosticsCall: @escaping BridgeJSONCall = { needlbar_diagnostics_json() },
         free: @escaping BridgeStringFree = { pointer in needlbar_free_string(pointer) },
@@ -32,6 +36,8 @@ public struct RustBridge: Sendable {
         self.analyticsCall = analyticsCall
         self.claudePreflightQuotaCall = claudePreflightQuotaCall
         self.claudeUserInitiatedQuotaCall = claudeUserInitiatedQuotaCall
+        self.claudeUsageReportQuotaCall = claudeUsageReportQuotaCall
+        self.claudeUsageReportCancelCall = claudeUsageReportCancelCall
         self.codexQuotaCall = codexQuotaCall
         self.diagnosticsCall = diagnosticsCall
         self.free = free
@@ -52,6 +58,16 @@ public struct RustBridge: Sendable {
 
     public func claudeUserInitiatedQuotaEnvelope() throws -> BridgeEnvelope<BridgeQuotaPayload> {
         try decodeCString(claudeUserInitiatedQuotaCall, decode: decoder.decodeQuotaEnvelope)
+    }
+
+    /// Blocks for the whole run, so call it off the cooperative pool.
+    public func claudeUsageReportEnvelope(runID: UInt64) throws -> BridgeEnvelope<BridgeQuotaPayload> {
+        let call = claudeUsageReportQuotaCall
+        return try decodeCString({ call(runID) }, decode: decoder.decodeQuotaEnvelope)
+    }
+
+    public func cancelClaudeUsageReport(through runID: UInt64) {
+        claudeUsageReportCancelCall(runID)
     }
 
     public func codexQuotaEnvelope() throws -> BridgeEnvelope<BridgeQuotaPayload> {

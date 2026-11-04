@@ -12,12 +12,15 @@ public enum QuotaRefreshIntent: Equatable, Sendable {
     case backgroundAll
     case claudePreflight
     case userInitiated(provider: ProviderID)
+    /// One `claude -p /usage` run. `runID` lets a later cancel reach it even
+    /// before it starts.
+    case claudeUsageReport(runID: UInt64)
 }
 
 extension QuotaRefreshIntent {
     var includesClaude: Bool {
         switch self {
-        case .backgroundAll, .claudePreflight, .userInitiated(provider: .claude): true
+        case .backgroundAll, .claudePreflight, .userInitiated(provider: .claude), .claudeUsageReport: true
         case .userInitiated: false
         }
     }
@@ -25,12 +28,15 @@ extension QuotaRefreshIntent {
 
 public protocol QuotaRepository: Sendable {
     func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult
+    func cancelClaudeUsageReport(through runID: UInt64)
 }
 
 public extension QuotaRepository {
     func refresh() throws -> QuotaRefreshResult {
         try refresh(intent: .backgroundAll)
     }
+
+    func cancelClaudeUsageReport(through runID: UInt64) {}
 }
 
 public struct RustQuotaRepository: QuotaRepository, Sendable {
@@ -52,11 +58,17 @@ public struct RustQuotaRepository: QuotaRepository, Sendable {
             return try refreshDedicated(bridge.claudePreflightQuotaEnvelope(), for: .claude)
         case .userInitiated(provider: .claude):
             return try refreshDedicated(bridge.claudeUserInitiatedQuotaEnvelope(), for: .claude)
+        case .claudeUsageReport(let runID):
+            return try refreshDedicated(bridge.claudeUsageReportEnvelope(runID: runID), for: .claude)
         case .userInitiated(provider: .codex):
             return try refreshDedicated(bridge.codexQuotaEnvelope(), for: .codex)
         case .userInitiated(provider: .cursor):
             throw safeFailure(provider: .cursor, code: "unsupportedProvider", message: "Cursor quota is unavailable in Needlbar. Use Cursor Spending for quota details.")
         }
+    }
+
+    public func cancelClaudeUsageReport(through runID: UInt64) {
+        bridge.cancelClaudeUsageReport(through: runID)
     }
 
     private func refreshAggregate(_ envelope: BridgeEnvelope<BridgeQuotaPayload>) throws -> QuotaRefreshResult {

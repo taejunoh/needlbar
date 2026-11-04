@@ -16,11 +16,12 @@ public struct ProviderDiagnostics: Decodable, Sendable, Equatable {
     public let quotaErrorCode: DiagnosticsErrorCode?
     public let lastAttemptAt: Date?
     public let claudeQuotaFailureOrigin: ClaudeQuotaFailureOrigin?
+    public let claudeUsageProbe: ClaudeUsageProbeDiagnostics?
 
     private enum CodingKeys: String, CodingKey {
         case provider, usageStatus, quotaStatus, usageSource, quotaSource
         case lastUsageAt, lastQuotaAt, usageErrorCode, quotaErrorCode
-        case lastAttemptAt, claudeQuotaFailureOrigin
+        case lastAttemptAt, claudeQuotaFailureOrigin, claudeUsageProbe
     }
 
     public init(from decoder: Decoder) throws {
@@ -47,6 +48,7 @@ public struct ProviderDiagnostics: Decodable, Sendable, Equatable {
             ClaudeQuotaFailureOrigin.self,
             forKey: .claudeQuotaFailureOrigin
         )
+        claudeUsageProbe = try container.decodeIfPresent(ClaudeUsageProbeDiagnostics.self, forKey: .claudeUsageProbe)
     }
 }
 
@@ -64,6 +66,7 @@ public enum UsageDiagnosticsSource: String, Decodable, Sendable, Equatable {
 public enum QuotaDiagnosticsSource: String, Decodable, Sendable, Equatable {
     case oauth
     case unavailable
+    case usageReport
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -71,6 +74,7 @@ public enum QuotaDiagnosticsSource: String, Decodable, Sendable, Equatable {
         switch value {
         case Self.oauth.rawValue, "oAuth": self = .oauth
         case Self.unavailable.rawValue: self = .unavailable
+        case Self.usageReport.rawValue: self = .usageReport
         default:
             throw DecodingError.dataCorruptedError(
                 in: container,
@@ -114,7 +118,43 @@ public enum ClaudeQuotaFailureOrigin: String, Decodable, Sendable, Equatable {
     case usageEndpointServerError
     /// The usage response body could not be read as a usage document.
     case usageResponseUnrecognized
+    case claudeCliNotFound
+    /// `rate_limits` was null, or `limits` was null or empty.
+    case usageReportNoUsage
+    case usageProbeTimedOut
+    case usageProbeOutputTooLarge
+    /// The process could not start or exited unsuccessfully.
+    case usageProbeFailed
+    case usageReportRateLimited
+    /// A run finished without a usable `usage_report`.
+    case usageReportFormatChanged
     case otherFailure
+}
+
+public enum ClaudeUsageRowKind: String, Decodable, Sendable, Equatable {
+    case session
+    case weeklyAll
+    case weeklyScoped
+}
+
+/// What is recorded about a `/usage` run: closed values and counts, never text.
+public struct ClaudeUsageProbeDiagnostics: Decodable, Sendable, Equatable {
+    public let durationMs: UInt64
+    public let rowKinds: [ClaudeUsageRowKind]
+    public let unknownRowCount: Int
+    public let skippedRowCount: Int
+
+    public init(durationMs: UInt64, rowKinds: [ClaudeUsageRowKind], unknownRowCount: Int, skippedRowCount: Int) {
+        self.durationMs = durationMs
+        self.rowKinds = rowKinds
+        self.unknownRowCount = unknownRowCount
+        self.skippedRowCount = skippedRowCount
+    }
+
+    public var logFields: String {
+        let rows = rowKinds.isEmpty ? "none" : rowKinds.map(\.rawValue).joined(separator: ",")
+        return "durationMs=\(durationMs) rows=\(rows) unknownRows=\(unknownRowCount) skippedRows=\(skippedRowCount)"
+    }
 }
 
 public extension BridgeDecoder {
