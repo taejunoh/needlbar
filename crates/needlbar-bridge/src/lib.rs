@@ -1065,8 +1065,8 @@ mod tests {
         };
         diagnostics::record_quota(&claude_failure, Some("2026-11-02T11:59:59Z"));
 
-        // The all-provider refresh that ran while a Keychain access dialog was
-        // open: Codex and Cursor reported, Claude was skipped.
+        // The all-provider refresh, which no longer includes Claude: Codex and
+        // Cursor reported, Claude was not attempted.
         let envelope = quota_operation_envelope(
             || {
                 Envelope::success(quota::QuotaPayload {

@@ -18,6 +18,12 @@ public documentation only. No credential, Keychain item, cookie, token, or
 authentication file was read or inspected, no `claude` command was run, and no
 model request was made.
 
+> **Amendment — 2026-11-03:** Approved by the user in
+> `2026-11-03-claude-usage-report-source-design.md`. Q7 closes: the direct token
+> path is retired. Option C's click-only condition is superseded for `/usage`,
+> which now runs automatically under that design's limits. The objection that
+> retirement loses Fable is answered by `weekly_scoped` rows in the usage report.
+
 ## Summary
 
 Within the approved boundaries Needlbar cannot renew the Claude credential,

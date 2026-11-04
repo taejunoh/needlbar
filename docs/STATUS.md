@@ -1,5 +1,41 @@
 # Needlbar Development Status
 
+## 2026-11-03 Claude usage report source (prepared, not released)
+
+Implements `docs/superpowers/specs/2026-11-03-claude-usage-report-source-design.md` through
+`docs/superpowers/plans/2026-11-03-claude-usage-report-source.md`. Not merged, tagged or released.
+
+- **Source.** Claude quota now comes from `/usage` run by the installed `claude`, read through the
+  documented `usage_report` field. The status line is second and last-known values third. A newer
+  valid reading wins. Claude left the all-provider refresh, so Codex and Cursor never wait for it.
+- **Removed.** Claude's Keychain read, credential-file read and direct endpoint; the
+  **Allow Keychain access** action, which never shipped; the keychain sequencing; the Claude login,
+  preflight and verification paths; the two matching C exports; and the Keychain crates as direct
+  dependencies. Codex code is unchanged and its tests run in every gate.
+- **Runs.** App start, manual refresh, a changed Claude total in the usage refresh, a passed reset of
+  a displayed window, and 15 minutes since the last run (user decision, 2026-11-03), at most once every
+  5 minutes, with backoff of 5, 10, 20, then 30 minutes. The popover, wake, connectivity and the
+  five-minute timer start none. After any exit the probe also sends SIGKILL to the process group, so
+  nothing is left running. If Codex is failing, each dashboard open retries Codex; that starts no
+  Claude run and no dialog.
+- **Freshness.** A report reading is current for 20 minutes, because a refresh due at 15 can finish
+  about a minute and a half later. The widget's Claude quota row follows it; Codex, usage and the
+  status line keep their windows.
+- **Change detection.** The usage file watcher fires only for a root directory's own entries, for
+  every provider, so it cannot see an append to a session file. The Claude total from the existing
+  usage refresh serves instead, at most 5 minutes late. No new watcher was added.
+- **Deviation from the design, reported to the user.** The design reads only `usage_report`, but that
+  field has no rate-limit signal, so the parser also reads the documented closed `error` value on the
+  same line, only when no report arrived. API-key, usage-billed and setup-token sessions produce no
+  report and show the no-readable-report state.
+
+Not established: no run on a real machine. A 24-hour run across a login renewal, how a signed-out
+`claude` reports itself, duration, memory, CPU, any rate limit on `/usage`, and the 30-second deadline
+are all user-run and open. So are the cost of up to 96 runs a day and whether the label stays steady
+across them. **Release gate:** no public build until the user resolves the
+terms question in spec §3. No Keychain item, credential file or cookie was read for this work, and no
+agent ran `claude`.
+
 ## 2026-11-02 Claude Keychain access action
 
 Defect: v0.3.14 disables legacy Keychain interaction for background reads, so

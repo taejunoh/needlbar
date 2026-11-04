@@ -21,6 +21,11 @@ Needlbar manage Claude credentials.
 > time rather than a quota value, is unchanged. The rule is defined in the
 > 2026-10-07 refresh-reliability design, amended on the same date.
 
+> **Amendment — 2026-11-03:** Approved by the user in
+> `2026-11-03-claude-usage-report-source-design.md`. The status line becomes the
+> secondary source, after the usage report and before last-known values. A newer
+> valid reading wins regardless of source.
+
 ## Context and decision
 
 The installed v0.3.4 app repeatedly reports `keychainCredentialExpired` on its

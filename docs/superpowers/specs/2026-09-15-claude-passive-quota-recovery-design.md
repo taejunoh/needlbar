@@ -57,6 +57,13 @@
 >   background reads working is not established here, so the reason can return
 >   at the next background refresh, and the action with it.
 
+> **Amendment — 2026-11-03:** Approved by the user in
+> `2026-11-03-claude-usage-report-source-design.md`. The ban on Terminal
+> instructions gains an exception for the signed-out and not-installed states,
+> which tell the user to sign in with `claude` in Terminal or to install Claude
+> Code. Neither offers a launch button. The 2026-11-02 `Allow Keychain access`
+> amendment is withdrawn: that action was never released and is removed.
+
 ## Decision
 
 The user approved replacing repeated re-login guidance with last-known quota,

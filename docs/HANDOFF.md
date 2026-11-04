@@ -1,7 +1,8 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-11-02, updated after the v0.3.14 release and for the Claude
-Keychain access action, which is prepared and not released (first written
+**Checkpoint:** 2026-11-03, updated for the Claude usage report source, which is
+prepared and not released; it replaces the Claude Keychain access action of
+2026-11-02, which was never released (first written
 2026-10-20, updated after the v0.3.10 release on 2026-10-21, for credential
 renewal increment 1, the v0.3.11 release and the status-line maximum age on
 2026-10-22, after the v0.3.12 release on 2026-10-23, after the v0.3.13
@@ -112,7 +113,9 @@ unreadable body, HTTP 429 and other unexpected statuses, and an internal
 bridge failure. The entry stays in the macOS unified log on this Mac and
 carries no message, URL, header, body, token, path or HTTP status. Messages,
 presentation, credential precedence, network requests and the C interface are
-unchanged, and credential renewal is not implemented.
+unchanged, and credential renewal is not implemented. The origin names in this
+paragraph are retired in the prepared usage report source (see below); they
+describe v0.3.13 only.
 
 ## What v0.3.14 adds
 
@@ -131,22 +134,38 @@ notes first named a button that no longer existed and were corrected on
 implemented. Whether the dialog stays suppressed in the field is only what the
 local observation in STATUS 2026-11-02 shows; no Keychain item was inspected.
 
-## Claude Keychain access action (prepared for v0.3.15, not released)
+## Claude usage report source (prepared for v0.3.15, not released)
 
-In PR #42. While the reason is **Credential access unavailable**, **Allow Keychain
-access** appears beside **View Claude usage**. On the default dashboard row (compact,
-remaining metric) the visible label is **Usage** (**View Claude usage** is help and
-accessibility text), the button sits on its own line, and without recent status-line
-values the reason is inside the collapsed **Quota details**. A line beside the button
-suggests Always Allow; that choice is not verified to keep background reads working,
-so the state can return at the next background read, including when the dashboard is
-reopened. One click runs one `UserInitiatedAllowUI`
-read, and nothing automatic does; the background no-UI rule is unchanged. A dialog
-left open no longer stops Codex and Cursor: that read has its own in-flight flag
-instead of the coordinator's quota slot, and a background read only tries the
-Keychain lock. See STATUS 2026-11-02 and the same-dated amendments in the
-2026-09-15 passive recovery and 2026-09-16 failure-origin designs. It has not
-run against a real Keychain dialog.
+Design: `docs/superpowers/specs/2026-11-03-claude-usage-report-source-design.md`. Plan:
+`docs/superpowers/plans/2026-11-03-claude-usage-report-source.md`. Needlbar no longer reads
+Claude's Keychain item or credentials file and no longer calls the usage endpoint. It runs `/usage`
+through the installed `claude` and reads `usage_report`, with the status line second and last-known
+values third. **Allow Keychain access** and `requestClaudeKeychainAccess` are removed; that action
+never shipped. Runs have their own slot and schedule in `RefreshCoordinator`, so Codex and Cursor
+never wait for them, and the popover, wake and connectivity start none. A periodic run after 15
+minutes without one keeps readings current (user decision, 2026-11-03), and a reading stays current
+for 20 minutes, including on the widget's Claude row.
+
+The failure origins in that source are `claudeCliNotFound`, `usageReportNoUsage`,
+`usageProbeTimedOut`, `usageProbeOutputTooLarge`, `usageProbeFailed`,
+`usageReportRateLimited`, `usageReportFormatChanged` and `otherFailure`. Every origin
+name the v0.3.13, v0.3.14 and 2026-10 sections below mention for the credential
+lookup, credential format or usage endpoint is retired there; those sections are
+history for the public v0.3.14.
+
+The probe sends SIGKILL to its process group after any exit, so nothing is left
+running. Claude runs only on app start, manual refresh, usage-record changes, a
+passed reset, a backoff retry and every 15 minutes; a dashboard open, waking or
+regaining a connection starts none. If Codex is failing, each dashboard open
+retries Codex; that starts no Claude run and no dialog.
+
+None of this has run for 24 hours on a real machine. Still open: how a signed-out `claude` reports
+itself in this mode, run duration, memory and CPU, the cost of up to 96 runs a day, whether `/usage`
+has its own rate limit, and whether 30 seconds is the right deadline. Those checks are user-run; see Task 14 of the plan.
+
+**Release gate (spec §11):** before any public build, the user decides how to resolve the terms
+question in spec §3: ask Anthropic, or ship on a stated reading. Until then the build runs on this
+Mac only. No tag or release is authorized, and the v0.3.15 release plan of 2026-11-02 is superseded.
 
 ## CI runners
 
@@ -171,7 +190,10 @@ fix (PR #38) are complete and shipped in v0.3.14.
 
 Known open items:
 
-- Direct Claude quota retrieval on the maintainer's machine failed on every
+- The Claude usage report source needs the user-run acceptance in Task 14 of its plan and a decision
+  on the release gate. The items below describe v0.3.14 and earlier and are kept as history.
+- History, v0.3.14 and earlier; every origin name in the next two items is retired in the
+  prepared source. Direct Claude quota retrieval on the maintainer's machine failed on every
   attempt with origin `otherFailure` from at least 2026-10-28 on installed
   v0.3.12 (Settings shows "Could not update quota"). It continued after Claude
   Code's saved access was refreshed, so it is not local expiry. The
@@ -252,7 +274,10 @@ Useful verified source locations:
 - `Sources/Needlbar/Diagnostics/ClaudeQuotaFailureDiagnosticsReporter.swift`
 - `Sources/NeedlbarCore/Diagnostics/ClaudeQuotaCompletionDiagnostics.swift`
 - `Sources/NeedlbarCore/Models/ClaudeQuotaFailureReason.swift`
-- `crates/needlbar-quota/src/providers/claude_credentials.rs`
+- `crates/needlbar-quota/src/providers/claude_usage_provider.rs`
+- `crates/needlbar-quota/src/providers/claude_usage_probe.rs`
+- `crates/needlbar-quota/src/providers/claude_usage_report.rs`
+- `Sources/NeedlbarCore/Refresh/ClaudeUsageProbeSchedule.swift`
 - `Sources/NeedlbarCore/Widget/WidgetProjectionMapper.swift`
 - `Sources/NeedlbarWidgetSupport/WidgetProjection.swift`
 - `WidgetExtension/NeedlbarOverviewWidget.swift`

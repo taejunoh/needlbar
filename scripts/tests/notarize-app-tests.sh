@@ -2236,7 +2236,7 @@ historical_v0313_readme="$temp_root/v0313-historical-public-readme.md"
 ruby - "$ROOT/README.md" "$historical_v0313_readme" <<'RUBY'
 source, destination = ARGV
 document = File.read(source)
-abort 'historical fixture: v0.3.15 prepared section missing' unless document.sub!(/^### Claude Keychain access action \(v0\.3\.15 prepared\)\n.*?(?=^### |\z)/m, '')
+abort 'historical fixture: v0.3.15 prepared section missing' unless document.sub!(/^### Claude quota from the Claude Code usage report \(v0\.3\.15 prepared\)\n.*?(?=^### |\z)/m, '')
 abort 'historical fixture: v0.3.14 section missing' unless document.sub!(/^### Claude Keychain selection and background prompts \(v0\.3\.14\)\n.*?(?=^### |\z)/m, '')
 {
   'Needlbar v0.3.14 is publicly available' => 'Needlbar v0.3.13 is publicly available',
