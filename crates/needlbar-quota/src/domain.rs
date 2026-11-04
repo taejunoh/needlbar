@@ -91,6 +91,17 @@ pub enum ClaudeQuotaFailureOrigin {
     UsageEndpointServerError,
     /// The usage response body could not be read as a usage document.
     UsageResponseUnrecognized,
+    /// No executable `claude` at any fixed location.
+    ClaudeCliNotFound,
+    /// `rate_limits` was null, or `limits` was null or empty.
+    UsageReportNoUsage,
+    UsageProbeTimedOut,
+    UsageProbeOutputTooLarge,
+    /// The process could not start or exited unsuccessfully.
+    UsageProbeFailed,
+    UsageReportRateLimited,
+    /// A run finished without a usable `usage_report`.
+    UsageReportFormatChanged,
     OtherFailure,
 }
 
@@ -117,6 +128,8 @@ pub struct QuotaError {
     usage_endpoint_status: Option<ClaudeUsageEndpointStatus>,
     #[serde(skip)]
     claude_credential_busy: bool,
+    #[serde(skip)]
+    claude_usage_report_cancelled: bool,
 }
 
 impl QuotaError {
@@ -133,6 +146,7 @@ impl QuotaError {
             claude_failure_origin: None,
             usage_endpoint_status: None,
             claude_credential_busy: false,
+            claude_usage_report_cancelled: false,
         }
     }
 
@@ -151,6 +165,22 @@ impl QuotaError {
 
     pub const fn is_claude_credential_busy(&self) -> bool {
         self.claude_credential_busy
+    }
+
+    /// A run stopped because the app is stopping. It describes no outcome, so
+    /// collectors drop it rather than report a Claude failure.
+    pub const fn claude_usage_report_cancelled() -> Self {
+        let mut error = Self::new(
+            Some(ProviderId::Claude),
+            QuotaErrorCode::ProviderUnavailable,
+            "The Claude usage check was cancelled.",
+        );
+        error.claude_usage_report_cancelled = true;
+        error
+    }
+
+    pub const fn is_claude_usage_report_cancelled(&self) -> bool {
+        self.claude_usage_report_cancelled
     }
 
     pub(crate) const fn with_retry_after(mut self, retry_after: Option<Duration>) -> Self {
