@@ -46,7 +46,8 @@ struct ClaudeUsageProbeSchedule: Sendable, Equatable {
     mutating func recordStart(at date: Date) {
         lastStartedAt = date
         pendingTrigger = nil
-        retryPending = false
+        // `retryPending` stays: only an automatic result decides it, so a
+        // manual run that starts or fails cannot cancel an automatic retry.
     }
 
     mutating func recordSuccess() {
@@ -55,10 +56,11 @@ struct ClaudeUsageProbeSchedule: Sendable, Equatable {
         retryPending = false
     }
 
-    /// A manual failure neither counts nor clears the automatic backoff.
+    /// A manual failure changes nothing: it neither counts nor clears the
+    /// automatic backoff, and it neither creates nor cancels an automatic retry.
     mutating func recordFailure(trigger: QuotaRefreshTrigger, at date: Date, retriesWhenBackoffEnds: Bool) {
-        retryPending = retriesWhenBackoffEnds
         guard trigger != .manual else { return }
+        retryPending = retriesWhenBackoffEnds
         let step = Self.backoffSteps[min(consecutiveAutomaticFailures, Self.backoffSteps.count - 1)]
         consecutiveAutomaticFailures += 1
         backoffUntil = date.addingTimeInterval(step)

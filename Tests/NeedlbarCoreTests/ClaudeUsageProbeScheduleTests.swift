@@ -70,6 +70,32 @@ struct ClaudeUsageProbeScheduleTests {
         #expect(schedule.dueTrigger(resetTimes: [], now: at(310), inFlight: false) == .backoffRetry)
     }
 
+    @Test func aManualFailureAloneNeverCreatesAnAutomaticRetry() {
+        var schedule = ClaudeUsageProbeSchedule()
+        schedule.recordStart(at: start)
+        schedule.recordFailure(trigger: .manual, at: start, retriesWhenBackoffEnds: true)
+        #expect(schedule.consecutiveAutomaticFailures == 0)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(300), inFlight: false) != .backoffRetry)
+    }
+
+    @Test func aManualFailureDoesNotTurnOnARetryThatAnAutomaticFailureRefused() {
+        var schedule = ClaudeUsageProbeSchedule()
+        schedule.recordStart(at: start)
+        schedule.recordFailure(trigger: .startup, at: start, retriesWhenBackoffEnds: false)
+        schedule.recordStart(at: at(10))
+        schedule.recordFailure(trigger: .manual, at: at(10), retriesWhenBackoffEnds: true)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(310), inFlight: false) != .backoffRetry)
+    }
+
+    @Test func aManualFailureDoesNotCancelARetryThatAnAutomaticFailureWanted() {
+        var schedule = ClaudeUsageProbeSchedule()
+        schedule.recordStart(at: start)
+        schedule.recordFailure(trigger: .startup, at: start, retriesWhenBackoffEnds: true)
+        schedule.recordStart(at: at(10))
+        schedule.recordFailure(trigger: .manual, at: at(10), retriesWhenBackoffEnds: false)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(310), inFlight: false) == .backoffRetry)
+    }
+
     @Test func notInstalledAndSignedOutDoNotRetryWhenBackoffEndsButRunOnTheNextTrigger() {
         var schedule = ClaudeUsageProbeSchedule()
         schedule.recordStart(at: start)
@@ -90,7 +116,7 @@ struct ClaudeUsageProbeScheduleTests {
         #expect(schedule.dueTrigger(resetTimes: [reset], now: at(400), inFlight: false) == .windowReset)
         schedule.recordStart(at: at(400))
         #expect(schedule.dueTrigger(resetTimes: [reset], now: at(1_299), inFlight: false) == nil)
-        #expect(schedule.dueTrigger(resetTimes: [reset], now: at(9_000), inFlight: false) != .windowReset,
+        #expect(schedule.dueTrigger(resetTimes: [reset], now: at(9_000), inFlight: false) == .periodic,
                 "a run that started at or after the reset has covered it, whatever it returned")
     }
 
