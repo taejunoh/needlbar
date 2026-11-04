@@ -201,7 +201,7 @@ longer reads Claude Code's Keychain item or credentials file and no longer calls
 the usage endpoint. It runs `/usage` through your installed `claude`
 (`~/.local/bin/claude`, `/opt/homebrew/bin/claude` or `/usr/local/bin/claude`,
 never through a shell) and reads the documented `usage_report` field, which is
-marked experimental. Runs happen at app start, on manual refresh, when Claude
+marked experimental. Runs happen at app start, on manual refresh (**Check now**, in the dashboard and in Settings), when Claude
 Code's local usage records change, when a displayed window's reset passes, and
 after 15 minutes without a run, at most once every 5 minutes. Opening the dashboard
 alone starts none. A reading stays current for 20 minutes, and usage outside Claude

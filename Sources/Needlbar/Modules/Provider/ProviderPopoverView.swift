@@ -7,6 +7,23 @@ public enum ProviderAuthenticationAction: Equatable, Sendable {
     case openClaudeUsage(title: String)
 }
 
+/// The manual "Check now" control for Claude quota. It runs the existing manual
+/// refresh. It is deliberately not a `ProviderAuthenticationAction`: the handler
+/// for those dismisses the panel, and a click here must leave it open so the
+/// user can watch the value change.
+public struct ClaudeCheckNowAction: Equatable, Sendable {
+    public let title: String
+
+    public static var checkNow: ClaudeCheckNowAction {
+        ClaudeCheckNowAction(title: String(
+            localized: "claudeQuota.action.checkNow",
+            defaultValue: "Check now",
+            bundle: .main,
+            comment: "Button that checks Claude quota now instead of waiting for the next automatic check. Shown in the dashboard's Claude row and beside View Claude usage in Settings."
+        ))
+    }
+}
+
 public struct ClaudePopoverQuotaDetail: Equatable, Sendable, Identifiable {
     public let id: String
     public let title: String

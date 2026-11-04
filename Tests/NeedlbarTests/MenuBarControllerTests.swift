@@ -939,6 +939,64 @@ struct MenuBarControllerTests {
         #expect(presenter.dismissCount == 0)
     }
 
+    @Test func theDashboardCheckNowButtonRunsTheManualRefreshOnceAndLeavesThePanelShown() throws {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        var refreshes = 0
+        var logins = 0
+        var settingsShown = 0
+        var usageOpens = 0
+        let presenter = FakeMenuPanelPresenter()
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            panelPresenter: presenter,
+            onRetryRequested: { refreshes += 1 },
+            onProviderLoginRequested: { _ in logins += 1 },
+            onSettingsRequested: { settingsShown += 1 },
+            openClaudeUsage: {
+                usageOpens += 1
+                return true
+            }
+        )
+
+        controller.openOverview()
+        let shown = try #require(presenter.presentedContentViewControllers.last)
+        #expect(refreshes == 0, "opening the dashboard must not refresh")
+
+        try AccessibilityHostedView(view: shown.view, width: 360) { hosted in
+            #expect(hosted.buttons.filter { $0 == "Check now" }.count == 1, "\(hosted.buttons)")
+            try hosted.press("Check now")
+        }
+
+        #expect(refreshes == 1)
+        #expect(presenter.isShown)
+        #expect(presenter.dismissCount == 0)
+        #expect(logins == 0)
+        #expect(settingsShown == 0)
+        #expect(usageOpens == 0)
+    }
+
+    @Test func claudeCheckNowActionLeavesThePanelShown() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        var refreshes = 0
+        let presenter = FakeMenuPanelPresenter()
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            panelPresenter: presenter,
+            onRetryRequested: { refreshes += 1 }
+        )
+
+        controller.openOverview()
+        controller.performClaudeCheckNowAction()
+
+        #expect(refreshes == 1)
+        #expect(presenter.isShown)
+        #expect(presenter.dismissCount == 0)
+    }
+
     @Test func stopObservingDismissesShownPanelAndCancelsMonitoringOnlyOnce() {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
         let monitor = FakeGlobalMouseDownMonitor()

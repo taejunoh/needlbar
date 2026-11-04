@@ -143,6 +143,9 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         public let quotaStatus: PresentationFreshness
         public let statusText: String?
         public let action: ProviderAuthenticationAction?
+        /// Claude only. The row exists only while Claude is visible on the dashboard,
+        /// and the action does not depend on the quota state.
+        public let checkNowAction: ClaudeCheckNowAction?
         public let apiBillingAction: ProviderAPIBillingAction?
         public let fable: FableQuotaDetail?
         public let quotaIsLastKnown: Bool
@@ -240,6 +243,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                 quotaStatus: quotaStatus,
                 statusText: statusText,
                 action: popover.authenticationAction,
+                checkNowAction: provider == .claude ? .checkNow : nil,
                 apiBillingAction: preference.apiBillingLinkVisible ? ProviderAPIBillingAction(provider: provider) : nil,
                 fable: Self.fableDetail(
                     provider: provider, metric: preference.metric, snapshot: providerSnapshot,

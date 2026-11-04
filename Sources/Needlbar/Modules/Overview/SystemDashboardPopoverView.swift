@@ -81,6 +81,7 @@ public struct SystemDashboardPopoverView: View {
     private let onAPIBillingStateChanged: (DashboardAPIBillingLinkState) -> Void
     private let onClaudeUsageAction: () -> Bool
     private let onClaudeUsageStateChanged: (DashboardClaudeUsageLinkState) -> Void
+    private let onClaudeCheckNow: () -> Void
     private let onQuotaDetailsExpansionChanged: () -> Void
 
     public init(
@@ -93,6 +94,7 @@ public struct SystemDashboardPopoverView: View {
         onAPIBillingStateChanged: @escaping (DashboardAPIBillingLinkState) -> Void = { _ in },
         onClaudeUsageAction: @escaping () -> Bool = { false },
         onClaudeUsageStateChanged: @escaping (DashboardClaudeUsageLinkState) -> Void = { _ in },
+        onClaudeCheckNow: @escaping () -> Void = {},
         onQuotaDetailsExpansionChanged: @escaping () -> Void = {}
     ) {
         _model = ObservedObject(wrappedValue: model)
@@ -107,6 +109,7 @@ public struct SystemDashboardPopoverView: View {
         self.onAPIBillingStateChanged = onAPIBillingStateChanged
         self.onClaudeUsageAction = onClaudeUsageAction
         self.onClaudeUsageStateChanged = onClaudeUsageStateChanged
+        self.onClaudeCheckNow = onClaudeCheckNow
         self.onQuotaDetailsExpansionChanged = onQuotaDetailsExpansionChanged
     }
 
@@ -120,6 +123,7 @@ public struct SystemDashboardPopoverView: View {
         onAPIBillingStateChanged: @escaping (DashboardAPIBillingLinkState) -> Void = { _ in },
         onClaudeUsageAction: @escaping () -> Bool = { false },
         onClaudeUsageStateChanged: @escaping (DashboardClaudeUsageLinkState) -> Void = { _ in },
+        onClaudeCheckNow: @escaping () -> Void = {},
         onQuotaDetailsExpansionChanged: @escaping () -> Void = {}
     ) {
         _model = ObservedObject(wrappedValue: model)
@@ -134,6 +138,7 @@ public struct SystemDashboardPopoverView: View {
         self.onAPIBillingStateChanged = onAPIBillingStateChanged
         self.onClaudeUsageAction = onClaudeUsageAction
         self.onClaudeUsageStateChanged = onClaudeUsageStateChanged
+        self.onClaudeCheckNow = onClaudeCheckNow
         self.onQuotaDetailsExpansionChanged = onQuotaDetailsExpansionChanged
     }
 
@@ -155,6 +160,7 @@ public struct SystemDashboardPopoverView: View {
         onAPIBillingStateChanged = { _ in }
         onClaudeUsageAction = { false }
         onClaudeUsageStateChanged = { _ in }
+        onClaudeCheckNow = {}
         onQuotaDetailsExpansionChanged = {}
     }
 
@@ -341,6 +347,17 @@ public struct SystemDashboardPopoverView: View {
         }
     }
 
+    /// On its own line, so "View Claude usage" keeps its place and its width.
+    @ViewBuilder
+    private func claudeCheckNowButton(_ provider: SystemDashboardPresentation.AIProvider) -> some View {
+        if let action = provider.checkNowAction {
+            Button(action.title) { onClaudeCheckNow() }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .accessibilityLabel(action.title)
+        }
+    }
+
     private func compactClaudeQuotaRow(_ provider: SystemDashboardPresentation.AIProvider) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(
@@ -388,6 +405,8 @@ public struct SystemDashboardPopoverView: View {
                     .foregroundStyle(.orange)
                     .accessibilityLabel(claudeUsageState.failureMessage)
             }
+
+            claudeCheckNowButton(provider)
 
             if let fable = provider.fable {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -542,6 +561,7 @@ public struct SystemDashboardPopoverView: View {
                     .foregroundStyle(.orange)
                     .accessibilityLabel(claudeUsageState.failureMessage)
             }
+            claudeCheckNowButton(provider)
             if let action = provider.apiBillingAction {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(action.providerLabel)

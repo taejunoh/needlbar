@@ -1,5 +1,12 @@
 # Needlbar Development Status
 
+## 2026-11-04 Check now (prepared, not released)
+
+Adds a **Check now** button for Claude quota, on its own line in the dashboard's Claude row and beside
+**View Claude usage** in Settings. It calls the existing manual refresh and leaves the panel open. Both
+surfaces show it whenever Claude is visible, including in failure states. Tests use closures only; no
+`claude` ran, and it has not been run on a real machine.
+
 ## 2026-11-03 Claude usage report source (prepared, not released)
 
 Implements `docs/superpowers/specs/2026-11-03-claude-usage-report-source-design.md` through

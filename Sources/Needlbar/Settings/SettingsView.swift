@@ -257,6 +257,15 @@ public struct SettingsView: View {
         claudeUsageRowContent
     }
 
+    /// Claude counts as enabled while it is visible on the menu bar or the dashboard.
+    /// The control does not depend on the quota state, so it stays through failures.
+    private var claudeCheckNowAction: ClaudeCheckNowAction? {
+        guard let preference = configuration.systemMonitor.ai[.claude],
+              preference.menuBarVisible || preference.dashboardVisible
+        else { return nil }
+        return .checkNow
+    }
+
     var claudeUsageRowContent: some View {
         HStack(alignment: .top, spacing: 8) {
             ProviderBrandIcon(provider: .claude, accessibility: .decorative)
@@ -315,6 +324,9 @@ public struct SettingsView: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
                 Button("View Claude usage") { claudeUsageState.openUsage(openClaudeUsage) }
+                if let checkNow = claudeCheckNowAction {
+                    Button(checkNow.title) { actions.checkClaudeNow() }
+                }
             }
         }
         .frame(minHeight: 54)

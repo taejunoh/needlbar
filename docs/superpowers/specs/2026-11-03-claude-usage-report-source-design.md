@@ -147,6 +147,8 @@ Manual refresh skips the interval and backoff, but joins a run in flight. Openin
 the dashboard alone does not start a run, and neither does waking the Mac or regaining
 a connection.
 
+*Amended 2026-11-04:* the manual refresh control is **Check now**, on the dashboard's Claude row and in Settings beside **View Claude usage**.
+
 The periodic run is a trigger like any other, last in priority, under the same interval,
 backoff, and single-run rules. It is checked about once a minute. A clock set backwards
 does not make it due. Time asleep counts, so a run that fell due during sleep can start

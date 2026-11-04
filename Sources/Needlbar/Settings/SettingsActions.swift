@@ -9,16 +9,19 @@ public final class SettingsActions: ObservableObject {
 
     private let loginCoordinator: ProviderLoginCoordinator?
     private let snapshotExportController: SnapshotExportController?
+    private let claudeCheckNow: (@MainActor () -> Void)?
     private var cancellables: Set<AnyCancellable> = []
 
     public init(
         loginCoordinator: ProviderLoginCoordinator,
-        snapshotExportController: SnapshotExportController
+        snapshotExportController: SnapshotExportController,
+        claudeCheckNow: (@MainActor () -> Void)? = nil
     ) {
         loginStates = Dictionary(uniqueKeysWithValues: ProviderID.allCases.map { ($0, loginCoordinator.state(for: $0)) })
         exportState = snapshotExportController.state
         self.loginCoordinator = loginCoordinator
         self.snapshotExportController = snapshotExportController
+        self.claudeCheckNow = claudeCheckNow
 
         loginCoordinator.objectWillChange
             .sink { [weak self, weak loginCoordinator] _ in
@@ -37,11 +40,12 @@ public final class SettingsActions: ObservableObject {
             .store(in: &cancellables)
     }
 
-    public init() {
+    public init(claudeCheckNow: (@MainActor () -> Void)? = nil) {
         loginStates = [:]
         exportState = .idle
         loginCoordinator = nil
         snapshotExportController = nil
+        self.claudeCheckNow = claudeCheckNow
     }
 
     public func loginState(for provider: ProviderID) -> ProviderLoginState {
@@ -56,6 +60,12 @@ public final class SettingsActions: ObservableObject {
         guard let loginCoordinator else { return }
         _ = loginCoordinator.connect(provider)
         replaceLoginStates(from: loginCoordinator)
+    }
+
+    /// One click on "Check now". It goes straight to the existing manual refresh,
+    /// which joins a run already in flight, so repeated clicks need no state here.
+    public func checkClaudeNow() {
+        claudeCheckNow?()
     }
 
     public func exportSnapshot() {

@@ -773,6 +773,9 @@ public final class MenuBarController: NSObject {
             onClaudeUsageStateChanged: { [weak self] state in
                 self?.displayedClaudeUsageStateDidChange(state)
             },
+            onClaudeCheckNow: { [weak self] in
+                self?.performClaudeCheckNowAction()
+            },
             onQuotaDetailsExpansionChanged: { [weak self] in
                 self?.resizeDisplayedDashboardIfNeeded()
             }
@@ -854,6 +857,12 @@ public final class MenuBarController: NSObject {
     }
 
     func performRetryAction() {
+        onRetryRequested()
+    }
+
+    /// "Check now" runs the same manual refresh as retry and leaves the panel
+    /// shown, so the user can watch the value change.
+    func performClaudeCheckNowAction() {
         onRetryRequested()
     }
 

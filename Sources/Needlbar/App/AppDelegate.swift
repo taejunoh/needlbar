@@ -228,7 +228,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             let actions = SettingsActions(
                 loginCoordinator: loginCoordinator,
-                snapshotExportController: snapshotExportController
+                snapshotExportController: snapshotExportController,
+                claudeCheckNow: { Task { await refreshCoordinator.manualRefresh() } }
             )
             self.refreshCoordinator = refreshCoordinator
             self.quotaRecoveryLifecycle = QuotaRecoveryLifecycleController(
