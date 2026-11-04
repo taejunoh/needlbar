@@ -79,8 +79,8 @@ struct ClaudeUsageReportPresentationTests {
         }
     }
 
-    @Test func notInstalledAndSignedOutOfferTheUsageLinkAndNoLaunchButton() throws {
-        for reason in [ClaudeQuotaFailureReason.claudeCodeNotInstalled, .claudeCodeSignInRequired] {
+    @Test func notInstalledAndACheckFailureOfferTheUsageLinkAndNoLaunchButton() throws {
+        for reason in [ClaudeQuotaFailureReason.claudeCodeNotInstalled, .claudeCodeCheckFailed] {
             let popover = ProviderPopoverPresentation(snapshot: claude(windows: nil, reason: reason), now: now)
             #expect(popover.quotaFailureReasonText == reason.displayText)
             #expect(popover.quotaFailureDetailText == reason.detailText)
@@ -95,7 +95,7 @@ struct ClaudeUsageReportPresentationTests {
             schemaVersion: StatusLineQuotaRecord.currentSchemaVersion, generation: UUID(),
             fiveHour: StatusLineWindowObservation(usedPercent: 25, resetsAt: nil, receivedAt: now.addingTimeInterval(-30)),
             sevenDay: StatusLineWindowObservation(usedPercent: 35, resetsAt: nil, receivedAt: now.addingTimeInterval(-30)))
-        for reason in [ClaudeQuotaFailureReason.claudeCodeNotInstalled, .claudeCodeSignInRequired] {
+        for reason in [ClaudeQuotaFailureReason.claudeCodeNotInstalled] {
             let popover = ProviderPopoverPresentation(
                 snapshot: claude(windows: [try fable()], reason: reason, age: 3_600, statusLine: record), now: now)
             #expect(popover.hasRecentClaudeQuota)
@@ -105,7 +105,7 @@ struct ClaudeUsageReportPresentationTests {
     }
 
     @Test func noCopyOffersAnAutomaticSignIn() {
-        for reason in [ClaudeQuotaFailureReason.claudeCodeNotInstalled, .claudeCodeSignInRequired,
+        for reason in [ClaudeQuotaFailureReason.claudeCodeNotInstalled,
                        .claudeCodeCheckFailed, .usageReportFormatChanged] {
             let text = "\(reason.displayText) \(reason.detailText ?? "")"
             for forbidden in ["Keychain", "credential", "Always Allow", "token"] {

@@ -109,7 +109,7 @@ public struct ProviderPopoverPresentation: Equatable, Sendable {
             quotaFailureReasonText = hasRecentClaudeQuota ? nil : reason?.displayText
             // While status-line windows are recent, a reason the user can act on is
             // shown once, on the Fable line it keeps from updating.
-            let reasonSitsOnTheFableLine = reason == .claudeCodeNotInstalled || reason == .claudeCodeSignInRequired
+            let reasonSitsOnTheFableLine = reason == .claudeCodeNotInstalled
             fableFailureReasonText = hasRecentClaudeQuota && reasonSitsOnTheFableLine ? reason?.displayText : nil
             quotaFailureDetailText = reason?.detailText
             if hasRecentClaudeQuota {

@@ -576,10 +576,11 @@ public actor RefreshCoordinator {
                 claudeUsageSchedule.recordSuccess()
                 return
             }
-            // Not installed and no usage wait for the next trigger, which includes
-            // the periodic run (spec §8).
+            // Not installed waits for the next trigger, which includes the periodic
+            // run (spec §8). Every other failure, including a null usage report,
+            // retries under backoff.
             let code = refresh.errors[.claude]?.code
-            retries = code != "notInstalled" && code != "requiresAuthentication"
+            retries = code != "notInstalled"
         }
         claudeUsageSchedule.recordFailure(trigger: trigger, at: date, retriesWhenBackoffEnds: retries)
     }

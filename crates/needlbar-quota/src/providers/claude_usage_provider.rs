@@ -118,8 +118,11 @@ impl ClaudeUsageReportProvider {
                 rows,
             ),
             ClaudeUsageReportOutcome::NoUsageAvailable { rows } => (
+                // The CLI also reports null limits while its own usage fetch is
+                // failing, so this is a failed check, not proof of a signed-out
+                // user. It retries under backoff like any other check failure.
                 Err(failure(
-                    QuotaErrorCode::RequiresAuthentication,
+                    QuotaErrorCode::ProviderUnavailable,
                     "Claude Code reported no usage.",
                     ClaudeQuotaFailureOrigin::UsageReportNoUsage,
                 )),

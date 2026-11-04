@@ -8,6 +8,14 @@
 
 **Tech Stack:** Rust 2021 (tokio process, serde_json, tempfile, libc), Swift 6 / Swift Testing, C ABI through `Sources/CNeedlbar`, macOS 14+ arm64.
 
+> **Amendment — 2026-11-03 (whole-branch review):** a null `rate_limits` or null or empty
+> `limits` maps to `ProviderUnavailable` with the origin `usageReportNoUsage` and retries under
+> backoff, not to `RequiresAuthentication`. The `.claudeCodeSignInRequired` reason, its copy and
+> its code blocks in Tasks 3, 6 and 8 below are superseded: `.claudeCodeCheckFailed` carries the
+> detail "If this continues, run claude in Terminal to check its sign-in." The decision table in
+> Decisions 6 and Task 14 Step 5 are updated; other code blocks are kept as the record of what
+> was first written.
+
 ## Global Constraints
 
 Authoritative spec: `docs/superpowers/specs/2026-11-03-claude-usage-report-source-design.md`. These apply to every task.
@@ -142,7 +150,7 @@ A periodic refresh falls due 15:00 after the last start, waits up to 60 s for th
 | Spec state | `QuotaErrorCode` | Origin (serialized) | Reason | Short copy | Auto-retry after backoff |
 |---|---|---|---|---|---|
 | CLI not found | `NotInstalled` | `claudeCliNotFound` | `.claudeCodeNotInstalled` | Install Claude Code to see quota | No, next trigger (the periodic run counts) |
-| Signed out or no usage | `RequiresAuthentication` | `usageReportNoUsage` | `.claudeCodeSignInRequired` | Sign in with claude in Terminal | No, next trigger (the periodic run counts) |
+| No usage (amended 2026-11-03: was "Signed out or no usage" / `RequiresAuthentication` / `.claudeCodeSignInRequired`) | `ProviderUnavailable` | `usageReportNoUsage` | `.claudeCodeCheckFailed` | Could not check Claude Code, plus detail "If this continues, run claude in Terminal to check its sign-in." | Yes |
 | Timed out | `ProviderUnavailable` | `usageProbeTimedOut` | `.claudeCodeCheckFailed` | Could not check Claude Code | Yes |
 | Output too large | `ProviderUnavailable` | `usageProbeOutputTooLarge` | `.claudeCodeCheckFailed` | same | Yes |
 | Process failure | `ProviderUnavailable` | `usageProbeFailed` | `.claudeCodeCheckFailed` | same | Yes |
@@ -6708,11 +6716,11 @@ What Needlbar would show for each result:
 | Result | Today's state |
 |---|---|
 | `exit` not 0 | Could not check Claude Code |
-| `exit=0`, `rate_limits=null` or empty `limits` | Sign in with claude in Terminal |
+| `exit=0`, `rate_limits=null` or empty `limits` | Could not check Claude Code (amended 2026-11-03: the CLI also reports this while its own usage fetch is failing, so it is not treated as signed out) |
 | `exit=0`, `usage_report=absent` or `None` | Could not read Claude Code's usage report |
 | `error=rate_limit`, no report | Temporarily limited |
 
-Report the printed lines. If the state is not the sign-in guidance, the user decides whether to change the mapping; a change amends spec §8 and adds a parser or provider test first. This is also the one chance to see whether `error=rate_limit` can appear.
+Report the printed lines. This run is the only way to learn what a real signed-out `claude` prints; if it differs from the table, the user decides whether to add a signed-out state, which amends spec §8 and adds a parser or provider test first. This is also the one chance to see whether `error=rate_limit` can appear.
 
 - [ ] **Step 6: USER-RUN: measure duration, memory and CPU, and decide the deadline**
 
@@ -6751,7 +6759,7 @@ Check and report:
 - [ ] Codex and Cursor quota keep updating during a run.
 - [ ] The cost of up to 288 runs a day: the number of completed runs, their total `durationMs`, and the Step 6 memory and CPU figures scaled to that count, including any noticeable fan, battery or slowdown. If it is not acceptable, a longer interval is a design change for the user to approve.
 - [ ] Label stability: while runs succeed, the dashboard, Settings and the widget's Claude row stay current across each refresh and never flip to **Last known** or **Stale** just before one. **Last known** appears only after a failed run, or when the Mac slept past 20 minutes, until the next run finishes.
-- [ ] A signed-in session never shows **Sign in with claude in Terminal**. An `origin=usageReportNoUsage` or `origin=usageReportRateLimited` line while signed in suggests `/usage` has a limit at this rate; report it, because the first would show wrong guidance.
+- [ ] A signed-in session never shows **Could not check Claude Code** for long. An `origin=usageReportNoUsage` or `origin=usageReportRateLimited` line while signed in suggests `/usage` has a limit at this rate; report it (amended 2026-11-03: a null usage report is no longer treated as signed out).
 - [ ] No token, email, output text or path appears in any of these lines.
 
 - [ ] **Step 8: USER-RUN: decide the release gate**

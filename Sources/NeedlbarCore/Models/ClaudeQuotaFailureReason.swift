@@ -7,9 +7,9 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
     case couldNotUpdateQuota
     /// No executable `claude` at the fixed locations.
     case claudeCodeNotInstalled
-    /// `rate_limits` was null, or `limits` was null or empty.
-    case claudeCodeSignInRequired
-    /// The run timed out, produced too much output, or did not finish.
+    /// The run timed out, produced too much output, did not finish, or reported
+    /// no usage. A null report also appears while the CLI's own fetch is failing,
+    /// so it is not treated as proof that the user is signed out.
     case claudeCodeCheckFailed
     /// A run finished without a usable usage report.
     case usageReportFormatChanged
@@ -32,19 +32,12 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
                 bundle: bundle,
                 comment: "Claude quota reason: the Claude Code command-line tool was not found on this Mac. Shown beside the View Claude usage link."
             )
-        case .claudeCodeSignInRequired:
-            String(
-                localized: "claudeQuota.reason.claudeCodeSignInRequired",
-                defaultValue: "Sign in with claude in Terminal",
-                bundle: bundle,
-                comment: "Claude quota reason: Claude Code reported no usage, usually because it is signed out. Keep 'claude' as the command name. Needlbar offers no button for this."
-            )
         case .claudeCodeCheckFailed:
             String(
                 localized: "claudeQuota.reason.claudeCodeCheckFailed",
                 defaultValue: "Could not check Claude Code",
                 bundle: bundle,
-                comment: "Claude quota reason: running Claude Code to read usage timed out, produced too much output, or did not finish."
+                comment: "Claude quota reason: running Claude Code to read usage timed out, produced too much output, did not finish, or reported no usage."
             )
         case .usageReportFormatChanged:
             String(
@@ -65,26 +58,26 @@ public enum ClaudeQuotaFailureReason: String, Sendable, Equatable {
                 bundle: bundle,
                 comment: "Second line for the not-installed reason, shown in the provider popover and Settings."
             )
-        case .claudeCodeSignInRequired:
+        case .claudeCodeCheckFailed:
             String(
-                localized: "claudeQuota.reason.claudeCodeSignInRequired.detail",
-                defaultValue: "Claude Code reported no usage for this Mac. Needlbar updates at its next check and never opens a sign-in itself.",
+                localized: "claudeQuota.reason.claudeCodeCheckFailed.detail",
+                defaultValue: "If this continues, run claude in Terminal to check its sign-in.",
                 bundle: bundle,
-                comment: "Second line for the sign-in reason, shown in the provider popover and Settings."
+                comment: "Second line for the check-failed reason, shown in the provider popover and Settings. Keep 'claude' as the command name. Needlbar offers no button for this."
             )
         case .quotaAccessUnavailable, .connectionUnavailable,
-             .temporarilyLimited, .couldNotUpdateQuota, .claudeCodeCheckFailed, .usageReportFormatChanged:
+             .temporarilyLimited, .couldNotUpdateQuota, .usageReportFormatChanged:
             nil
         }
     }
-
 
     /// Maps a completed attempt's Claude error code to a safe reason.
     init(errorCode: String) {
         switch errorCode {
         case "notInstalled": self = .claudeCodeNotInstalled
-        case "requiresAuthentication": self = .claudeCodeSignInRequired
-        case "authenticationExpired": self = .quotaAccessUnavailable
+        // No Claude path reports "requiresAuthentication" any more, so it shares
+        // the generic reason with an expired sign-in.
+        case "requiresAuthentication", "authenticationExpired": self = .quotaAccessUnavailable
         case "networkUnavailable": self = .connectionUnavailable
         case "rateLimited": self = .temporarilyLimited
         case "providerUnavailable": self = .claudeCodeCheckFailed

@@ -64,15 +64,16 @@ clamped to 0-100. Everything else in the output is discarded without being logge
 | State | Shown | Values | Next attempt |
 | --- | --- | --- | --- |
 | Claude Code not found | **Install Claude Code to see quota** and the usage link | Last known or none | Next trigger, with backoff |
-| No usage available, or signed out | **Sign in with claude in Terminal**; no launch button | Last known or none | Next trigger, with backoff |
+| No usage available | **Could not check Claude Code**, and "If this continues, run claude in Terminal to check its sign-in."; no launch button | Last known or none | Backoff |
 | Timed out, too much output, or the process failed | **Could not check Claude Code** and the last checked time | Last known | Backoff |
 | Rate limited | **Temporarily limited** and the last checked time | Last known | Backoff |
 | No readable report | **Could not read Claude Code's usage report** and the last checked time | Last known | Backoff |
 
-The run after 15 minutes counts as a trigger, so the first two states are tried again about every
-15 minutes, further apart under backoff. How a signed-out `claude` reports itself in this mode has not
-been observed. Until it is, a non-zero exit counts as a process failure, and only a null `rate_limits` or empty `limits` shows the
-sign-in guidance. API-key, usage-billed and `claude setup-token` sessions produce no `usage_report`,
+The run after 15 minutes counts as a trigger, so the first state is tried again about every
+15 minutes, further apart under backoff. A null `rate_limits` or null or empty `limits` is also what
+Claude Code's schema reports while its own usage fetch is failing (offline, 429, 5xx), so it is not
+treated as signed out. How a signed-out `claude` reports itself in this mode has not been observed,
+and Needlbar does not guess it; until it is, a non-zero exit counts as a process failure. API-key, usage-billed and `claude setup-token` sessions produce no `usage_report`,
 so they show the no-readable-report state. Usage outside Claude Code, such as on the web, appears
 within about 15 minutes while the app is running and the Mac is awake. That means about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart,
 whose memory and CPU cost has not been measured.

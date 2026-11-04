@@ -10,6 +10,11 @@ installation, tag, and release each still need the user's separate request.
 during quiet periods and usage outside Claude Code appears within about 15 minutes. See
 §6 for the trigger and the 20-minute freshness window, and §12 for its cost.
 
+**Amended 2026-11-03 (whole-branch review):** a null usage report is a failed check, not a
+signed-out signal (§7, §8). The `/usage` working directory is one fixed folder, emptied before
+each run, not a new temporary folder per run (§6). The smoke script switches the probe off
+(§6).
+
 **Scope:** Replace how Needlbar obtains Claude quota. Codex, Cursor, local usage,
 and API billing are out of scope.
 
@@ -199,7 +204,7 @@ logging or storing it.
 - `percent` is a used share. Clamp finite values to 0–100. Skip non-finite ones.
 - A null or missing `resets_at` shows no reset time.
 - `rate_limits: null`, or `limits` null or empty, is **no usage available**, not a
-  schema failure.
+  schema failure. It is a failed check, not a signed-out signal (see the note in §8).
 - A run with no `usage_report` at all is **format changed**.
 
 Readings are held in memory, except what existing last-known storage already keeps.
@@ -210,18 +215,26 @@ No new credential or raw output storage is added.
 | State | Dashboard and Settings | Values | Next attempt |
 |---|---|---|---|
 | CLI not found | Install guidance and the usage page link | Last known or none | Next trigger with backoff |
-| Signed out, or no usage available | Tell the user to sign in with `claude` in Terminal; no launch button | Last known or none | Next trigger with backoff |
+| No usage available | **Could not check Claude Code**, with a second line telling the user to run `claude` in Terminal to check its sign-in if this continues; no launch button | Last known or none | Backoff |
 | Timed out, output too large, or process failure | Last checked time | Last known | Backoff |
 | Rate limited | Last checked time | Last known | Backoff |
 | Format changed | Last checked time | Last known | Backoff |
 
-The periodic run counts as a trigger, so the first two states are tried again about every
+The periodic run counts as a trigger, so the first state is tried again about every
 15 minutes, further apart under backoff. The others retry when backoff ends.
 
-How a signed-out `claude` reports itself in this mode has not been observed. The
-plan captures it in a user-run check before relying on it. Until then, a non-zero
-exit counts as a process failure, and only `rate_limits: null` or empty `limits`
-shows the sign-in guidance.
+**Amended 2026-11-03 (whole-branch review):** `rate_limits: null` or null or empty
+`limits` no longer means signed out. The CLI's own schema also leaves `limits` null while
+its usage fetch is failing, including offline, 429 and 5xx, so a signed-in user could be
+told to sign in and then not be retried for about 15 minutes. These shapes now map to
+`ProviderUnavailable` with the origin `usageReportNoUsage` kept, so the user sees
+**Could not check Claude Code** and a backoff retry follows. The second line, "If this
+continues, run claude in Terminal to check its sign-in.", is the only sign-in hint. The
+separate sign-in-required reason and its copy are removed because nothing reaches
+them. Needlbar does not guess a signed-out state: how a signed-out `claude` reports
+itself in this mode has not been observed, and the plan captures it in a user-run
+check before any such state is added. Until then, a non-zero exit counts as a process
+failure.
 
 The UI never shows a made-up zero. Diagnostics record the failure reason, the
 duration, and the row kinds seen. They never record tokens, output text, or emails.
@@ -237,7 +250,8 @@ duration, and the row kinds seen. They never record tokens, output text, or emai
 - interval, backoff, single run, and manual join
 - periodic run: due at 15 minutes, last in priority, behind the interval and backoff, never
   from a negative age; opening the dashboard, waking, and regaining a connection start none
-- signed-out and not-installed states retried on the periodic run, under backoff
+- the not-installed state retried on the periodic run, under backoff; the no-usage state
+  retried under backoff
 - the 20-minute freshness boundary, a label that stays current across a periodic refresh,
   and **Last known** after a failed run
 - no shell use, and exact argv and environment
@@ -266,7 +280,9 @@ If this design is approved, these are amended with dated notes rather than rewri
   condition is superseded for `/usage`; the objection that retirement loses Fable is
   answered by `weekly_scoped` rows.
 - `2026-09-15-claude-passive-quota-recovery-design.md`: the ban on Terminal
-  instructions gains an exception for the signed-out and not-installed states.
+  instructions gains an exception for the not-installed state and for the second line
+  under **Could not check Claude Code** (amended 2026-11-03: it was first written for
+  a signed-out state that Needlbar no longer guesses).
 - `2026-09-25-claude-statusline-quota-bridge-design.md`: the status line becomes the
   secondary source.
 - `docs/providers/claude.md` and `docs/privacy.md`: describe the new source, and remove
@@ -298,5 +314,5 @@ never fail.
 - Users without the CLI get status-line data and the usage link only.
 - Duration, memory, and CPU under repeated runs have not been measured.
 - Whether `/usage` has its own rate limit has not been measured. The periodic run makes
-  this more likely to matter. If a limit shows up as `rate_limits: null`, the app would
-  wrongly show the sign-in guidance.
+  this more likely to matter. If a limit shows up as `rate_limits: null`, the app shows
+  **Could not check Claude Code** and retries under backoff (amended 2026-11-03).

@@ -247,8 +247,8 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.coordinator.stop()
     }
 
-    @Test func notInstalledAndNoUsageRetryOnlyOnATriggerAndUnderBackoff() async throws {
-        for code in ["notInstalled", "requiresAuthentication"] {
+    @Test func notInstalledRetriesOnlyOnATriggerAndUnderBackoff() async throws {
+        for code in ["notInstalled"] {
             let harness = Harness(claudeTotal: 100)
             harness.probe.script(.result(claudeError(code)))
             harness.probe.script(.result(claudeError(code)))
@@ -524,7 +524,7 @@ struct ClaudeUsageProbeCoordinatorTests {
     }
 
     @Test(arguments: [
-        ("requiresAuthentication", ClaudeQuotaFailureReason.claudeCodeSignInRequired),
+        ("requiresAuthentication", ClaudeQuotaFailureReason.quotaAccessUnavailable),
         ("notInstalled", .claudeCodeNotInstalled),
         ("providerUnavailable", .claudeCodeCheckFailed),
         ("rateLimited", .temporarilyLimited),

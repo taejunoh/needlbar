@@ -63,6 +63,12 @@
 > which tell the user to sign in with `claude` in Terminal or to install Claude
 > Code. Neither offers a launch button. The 2026-11-02 `Allow Keychain access`
 > amendment is withdrawn: that action was never released and is removed.
+>
+> **Clarification — 2026-11-03 (whole-branch review):** the exception covers the
+> not-installed state and the second line under **Could not check Claude Code**
+> ("If this continues, run claude in Terminal to check its sign-in."). There is no
+> separate signed-out state, because a null usage report also occurs while the CLI's
+> own fetch is failing.
 
 ## Decision
 

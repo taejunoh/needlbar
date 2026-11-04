@@ -8,7 +8,11 @@ import Testing
 struct ClaudeUsageReportReasonTests {
     @Test(arguments: [
         ("notInstalled", ClaudeQuotaFailureReason.claudeCodeNotInstalled),
-        ("requiresAuthentication", .claudeCodeSignInRequired),
+        // No Claude path reports this any more, because a null usage report is
+        // a failed check rather than proof of a signed-out user. The generic
+        // mapping is the same as for an expired sign-in.
+        ("requiresAuthentication", .quotaAccessUnavailable),
+        ("authenticationExpired", .quotaAccessUnavailable),
         ("providerUnavailable", .claudeCodeCheckFailed),
         ("rateLimited", .temporarilyLimited),
         ("schemaChanged", .usageReportFormatChanged),
@@ -21,12 +25,11 @@ struct ClaudeUsageReportReasonTests {
 
     @Test func theGuidanceIsInTheShortTextBecauseTheDashboardShowsNoDetailLine() {
         #expect(ClaudeQuotaFailureReason.claudeCodeNotInstalled.displayText == "Install Claude Code to see quota")
-        #expect(ClaudeQuotaFailureReason.claudeCodeSignInRequired.displayText == "Sign in with claude in Terminal")
         #expect(ClaudeQuotaFailureReason.claudeCodeCheckFailed.displayText == "Could not check Claude Code")
         #expect(ClaudeQuotaFailureReason.usageReportFormatChanged.displayText == "Could not read Claude Code's usage report")
         #expect(ClaudeQuotaFailureReason.claudeCodeNotInstalled.detailText != nil)
-        #expect(ClaudeQuotaFailureReason.claudeCodeSignInRequired.detailText != nil)
-        #expect(ClaudeQuotaFailureReason.claudeCodeCheckFailed.detailText == nil)
+        #expect(ClaudeQuotaFailureReason.claudeCodeCheckFailed.detailText
+            == "If this continues, run claude in Terminal to check its sign-in.")
         #expect(ClaudeQuotaFailureReason.usageReportFormatChanged.detailText == nil)
     }
 
@@ -38,18 +41,16 @@ struct ClaudeUsageReportReasonTests {
         let table = """
         "claudeQuota.reason.claudeCodeNotInstalled" = "A";
         "claudeQuota.reason.claudeCodeNotInstalled.detail" = "B";
-        "claudeQuota.reason.claudeCodeSignInRequired" = "C";
-        "claudeQuota.reason.claudeCodeSignInRequired.detail" = "D";
         "claudeQuota.reason.claudeCodeCheckFailed" = "E";
+        "claudeQuota.reason.claudeCodeCheckFailed.detail" = "D";
         "claudeQuota.reason.usageReportFormatChanged" = "F";
         """
         try Data(table.utf8).write(to: directory.appendingPathComponent("Localizable.strings"))
         let bundle = try #require(Bundle(url: directory))
         #expect(ClaudeQuotaFailureReason.claudeCodeNotInstalled.localizedDisplayText(bundle: bundle) == "A")
         #expect(ClaudeQuotaFailureReason.claudeCodeNotInstalled.localizedDetailText(bundle: bundle) == "B")
-        #expect(ClaudeQuotaFailureReason.claudeCodeSignInRequired.localizedDisplayText(bundle: bundle) == "C")
-        #expect(ClaudeQuotaFailureReason.claudeCodeSignInRequired.localizedDetailText(bundle: bundle) == "D")
         #expect(ClaudeQuotaFailureReason.claudeCodeCheckFailed.localizedDisplayText(bundle: bundle) == "E")
+        #expect(ClaudeQuotaFailureReason.claudeCodeCheckFailed.localizedDetailText(bundle: bundle) == "D")
         #expect(ClaudeQuotaFailureReason.usageReportFormatChanged.localizedDisplayText(bundle: bundle) == "F")
     }
 

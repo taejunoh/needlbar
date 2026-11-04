@@ -76,7 +76,6 @@ import NeedlbarClaudeStatusLineSupport
         (.temporarilyLimited, "Temporarily limited"),
         (.couldNotUpdateQuota, "Could not update quota"),
         (.claudeCodeNotInstalled, "Install Claude Code to see quota"),
-        (.claudeCodeSignInRequired, "Sign in with claude in Terminal"),
         (.claudeCodeCheckFailed, "Could not check Claude Code"),
         (.usageReportFormatChanged, "Could not read Claude Code's usage report"),
     ]

@@ -124,13 +124,22 @@ async fn a_missing_cli_is_not_installed() {
 }
 
 #[tokio::test]
-async fn null_rate_limits_is_no_usage_not_a_schema_failure() {
-    let run = run_output(r#"{"type":"assistant","usage_report":{"rate_limits":null}}"#).await;
-    assert_failure(
-        &run,
-        QuotaErrorCode::RequiresAuthentication,
-        ClaudeQuotaFailureOrigin::UsageReportNoUsage,
-    );
+async fn no_usage_is_a_check_failure_not_a_sign_in_request() {
+    // The CLI also reports null or empty limits while its own usage fetch is
+    // failing (offline, 429, 5xx), so these shapes must not ask a signed-in user
+    // to sign in.
+    for output in [
+        r#"{"type":"assistant","usage_report":{"rate_limits":null}}"#,
+        r#"{"type":"assistant","usage_report":{"rate_limits":{"limits":null}}}"#,
+        r#"{"type":"assistant","usage_report":{"rate_limits":{"limits":[]}}}"#,
+    ] {
+        let run = run_output(output).await;
+        assert_failure(
+            &run,
+            QuotaErrorCode::ProviderUnavailable,
+            ClaudeQuotaFailureOrigin::UsageReportNoUsage,
+        );
+    }
 }
 
 #[tokio::test]

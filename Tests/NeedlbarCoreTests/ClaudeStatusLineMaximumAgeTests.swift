@@ -91,7 +91,7 @@ struct ClaudeStatusLineMaximumAgeTests {
                 try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "Fable weekly", usedPercent: 20, resetsAt: nil),
             ]),
             usageStatus: .unavailable, quotaStatus: .requiresAuthentication, updatedAt: Self.now,
-            claudeQuotaFailureReason: .claudeCodeSignInRequired,
+            claudeQuotaFailureReason: .quotaAccessUnavailable,
             quotaLastSuccessfulAt: Self.now.addingTimeInterval(-age))
         let selected = ClaudeQuotaPresentationSelector.select(snapshot: snapshot, now: Self.now)
         #expect(selected.fiveHour?.source == .direct)
@@ -151,7 +151,7 @@ struct ClaudeStatusLineMaximumAgeTests {
         func outputs(statusLine: StatusLineQuotaRecord?) async throws -> (widget: Data, export: Data, alerts: [QuotaAlertSample]) {
             let store = ProviderSnapshotStore(now: { Self.now })
             await store.markQuotaFailure(for: .claude, status: .requiresAuthentication,
-                                         claudeFailureReason: .claudeCodeSignInRequired, at: Self.now.addingTimeInterval(-60))
+                                         claudeFailureReason: .quotaAccessUnavailable, at: Self.now.addingTimeInterval(-60))
             await store.applyQuota(QuotaSnapshot(windows: [
                 try QuotaWindow(id: "codex.primary", title: "Primary", usedPercent: 45, resetsAt: Self.now.addingTimeInterval(3_600)),
             ]), for: .codex, at: Self.now.addingTimeInterval(-60))
@@ -186,7 +186,7 @@ struct ClaudeStatusLineMaximumAgeTests {
         ProviderSnapshot(
             provider: .claude, usage: nil, quota: nil,
             usageStatus: .unavailable, quotaStatus: .requiresAuthentication, updatedAt: now,
-            claudeQuotaFailureReason: .claudeCodeSignInRequired, claudeStatusLineQuota: statusLine)
+            claudeQuotaFailureReason: .quotaAccessUnavailable, claudeStatusLineQuota: statusLine)
     }
 
     static func claude(direct: Direct, statusLine: StatusLineQuotaRecord?) throws -> ProviderSnapshot {
@@ -206,7 +206,7 @@ struct ClaudeStatusLineMaximumAgeTests {
             return ProviderSnapshot(
                 provider: .claude, usage: nil, quota: QuotaSnapshot(windows: windows),
                 usageStatus: .unavailable, quotaStatus: .requiresAuthentication, updatedAt: now,
-                claudeQuotaFailureReason: .claudeCodeSignInRequired,
+                claudeQuotaFailureReason: .quotaAccessUnavailable,
                 quotaLastSuccessfulAt: direct == .olderLastKnown ? now.addingTimeInterval(-30 * 3_600) : nil,
                 claudeStatusLineQuota: statusLine)
         }

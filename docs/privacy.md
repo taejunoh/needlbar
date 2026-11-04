@@ -135,7 +135,8 @@ credentials and has no separate disconnect action; sign out or revoke access thr
 provider's supported app/CLI controls, then retry in Needlbar. If the CLI is not installed,
 Needlbar reports a provider-scoped failure and leaves other providers available. Needlbar does
 not crawl browser cookies. Prepared for the next release, not in v0.3.14: when Claude Code reports
-no usage, Needlbar says to sign in with `claude` in Terminal and offers no button.
+no usage, Needlbar says it could not check Claude Code, suggests running `claude` in Terminal to check
+its sign-in if that continues, and offers no button.
 
 Cursor Settings contains one `Open Cursor Spending` action and no credential field or
 connection controls. The provider popover offers the same action when Cursor quota is

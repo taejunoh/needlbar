@@ -212,8 +212,9 @@ and its output is neither logged nor stored. After any exit Needlbar ends the pr
 started; a process that moved to its own session or group is not covered. The status line remains the second
 source and last-known values the third; a newer valid reading wins. A window the
 report omits is hidden, not shown as zero. Without Claude Code the app shows
-install guidance and the usage link; with no usage available it says to sign in
-with `claude` in Terminal and offers no button. Needlbar never runs `claude auth`
+install guidance and the usage link; with no usage available it says it could not check
+Claude Code, suggests running `claude` in Terminal to check its sign-in if that continues,
+and retries under backoff. It offers no button. Needlbar never runs `claude auth`
 and writes no Claude configuration, though Claude Code may renew its own login
 during a run, and `claude` itself may show a Keychain prompt. **Allow Keychain
 access**, which an earlier prepared build had, is removed. This has not run for

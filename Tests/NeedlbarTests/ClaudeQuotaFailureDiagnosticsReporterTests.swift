@@ -46,7 +46,7 @@ import NeedlbarCore
     let sink = DiagnosticEventSink()
     let cases = [
         ("claudeCliNotFound", "notInstalled"),
-        ("usageReportNoUsage", "requiresAuthentication"),
+        ("usageReportNoUsage", "providerUnavailable"),
         ("usageProbeTimedOut", "providerUnavailable"),
         ("usageProbeOutputTooLarge", "providerUnavailable"),
         ("usageProbeFailed", "providerUnavailable"),
