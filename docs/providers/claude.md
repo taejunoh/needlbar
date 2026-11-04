@@ -40,6 +40,9 @@ reading wins regardless of source, and no source invents a value.
   output, then the same; standard error discarded; cancelled when the app stops. After any exit,
   including a normal one, the process group also receives SIGKILL. That covers the group Needlbar
   started; a process that moved to its own session or group is not covered.
+- **Switch:** launching the app with `NEEDLBAR_DISABLE_CLAUDE_USAGE_PROBE=1` starts no run. The smoke
+  script sets it, so a smoke launch never starts a real `claude` that could renew the login and outlive
+  the killed app.
 - **When:** at app start, on manual refresh, when Claude Code's local usage records change, when a
   displayed window's reset passes, and after 15 minutes without a run. Automatic runs happen at most
   once every 5 minutes and only one at a time. Manual refresh skips the interval and backoff but joins

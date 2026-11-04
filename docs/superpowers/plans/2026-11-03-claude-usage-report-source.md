@@ -21,7 +21,9 @@
 > records per working directory. Task 2's `tempfile::Builder` block and its "fresh directory it
 > deletes" test are superseded: the folder is created with mode 0700, refused if a symlink or not a
 > directory, and emptied before each run, and tests assert the same directory and an empty start.
-> `tempfile` stays a dev-dependency only.
+> `tempfile` stays a dev-dependency only. `scripts/smoke-app.sh` also launches the app with
+> `NEEDLBAR_DISABLE_CLAUDE_USAGE_PROBE=1`, which `AppDelegate` honours by passing no Claude usage
+> repository, so a smoke launch never starts a real `claude`.
 
 ## Global Constraints
 

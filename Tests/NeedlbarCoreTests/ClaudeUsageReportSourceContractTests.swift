@@ -69,6 +69,18 @@ struct ClaudeUsageReportSourceContractTests {
     @Test func productionInjectsTheUsageReportRepository() throws {
         let appDelegate = Self.root.appendingPathComponent("Sources/Needlbar/App/AppDelegate.swift")
         let text = try String(contentsOf: appDelegate, encoding: .utf8)
-        #expect(text.contains("claudeUsageRepository: RustQuotaRepository(bridge: bridge)"))
+        #expect(text.contains(
+            "claudeUsageRepository: ClaudeUsageProbeSwitch.isDisabled() ? nil : RustQuotaRepository(bridge: bridge)"))
+    }
+
+    /// A smoke run launches a built app. On a Mac with `claude` that would start a
+    /// real `/usage`, which can renew the login, and the child would outlive the
+    /// killed app. The script starts the executable directly, so a variable prefix
+    /// reaches it; `open` would not pass one. This reads the script and never runs it.
+    @Test func theSmokeScriptSwitchesTheClaudeProbeOffForTheAppItLaunches() throws {
+        let script = Self.root.appendingPathComponent("scripts/smoke-app.sh")
+        let text = try String(contentsOf: script, encoding: .utf8)
+        #expect(text.contains("NEEDLBAR_DISABLE_CLAUDE_USAGE_PROBE=1 \"$EXECUTABLE\" >\"$APP_LOG\" 2>&1 &"))
+        #expect(!text.contains("\n  \"$EXECUTABLE\" >\"$APP_LOG\""), "a launch without the switch is left")
     }
 }

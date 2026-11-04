@@ -193,7 +193,10 @@ main() {
   file "$WIDGET_EXECUTABLE" | grep -q 'arm64'
 
   APP_LOG="$(mktemp "${TMPDIR:-/tmp}/needlbar-smoke.XXXXXX")"
-  "$EXECUTABLE" >"$APP_LOG" 2>&1 &
+  # The app starts a real `claude` for its Claude quota on a Mac that has one,
+  # which can renew the login, and that child would outlive the killed app. The
+  # executable is started directly, so a variable prefix reaches it.
+  NEEDLBAR_DISABLE_CLAUDE_USAGE_PROBE=1 "$EXECUTABLE" >"$APP_LOG" 2>&1 &
   APP_PID=$!
 
   # The signal handlers above only record a signal. Always assign the PID and

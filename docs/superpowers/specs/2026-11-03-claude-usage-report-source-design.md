@@ -183,6 +183,10 @@ claude -p /usage --no-session-persistence --strict-mcp-config
   could grow the user's Claude Code folders without limit. That growth is unverified, and one
   fixed folder rules it out cheaply.
 - `stdin` closed
+- *Amended 2026-11-03 (whole-branch review):* the app starts no run when it is launched with
+  `NEEDLBAR_DISABLE_CLAUDE_USAGE_PROBE=1`. `scripts/smoke-app.sh` sets it, because a smoke launch
+  on a Mac with `claude` would otherwise start a real `/usage`, which can renew the login, and
+  that child would outlive the killed app.
 - a minimal environment: `HOME`, `USER`, `LOGNAME`, `TMPDIR`, a fixed `PATH`, and
   `CLAUDE_CONFIG_DIR` only if the app already has it
 - a 30-second deadline, then terminate the process group
