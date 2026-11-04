@@ -2,15 +2,14 @@ use std::time::Duration;
 
 use reqwest::{header, Client, Response, Url};
 
-use crate::{domain::ClaudeUsageEndpointStatus, QuotaError, QuotaErrorCode};
+use crate::{QuotaError, QuotaErrorCode};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
-const ANTHROPIC_USAGE_HOST: &str = "api.anthropic.com";
 const CODEX_USAGE_HOST: &str = "chatgpt.com";
 /// Quota retry waits longer than one hour are ignored so provider input cannot
 /// suppress Needlbar's normal refresh schedule for an unbounded interval.
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(60 * 60);
-/// Claude's small quota document does not need unbounded buffering. This also
+/// A small quota document does not need unbounded buffering. This also
 /// caps a compromised or changed endpoint before JSON parsing.
 const MAX_RESPONSE_BODY_BYTES: usize = 64 * 1024;
 
@@ -25,10 +24,6 @@ pub struct RedactingHttpClient {
 }
 
 impl RedactingHttpClient {
-    pub fn new() -> Self {
-        Self::for_host(ANTHROPIC_USAGE_HOST)
-    }
-
     /// Codex quota is served from a different fixed provider host. This keeps
     /// both the host allowlist and redirect policy inside the shared HTTP
     /// boundary rather than allowing individual adapters to construct clients.
@@ -162,12 +157,6 @@ fn response_too_large_error() -> QuotaError {
     )
 }
 
-impl Default for RedactingHttpClient {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 fn unsafe_endpoint_error() -> QuotaError {
     QuotaError::new(
         None,
@@ -188,13 +177,8 @@ fn status_error(status: reqwest::StatusCode, headers: &header::HeaderMap) -> Quo
         401 | 403 => QuotaError::new(
             None,
             QuotaErrorCode::AuthenticationExpired,
-            "Claude authentication has expired.",
-        )
-        .with_usage_endpoint_status(if status.as_u16() == 401 {
-            ClaudeUsageEndpointStatus::Unauthorized
-        } else {
-            ClaudeUsageEndpointStatus::Forbidden
-        }),
+            "Provider authentication has expired.",
+        ),
         429 => QuotaError::new(
             None,
             QuotaErrorCode::RateLimited,
@@ -206,8 +190,7 @@ fn status_error(status: reqwest::StatusCode, headers: &header::HeaderMap) -> Quo
             QuotaErrorCode::ServiceUnavailable,
             "The quota service is temporarily unavailable.",
         )
-        .with_retry_after(retry_after)
-        .with_usage_endpoint_status(ClaudeUsageEndpointStatus::ServerError),
+        .with_retry_after(retry_after),
         _ => QuotaError::new(
             None,
             QuotaErrorCode::NetworkUnavailable,

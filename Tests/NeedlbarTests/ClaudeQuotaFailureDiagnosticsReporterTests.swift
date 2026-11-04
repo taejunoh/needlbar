@@ -45,11 +45,13 @@ import NeedlbarCore
 @Test func reporterLogsEachSplitOtherFailureOriginWithItsProducerCode() async throws {
     let sink = DiagnosticEventSink()
     let cases = [
-        ("credentialStoreAmbiguous", "schemaChanged"),
-        ("credentialFormatUnrecognized", "schemaChanged"),
-        ("credentialFormatUnrecognized", "requiresAuthentication"),
-        ("usageEndpointServerError", "providerUnavailable"),
-        ("usageResponseUnrecognized", "schemaChanged"),
+        ("claudeCliNotFound", "notInstalled"),
+        ("usageReportNoUsage", "requiresAuthentication"),
+        ("usageProbeTimedOut", "providerUnavailable"),
+        ("usageProbeOutputTooLarge", "providerUnavailable"),
+        ("usageProbeFailed", "providerUnavailable"),
+        ("usageReportRateLimited", "rateLimited"),
+        ("usageReportFormatChanged", "schemaChanged"),
     ]
     for (origin, code) in cases {
         let reporter = ClaudeQuotaFailureDiagnosticsReporter(
@@ -206,7 +208,7 @@ import NeedlbarCore
 @Test func reporterEventNeverIncludesUnrelatedRawSecretCanaryFields() async throws {
     let sink = DiagnosticEventSink()
     let fixture = try diagnosticsEnvelope(
-        origin: "usageEndpointForbidden",
+        origin: "usageProbeFailed",
         attempt: "2026-09-16T11:59:59.123Z",
         extraFields: "\"rawSecretCanary\":\"CLAUDE-CANARY-SECRET\",\"accountPath\":\"/private/canary\""
     )
@@ -218,7 +220,7 @@ import NeedlbarCore
     reporter.reportLatestClaudeQuotaFailure()
 
     let event = try #require(sink.values.first)
-    #expect(event.origin == .usageEndpointForbidden)
+    #expect(event.origin == .usageProbeFailed)
     #expect(event.attemptAt == "2026-09-16T11:59:59Z")
     #expect(!event.attemptAt.contains("CLAUDE-CANARY-SECRET"))
     #expect(!String(describing: event).contains("CLAUDE-CANARY-SECRET"))
@@ -358,17 +360,8 @@ private final class CStringPointer: @unchecked Sendable {
 
 private extension ClaudeQuotaFailureOrigin {
     static let allCasesForTest: [Self] = [
-        .credentialMissing,
-        .keychainCredentialExpired,
-        .fileCredentialExpired,
-        .credentialAccessDenied,
-        .credentialStoreAmbiguous,
-        .credentialFormatUnrecognized,
-        .usageEndpointUnauthorized,
-        .usageEndpointForbidden,
-        .usageEndpointServerError,
-        .usageResponseUnrecognized,
-        .otherFailure,
+        .claudeCliNotFound, .usageReportNoUsage, .usageProbeTimedOut, .usageProbeOutputTooLarge,
+        .usageProbeFailed, .usageReportRateLimited, .usageReportFormatChanged, .otherFailure,
     ]
 }
 

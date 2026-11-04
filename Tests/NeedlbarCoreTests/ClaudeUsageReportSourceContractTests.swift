@@ -57,6 +57,15 @@ struct ClaudeUsageReportSourceContractTests {
         ])
     }
 
+    @Test func noSwiftCodeNamesARetiredOrigin() throws {
+        try Self.expectAbsent([
+            "credentialMissing", "keychainCredentialExpired", "fileCredentialExpired",
+            "credentialStoreAmbiguous", "credentialFormatUnrecognized",
+            "usageEndpointUnauthorized", "usageEndpointForbidden", "usageEndpointServerError",
+            "usageResponseUnrecognized",
+        ])
+    }
+
     @Test func productionInjectsTheUsageReportRepository() throws {
         let appDelegate = Self.root.appendingPathComponent("Sources/Needlbar/App/AppDelegate.swift")
         let text = try String(contentsOf: appDelegate, encoding: .utf8)

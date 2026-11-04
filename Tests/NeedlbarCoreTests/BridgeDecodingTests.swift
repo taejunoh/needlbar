@@ -136,8 +136,8 @@ import Testing
 
 @Test func rustBridgeDiagnosticsEnvelopeDecodesEachSplitOtherFailureOriginAndFreesItsPointer() throws {
     for origin in [
-        "credentialStoreAmbiguous", "credentialFormatUnrecognized",
-        "usageEndpointServerError", "usageResponseUnrecognized",
+        "claudeCliNotFound", "usageReportNoUsage", "usageProbeTimedOut", "usageProbeOutputTooLarge",
+        "usageProbeFailed", "usageReportRateLimited", "usageReportFormatChanged",
     ] {
         let frees = FreeRecorder()
         let returnedPointer = try CStringPointer(diagnosticsCString(origin: origin))

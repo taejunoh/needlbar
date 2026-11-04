@@ -814,29 +814,6 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         for (origin, name) in [
-            (Origin::CredentialMissing, "credentialMissing"),
-            (
-                Origin::KeychainCredentialExpired,
-                "keychainCredentialExpired",
-            ),
-            (Origin::FileCredentialExpired, "fileCredentialExpired"),
-            (Origin::CredentialAccessDenied, "credentialAccessDenied"),
-            (Origin::CredentialStoreAmbiguous, "credentialStoreAmbiguous"),
-            (
-                Origin::CredentialFormatUnrecognized,
-                "credentialFormatUnrecognized",
-            ),
-            (
-                Origin::UsageEndpointUnauthorized,
-                "usageEndpointUnauthorized",
-            ),
-            (Origin::UsageEndpointForbidden, "usageEndpointForbidden"),
-            (Origin::UsageEndpointServerError, "usageEndpointServerError"),
-            (
-                Origin::UsageResponseUnrecognized,
-                "usageResponseUnrecognized",
-            ),
-            (Origin::OtherFailure, "otherFailure"),
             (Origin::ClaudeCliNotFound, "claudeCliNotFound"),
             (Origin::UsageReportNoUsage, "usageReportNoUsage"),
             (Origin::UsageProbeTimedOut, "usageProbeTimedOut"),
@@ -844,6 +821,7 @@ mod tests {
             (Origin::UsageProbeFailed, "usageProbeFailed"),
             (Origin::UsageReportRateLimited, "usageReportRateLimited"),
             (Origin::UsageReportFormatChanged, "usageReportFormatChanged"),
+            (Origin::OtherFailure, "otherFailure"),
         ] {
             let quota = Envelope {
                 schema_version: SCHEMA_VERSION,
@@ -887,7 +865,7 @@ mod tests {
             data: Some(quota::QuotaPayload {
                 providers: Vec::new(),
                 claude_failure_origin: Some(
-                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageEndpointUnauthorized,
+                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageProbeTimedOut,
                 ),
                 claude_attempted: true,
             }),
@@ -942,7 +920,7 @@ mod tests {
             data: Some(quota::QuotaPayload {
                 providers: Vec::new(),
                 claude_failure_origin: Some(
-                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageEndpointForbidden,
+                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageProbeFailed,
                 ),
                 claude_attempted: true,
             }),
@@ -997,7 +975,7 @@ mod tests {
             data: Some(quota::QuotaPayload {
                 providers: Vec::new(),
                 claude_failure_origin: Some(
-                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageEndpointForbidden,
+                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageProbeFailed,
                 ),
                 claude_attempted: true,
             }),
@@ -1031,7 +1009,7 @@ mod tests {
             data: Some(quota::QuotaPayload {
                 providers: Vec::new(),
                 claude_failure_origin: Some(
-                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageEndpointForbidden,
+                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageProbeFailed,
                 ),
                 claude_attempted: true,
             }),
@@ -1075,7 +1053,7 @@ mod tests {
             data: Some(quota::QuotaPayload {
                 providers: Vec::new(),
                 claude_failure_origin: Some(
-                    needlbar_quota::ClaudeQuotaFailureOrigin::KeychainCredentialExpired,
+                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageReportFormatChanged,
                 ),
                 claude_attempted: true,
             }),
@@ -1120,7 +1098,7 @@ mod tests {
         assert_eq!(providers[0]["quotaErrorCode"], "authenticationExpired");
         assert_eq!(
             providers[0]["claudeQuotaFailureOrigin"],
-            "keychainCredentialExpired"
+            "usageReportFormatChanged"
         );
         assert_eq!(providers[0]["lastAttemptAt"], "2026-11-02T11:59:59Z");
         assert_eq!(providers[1]["quotaStatus"], "available");
@@ -1139,7 +1117,7 @@ mod tests {
             data: Some(quota::QuotaPayload {
                 providers: Vec::new(),
                 claude_failure_origin: Some(
-                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageEndpointForbidden,
+                    needlbar_quota::ClaudeQuotaFailureOrigin::UsageProbeFailed,
                 ),
                 claude_attempted: true,
             }),
@@ -1167,10 +1145,7 @@ mod tests {
         .expect("diagnostics JSON");
         let providers = &json["data"]["providers"];
         assert_eq!(providers[0]["quotaStatus"], "requiresAuthentication");
-        assert_eq!(
-            providers[0]["claudeQuotaFailureOrigin"],
-            "usageEndpointForbidden"
-        );
+        assert_eq!(providers[0]["claudeQuotaFailureOrigin"], "usageProbeFailed");
         assert_eq!(providers[0]["lastAttemptAt"], "2026-09-16T11:59:59Z");
         assert_eq!(providers[1]["quotaStatus"], "available");
     }
