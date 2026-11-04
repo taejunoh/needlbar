@@ -181,8 +181,8 @@ Claude on its own slot, off the cooperative pool, under `ClaudeUsageProbeSchedul
 manual refresh, when the Claude total in the usage refresh changes, when a displayed reset passes,
 and after 15 minutes without a run, at most once every 5 minutes with backoff. The Codex and Cursor refresh never waits for it.
 A stop cancels by run ID through `needlbar_claude_usage_report_cancel_through`, which signals the
-process group before returning. After any exit the probe also sends SIGKILL to the process group, so
-nothing is left running. A dashboard open, a wake or a regained connection starts no Claude run; if
+process group before returning. After any exit the probe also sends SIGKILL to the process group it
+started; a process that moved to its own session or group is not covered. A dashboard open, a wake or a regained connection starts no Claude run; if
 Codex is failing, each dashboard open retries Codex, with no Claude run and no dialog.
 
 ## Bridge contract

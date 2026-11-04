@@ -106,7 +106,10 @@ The document contains only normalized usage and quota values, UTC timestamps, fi
 
 Usage and quota have separate network behavior:
 
-- Prepared for the next release, not in v0.3.14: Needlbar makes no Claude network request. It runs
+- Prepared for the next release, not in v0.3.14: Needlbar makes no Claude network request. It starts
+  the user's installed `claude` automatically, without a click: at app start, when Claude Code's local
+  usage records change, after a displayed window resets, on backoff retries and every 15 minutes, as
+  well as on manual refresh. Claude Code may renew its own login during such a run. Each run executes
   `/usage` through the user's installed `claude`, with a fixed command, no shell, an empty temporary
   directory, a minimal environment and a 30-second limit. Any network use, login renewal or Keychain
   prompt during that run belongs to `claude`. Needlbar reads only the `usage_report` field and an

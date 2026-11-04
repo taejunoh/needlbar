@@ -15,8 +15,8 @@ Implements `docs/superpowers/specs/2026-11-03-claude-usage-report-source-design.
 - **Runs.** App start, manual refresh, a changed Claude total in the usage refresh, a passed reset of
   a displayed window, and 15 minutes since the last run (user decision, 2026-11-03), at most once every
   5 minutes, with backoff of 5, 10, 20, then 30 minutes. The popover, wake, connectivity and the
-  five-minute timer start none. After any exit the probe also sends SIGKILL to the process group, so
-  nothing is left running. If Codex is failing, each dashboard open retries Codex; that starts no
+  five-minute timer start none. After any exit the probe also sends SIGKILL to the process group it
+  started; a process that moved to its own session or group is not covered. If Codex is failing, each dashboard open retries Codex; that starts no
   Claude run and no dialog.
 - **Freshness.** A report reading is current for 20 minutes, because a refresh due at 15 can finish
   about a minute and a half later. The widget's Claude quota row follows it; Codex, usage and the
@@ -31,7 +31,7 @@ Implements `docs/superpowers/specs/2026-11-03-claude-usage-report-source-design.
 
 Not established: no run on a real machine. A 24-hour run across a login renewal, how a signed-out
 `claude` reports itself, duration, memory, CPU, any rate limit on `/usage`, and the 30-second deadline
-are all user-run and open. So are the cost of up to 96 runs a day and whether the label stays steady
+are all user-run and open. So are the cost of up to 288 runs a day and whether the label stays steady
 across them. **Release gate:** no public build until the user resolves the
 terms question in spec §3. No Keychain item, credential file or cookie was read for this work, and no
 agent ran `claude`.

@@ -206,10 +206,10 @@ Code's local usage records change, when a displayed window's reset passes, and
 after 15 minutes without a run, at most once every 5 minutes. Opening the dashboard
 alone starts none. A reading stays current for 20 minutes, and usage outside Claude
 Code appears within about 15 minutes while the app is running and the Mac is awake.
-That can mean up to 96 runs a day. A run is
+That can mean about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart. A run is
 limited to 30 seconds and 1 MiB of output, works in an empty temporary directory,
-and its output is neither logged nor stored. After any exit the process group is
-killed, so nothing is left running. The status line remains the second
+and its output is neither logged nor stored. After any exit Needlbar ends the process group it
+started; a process that moved to its own session or group is not covered. The status line remains the second
 source and last-known values the third; a newer valid reading wins. A window the
 report omits is hidden, not shown as zero. Without Claude Code the app shows
 install guidance and the usage link; with no usage available it says to sign in
@@ -217,9 +217,9 @@ with `claude` in Terminal and offers no button. Needlbar never runs `claude auth
 and writes no Claude configuration, though Claude Code may renew its own login
 during a run, and `claude` itself may show a Keychain prompt. **Allow Keychain
 access**, which an earlier prepared build had, is removed. This has not run for
-24 hours on a real machine, and duration, memory, CPU, the cost of up to 96 runs a
-day and any rate limit on `/usage` have not been measured. It is not part of any
-public release yet.
+24 hours on a real machine, and duration, memory, CPU, the cost of up to 288 runs a day and any rate limit on `/usage` have not been measured. It is not part of any
+public release yet, and a public release awaits a decision on Anthropic's terms for a local
+app that starts the user's `claude`.
 
 ### Usage and quota monitoring
 

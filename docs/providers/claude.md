@@ -36,13 +36,14 @@ reading wins regardless of source, and no source invents a value.
   environment of only `HOME`, `USER`, `LOGNAME`, `TMPDIR`, a fixed `PATH`, and `CLAUDE_CONFIG_DIR`
   if the app already has it; 30 seconds, then the process group is terminated; 1 MiB of standard
   output, then the same; standard error discarded; cancelled when the app stops. After any exit,
-  including a normal one, the process group also receives SIGKILL, so nothing is left running.
+  including a normal one, the process group also receives SIGKILL. That covers the group Needlbar
+  started; a process that moved to its own session or group is not covered.
 - **When:** at app start, on manual refresh, when Claude Code's local usage records change, when a
   displayed window's reset passes, and after 15 minutes without a run. Automatic runs happen at most
   once every 5 minutes and only one at a time. Manual refresh skips the interval and backoff but joins
-  a run in flight. Opening the dashboard, waking the Mac and regaining a connection start no run
-  themselves, though the once-a-minute check can find a run overdue after sleep and start it. If Codex is
-  failing, each dashboard open retries Codex; that starts no Claude run and no dialog.
+  a run in flight. Opening the dashboard, waking the Mac and regaining a connection do not
+  themselves start a run, but a periodic run that fell due during sleep starts within about a minute
+  of waking, when the once-a-minute check finds it overdue. If Codex is failing, each dashboard open retries Codex; that starts no Claude run and no dialog.
 - **After failures:** automatic runs wait 5, 10, 20, then 30 minutes. Any success resets this.
 - **Freshness:** a reading is current for 20 minutes, then **Last known**. A failed run shows **Last
   known** at once. Status-line readings keep their own 15-minute recency and 24-hour maximum age.
@@ -73,7 +74,7 @@ The run after 15 minutes counts as a trigger, so the first two states are tried 
 been observed. Until it is, a non-zero exit counts as a process failure, and only a null `rate_limits` or empty `limits` shows the
 sign-in guidance. API-key, usage-billed and `claude setup-token` sessions produce no `usage_report`,
 so they show the no-readable-report state. Usage outside Claude Code, such as on the web, appears
-within about 15 minutes while the app is running and the Mac is awake. That means up to 96 runs a day,
+within about 15 minutes while the app is running and the Mac is awake. That means about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart,
 whose memory and CPU cost has not been measured.
 
 Diagnostics record the failure reason, the run duration and the row kinds seen, never tokens, output

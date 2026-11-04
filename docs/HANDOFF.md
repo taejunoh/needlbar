@@ -153,14 +153,14 @@ name the v0.3.13, v0.3.14 and 2026-10 sections below mention for the credential
 lookup, credential format or usage endpoint is retired there; those sections are
 history for the public v0.3.14.
 
-The probe sends SIGKILL to its process group after any exit, so nothing is left
-running. Claude runs only on app start, manual refresh, usage-record changes, a
+The probe sends SIGKILL to its process group after any exit. That covers the group it
+started; a process that moved to its own session or group is not covered. Claude runs only on app start, manual refresh, usage-record changes, a
 passed reset, a backoff retry and every 15 minutes; a dashboard open, waking or
 regaining a connection starts none. If Codex is failing, each dashboard open
 retries Codex; that starts no Claude run and no dialog.
 
 None of this has run for 24 hours on a real machine. Still open: how a signed-out `claude` reports
-itself in this mode, run duration, memory and CPU, the cost of up to 96 runs a day, whether `/usage`
+itself in this mode, run duration, memory and CPU, the cost of up to 288 runs a day, whether `/usage`
 has its own rate limit, and whether 30 seconds is the right deadline. Those checks are user-run; see Task 14 of the plan.
 
 **Release gate (spec §11):** before any public build, the user decides how to resolve the terms

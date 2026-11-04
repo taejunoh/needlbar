@@ -165,7 +165,7 @@ A periodic refresh falls due 15:00 after the last start, waits up to 60 s for th
 2. **Sessions with no `usage_report` by design.** The public documentation says API-key sessions, usage-based billing and `claude setup-token` sessions deliver text without the field and suggests falling back to the text. Spec §7 forbids reading it and calls this format changed. This plan follows the spec, so those accounts see "Could not read Claude Code's usage report". Reported to the user.
 3. **Non-empty `limits` with no usable row** is not in the spec. This plan treats it as format changed. It invents nothing and keeps last known values.
 4. **Two rows mapping to one field** is not in the spec. This plan hides that field only, keeping the fail-closed rule at `crates/needlbar-quota/src/providers/claude.rs:213-215`.
-5. **Quiet periods (user decision, 2026-11-03).** A periodic run every 15 minutes keeps readings current, and the spec now says so in §6 and §12. `recentDirectInterval` becomes 20 minutes so the label does not flip before each refresh (Decisions 3a). A reading turns **Last known** at once when a run fails, or once it is 20 minutes old with no newer success, for example after sleep. Up to 96 runs a day is an unmeasured cost, observed in Task 14.
+5. **Quiet periods (user decision, 2026-11-03).** A periodic run every 15 minutes keeps readings current, and the spec now says so in §6 and §12. `recentDirectInterval` becomes 20 minutes so the label does not flip before each refresh (Decisions 3a). A reading turns **Last known** at once when a run fails, or once it is 20 minutes old with no newer success, for example after sleep. Up to 288 runs a day is an unmeasured cost, observed in Task 14.
 6. **Fable line text.** `Fable weekly · Unavailable` stays for a missing Fable row. It shows no value, so "a missing row hides that field only" holds in substance.
 7. **Widget freshness.** The decision named the selector, but `WidgetPresentation.freshnessHorizon` has the same 15-minute trap for the Claude quota row, so this plan gives that row 20 minutes too. Spec §6 states this. Reported to the user, because it goes beyond the named constant.
 
@@ -6302,7 +6302,7 @@ Code's local usage records change, when a displayed window's reset passes, and
 after 15 minutes without a run, at most once every 5 minutes. Opening the dashboard
 alone starts none. A reading stays current for 20 minutes, and usage outside Claude
 Code appears within about 15 minutes while the app is running and the Mac is awake.
-That can mean up to 96 runs a day. A run is
+That can mean about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart. A run is
 limited to 30 seconds and 1 MiB of output, works in an empty temporary directory,
 and its output is neither logged nor stored. The status line remains the second
 source and last-known values the third; a newer valid reading wins. A window the
@@ -6312,8 +6312,7 @@ with `claude` in Terminal and offers no button. Needlbar never runs `claude auth
 and writes no Claude configuration, though Claude Code may renew its own login
 during a run, and `claude` itself may show a Keychain prompt. **Allow Keychain
 access**, which an earlier prepared build had, is removed. This has not run for
-24 hours on a real machine, and duration, memory, CPU, the cost of up to 96 runs a
-day and any rate limit on `/usage` have not been measured. It is not part of any
+24 hours on a real machine, and duration, memory, CPU, the cost of up to 288 runs a day and any rate limit on `/usage` have not been measured. It is not part of any
 public release yet.
 
 """
@@ -6329,7 +6328,7 @@ pathlib.Path("docs/releases/v0.3.15.md").write_text("""Needlbar v0.3.15 changes 
 - The Claude Code status line stays as the second source and last-known values as the third, labelled with the time they were checked. A newer valid reading wins whichever source it came from.
 - Without Claude Code, Needlbar shows install guidance and the usage link. When Claude Code reports no usage, it says to sign in with `claude` in Terminal. It never runs `claude auth` or opens a login flow.
 
-Known limits: usage outside Claude Code, such as on the web, appears within about 15 minutes while Needlbar is running and the Mac is awake. That means up to 96 runs a day, whose memory and CPU cost has not been measured. A reading shows as last known after a failed run or once it is 20 minutes old. The usage report is marked experimental and can change, in which case Needlbar shows last-known values. API-key and usage-billed Claude Code sessions do not produce a usage report. Fable matching depends on a display label. Claude Code may renew its own login during a run, and `claude` itself may show a Keychain prompt. Native overnight, quota-reset, sustained unattended, and native macOS 14 acceptance remain unverified.
+Known limits: usage outside Claude Code, such as on the web, appears within about 15 minutes while Needlbar is running and the Mac is awake. That means about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart, whose memory and CPU cost has not been measured. A reading shows as last known after a failed run or once it is 20 minutes old. The usage report is marked experimental and can change, in which case Needlbar shows last-known values. API-key and usage-billed Claude Code sessions do not produce a usage report. Fable matching depends on a display label. Claude Code may renew its own login during a run, and `claude` itself may show a Keychain prompt. Native overnight, quota-reset, sustained unattended, and native macOS 14 acceptance remain unverified.
 """)
 
 path = pathlib.Path("docs/superpowers/plans/2026-11-02-v0.3.15-release.md")
@@ -6434,7 +6433,7 @@ The run after 15 minutes counts as a trigger, so the first two states are tried 
 been observed. Until it is, a non-zero exit counts as a process failure, and only a null `rate_limits` or empty `limits` shows the
 sign-in guidance. API-key, usage-billed and `claude setup-token` sessions produce no `usage_report`,
 so they show the no-readable-report state. Usage outside Claude Code, such as on the web, appears
-within about 15 minutes while the app is running and the Mac is awake. That means up to 96 runs a day,
+within about 15 minutes while the app is running and the Mac is awake. That means about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart,
 whose memory and CPU cost has not been measured.
 
 Diagnostics record the failure reason, the run duration and the row kinds seen, never tokens, output
@@ -6519,7 +6518,7 @@ minutes without one keeps readings current (user decision, 2026-11-03), and a re
 for 20 minutes, including on the widget's Claude row.
 
 None of this has run for 24 hours on a real machine. Still open: how a signed-out `claude` reports
-itself in this mode, run duration, memory and CPU, the cost of up to 96 runs a day, whether `/usage`
+itself in this mode, run duration, memory and CPU, the cost of up to 288 runs a day, whether `/usage`
 has its own rate limit, and whether 30 seconds is the right deadline. Those checks are user-run; see Task 14 of the plan.
 
 **Release gate (spec §11):** before any public build, the user decides how to resolve the terms
@@ -6580,7 +6579,7 @@ Implements `docs/superpowers/specs/2026-11-03-claude-usage-report-source-design.
 
 Not established: no run on a real machine. A 24-hour run across a login renewal, how a signed-out
 `claude` reports itself, duration, memory, CPU, any rate limit on `/usage`, and the 30-second deadline
-are all user-run and open. So are the cost of up to 96 runs a day and whether the label stays steady
+are all user-run and open. So are the cost of up to 288 runs a day and whether the label stays steady
 across them. **Release gate:** no public build until the user resolves the
 terms question in spec §3. No Keychain item, credential file or cookie was read for this work, and no
 agent ran `claude`.
@@ -6723,7 +6722,7 @@ Run five times in Terminal, a minute or more apart, with normal login:
 /usr/bin/time -l claude -p /usage --no-session-persistence --strict-mcp-config --settings '{"disableAllHooks":true}' --output-format stream-json --verbose </dev/null 2>&1 >/dev/null | /usr/bin/grep -E 'real|maximum resident|user|sys'
 ```
 
-Record for each run: real seconds, maximum resident set size, user and system seconds. Report the numbers only. Multiply user plus system seconds by 96 for the worst-case CPU of a day.
+Record for each run: real seconds, maximum resident set size, user and system seconds. Report the numbers only. Multiply user plus system seconds by 288 for the worst-case CPU of a day.
 
 **30-second decision:** if any run takes more than 20 seconds, or a cold start after a login renewal comes near 30, the deadline changes in spec §6 before release and `UsageProbeLimits::default` changes with it, with a test. If all runs stay well under, record the numbers and keep 30 seconds.
 
@@ -6750,7 +6749,7 @@ Check and report:
 - [ ] While idle and awake, `trigger=periodic` appears about every 15 minutes and nothing else does.
 - [ ] Opening the dashboard adds no `quotaRefresh` line of its own. A `trigger=periodic` line may still fall at the same moment.
 - [ ] Codex and Cursor quota keep updating during a run.
-- [ ] The cost of up to 96 runs a day: the number of completed runs, their total `durationMs`, and the Step 6 memory and CPU figures scaled to that count, including any noticeable fan, battery or slowdown. If it is not acceptable, a longer interval is a design change for the user to approve.
+- [ ] The cost of up to 288 runs a day: the number of completed runs, their total `durationMs`, and the Step 6 memory and CPU figures scaled to that count, including any noticeable fan, battery or slowdown. If it is not acceptable, a longer interval is a design change for the user to approve.
 - [ ] Label stability: while runs succeed, the dashboard, Settings and the widget's Claude row stay current across each refresh and never flip to **Last known** or **Stale** just before one. **Last known** appears only after a failed run, or when the Mac slept past 20 minutes, until the next run finishes.
 - [ ] A signed-in session never shows **Sign in with claude in Terminal**. An `origin=usageReportNoUsage` or `origin=usageReportRateLimited` line while signed in suggests `/usage` has a limit at this rate; report it, because the first would show wrong guidance.
 - [ ] No token, email, output text or path appears in any of these lines.
@@ -6789,10 +6788,10 @@ Only after the user reports Steps 5-7, an agent adds a dated, local-only receipt
 | §8 | Signed-out behaviour until observed; user-run check | Task 3 test; Task 14 Step 5 |
 | §8 | No made-up zero; diagnostics contents | Task 8; Tasks 3, 4, 7 |
 | §9 | Each automated case | all rows, `session` missing, only Fable, percent over 100, malformed, unknown, null `rate_limits`, no report (Task 1); timeout, oversized, non-zero, CLI missing (Tasks 2, 3); interval, backoff, single run, manual join, periodic run (Tasks 6, 7); freshness boundary and label across a refresh (Task 8); no shell, argv, environment (Tasks 2, 12); source order, last known (Task 8); no secret in logs (Tasks 1, 3, 7, 9, 12); no Keychain or endpoint (Task 12) |
-| §9 | Real-machine acceptance, including the cost of up to 96 runs a day and label stability | Task 14 Steps 5-7, user-run |
+| §9 | Real-machine acceptance, including the cost of up to 288 runs a day and label stability | Task 14 Steps 5-7, user-run |
 | §10 | Each listed document, dated notes | Task 13 |
 | §11 | Not tagged; new plan and notes; release gate; fallback | Task 13 notes and plan amendment; HANDOFF; Task 14 Step 8. The fallback (status line, last known, usage link) needs no code: it is what the app shows when `/usage` is not run, and removing the run is a later decision |
-| §12 | Known limits stated, including usage outside Claude Code within about 15 minutes and up to 96 runs a day | `docs/providers/claude.md`, README, release notes in Task 13 |
+| §12 | Known limits stated, including usage outside Claude Code within about 15 minutes and up to 288 runs a day | `docs/providers/claude.md`, README, release notes in Task 13 |
 
 **Placeholder scan.** The only value left open is the counts in the Task 14 Step 3 line, printed by that run. Test-file edits by script name each test.
 

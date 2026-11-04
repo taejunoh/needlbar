@@ -251,7 +251,7 @@ duration, and the row kinds seen. They never record tokens, output text, or emai
 - Needlbar causes no `SecurityAgent` dialog.
 - Quota keeps updating after renewal with no user action.
 - Record run duration, peak memory, and CPU.
-- Record the cost of up to 96 runs a day, and whether the label stays current across them.
+- Record the cost of up to 288 runs a day, and whether the label stays current across them.
 - Confirm a `claude` prompt, if any, is noticed and recorded honestly.
 
 ## 10. Specification changes
@@ -289,7 +289,7 @@ This ends the Keychain approval loop in Needlbar. It does not promise that quota
 never fail.
 
 - Usage outside Claude Code, such as on the web, appears within about 15 minutes while
-  the app is running and awake. This means up to 96 runs a day, whose memory and CPU cost
+  the app is running and awake. This means about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart, whose memory and CPU cost
   is unmeasured.
 - `usage_report` is experimental and can change; Needlbar then shows last known values.
 - Fable matching depends on a display label.
