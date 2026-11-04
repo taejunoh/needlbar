@@ -6,13 +6,16 @@ use std::{
 
 use async_trait::async_trait;
 use needlbar_bridge::quota::{
-    collect_claude_preflight_with_source, collect_claude_user_initiated_with_source, collect_codex_with_provider,
-    collect_quota_with_providers, envelope_from_collection, ClaudeUserInitiatedQuotaSource,
+    collect_claude_preflight_with_source, collect_claude_usage_report_with_source,
+    collect_claude_user_initiated_with_source, collect_codex_with_provider,
+    collect_quota_with_providers, envelope_from_collection, ClaudeUsageReportSource,
+    ClaudeUserInitiatedQuotaSource,
 };
 use needlbar_quota::{
     ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver, ClaudeOAuthSecret,
-    ClaudeQuotaProvider, ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode,
-    QuotaProvider, QuotaWindow, RedactingHttpClient,
+    ClaudeQuotaProvider, ClaudeUsageProbeSummary, ClaudeUsageReportRun, ClaudeUsageRowKind,
+    ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaProvider, QuotaWindow,
+    RedactingHttpClient,
 };
 
 struct FakeProvider {
@@ -331,4 +334,63 @@ async fn quota_collection_with_only_provider_errors_is_a_successful_bridge_respo
     assert_eq!(value["errors"][1]["provider"], "codex");
     assert_eq!(value["errors"][2]["provider"], "cursor");
     assert_eq!(value["errors"][2]["code"], "providerUnavailable");
+}
+
+struct ScriptedUsageReportSource {
+    result: Result<ProviderQuotaSnapshot, QuotaError>,
+    summary: Option<ClaudeUsageProbeSummary>,
+}
+
+impl ClaudeUsageReportSource for ScriptedUsageReportSource {
+    fn run_usage_report<'a>(
+        &'a self,
+    ) -> Pin<Box<dyn Future<Output = ClaudeUsageReportRun> + Send + 'a>> {
+        Box::pin(async move {
+            ClaudeUsageReportRun {
+                result: self.result.clone(),
+                summary: self.summary.clone(),
+            }
+        })
+    }
+}
+
+fn fixture_summary() -> ClaudeUsageProbeSummary {
+    ClaudeUsageProbeSummary {
+        duration_ms: 1_500,
+        row_kinds: vec![ClaudeUsageRowKind::WeeklyAll],
+        unknown_row_count: 0,
+        skipped_row_count: 0,
+    }
+}
+
+#[tokio::test]
+async fn usage_report_collection_uses_only_claude_and_carries_its_summary() {
+    let collection = collect_claude_usage_report_with_source(Arc::new(ScriptedUsageReportSource {
+        result: Ok(successful_snapshot(ProviderId::Claude, "claude.weekly")),
+        summary: Some(fixture_summary()),
+    }))
+    .await;
+    assert!(collection.claude_attempted);
+    assert_eq!(collection.claude_usage_probe, Some(fixture_summary()));
+    let value = serde_json::to_value(envelope_from_collection(collection)).unwrap();
+    assert_eq!(value["data"]["providers"].as_array().map(Vec::len), Some(1));
+    assert_eq!(value["data"]["providers"][0]["provider"], "claude");
+    assert_eq!(value["errors"], serde_json::json!([]));
+    assert!(
+        value.to_string().find("durationMs").is_none(),
+        "the summary stays out of the quota envelope"
+    );
+}
+
+#[tokio::test]
+async fn a_cancelled_usage_report_is_dropped_and_describes_no_attempt() {
+    let collection = collect_claude_usage_report_with_source(Arc::new(ScriptedUsageReportSource {
+        result: Err(QuotaError::claude_usage_report_cancelled()),
+        summary: None,
+    }))
+    .await;
+    assert!(collection.providers.is_empty());
+    assert!(collection.errors.is_empty());
+    assert!(!collection.claude_attempted);
+    assert_eq!(collection.claude_failure_origin, None);
 }

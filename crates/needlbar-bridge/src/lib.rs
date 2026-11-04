@@ -366,6 +366,33 @@ pub unsafe extern "C" fn needlbar_claude_user_initiated_quota_snapshot_json() ->
 /// # Safety
 ///
 /// The returned non-null pointer is Rust-owned and must be passed exactly once
+/// to [`needlbar_free_string`]. `run_id` is at least 1 and larger than any ID
+/// already passed to [`needlbar_claude_usage_report_cancel_through`].
+#[no_mangle]
+pub unsafe extern "C" fn needlbar_claude_usage_report_quota_snapshot_json(
+    run_id: u64,
+) -> *const c_char {
+    cursor_credential_cleanup::schedule_obsolete_cursor_session_cleanup();
+    let attempted_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    ffi_envelope(|| {
+        quota_operation_envelope(
+            move || claude_usage_report_quota_envelope(run_id),
+            &attempted_at,
+            true,
+        )
+    })
+}
+
+/// Cancels every run whose ID is at most `run_id`, including one that has not
+/// started yet. It signals the process group before returning.
+#[no_mangle]
+pub extern "C" fn needlbar_claude_usage_report_cancel_through(run_id: u64) {
+    let _ = catch_unwind(|| quota::cancel_claude_usage_report_through(run_id));
+}
+
+/// # Safety
+///
+/// The returned non-null pointer is Rust-owned and must be passed exactly once
 /// to [`needlbar_free_string`]. Callers must not mutate the returned bytes.
 #[no_mangle]
 pub unsafe extern "C" fn needlbar_codex_quota_snapshot_json() -> *const c_char {
@@ -536,6 +563,19 @@ fn claude_user_initiated_quota_envelope() -> Envelope<quota::QuotaPayload> {
 fn claude_preflight_quota_envelope() -> Envelope<quota::QuotaPayload> {
     match collect_quota_on_bridge_thread(|| Box::pin(quota::collect_claude_preflight())) {
         Ok(collection) => quota::envelope_from_collection(collection),
+        Err(error) => Envelope::failure(error),
+    }
+}
+
+fn claude_usage_report_quota_envelope(run_id: u64) -> Envelope<quota::QuotaPayload> {
+    diagnostics::record_claude_usage_probe(None);
+    match collect_quota_on_bridge_thread(move || {
+        Box::pin(quota::collect_claude_usage_report(run_id))
+    }) {
+        Ok(mut collection) => {
+            diagnostics::record_claude_usage_probe(collection.claude_usage_probe.take());
+            quota::envelope_from_collection(collection)
+        }
         Err(error) => Envelope::failure(error),
     }
 }
@@ -777,6 +817,49 @@ mod tests {
     }
 
     #[test]
+    fn diagnostics_serialize_the_run_summary_as_closed_values_and_counts() {
+        use needlbar_quota::{ClaudeUsageProbeSummary, ClaudeUsageRowKind};
+
+        let _state_guard = DIAGNOSTICS_STATE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        diagnostics::record_claude_usage_probe(Some(ClaudeUsageProbeSummary {
+            duration_ms: 1_500,
+            row_kinds: vec![
+                ClaudeUsageRowKind::WeeklyAll,
+                ClaudeUsageRowKind::WeeklyScoped,
+            ],
+            unknown_row_count: 2,
+            skipped_row_count: 1,
+        }));
+        let json = serde_json::to_value(Envelope::success(
+            diagnostics::DiagnosticsSnapshot::from_recorded_outcomes(),
+        ))
+        .expect("diagnostics JSON");
+        assert_eq!(
+            json["data"]["providers"][0]["claudeUsageProbe"],
+            serde_json::json!({
+                "durationMs": 1500,
+                "rowKinds": ["weeklyAll", "weeklyScoped"],
+                "unknownRowCount": 2,
+                "skippedRowCount": 1,
+            })
+        );
+        assert!(json["data"]["providers"][1]
+            .get("claudeUsageProbe")
+            .is_none());
+
+        diagnostics::record_claude_usage_probe(None);
+        let cleared = serde_json::to_value(Envelope::success(
+            diagnostics::DiagnosticsSnapshot::from_recorded_outcomes(),
+        ))
+        .expect("diagnostics JSON");
+        assert!(cleared["data"]["providers"][0]
+            .get("claudeUsageProbe")
+            .is_none());
+    }
+
+    #[test]
     fn diagnostics_serializes_every_closed_claude_failure_origin_by_its_stable_name() {
         use needlbar_quota::ClaudeQuotaFailureOrigin as Origin;
 
@@ -807,6 +890,13 @@ mod tests {
                 "usageResponseUnrecognized",
             ),
             (Origin::OtherFailure, "otherFailure"),
+            (Origin::ClaudeCliNotFound, "claudeCliNotFound"),
+            (Origin::UsageReportNoUsage, "usageReportNoUsage"),
+            (Origin::UsageProbeTimedOut, "usageProbeTimedOut"),
+            (Origin::UsageProbeOutputTooLarge, "usageProbeOutputTooLarge"),
+            (Origin::UsageProbeFailed, "usageProbeFailed"),
+            (Origin::UsageReportRateLimited, "usageReportRateLimited"),
+            (Origin::UsageReportFormatChanged, "usageReportFormatChanged"),
         ] {
             let quota = Envelope {
                 schema_version: SCHEMA_VERSION,

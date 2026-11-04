@@ -746,6 +746,42 @@ pub fn all_quota_providers() -> Option<AllQuotaProviders> {
     })
 }
 
+/// Reuses the existing Claude fixtures for the usage report export.
+pub fn claude_usage_report_source() -> Option<Arc<dyn quota::ClaudeUsageReportSource>> {
+    Some(Arc::new(FixtureUsageReportSource {
+        fixture: claude_user_initiated_source()?,
+    }))
+}
+
+struct FixtureUsageReportSource {
+    fixture: Arc<dyn quota::ClaudeUserInitiatedQuotaSource>,
+}
+
+impl quota::ClaudeUsageReportSource for FixtureUsageReportSource {
+    fn run_usage_report<'a>(
+        &'a self,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = needlbar_quota::ClaudeUsageReportRun> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            needlbar_quota::ClaudeUsageReportRun {
+                result: self
+                    .fixture
+                    .fetch_with_credential_access(
+                        needlbar_quota::ClaudeCredentialAccess::BackgroundNoUI,
+                    )
+                    .await,
+                summary: Some(needlbar_quota::ClaudeUsageProbeSummary {
+                    duration_ms: 1,
+                    row_kinds: vec![needlbar_quota::ClaudeUsageRowKind::Session],
+                    unknown_row_count: 0,
+                    skipped_row_count: 0,
+                }),
+            }
+        })
+    }
+}
+
 pub fn claude_user_initiated_source() -> Option<Arc<dyn quota::ClaudeUserInitiatedQuotaSource>> {
     let runtime = fixture_runtime()?;
     Some(match runtime.mode {

@@ -1,6 +1,6 @@
 use std::sync::{LazyLock, Mutex};
 
-use needlbar_quota::ClaudeQuotaFailureOrigin;
+use needlbar_quota::{ClaudeQuotaFailureOrigin, ClaudeUsageProbeSummary};
 use serde::Serialize;
 
 use crate::{envelope::Envelope, quota::QuotaPayload, usage::UsagePayload};
@@ -121,6 +121,8 @@ pub struct ProviderDiagnostic {
     last_attempt_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     claude_quota_failure_origin: Option<ClaudeQuotaFailureOrigin>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    claude_usage_probe: Option<ClaudeUsageProbeSummary>,
 }
 
 impl ProviderDiagnostic {
@@ -148,6 +150,7 @@ impl ProviderDiagnostic {
             quota_error_code: quota_error_code.as_deref().and_then(SafeErrorCode::parse),
             last_attempt_at: None,
             claude_quota_failure_origin: None,
+            claude_usage_probe: None,
         }
     }
 }
@@ -197,6 +200,11 @@ impl DiagnosticsSnapshot {
                         last_attempt_at: quota.and_then(|entry| entry.last_attempt_at.clone()),
                         claude_quota_failure_origin: if provider == DiagnosticProvider::Claude {
                             quota.and_then(|entry| entry.claude_failure_origin)
+                        } else {
+                            None
+                        },
+                        claude_usage_probe: if provider == DiagnosticProvider::Claude {
+                            observations.claude_usage_probe.clone()
                         } else {
                             None
                         },
@@ -261,6 +269,7 @@ struct StreamObservation {
 struct RecordedOutcomes {
     usage: Option<Vec<StreamObservation>>,
     quota: Option<Vec<StreamObservation>>,
+    claude_usage_probe: Option<ClaudeUsageProbeSummary>,
 }
 
 static RECORDED_OUTCOMES: LazyLock<Mutex<RecordedOutcomes>> =
@@ -317,6 +326,14 @@ pub fn record_quota(envelope: &Envelope<QuotaPayload>, attempted_at: Option<&str
 
 /// Records only the provider outcomes represented by a provider-specific quota
 /// envelope, preserving last-known outcomes for omitted providers.
+/// The summary of the latest Claude usage report run: closed values and counts.
+pub fn record_claude_usage_probe(summary: Option<ClaudeUsageProbeSummary>) {
+    RECORDED_OUTCOMES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .claude_usage_probe = summary;
+}
+
 pub fn record_partial_quota(envelope: &Envelope<QuotaPayload>, attempted_at: Option<&str>) {
     let mut outcomes = RECORDED_OUTCOMES
         .lock()
