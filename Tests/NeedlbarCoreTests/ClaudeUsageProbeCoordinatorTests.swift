@@ -16,6 +16,7 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.waitUntilCompletedRuns(1)
         #expect(harness.probe.runIDs == [1])
         #expect(harness.events.values.first?.trigger == .startup)
+        #expect(harness.probe.everyCallRanOutsideAnyTask, "a 30-second run must not occupy a cooperative thread")
         await harness.coordinator.stop()
     }
 
@@ -288,10 +289,19 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.coordinator.stop()
         #expect(harness.probe.cancelledThrough == [1])
         harness.probe.script(.result(try weeklyQuota(resetsAt: nil)))
+        // The restarted run holds, so the state read below is exactly what the
+        // old run left. It can only enter the fake after the old run finished
+        // and freed its slot, so the old result has been applied or dropped by then.
+        harness.probe.holdNext()
+        await harness.coordinator.start()
         harness.probe.release()
-        await settle(watchingFor: { harness.events.values.contains { $0.phase == .completed } })
-        #expect(await harness.store.snapshot(for: .claude).quota == nil)
-        #expect(harness.events.values.map(\.phase) == [.started, .invalidated])
+        await harness.probe.waitUntilCallCount(2)
+        #expect(await harness.store.snapshot(for: .claude).quota == nil, "the old result was dropped")
+        #expect(harness.events.values.map(\.phase) == [.started, .invalidated, .started])
+        harness.probe.release()
+        await harness.waitUntilCompletedRuns(1)
+        #expect(harness.events.values.map(\.phase) == [.started, .invalidated, .started, .completed])
+        await harness.coordinator.stop()
     }
 
     @Test func stopWithNoRunInFlightCancelsNothing() async throws {
@@ -308,10 +318,11 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.probe.waitUntilHeld()
         await harness.coordinator.stop()
         await harness.coordinator.start()
-        #expect(harness.probe.callCount == 1)
         harness.probe.release()
         await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(1)
         #expect(harness.probe.runIDs == [1, 3], "a stop and a start each advance the generation")
+        #expect(harness.probe.maxConcurrentCalls == 1, "the new run waited for the old physical call")
         await harness.coordinator.stop()
     }
 
@@ -388,6 +399,70 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.coordinator.stop()
     }
 
+    @Test func aManualSuccessClearsTheAutomaticBackoffAndItsRetry() async throws {
+        let harness = Harness()
+        harness.probe.script(.result(providerUnavailable()))
+        harness.probe.script(.result(try weeklyQuota(resetsAt: Self.start.addingTimeInterval(9_000_000))))
+        harness.probe.script(.result(providerUnavailable()))
+        await harness.startedAndIdle()
+        await harness.coordinator.manualRefresh()
+        await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(2)
+        #expect(await harness.store.snapshot(for: .claude).claudeQuotaFailureReason == nil, "the manual run succeeded")
+
+        // The retry the startup failure asked for is gone: nothing runs at five minutes.
+        await harness.advance(minutes: 5)
+        await settle(watchingFor: { harness.probe.callCount > 2 })
+        #expect(harness.probe.callCount == 2, "no backoff retry after a manual success")
+        await harness.advance(minutes: 10)
+        await harness.probe.waitUntilCallCount(3)
+        await harness.waitUntilCompletedRuns(3)
+        #expect(harness.events.values.last?.trigger == .periodic)
+
+        // The count restarted too: this failure waits five minutes, not ten.
+        await harness.advance(minutes: 5)
+        await harness.probe.waitUntilCallCount(4)
+        #expect(harness.probe.startTimes.map { $0.timeIntervalSince(Self.start) } == [0, 0, 900, 1_200])
+        await harness.coordinator.stop()
+    }
+
+    @Test func aManualFailureDoesNotCountTowardTheAutomaticBackoff() async throws {
+        let harness = Harness()
+        for _ in 0 ..< 3 { harness.probe.script(.result(providerUnavailable())) }
+        await harness.startedAndIdle()
+        await harness.coordinator.manualRefresh()
+        await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(2)
+
+        // One automatic failure so far: the retry is due at five minutes. A manual
+        // failure that counted would have moved it to ten.
+        await harness.advance(minutes: 4)
+        await settle(watchingFor: { harness.probe.callCount > 2 })
+        #expect(harness.probe.callCount == 2)
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(3)
+        await harness.waitUntilCompletedRuns(3)
+
+        // That is the second automatic failure, so the next wait is ten minutes.
+        await harness.advance(minutes: 9)
+        await settle(watchingFor: { harness.probe.callCount > 3 })
+        #expect(harness.probe.callCount == 3)
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(4)
+        #expect(harness.probe.startTimes.map { $0.timeIntervalSince(Self.start) } == [0, 0, 300, 900])
+        #expect(harness.probe.triggersSeen(in: harness.events).prefix(3) == [.startup, .manual, .backoffRetry])
+        await harness.coordinator.stop()
+    }
+
+    @Test func stopEndsTheTickAndTheOtherTimers() async throws {
+        let harness = Harness()
+        await harness.startedAndIdle()
+        await harness.clock.waitUntilSleeperCount(3)
+        await harness.coordinator.stop()
+        await settle(watchingFor: { harness.clock.sleeperCount == 0 })
+        #expect(harness.clock.sleeperCount == 0, "usage, quota and Claude tick loops all stopped sleeping")
+    }
+
     // MARK: - Diagnostics
 
     @Test func diagnosticsAreReadOncePerRunSharedWithTheReporterAndAddedToTheEvent() async throws {
@@ -425,7 +500,12 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.coordinator.stop()
     }
 
-    @Test func noRawCanaryReachesTheStoreOrTheEvents() async throws {
+    /// The failure reason is a closed enum and an attempt event has no message
+    /// field, so a server message cannot become either. The coordinator does store
+    /// the error's message in the failure status, so this does not prove that
+    /// messages hold no server text: that guarantee lives in the Rust provider's
+    /// canary test, which checks what the provider puts in a message.
+    @Test func theFailureReasonAndAttemptEventsCarryNoErrorMessage() async throws {
         let harness = Harness()
         harness.probe.script(.result(claudeError("schemaChanged")))
         await harness.startedAndIdle()
@@ -564,6 +644,9 @@ private final class ProbeRepository: QuotaRepository, @unchecked Sendable {
     private var recordedRunIDs: [UInt64] = []
     private var recordedStarts: [Date] = []
     private var recordedCancels: [UInt64] = []
+    private var concurrentCalls = 0
+    private var highestConcurrentCalls = 0
+    private var callsOutsideAnyTask: [Bool] = []
 
     init(clock: ManualClock) { self.clock = clock }
 
@@ -572,6 +655,11 @@ private final class ProbeRepository: QuotaRepository, @unchecked Sendable {
     var startTimes: [Date] { lock.withLock { recordedStarts } }
     var cancelledThrough: [UInt64] { lock.withLock { recordedCancels } }
     var isHeld: Bool { lock.withLock { held } }
+    /// The most calls that were inside `refresh` at once.
+    var maxConcurrentCalls: Int { lock.withLock { highestConcurrentCalls } }
+    /// True when every call ran outside any Swift task, so on a dispatch thread
+    /// and not on the cooperative pool.
+    var everyCallRanOutsideAnyTask: Bool { lock.withLock { !callsOutsideAnyTask.isEmpty && !callsOutsideAnyTask.contains(false) } }
 
     func script(_ outcome: Outcome) { lock.withLock { outcomes.append(outcome) } }
     func holdNext() { lock.withLock { holds = true } }
@@ -585,7 +673,11 @@ private final class ProbeRepository: QuotaRepository, @unchecked Sendable {
 
     func refresh(intent: QuotaRefreshIntent) throws -> QuotaRefreshResult {
         guard case .claudeUsageReport(let runID) = intent else { throw BridgeFailure.nullPointer }
+        let outsideAnyTask = withUnsafeCurrentTask { $0 == nil }
         let hold = lock.withLock { () -> Bool in
+            callsOutsideAnyTask.append(outsideAnyTask)
+            concurrentCalls += 1
+            highestConcurrentCalls = max(highestConcurrentCalls, concurrentCalls)
             recordedRunIDs.append(runID)
             recordedStarts.append(clock.now)
             let hold = holds
@@ -594,6 +686,7 @@ private final class ProbeRepository: QuotaRepository, @unchecked Sendable {
             return hold
         }
         changes.signal()
+        defer { lock.withLock { concurrentCalls -= 1 } }
         if hold {
             _ = gate.wait(timeout: .now() + .seconds(30))
             lock.withLock { held = false }

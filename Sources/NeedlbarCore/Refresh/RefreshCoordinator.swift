@@ -750,6 +750,9 @@ public actor RefreshCoordinator {
                 guard generation == runGeneration, applyResult else { return }
                 await store.markUsageFailure(for: provider, status: status(for: error), at: clock.now)
             }
+            // The last store call suspended: a stop and start in that gap must not set
+            // the new generation's baseline from this old result.
+            guard generation == runGeneration, applyResult else { return }
             noteClaudeUsageRecords(refresh.snapshots[.claude]?.totalTokens)
         case .failure(let error):
             let status = DataStatus.error(message: String(describing: error), lastSuccessfulAt: nil)
