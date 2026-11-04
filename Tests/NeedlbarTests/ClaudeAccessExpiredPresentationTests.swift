@@ -285,52 +285,6 @@ struct ClaudeAccessExpiredPresentationTests {
 
     // MARK: - Shared read and logs
 
-    @Test func reporterSharesTheCoordinatorReadAndLogsOnlyAllowlistedFields() async throws {
-        let diagnosticsCalls = Counter()
-        let quotaCalls = Counter()
-        let json = """
-        {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-10-18T00:00:00Z","data":{"providers":[{"provider":"claude","usageStatus":"available","quotaStatus":"requiresAuthentication","usageSource":"local","quotaSource":"oauth","lastAttemptAt":"\(ISO8601DateFormatter().string(from: Self.now))","quotaErrorCode":"authenticationExpired","claudeQuotaFailureOrigin":"keychainCredentialExpired","rawSecretCanary":"CLAUDE-CANARY-SECRET","accountPath":"/private/canary"}]},"errors":[]}
-        """
-        let bridge = RustBridge(
-            quotaCall: { quotaCalls.increment(); return nil },
-            claudePreflightQuotaCall: { quotaCalls.increment(); return nil },
-            claudeUserInitiatedQuotaCall: { quotaCalls.increment(); return nil },
-            codexQuotaCall: { quotaCalls.increment(); return nil },
-            diagnosticsCall: { diagnosticsCalls.increment(); return Self.cString(json) },
-            free: { $0.map { Darwin.free(UnsafeMutablePointer(mutating: $0)) } })
-        let events = EventSink()
-        let reporter = ClaudeQuotaFailureDiagnosticsReporter(readDiagnostics: bridge.diagnosticsEnvelope, sink: { events.append($0) })
-        let store = ProviderSnapshotStore(now: { Self.now })
-        let repository = OneShotQuotaRepository(.init(snapshots: [:], errors: [.claude: .init(
-            provider: "claude", code: "authenticationExpired", message: "RAW_ERROR_TOKEN_PATH_CANARY", action: nil)]))
-        let coordinator = RefreshCoordinator(
-            usageRepository: NoUsageRepository(), quotaRepository: repository, store: store,
-            clock: FixedClock(now: Self.now),
-            claudeQuotaDiagnostics: reporter.completionDiagnostics)
-
-        await coordinator.popoverOpened()
-        let deadline = Date().addingTimeInterval(10)
-        while events.values.isEmpty, Date() < deadline { try await Task.sleep(for: .milliseconds(1)) }
-
-        #expect(diagnosticsCalls.value == 1)
-        #expect(quotaCalls.value == 0)
-        #expect(repository.callCount == 1)
-        #expect(events.values.map(\.origin) == [.keychainCredentialExpired])
-        #expect(events.values.map(\.message) == [
-            "claudeQuotaFailure origin=keychainCredentialExpired code=authenticationExpired attempt=\(ISO8601DateFormatter().string(from: Self.now))",
-        ])
-        let snapshot = await store.snapshot(for: .claude)
-        #expect(snapshot.claudeQuotaFailureReason == .claudeCodeAccessExpired)
-
-        let presentation = ProviderPopoverPresentation(snapshot: snapshot, now: Self.now)
-        let surfaces = [String(describing: events.values), events.values.map(\.message).joined(), String(describing: presentation)]
-            + (try Surface.allCases.map { try $0.render(snapshot).items.map(\.description).joined() })
-        for text in surfaces {
-            for marker in ["CLAUDE-CANARY-SECRET", "/private/canary", "RAW_ERROR_TOKEN_PATH_CANARY"] {
-                #expect(!text.contains(marker), "\(marker) leaked")
-            }
-        }
-    }
 }
 
 // MARK: - Surfaces and accessibility capture

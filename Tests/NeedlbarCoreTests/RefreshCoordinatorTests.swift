@@ -28,7 +28,7 @@ struct RefreshCoordinatorTests {
     let clock = ManualClock(now: now)
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: ProviderSnapshotStore(), clock: clock,
         quotaApplicationWillApply: { await application.pause() },
         claudeQuotaOperationCompleted: { await completion.pause() },
         quotaAttemptObserver: { events.record($0) })
@@ -66,7 +66,7 @@ struct RefreshCoordinatorTests {
     let events = QuotaAttemptCollector()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: ProviderSnapshotStore(), clock: ManualClock(now: Self.fixedStart),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: ProviderSnapshotStore(), clock: ManualClock(now: Self.fixedStart),
         quotaAttemptObserver: { events.record($0) })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -109,7 +109,7 @@ struct RefreshCoordinatorTests {
     let events = QuotaAttemptCollector()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: store, clock: clock,
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: store, clock: clock,
         quotaAttemptObserver: { events.record($0) })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -127,7 +127,7 @@ struct RefreshCoordinatorTests {
     #expect(failure?.sevenDayReceiptAt == seven)
     #expect(!String(describing: events.values).contains("RAW_ERROR_TOKEN_PATH_CANARY"))
     clock.setNowWithoutWakingSleepers(now.addingTimeInterval(60))
-    await coordinator.popoverOpened()
+    await coordinator.manualRefresh()
     await quota.waitUntilCallCount(2)
     #expect(events.values.last?.directLastSuccessfulAt == failure?.directLastSuccessfulAt)
     #expect(events.values.last?.fiveHourReceiptAt == five)
@@ -155,7 +155,7 @@ struct RefreshCoordinatorTests {
     let events = QuotaAttemptCollector()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: store, clock: ManualClock(now: now),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: store, clock: ManualClock(now: now),
         quotaAttemptObserver: { events.record($0) })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -177,7 +177,7 @@ struct RefreshCoordinatorTests {
     let events = QuotaAttemptCollector()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: ProviderSnapshotStore(), clock: ManualClock(now: Self.fixedStart),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: ProviderSnapshotStore(), clock: ManualClock(now: Self.fixedStart),
         quotaAttemptObserver: { events.record($0) })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -195,16 +195,6 @@ struct RefreshCoordinatorTests {
     await events.waitUntilCount(6)
     #expect(events.values.last?.outcome == .failure)
     #expect(!String(describing: events.values).contains("RAW_ERROR_TOKEN_PATH_CANARY"))
-    let claudeFailure = events.values.last
-    let codex = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .codex) }
-    await quota.waitUntilCallCount(4)
-    try quota.releaseNext(with: quotaResult(for: .codex))
-    #expect(await codex.valueUnlessCancelled == true)
-    #expect(events.values.last?.outcome == .success)
-    #expect(events.values.last?.trigger == .manual)
-    #expect(events.values.last?.failureAttemptAt == claudeFailure?.failureAttemptAt)
-    #expect(events.values.last?.directLastSuccessfulAt == claudeFailure?.directLastSuccessfulAt)
-    #expect(events.values.last?.fiveHourSource == claudeFailure?.fiveHourSource)
     await coordinator.stop()
 }
 
@@ -217,7 +207,7 @@ struct RefreshCoordinatorTests {
     let events = QuotaAttemptCollector()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: ProviderSnapshotStore(), clock: ManualClock(now: now),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: ProviderSnapshotStore(), clock: ManualClock(now: now),
         statusLineRepository: cache, quotaAttemptObserver: { events.record($0) })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -235,41 +225,13 @@ struct RefreshCoordinatorTests {
     await coordinator.stop()
 }
 
-@Test func codexOnlyCompletionKeepsThePriorClaudeProjection() async throws {
-    let now = Self.fixedStart
-    let quota = BlockingIntentQuotaRepository()
-    let store = ProviderSnapshotStore()
-    let events = QuotaAttemptCollector()
-    let coordinator = RefreshCoordinator(
-        usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: store, clock: ManualClock(now: now),
-        quotaAttemptObserver: { events.record($0) })
-    await coordinator.start()
-    await quota.waitUntilCallCount(1)
-    try quota.releaseNext(with: try quotaResult(for: .claude, usedPercent: 20))
-    await events.waitUntilCount(2)
-    let previous = events.values.last
-    let codex = Task { await coordinator.refreshQuota(afterUserAuthenticationFor: .codex) }
-    await quota.waitUntilCallCount(2)
-    await store.markQuotaFailure(for: .claude, status: .requiresAuthentication, at: now)
-    await store.applyClaudeStatusLineQuota(.init(schemaVersion: 1, generation: UUID(),
-        fiveHour: .init(usedPercent: 60, resetsAt: nil, receivedAt: now), sevenDay: nil))
-    try quota.releaseNext(with: quotaResult(for: .codex))
-    #expect(await codex.valueUnlessCancelled == true)
-    #expect(events.values.last?.outcome == .success)
-    #expect(events.values.last?.fiveHourSource == previous?.fiveHourSource)
-    #expect(events.values.last?.fiveHourReceiptAt == previous?.fiveHourReceiptAt)
-    #expect(events.values.last?.failureAttemptAt == previous?.failureAttemptAt)
-    await coordinator.stop()
-}
-
 @Test func stopDuringLegacyCallbackInvalidatesAndCannotCompleteAfterResume() async throws {
     let quota = BlockingIntentQuotaRepository()
     let callback = QuotaApplicationGate()
     let events = QuotaAttemptCollector()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: ProviderSnapshotStore(), clock: ManualClock(now: Self.fixedStart),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: ProviderSnapshotStore(), clock: ManualClock(now: Self.fixedStart),
         claudeQuotaOperationCompleted: { await callback.pause() }, quotaAttemptObserver: { events.record($0) })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -333,7 +295,7 @@ struct RefreshCoordinatorTests {
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
-        claudeQuotaOperationCompleted: { await completed.record() })
+        backgroundQuotaOperationCompleted: { await completed.record() })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
     try quota.releaseNext(with: quotaResult(for: .claude))
@@ -364,7 +326,7 @@ struct RefreshCoordinatorTests {
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota, store: ProviderSnapshotStore(),
         clock: ManualClock(now: Date(timeIntervalSince1970: 0)),
-        claudeQuotaOperationCompleted: { await completed.record() })
+        backgroundQuotaOperationCompleted: { await completed.record() })
     let oldToken = await coordinator.recoveryRequestToken()
     await oldToken.submit(.wake)
     #expect(quota.callCount == 0)
@@ -389,7 +351,7 @@ func recoveryBurstQueuesOneAggregateFollowUp(includesPopover: Bool) async throws
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
-        claudeQuotaOperationCompleted: { await completed.record() })
+        backgroundQuotaOperationCompleted: { await completed.record() })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
     let token = await coordinator.recoveryRequestToken()
@@ -422,7 +384,7 @@ func recoveryBurstQueuesOneAggregateFollowUp(includesPopover: Bool) async throws
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
         quotaApplicationWillApply: { await gate.pause() },
-        claudeQuotaOperationCompleted: { await completed.record() })
+        backgroundQuotaOperationCompleted: { await completed.record() })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
     try quota.releaseNext(with: quotaResult(for: .claude))
@@ -456,7 +418,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
         statusLineRepository: cache,
-        claudeQuotaOperationCompleted: { await completed.record() })
+        backgroundQuotaOperationCompleted: { await completed.record() })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
     try quota.releaseNext(with: quotaResult(for: .claude))
@@ -919,7 +881,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
                 quotaRepository: quota,
                 store: store,
                 clock: ManualClock(now: now),
-                claudeQuotaOperationCompleted: { await completionGate.pause() }
+                backgroundQuotaOperationCompleted: { await completionGate.pause() }
             )
 
             await coordinator.popoverOpened()
@@ -1605,7 +1567,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
         quotaRepository: quota,
         store: ProviderSnapshotStore(),
         clock: ManualClock(now: Self.fixedStart),
-        claudeQuotaOperationCompleted: { await observerGate.pause() }
+        backgroundQuotaOperationCompleted: { await observerGate.pause() }
     )
 
     await coordinator.start()
@@ -1633,7 +1595,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
         store: ProviderSnapshotStore(),
         clock: ManualClock(now: Self.fixedStart),
         quotaApplicationWillApply: { await gate.pause() },
-        claudeQuotaOperationCompleted: { await observer.record() }
+        backgroundQuotaOperationCompleted: { await observer.record() }
     )
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -1653,7 +1615,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
         quotaRepository: codexQuota,
         store: ProviderSnapshotStore(),
         clock: ManualClock(now: Self.fixedStart),
-        claudeQuotaOperationCompleted: { await codexCounter.record() }
+        backgroundQuotaOperationCompleted: { await codexCounter.record() }
     )
     await codexCoordinator.start()
     await codexQuota.waitUntilCallCount(1)
@@ -1671,7 +1633,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
         quotaRepository: cancelledQuota,
         store: ProviderSnapshotStore(),
         clock: ManualClock(now: Self.fixedStart),
-        claudeQuotaOperationCompleted: { await cancelledCounter.record() }
+        backgroundQuotaOperationCompleted: { await cancelledCounter.record() }
     )
     await cancelledCoordinator.start()
     await cancelledQuota.waitUntilCallCount(1)

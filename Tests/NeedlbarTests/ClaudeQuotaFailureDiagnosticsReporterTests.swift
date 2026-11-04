@@ -375,3 +375,18 @@ private extension ClaudeQuotaFailureOrigin {
         .otherFailure,
     ]
 }
+
+@Test func reporterLogLineAddsTheRunSummaryAndNothingElse() throws {
+    let json = """
+    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-11-03T12:00:00Z","data":{"providers":[{"provider":"claude","usageStatus":"available","quotaStatus":"error","usageSource":"local","quotaSource":"usageReport","lastAttemptAt":"2026-11-03T11:59:59Z","quotaErrorCode":"schemaChanged","claudeQuotaFailureOrigin":"usageReportFormatChanged","claudeUsageProbe":{"durationMs":1832,"rowKinds":["weeklyAll"],"unknownRowCount":1,"skippedRowCount":0},"rawOutputCanary":"TEXT-CANARY"}]},"errors":[]}
+    """
+    let sink = DiagnosticEventSink()
+    let reporter = ClaudeQuotaFailureDiagnosticsReporter(
+        readDiagnostics: { try BridgeDecoder().decodeDiagnosticsEnvelope(Data(json.utf8)) },
+        sink: { sink.append($0) }
+    )
+    reporter.reportLatestClaudeQuotaFailure()
+    #expect(sink.values.map(\.message) == [
+        "claudeQuotaFailure origin=usageReportFormatChanged code=schemaChanged attempt=2026-11-03T11:59:59Z durationMs=1832 rows=weeklyAll unknownRows=1 skippedRows=0",
+    ])
+}

@@ -20,8 +20,8 @@ public enum QuotaRefreshIntent: Equatable, Sendable {
 extension QuotaRefreshIntent {
     var includesClaude: Bool {
         switch self {
-        case .backgroundAll, .claudePreflight, .userInitiated(provider: .claude), .claudeUsageReport: true
-        case .userInitiated: false
+        case .claudePreflight, .userInitiated(provider: .claude), .claudeUsageReport: true
+        case .backgroundAll, .userInitiated: false
         }
     }
 }

@@ -26,21 +26,33 @@ public enum ClaudeLoginPreflightOutcome: Equatable, Sendable {
 public actor RefreshCoordinator {
     public static let safetyInterval: Duration = .seconds(5 * 60)
     public static let popoverQuotaRefreshThreshold: TimeInterval = 60
+    /// How often a passed reset, a deferred usage change, a backoff retry and the
+    /// periodic run are checked. It reads only actor and store state.
+    static let claudeUsageTickInterval: Duration = .seconds(60)
 
     private let usageRepository: any UsageRepository
     private let quotaRepository: any QuotaRepository
+    private let claudeUsageRepository: (any QuotaRepository)?
     private let store: ProviderSnapshotStore
     private let clock: any ClockLike
     private let usageFileWatcher: (any UsageFileWatching)?
     private let quotaApplicationWillApply: (@Sendable () async -> Void)?
     private let quotaIntentRegistered: (@Sendable (QuotaRefreshIntent) -> Void)?
     private let statusLineApplicationWillApply: (@Sendable () async -> Void)?
+    private let backgroundQuotaOperationCompleted: (@Sendable () async -> Void)?
     private let claudeQuotaOperationCompleted: (@Sendable () async -> Void)?
     private let claudeQuotaDiagnostics: ClaudeQuotaCompletionDiagnostics?
     private let widgetUsageDayCapture: any WidgetUsageDayCapturing
     private let statusLineRepository: (any ClaudeStatusLineCacheReading)?
     private let backgroundAttemptClock = BackgroundQuotaAttemptClock()
     private let quotaAttemptLedger: QuotaAttemptLedger
+    /// Reports Claude runs. `quotaAttemptLedger` only gates the other refresh.
+    private let claudeUsageAttemptLedger: QuotaAttemptLedger
+    private var claudeUsageSchedule = ClaudeUsageProbeSchedule()
+    /// Retained until the physical call returns, so runs never overlap across a restart.
+    private var claudeUsageProbeTask: Task<Void, Never>?
+    private var claudeUsageTickTask: Task<Void, Never>?
+    private var lastClaudeUsageTotalTokens: UInt64?
 
     private struct UserQuotaWaiter {
         let generation: UInt64
@@ -103,6 +115,7 @@ public actor RefreshCoordinator {
     public init(
         usageRepository: any UsageRepository,
         quotaRepository: any QuotaRepository,
+        claudeUsageRepository: (any QuotaRepository)? = nil,
         store: ProviderSnapshotStore,
         clock: any ClockLike = SystemClock(),
         lastQuotaSuccessfulAt: Date? = nil,
@@ -116,6 +129,7 @@ public actor RefreshCoordinator {
         self.init(
             usageRepository: usageRepository,
             quotaRepository: quotaRepository,
+            claudeUsageRepository: claudeUsageRepository,
             store: store,
             clock: clock,
             lastQuotaSuccessfulAt: lastQuotaSuccessfulAt,
@@ -125,6 +139,7 @@ public actor RefreshCoordinator {
             statusLineApplicationWillApply: nil,
             widgetUsageDayCapture: widgetUsageDayCapture,
             statusLineRepository: statusLineRepository,
+            backgroundQuotaOperationCompleted: nil,
             claudeQuotaOperationCompleted: claudeQuotaOperationCompleted,
             claudeQuotaDiagnostics: claudeQuotaDiagnostics,
             quotaAttemptObserver: quotaAttemptObserver
@@ -134,6 +149,7 @@ public actor RefreshCoordinator {
     init(
         usageRepository: any UsageRepository,
         quotaRepository: any QuotaRepository,
+        claudeUsageRepository: (any QuotaRepository)? = nil,
         store: ProviderSnapshotStore,
         clock: any ClockLike = SystemClock(),
         lastQuotaSuccessfulAt: Date? = nil,
@@ -143,6 +159,7 @@ public actor RefreshCoordinator {
         statusLineApplicationWillApply: (@Sendable () async -> Void)? = nil,
         widgetUsageDayCapture: any WidgetUsageDayCapturing = SystemWidgetUsageDayCapture(),
         statusLineRepository: (any ClaudeStatusLineCacheReading)? = nil,
+        backgroundQuotaOperationCompleted: (@Sendable () async -> Void)? = nil,
         claudeQuotaOperationCompleted: (@Sendable () async -> Void)? = nil,
         claudeQuotaDiagnostics: ClaudeQuotaCompletionDiagnostics? = nil,
         quotaAttemptObserver: (@Sendable (QuotaAttemptEvent) -> Void)? = nil
@@ -160,7 +177,10 @@ public actor RefreshCoordinator {
         self.statusLineRepository = statusLineRepository
         self.claudeQuotaOperationCompleted = claudeQuotaOperationCompleted
         self.claudeQuotaDiagnostics = claudeQuotaDiagnostics
-        self.quotaAttemptLedger = QuotaAttemptLedger(observer: quotaAttemptObserver)
+        self.claudeUsageRepository = claudeUsageRepository
+        self.backgroundQuotaOperationCompleted = backgroundQuotaOperationCompleted
+        self.quotaAttemptLedger = QuotaAttemptLedger(observer: nil)
+        self.claudeUsageAttemptLedger = QuotaAttemptLedger(observer: quotaAttemptObserver)
     }
 
     deinit {
@@ -169,6 +189,8 @@ public actor RefreshCoordinator {
         statusLineTask?.cancel()
         usageSafetyTask?.cancel()
         quotaSafetyTask?.cancel()
+        claudeUsageProbeTask?.cancel()
+        claudeUsageTickTask?.cancel()
     }
 
     /// Starts refresh scheduling and installs a fresh generation-bound watcher receiver.
@@ -181,6 +203,9 @@ public actor RefreshCoordinator {
         statusLineReadRequestedWhileInFlight = false
         runGeneration &+= 1
         quotaAttemptLedger.advance(to: runGeneration)
+        claudeUsageAttemptLedger.advance(to: runGeneration)
+        claudeUsageSchedule = ClaudeUsageProbeSchedule()
+        lastClaudeUsageTotalTokens = nil
         isRunning = true
         let generation = runGeneration
         if let usageFileWatcher {
@@ -191,6 +216,7 @@ public actor RefreshCoordinator {
         }
         requestUsageRefresh()
         requestStatusLineRead()
+        requestClaudeUsageProbe(trigger: .startup)
         requestQuotaRefresh(trigger: .startup)
         scheduleSafetyRefreshes()
     }
@@ -249,6 +275,7 @@ public actor RefreshCoordinator {
         }
 
         requestStatusLineRead()
+        requestClaudeUsageProbe(trigger: .manual)
         if let quotaTask {
             requestQuotaRefresh(trigger: .manual)
             await quotaTask.value
@@ -356,8 +383,18 @@ public actor RefreshCoordinator {
 
     /// Stops timers and invalidates the installed watcher receiver before a later restart.
     public func stop() async {
+        let stoppedGeneration = runGeneration
+        let probeInFlight = claudeUsageProbeTask != nil
         runGeneration &+= 1
         quotaAttemptLedger.advance(to: runGeneration)
+        claudeUsageAttemptLedger.advance(to: runGeneration)
+        if probeInFlight {
+            claudeUsageProbeTask?.cancel()
+            // A cancel by ID also reaches a run still on its way into the bridge.
+            claudeUsageRepository?.cancelClaudeUsageReport(through: stoppedGeneration)
+        }
+        claudeUsageTickTask?.cancel()
+        claudeUsageTickTask = nil
         isRunning = false
         usageTask?.cancel()
         quotaTask?.cancel()
@@ -414,6 +451,19 @@ public actor RefreshCoordinator {
                 }
                 guard !Task.isCancelled else { break }
                 await self?.requestScheduledQuotaRefresh(dueAt: dueAt, generation: generation)
+            }
+        }
+
+        guard claudeUsageRepository != nil else { return }
+        claudeUsageTickTask = Task { [weak self, clock, generation] in
+            while !Task.isCancelled {
+                do {
+                    try await clock.sleep(for: Self.claudeUsageTickInterval)
+                } catch {
+                    break
+                }
+                guard !Task.isCancelled else { break }
+                await self?.evaluateClaudeUsageProbeTriggers(generation: generation)
             }
         }
     }
@@ -528,6 +578,106 @@ public actor RefreshCoordinator {
         }
     }
 
+    private func requestClaudeUsageProbe(trigger: QuotaRefreshTrigger) {
+        guard isRunning, claudeUsageRepository != nil else { return }
+        let action = claudeUsageSchedule.request(trigger, now: clock.now, inFlight: claudeUsageProbeTask != nil)
+        if action == .start { beginClaudeUsageProbe(trigger: trigger) }
+    }
+
+    /// Starts the run that is due, if any: a deferred request, a displayed window
+    /// whose reset has passed, a retry after backoff, or the periodic run.
+    private func evaluateClaudeUsageProbeTriggers(generation: UInt64) async {
+        guard isRunning, generation == runGeneration, claudeUsageRepository != nil else { return }
+        let snapshot = await store.snapshot(for: .claude)
+        guard isRunning, generation == runGeneration else { return }
+        let now = clock.now
+        let selection = ClaudeQuotaPresentationSelector.select(snapshot: snapshot, now: now)
+        let resetTimes = [selection.fiveHour, selection.sevenDay, selection.fable].compactMap { $0?.resetsAt }
+        if let trigger = claudeUsageSchedule.dueTrigger(
+            resetTimes: resetTimes, now: now, inFlight: claudeUsageProbeTask != nil
+        ) {
+            beginClaudeUsageProbe(trigger: trigger)
+        }
+    }
+
+    /// A run can take 30 seconds, so it uses a dispatch thread rather than a
+    /// cooperative one, and its own slot rather than the Codex and Cursor one.
+    private func beginClaudeUsageProbe(trigger: QuotaRefreshTrigger) {
+        guard let repository = claudeUsageRepository, claudeUsageProbeTask == nil else { return }
+        let generation = runGeneration
+        let clock = clock
+        let ledger = claudeUsageAttemptLedger
+        let id = UUID()
+        claudeUsageSchedule.recordStart(at: clock.now)
+        ledger.reserve(id: id, generation: generation, trigger: trigger)
+        claudeUsageProbeTask = Task { [weak self, repository, clock, ledger] in
+            guard !Task.isCancelled, let attempt = ledger.claim(
+                id: id, generation: generation, at: clock.now, backgroundClock: nil
+            ) else {
+                await self?.finishClaudeUsageProbe(.failure(CancellationError()), trigger: trigger,
+                                                   applyResult: false, generation: generation, attempt: nil)
+                return
+            }
+            let result = await withCheckedContinuation { (continuation: CheckedContinuation<Result<QuotaRefreshResult, Error>, Never>) in
+                DispatchQueue.global(qos: .utility).async {
+                    continuation.resume(returning: Result {
+                        try repository.refresh(intent: .claudeUsageReport(runID: generation))
+                    })
+                }
+            }
+            await self?.finishClaudeUsageProbe(result, trigger: trigger, applyResult: !Task.isCancelled,
+                                               generation: generation, attempt: attempt)
+        }
+    }
+
+    private func finishClaudeUsageProbe(
+        _ result: Result<QuotaRefreshResult, Error>,
+        trigger: QuotaRefreshTrigger,
+        applyResult: Bool,
+        generation: UInt64,
+        attempt: QuotaAttemptEvent?
+    ) async {
+        defer {
+            claudeUsageProbeTask = nil
+            if let pending = claudeUsageSchedule.pendingTrigger {
+                requestClaudeUsageProbe(trigger: pending)
+            }
+        }
+        guard applyResult, generation == runGeneration else { return }
+        recordClaudeUsageOutcome(result, trigger: trigger, at: clock.now)
+        var application = QuotaApplication()
+        await applyQuotaResult(result, intent: .claudeUsageReport(runID: generation), applyResult: true,
+                               generation: generation, attempt: attempt,
+                               claudeAttemptStartedAt: attempt?.startedAt, excludingClaude: false,
+                               into: &application)
+    }
+
+    private func recordClaudeUsageOutcome(
+        _ result: Result<QuotaRefreshResult, Error>, trigger: QuotaRefreshTrigger, at date: Date
+    ) {
+        var retries = true
+        if case .success(let refresh) = result {
+            if refresh.errors[.claude] == nil, refresh.snapshots[.claude] != nil {
+                claudeUsageSchedule.recordSuccess()
+                return
+            }
+            // Not installed and no usage wait for the next trigger, which includes
+            // the periodic run (spec §8).
+            let code = refresh.errors[.claude]?.code
+            retries = code != "notInstalled" && code != "requiresAuthentication"
+        }
+        claudeUsageSchedule.recordFailure(trigger: trigger, at: date, retriesWhenBackoffEnds: retries)
+    }
+
+    /// Compares the Claude total from the existing usage refresh. The first
+    /// observation after start only sets the baseline, because start runs anyway.
+    private func noteClaudeUsageRecords(_ total: UInt64?) {
+        guard let total else { return }
+        defer { lastClaudeUsageTotalTokens = total }
+        guard let previous = lastClaudeUsageTotalTokens, previous != total else { return }
+        requestClaudeUsageProbe(trigger: .usageRecordsChanged)
+    }
+
     private func requestStatusLineRead() {
         guard let repository = statusLineRepository else { return }
         guard statusLineTask == nil else {
@@ -600,6 +750,7 @@ public actor RefreshCoordinator {
                 guard generation == runGeneration, applyResult else { return }
                 await store.markUsageFailure(for: provider, status: status(for: error), at: clock.now)
             }
+            noteClaudeUsageRecords(refresh.snapshots[.claude]?.totalTokens)
         case .failure(let error):
             let status = DataStatus.error(message: String(describing: error), lastSuccessfulAt: nil)
             for provider in ProviderID.allCases {
@@ -744,16 +895,11 @@ public actor RefreshCoordinator {
             if let bridgeFailure = error as? BridgeFailure,
                case .bridgeFailed(let bridgeErrors) = bridgeFailure
             {
-                var requestedProviders: Set<ProviderID>
-                if case .userInitiated(let provider) = intent {
-                    requestedProviders = [provider]
-                } else {
-                    requestedProviders = Set(ProviderID.allCases)
-                }
-                if excludingClaude { requestedProviders.remove(.claude) }
+                var requested = Set(requestedProviders(for: intent))
+                if excludingClaude { requested.remove(.claude) }
                 let matchingErrors = bridgeErrors.filter {
                     guard let provider = $0.providerID else { return false }
-                    return requestedProviders.contains(provider)
+                    return requested.contains(provider)
                 }
                 if !matchingErrors.isEmpty {
                     for error in matchingErrors {
@@ -770,13 +916,7 @@ public actor RefreshCoordinator {
                 }
             }
             let status = DataStatus.error(message: String(describing: error), lastSuccessfulAt: nil)
-            let providers: [ProviderID]
-            if case .userInitiated(let provider) = intent {
-                providers = [provider]
-            } else {
-                providers = ProviderID.allCases
-            }
-            for provider in providers where !(excludingClaude && provider == .claude) {
+            for provider in requestedProviders(for: intent) where !(excludingClaude && provider == .claude) {
                 guard generation == runGeneration, applyResult else { return }
                 await store.markQuotaFailure(
                     for: provider,
@@ -790,23 +930,43 @@ public actor RefreshCoordinator {
         if includesClaude {
             if let claudeDiagnosticsRead { await claudeQuotaDiagnostics?.report(claudeDiagnosticsRead) }
             await claudeQuotaOperationCompleted?()
+        } else if case .backgroundAll = intent {
+            await backgroundQuotaOperationCompleted?()
         }
         guard generation == runGeneration, isRunning, !Task.isCancelled, let attempt else { return }
+        guard case .claudeUsageReport = intent else {
+            quotaAttemptLedger.complete(attempt)
+            return
+        }
         let snapshot = await store.snapshot(for: .claude)
         guard generation == runGeneration, isRunning, !Task.isCancelled else { return }
         let completedAt = clock.now
         let selection = ClaudeQuotaPresentationSelector.select(snapshot: snapshot, now: completedAt)
         let outcome = quotaAttemptOutcome(for: result, intent: intent)
-        quotaAttemptLedger.complete(QuotaAttemptEvent(
+        claudeUsageAttemptLedger.complete(QuotaAttemptEvent(
             id: attempt.id, generation: generation, trigger: attempt.trigger, phase: .completed,
             startedAt: attempt.startedAt, completedAt: completedAt, outcome: outcome,
-            directLastSuccessfulAt: includesClaude ? snapshot.quotaLastSuccessfulAt : attempt.directLastSuccessfulAt,
-            failureAttemptAt: includesClaude ? (outcome == .success ? nil : attempt.startedAt) : attempt.failureAttemptAt,
-            fiveHourSource: includesClaude ? observationSource(selection.fiveHour) : attempt.fiveHourSource,
-            sevenDaySource: includesClaude ? observationSource(selection.sevenDay) : attempt.sevenDaySource,
-            fableSource: includesClaude ? observationSource(selection.fable) : attempt.fableSource,
-            fiveHourReceiptAt: includesClaude ? snapshot.claudeStatusLineQuota?.fiveHour?.receivedAt : attempt.fiveHourReceiptAt,
-            sevenDayReceiptAt: includesClaude ? snapshot.claudeStatusLineQuota?.sevenDay?.receivedAt : attempt.sevenDayReceiptAt))
+            directLastSuccessfulAt: snapshot.quotaLastSuccessfulAt,
+            failureAttemptAt: outcome == .success ? nil : attempt.startedAt,
+            fiveHourSource: observationSource(selection.fiveHour),
+            sevenDaySource: observationSource(selection.sevenDay),
+            fableSource: observationSource(selection.fable),
+            fiveHourReceiptAt: snapshot.claudeStatusLineQuota?.fiveHour?.receivedAt,
+            sevenDayReceiptAt: snapshot.claudeStatusLineQuota?.sevenDay?.receivedAt,
+            claudeUsageProbe: claudeUsageProbe(in: claudeDiagnosticsRead)))
+    }
+
+    private func claudeUsageProbe(in read: ClaudeQuotaDiagnosticsRead?) -> ClaudeUsageProbeDiagnostics? {
+        guard case .success(let envelope)? = read else { return nil }
+        return envelope.data?.providers.first { $0.provider == .claude }?.claudeUsageProbe
+    }
+
+    private func requestedProviders(for intent: QuotaRefreshIntent) -> [ProviderID] {
+        switch intent {
+        case .userInitiated(let provider): [provider]
+        case .claudeUsageReport, .claudePreflight: [.claude]
+        case .backgroundAll: [.codex, .cursor]
+        }
     }
 
     private func quotaAttemptOutcome(for result: Result<QuotaRefreshResult, Error>,
