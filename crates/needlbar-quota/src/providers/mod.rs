@@ -4,6 +4,7 @@ use crate::{ProviderQuotaSnapshot, QuotaError};
 
 pub mod claude;
 pub mod claude_credentials;
+pub mod claude_usage_report;
 pub mod codex;
 pub mod cursor;
 

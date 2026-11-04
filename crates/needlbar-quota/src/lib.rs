@@ -15,6 +15,9 @@ pub use providers::claude_credentials::{
     ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver, ClaudeOAuthSecret,
     FileClaudeCredentialResolver,
 };
+pub use providers::claude_usage_report::{
+    parse_usage_report_stream, ClaudeUsageReportOutcome, ClaudeUsageRowKind, ClaudeUsageRowSummary,
+};
 pub use providers::codex::{CodexQuotaProvider, CodexQuotaSource};
 pub use providers::cursor::CursorQuotaProvider;
 pub use providers::QuotaProvider;
