@@ -76,8 +76,9 @@ a day, the next whole hour. No reload is scheduled more often than once a minute
 
 - Each column reads as one VoiceOver element, for example "Claude, 77 percent remaining,
   weekly, resets in 6 days", or "Claude, quota unavailable".
-- Colours are system colours and work in light and dark appearance. The provider colours
-  stay as accents on the bar only.
+- Colours are system colours and work in light and dark appearance. The bar uses a provider
+  accent (Claude orange, Codex blue), as in the approved mock-up; the low-remaining colours in
+  §4 replace it. The widget has no title row.
 
 ## 7. Testing
 
