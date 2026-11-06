@@ -70,6 +70,8 @@ public enum WidgetPresentation {
     /// Claude quota can refresh only every 15 minutes, while Codex and usage refresh
     /// every 5, so its row keeps the app's 20-minute window.
     public static let claudeQuotaFreshnessHorizon: TimeInterval = 20 * 60
+    /// The widget never asks WidgetKit to reload sooner than this after the current entry.
+    public static let minimumReloadInterval: TimeInterval = 60
 
     private static let secondsPerDay: TimeInterval = 86_400
     private static let secondsPerHour: TimeInterval = 3_600
@@ -289,6 +291,24 @@ public enum WidgetPresentation {
         return reset <= now ? "Awaiting fresh reading" : formatter.string(from: reset)
     }
 
+    // MARK: Reloads
+
+    /// The next moment a fresh column's countdown text changes, or `nil` within the last
+    /// hour, where the reset itself is the next change. Equals `now` when `now` sits exactly
+    /// on a step; `nextDeadline` then waits `minimumReloadInterval`.
+    public static func nextCountdownChange(until reset: Date, now: Date) -> Date? {
+        switch countdown(until: reset, now: now) {
+        case .days(let days):
+            return reset.addingTimeInterval(-Double(days) * secondsPerDay)
+        case .hours(let hours):
+            return reset.addingTimeInterval(-Double(hours) * secondsPerHour)
+        case .underOneHour, nil:
+            return nil
+        }
+    }
+
+    /// The earliest of a freshness boundary, a reset, local midnight and a fresh column's
+    /// next countdown step, but never sooner than `minimumReloadInterval` after `now`.
     public static func nextDeadline(
         after now: Date,
         projection: WidgetProjection,
@@ -297,12 +317,18 @@ public enum WidgetPresentation {
         let stale = projection.quotaRows.compactMap { row in
             row.lastSuccessfulAt?.addingTimeInterval(quotaHorizon(for: row.provider))
         } + projection.usageRows.compactMap { $0.lastSuccessfulAt?.addingTimeInterval(freshnessHorizon) }
-        let reset = projection.quotaRows.compactMap(\.headline?.resetsAt).filter { $0 > now }
+        let reset = projection.quotaRows.compactMap(\.headline?.resetsAt)
         let midnight = calendar.nextDate(
             after: now,
             matching: DateComponents(hour: 0, minute: 0),
             matchingPolicy: .nextTime
         )!
-        return (stale + reset + [midnight]).filter { $0 > now }.min()!
+        let countdownSteps = projection.quotaRows.compactMap { row -> Date? in
+            guard case .fresh(let headline) = quotaStatus(row, now: now),
+                  let reset = headline.resetsAt else { return nil }
+            return nextCountdownChange(until: reset, now: now)
+        }
+        let earliest = ((stale + reset + [midnight]).filter { $0 > now } + countdownSteps).min()!
+        return max(earliest, now.addingTimeInterval(minimumReloadInterval))
     }
 }

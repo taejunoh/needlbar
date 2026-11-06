@@ -239,6 +239,42 @@ struct WidgetOverviewPresentationTests {
         )
         #expect(WidgetPresentation.todayFooter(yesterdayOnly, now: referenceDate) == nil)
     }
+
+    // MARK: Reloads
+
+    @Test
+    func theNextCountdownChangeIsTheNextWholeDayOrHourBeforeTheReset() {
+        func change(_ seconds: TimeInterval) -> Date? {
+            WidgetPresentation.nextCountdownChange(until: referenceDate.addingTimeInterval(seconds), now: referenceDate)
+        }
+        #expect(change(3 * day + 5 * minute) == referenceDate.addingTimeInterval(5 * minute))
+        #expect(change(2 * hour + 10 * minute) == referenceDate.addingTimeInterval(10 * minute))
+        #expect(change(2 * hour) == referenceDate)
+        #expect(change(59 * minute) == nil)
+        #expect(change(0) == nil)
+    }
+
+    @Test
+    func theNextReloadIncludesAFreshColumnsCountdownStep() throws {
+        let hours = try overview(claude: quota(.claude, age: 0, headline: weekly(77, resetIn: 2 * hour + 10 * minute)))
+        #expect(nextReload(hours) == referenceDate.addingTimeInterval(10 * minute))
+        let days = try overview(codex: quota(.codex, age: 0, headline: primary(85, resetIn: 3 * day + 5 * minute)))
+        #expect(nextReload(days) == referenceDate.addingTimeInterval(5 * minute))
+    }
+
+    @Test
+    func aStaleColumnAddsNoCountdownStep() throws {
+        let projection = try overview(claude: quota(.claude, age: 30 * minute, headline: weekly(77, resetIn: 2 * hour + 10 * minute)))
+        #expect(nextReload(projection) == referenceDate.addingTimeInterval(2 * hour + 10 * minute))
+    }
+
+    @Test
+    func theNextReloadIsNeverSoonerThanOneMinute() throws {
+        let nearBoundary = try overview(claude: quota(.claude, age: 20 * minute - 10, headline: weekly(77, resetIn: nil)))
+        #expect(nextReload(nearBoundary) == referenceDate.addingTimeInterval(minute))
+        let onTheHour = try overview(claude: quota(.claude, age: 0, headline: weekly(77, resetIn: 2 * hour)))
+        #expect(nextReload(onTheHour) == referenceDate.addingTimeInterval(minute))
+    }
 }
 
 private let referenceDate = Date(timeIntervalSince1970: 1_800_000_000)
@@ -320,4 +356,8 @@ private func currentDayAndOffset(_ date: Date) -> (String, Int) {
     formatter.timeZone = zone
     formatter.dateFormat = "yyyy-MM-dd"
     return (formatter.string(from: date), zone.secondsFromGMT(for: date))
+}
+
+private func nextReload(_ projection: WidgetProjection) -> Date {
+    WidgetPresentation.nextDeadline(after: referenceDate, projection: projection, calendar: utc)
 }
