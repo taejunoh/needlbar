@@ -2,7 +2,7 @@ import Foundation
 
 public enum QuotaAttemptPhase: String, Sendable { case started, completed, invalidated }
 public enum QuotaAttemptOutcome: String, Sendable { case success, failure, unavailable }
-public enum QuotaObservationSource: String, Sendable { case direct, statusLine, unavailable }
+public enum QuotaObservationSource: String, Sendable { case direct = "usageReport", statusLine, unavailable }
 
 public struct QuotaAttemptEvent: Sendable, Equatable {
     public let id: UUID
@@ -19,13 +19,15 @@ public struct QuotaAttemptEvent: Sendable, Equatable {
     public let fableSource: QuotaObservationSource
     public let fiveHourReceiptAt: Date?
     public let sevenDayReceiptAt: Date?
+    public let claudeUsageProbe: ClaudeUsageProbeDiagnostics?
 
     public init(
         id: UUID, generation: UInt64, trigger: QuotaRefreshTrigger, phase: QuotaAttemptPhase,
         startedAt: Date, completedAt: Date?, outcome: QuotaAttemptOutcome?,
         directLastSuccessfulAt: Date?, failureAttemptAt: Date?,
         fiveHourSource: QuotaObservationSource, sevenDaySource: QuotaObservationSource,
-        fableSource: QuotaObservationSource, fiveHourReceiptAt: Date?, sevenDayReceiptAt: Date?
+        fableSource: QuotaObservationSource, fiveHourReceiptAt: Date?, sevenDayReceiptAt: Date?,
+        claudeUsageProbe: ClaudeUsageProbeDiagnostics? = nil
     ) {
         self.id = id
         self.generation = generation
@@ -41,11 +43,13 @@ public struct QuotaAttemptEvent: Sendable, Equatable {
         self.fableSource = fableSource
         self.fiveHourReceiptAt = fiveHourReceiptAt
         self.sevenDayReceiptAt = sevenDayReceiptAt
+        self.claudeUsageProbe = claudeUsageProbe
     }
 }
 
 public enum QuotaRefreshTrigger: String, Sendable, Equatable {
     case startup, scheduled, wake, connectivity, popover, manual
+    case usageRecordsChanged, windowReset, backoffRetry, periodic
 }
 
 public struct QuotaRecoveryRequestToken: Sendable {

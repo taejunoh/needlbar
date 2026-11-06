@@ -919,36 +919,6 @@ struct MenuBarControllerTests {
         ])
     }
 
-    @Test func theKeychainAccessActionDismissesThePanelAndRequestsAccessOnce() {
-        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
-        let presenter = FakeMenuPanelPresenter()
-        var requests = 0
-        var logins = 0
-        var usageOpens = 0
-        let controller = makeMenuBarController(
-            configuration: configuration,
-            snapshotStore: ProviderSnapshotStore(),
-            loginCoordinator: testLoginCoordinator(),
-            panelPresenter: presenter,
-            onProviderLoginRequested: { _ in logins += 1 },
-            onClaudeKeychainAccessRequested: { requests += 1 },
-            openClaudeUsage: {
-                usageOpens += 1
-                return true
-            }
-        )
-        presenter.markShownForTesting()
-
-        let handled = controller.performPresentedAuthenticationAction(
-            .allowClaudeKeychainAccess(title: "Allow Keychain access"), for: .claude)
-
-        #expect(handled)
-        #expect(requests == 1)
-        #expect(presenter.dismissCount == 1)
-        #expect(logins == 0, "no login flow starts")
-        #expect(usageOpens == 0)
-    }
-
     @Test func retryLeavesThePanelShown() {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
         var retries = 0
@@ -965,6 +935,64 @@ struct MenuBarControllerTests {
         controller.performRetryAction()
 
         #expect(retries == 1)
+        #expect(presenter.isShown)
+        #expect(presenter.dismissCount == 0)
+    }
+
+    @Test func theDashboardCheckNowButtonRunsTheManualRefreshOnceAndLeavesThePanelShown() throws {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        var refreshes = 0
+        var logins = 0
+        var settingsShown = 0
+        var usageOpens = 0
+        let presenter = FakeMenuPanelPresenter()
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            panelPresenter: presenter,
+            onRetryRequested: { refreshes += 1 },
+            onProviderLoginRequested: { _ in logins += 1 },
+            onSettingsRequested: { settingsShown += 1 },
+            openClaudeUsage: {
+                usageOpens += 1
+                return true
+            }
+        )
+
+        controller.openOverview()
+        let shown = try #require(presenter.presentedContentViewControllers.last)
+        #expect(refreshes == 0, "opening the dashboard must not refresh")
+
+        try AccessibilityHostedView(view: shown.view, width: 360) { hosted in
+            #expect(hosted.buttons.filter { $0 == "Check now" }.count == 1, "\(hosted.buttons)")
+            try hosted.press("Check now")
+        }
+
+        #expect(refreshes == 1)
+        #expect(presenter.isShown)
+        #expect(presenter.dismissCount == 0)
+        #expect(logins == 0)
+        #expect(settingsShown == 0)
+        #expect(usageOpens == 0)
+    }
+
+    @Test func claudeCheckNowActionLeavesThePanelShown() {
+        let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
+        var refreshes = 0
+        let presenter = FakeMenuPanelPresenter()
+        let controller = makeMenuBarController(
+            configuration: configuration,
+            snapshotStore: ProviderSnapshotStore(),
+            loginCoordinator: testLoginCoordinator(),
+            panelPresenter: presenter,
+            onRetryRequested: { refreshes += 1 }
+        )
+
+        controller.openOverview()
+        controller.performClaudeCheckNowAction()
+
+        #expect(refreshes == 1)
         #expect(presenter.isShown)
         #expect(presenter.dismissCount == 0)
     }
@@ -1014,7 +1042,6 @@ private func makeMenuBarController(
     onModuleActivated: @escaping @MainActor (MenuModuleID) -> Void = { _ in },
     onRetryRequested: @escaping @MainActor () -> Void = {},
     onProviderLoginRequested: @escaping @MainActor (ProviderID) -> Void = { _ in },
-    onClaudeKeychainAccessRequested: @escaping @MainActor () -> Void = {},
     onSettingsRequested: @escaping @MainActor () -> Void = {},
     onAnalyticsRequested: @escaping @MainActor () -> Void = {},
     openCursorSpending: @escaping @MainActor () -> Void = {},
@@ -1045,7 +1072,6 @@ private func makeMenuBarController(
         onModuleActivated: onModuleActivated,
         onRetryRequested: onRetryRequested,
         onProviderLoginRequested: onProviderLoginRequested,
-        onClaudeKeychainAccessRequested: onClaudeKeychainAccessRequested,
         onSettingsRequested: onSettingsRequested,
         onAnalyticsRequested: onAnalyticsRequested,
         openCursorSpending: openCursorSpending,

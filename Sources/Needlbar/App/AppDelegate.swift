@@ -135,6 +135,17 @@ final class AcceptanceLifecycleController {
 }
 #endif
 
+/// Smoke runs launch a built app. On a Mac with `claude` that would start a real
+/// `/usage`, which can renew the login, and the child would outlive the killed app.
+/// `scripts/smoke-app.sh` sets this variable so no run starts.
+enum ClaudeUsageProbeSwitch {
+    static let disableEnvironmentName = "NEEDLBAR_DISABLE_CLAUDE_USAGE_PROBE"
+
+    static func isDisabled(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        environment[disableEnvironmentName] == "1"
+    }
+}
+
 @MainActor
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let snapshotStore: ProviderSnapshotStore
@@ -191,6 +202,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             let refreshCoordinator = RefreshCoordinator(
                 usageRepository: RustUsageRepository(bridge: bridge),
                 quotaRepository: RustQuotaRepository(bridge: bridge),
+                claudeUsageRepository: ClaudeUsageProbeSwitch.isDisabled() ? nil : RustQuotaRepository(bridge: bridge),
                 store: snapshotStore,
                 usageFileWatcher: usageFileWatcher,
                 statusLineRepository: ClaudeStatusLineCacheRepository(),
@@ -200,9 +212,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             let loginCoordinator = ProviderLoginCoordinator(
                 refreshQuota: { provider in
                     await refreshCoordinator.refreshQuota(afterUserAuthenticationFor: provider)
-                },
-                preflightClaudeLogin: {
-                    await refreshCoordinator.preflightClaudeLogin()
                 }
             )
             let snapshotExportController = SnapshotExportController(
@@ -220,9 +229,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             let actions = SettingsActions(
                 loginCoordinator: loginCoordinator,
                 snapshotExportController: snapshotExportController,
-                claudeKeychainAccessOperation: {
-                    _ = await refreshCoordinator.requestClaudeKeychainAccess()
-                }
+                claudeCheckNow: { Task { await refreshCoordinator.manualRefresh() } }
             )
             self.refreshCoordinator = refreshCoordinator
             self.quotaRecoveryLifecycle = QuotaRecoveryLifecycleController(
@@ -250,9 +257,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 onProviderLoginRequested: { provider in
                     _ = loginCoordinator.connect(provider)
-                },
-                onClaudeKeychainAccessRequested: {
-                    actions.requestClaudeKeychainAccess()
                 },
                 onAnalyticsRequested: { [weak analyticsWindowController] in
                     analyticsWindowController?.showAnalytics()

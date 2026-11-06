@@ -1,8 +1,9 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use needlbar_quota::{
-    ClaudeCredentialAccess, ClaudeQuotaFailureOrigin, ClaudeQuotaProvider, ProviderId,
-    ProviderQuotaSnapshot, QuotaError, QuotaErrorCode, QuotaProvider,
+    ClaudeQuotaFailureOrigin, ClaudeUsageProbeSummary, ClaudeUsageReportProvider,
+    ClaudeUsageReportRun, ProviderId, ProviderQuotaSnapshot, QuotaError, QuotaErrorCode,
+    QuotaProvider, UsageProbeControl,
 };
 #[cfg(not(feature = "bridge-test-runtime"))]
 use needlbar_quota::{CodexQuotaProvider, CursorQuotaProvider};
@@ -24,97 +25,71 @@ pub struct QuotaCollection {
     pub errors: Vec<BridgeError>,
     pub claude_failure_origin: Option<ClaudeQuotaFailureOrigin>,
     pub claude_attempted: bool,
+    pub claude_usage_probe: Option<ClaudeUsageProbeSummary>,
 }
 
-/// Narrow Claude boundary used by the explicit verification path. Keeping the
-/// credential access mode at this boundary makes it testable without exposing
-/// Claude credentials or a provider-selection parameter over the C ABI.
-pub trait ClaudeUserInitiatedQuotaSource: Send + Sync {
-    fn fetch_with_credential_access<'a>(
+/// The Claude quota run. A dedicated collection, so a run of up to 30 seconds
+/// never holds the Codex and Cursor refresh.
+pub trait ClaudeUsageReportSource: Send + Sync {
+    fn run_usage_report<'a>(
         &'a self,
-        access: ClaudeCredentialAccess,
-    ) -> Pin<Box<dyn Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = ClaudeUsageReportRun> + Send + 'a>>;
 }
 
-impl ClaudeUserInitiatedQuotaSource for ClaudeQuotaProvider {
-    fn fetch_with_credential_access<'a>(
+impl ClaudeUsageReportSource for ClaudeUsageReportProvider {
+    fn run_usage_report<'a>(
         &'a self,
-        access: ClaudeCredentialAccess,
-    ) -> Pin<Box<dyn Future<Output = Result<ProviderQuotaSnapshot, QuotaError>> + Send + 'a>> {
-        Box::pin(ClaudeQuotaProvider::fetch_with_credential_access(
-            self, access,
-        ))
+    ) -> Pin<Box<dyn Future<Output = ClaudeUsageReportRun> + Send + 'a>> {
+        Box::pin(ClaudeUsageReportProvider::run(self))
     }
 }
 
-/// Collects each independently-bounded provider concurrently. The explicit
-/// result order makes the JSON payload independent of provider completion
-/// timing.
+pub async fn collect_claude_usage_report(run_id: u64) -> QuotaCollection {
+    #[cfg(feature = "bridge-test-runtime")]
+    {
+        let _ = run_id;
+        if let Some(source) = crate::test_runtime::claude_usage_report_source() {
+            return collect_claude_usage_report_with_source(source).await;
+        }
+        test_runtime_unavailable_collection()
+    }
+    #[cfg(not(feature = "bridge-test-runtime"))]
+    {
+        collect_claude_usage_report_with_source(Arc::new(ClaudeUsageReportProvider::new(run_id)))
+            .await
+    }
+}
+
+pub async fn collect_claude_usage_report_with_source(
+    source: Arc<dyn ClaudeUsageReportSource>,
+) -> QuotaCollection {
+    let run = source.run_usage_report().await;
+    let mut collection = collection_from_results([run.result]);
+    collection.claude_usage_probe = run.summary;
+    collection
+}
+
+pub fn cancel_claude_usage_report_through(run_id: u64) {
+    UsageProbeControl::shared().cancel_through(run_id);
+}
+
+/// Collects Codex and Cursor concurrently. Claude has its own collection and
+/// slot, so a run of up to 30 seconds cannot hold these two.
 pub async fn collect_quota() -> QuotaCollection {
     #[cfg(feature = "bridge-test-runtime")]
-    if let Some((claude, codex, cursor)) = crate::test_runtime::all_quota_providers() {
-        return collect_quota_with_providers(claude, codex, cursor).await;
+    if let Some((codex, cursor)) = crate::test_runtime::background_quota_providers() {
+        return collect_quota_with_providers(codex, cursor).await;
     }
     #[cfg(feature = "bridge-test-runtime")]
     return test_runtime_unavailable_collection();
     #[cfg(not(feature = "bridge-test-runtime"))]
     {
         collect_quota_with_providers(
-            Arc::new(ClaudeQuotaProvider::new()),
             Arc::new(CodexQuotaProvider::new()),
             Arc::new(CursorQuotaProvider::new()),
         )
         .await
     }
-}
-
-/// Runs only the explicit Claude verification flow. Production construction is
-/// intentionally kept here so callers cannot accidentally request interactive
-/// Keychain access through the all-provider collector.
-pub async fn collect_claude_user_initiated() -> QuotaCollection {
-    #[cfg(feature = "bridge-test-runtime")]
-    if let Some(source) = crate::test_runtime::claude_user_initiated_source() {
-        return collect_claude_user_initiated_with_source(source).await;
-    }
-    #[cfg(feature = "bridge-test-runtime")]
-    return test_runtime_unavailable_collection();
-    #[cfg(not(feature = "bridge-test-runtime"))]
-    {
-        collect_claude_user_initiated_with_source(Arc::new(ClaudeQuotaProvider::new())).await
-    }
-}
-
-/// Runs a Claude-only connection preflight without allowing Keychain UI. This
-/// remains separate from the post-login verifier so an explicit connection
-/// click cannot accidentally prompt before the coordinator classifies the
-/// existing authentication state.
-pub async fn collect_claude_preflight() -> QuotaCollection {
-    #[cfg(feature = "bridge-test-runtime")]
-    if let Some(source) = crate::test_runtime::claude_user_initiated_source() {
-        return collect_claude_preflight_with_source(source).await;
-    }
-    #[cfg(feature = "bridge-test-runtime")]
-    return test_runtime_unavailable_collection();
-    #[cfg(not(feature = "bridge-test-runtime"))]
-    {
-        collect_claude_preflight_with_source(Arc::new(ClaudeQuotaProvider::new())).await
-    }
-}
-
-pub async fn collect_claude_preflight_with_source(
-    source: Arc<dyn ClaudeUserInitiatedQuotaSource>,
-) -> QuotaCollection {
-    collection_from_results([source
-        .fetch_with_credential_access(ClaudeCredentialAccess::BackgroundNoUI)
-        .await])
-}
-
-pub async fn collect_claude_user_initiated_with_source(
-    source: Arc<dyn ClaudeUserInitiatedQuotaSource>,
-) -> QuotaCollection {
-    collection_from_results([source
-        .fetch_with_credential_access(ClaudeCredentialAccess::UserInitiatedAllowUI)
-        .await])
 }
 
 /// Runs only Codex quota collection. It does not construct Claude or Cursor
@@ -137,12 +112,11 @@ pub async fn collect_codex_with_provider(provider: Arc<dyn QuotaProvider>) -> Qu
 }
 
 pub async fn collect_quota_with_providers(
-    claude: Arc<dyn QuotaProvider>,
     codex: Arc<dyn QuotaProvider>,
     cursor: Arc<dyn QuotaProvider>,
 ) -> QuotaCollection {
-    let (claude, codex, cursor) = tokio::join!(claude.fetch(), codex.fetch(), cursor.fetch());
-    collection_from_results([claude, codex, cursor])
+    let (codex, cursor) = tokio::join!(codex.fetch(), cursor.fetch());
+    collection_from_results([codex, cursor])
 }
 
 fn collection_from_results(
@@ -159,8 +133,8 @@ fn collection_from_results(
                 claude_attempted |= snapshot.provider == ProviderId::Claude;
                 providers.push(snapshot);
             }
-            // The read did not run, so there is no Claude outcome to report.
-            Err(error) if error.is_claude_credential_busy() => {}
+            // The run was cancelled, so there is no Claude outcome to report.
+            Err(error) if error.is_claude_usage_report_cancelled() => {}
             Err(error) => {
                 if error.provider == Some(ProviderId::Claude) {
                     claude_attempted = true;
@@ -180,6 +154,7 @@ fn collection_from_results(
         errors,
         claude_failure_origin,
         claude_attempted,
+        claude_usage_probe: None,
     }
 }
 

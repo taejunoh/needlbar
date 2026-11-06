@@ -214,6 +214,34 @@ struct WidgetProjectionTests {
     }
 
     @Test
+    func aClaudeQuotaRowStaysFreshForTwentyMinutesAndOthersForFifteen() throws {
+        let now = referenceDate
+        func quotaRow(_ provider: WidgetProvider, age: TimeInterval) throws -> WidgetQuotaRow {
+            try WidgetQuotaRow(provider: provider, stream: .fresh, lastSuccessfulAt: now.addingTimeInterval(-age), headline: nil)
+        }
+        #expect(WidgetPresentation.freshness(try quotaRow(.claude, age: 1_199), now: now) == .fresh)
+        #expect(WidgetPresentation.freshness(try quotaRow(.claude, age: 1_200), now: now) == .stale)
+        #expect(WidgetPresentation.freshness(try quotaRow(.codex, age: 899), now: now) == .fresh)
+        #expect(WidgetPresentation.freshness(try quotaRow(.codex, age: 900), now: now) == .stale)
+    }
+
+    @Test
+    func theNextDeadlineUsesTheClaudeQuotaRowsOwnHorizon() throws {
+        let projection = try WidgetProjection(
+            quotaRows: [
+                try WidgetQuotaRow(provider: .claude, stream: .fresh, lastSuccessfulAt: referenceDate, headline: nil),
+                try WidgetQuotaRow(provider: .codex, stream: .unavailable, lastSuccessfulAt: nil, headline: nil),
+            ],
+            usageRows: makeUnavailableUsageRows(),
+            today: unavailableToday
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        #expect(WidgetPresentation.nextDeadline(after: referenceDate, projection: projection, calendar: calendar)
+            == referenceDate.addingTimeInterval(1_200))
+    }
+
+    @Test
     func passedResetUsesFixedAwaitingFreshReadingLabel() {
         let formatter = DateFormatter()
         #expect(WidgetPresentation.resetLabel(referenceDate.addingTimeInterval(-1), now: referenceDate, formatter: formatter) == "Awaiting fresh reading")

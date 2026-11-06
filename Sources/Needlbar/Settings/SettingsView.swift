@@ -257,12 +257,21 @@ public struct SettingsView: View {
         claudeUsageRowContent
     }
 
+    /// Claude counts as enabled while it is visible on the menu bar or the dashboard.
+    /// The control does not depend on the quota state, so it stays through failures.
+    private var claudeCheckNowAction: ClaudeCheckNowAction? {
+        guard let preference = configuration.systemMonitor.ai[.claude],
+              preference.menuBarVisible || preference.dashboardVisible
+        else { return nil }
+        return .checkNow
+    }
+
     var claudeUsageRowContent: some View {
         HStack(alignment: .top, spacing: 8) {
             ProviderBrandIcon(provider: .claude, accessibility: .decorative)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Claude")
-                Text("Quota uses your existing Claude sign-in. Browser authentication remains provider-owned.")
+                Text("Quota comes from Claude Code's /usage report, run on this Mac. Sign-in stays with Claude Code.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 6)
@@ -315,18 +324,8 @@ public struct SettingsView: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
                 Button("View Claude usage") { claudeUsageState.openUsage(openClaudeUsage) }
-                if case let .allowClaudeKeychainAccess(title)? = claudeQuotaPresentation.value.keychainAccessAction {
-                    Button(title) { actions.requestClaudeKeychainAccess() }
-                        .disabled(actions.isRequestingClaudeKeychainAccess)
-                    if let detail = claudeQuotaPresentation.value.keychainAccessDetailText {
-                        Text(detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.trailing)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: 220, alignment: .trailing)
-                            .accessibilityLabel(detail)
-                    }
+                if let checkNow = claudeCheckNowAction {
+                    Button(checkNow.title) { actions.checkClaudeNow() }
                 }
             }
         }
@@ -483,17 +482,13 @@ public struct SettingsView: View {
     private func loginStatusCopy(for provider: ProviderID) -> String {
         switch actions.loginState(for: provider) {
         case .idle:
-            provider == .claude
-                ? "Checks your existing Claude sign-in first. macOS may request access to Claude Code credentials."
-                : "Sign in opens the provider's browser flow."
+            "Sign in opens the provider's browser flow."
         case .launching:
             "Starting sign-in…"
         case .awaitingBrowser:
             "Continue sign-in in your browser."
         case .refreshingQuota:
-            provider == .claude
-                ? "macOS may request access to Claude Code credentials."
-                : "Verifying quota…"
+            "Verifying quota…"
         case .connected:
             "Connected."
         case let .failed(failure):

@@ -10,10 +10,16 @@ pub use domain::{
     QuotaErrorCode, QuotaWindow,
 };
 pub use http::RedactingHttpClient;
-pub use providers::claude::ClaudeQuotaProvider;
-pub use providers::claude_credentials::{
-    ClaudeCredentialAccess, ClaudeCredentialError, ClaudeCredentialResolver, ClaudeOAuthSecret,
-    FileClaudeCredentialResolver,
+pub use providers::claude_cli::ClaudeCliLocator;
+pub use providers::claude_usage_probe::{
+    run_usage_probe, UsageProbeControl, UsageProbeEnvironment, UsageProbeFailure, UsageProbeLimits,
+    USAGE_PROBE_ARGUMENTS,
+};
+pub use providers::claude_usage_provider::{
+    ClaudeUsageProbeSummary, ClaudeUsageReportProvider, ClaudeUsageReportRun,
+};
+pub use providers::claude_usage_report::{
+    parse_usage_report_stream, ClaudeUsageReportOutcome, ClaudeUsageRowKind, ClaudeUsageRowSummary,
 };
 pub use providers::codex::{CodexQuotaProvider, CodexQuotaSource};
 pub use providers::cursor::CursorQuotaProvider;

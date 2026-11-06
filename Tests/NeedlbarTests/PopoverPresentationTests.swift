@@ -72,10 +72,12 @@ import NeedlbarClaudeStatusLineSupport
 @Test func everySafeClaudeQuotaReasonRendersItsExactAllowlistedText() {
     let cases: [(ClaudeQuotaFailureReason, String)] = [
         (.quotaAccessUnavailable, "Quota access unavailable"),
-        (.credentialAccessUnavailable, "Credential access unavailable"),
         (.connectionUnavailable, "Connection unavailable"),
         (.temporarilyLimited, "Temporarily limited"),
         (.couldNotUpdateQuota, "Could not update quota"),
+        (.claudeCodeNotInstalled, "Install Claude Code to see quota"),
+        (.claudeCodeCheckFailed, "Could not check Claude Code"),
+        (.usageReportFormatChanged, "Could not read Claude Code's usage report"),
     ]
 
     for (reason, expectedText) in cases {

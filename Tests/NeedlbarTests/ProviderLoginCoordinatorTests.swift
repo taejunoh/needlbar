@@ -4,23 +4,6 @@ import Testing
 @testable import NeedlbarApp
 @testable import NeedlbarCore
 
-@Test func resolverBuildsOnlyTheFixedClaudeAndCodexCommands() throws {
-    let root = URL(fileURLWithPath: "/tmp/needlbar-login-tests")
-    let resolver = ProviderLoginCommandResolver(
-        environment: ["HOME": root.path, "PATH": "/usr/bin"],
-        homeDirectory: root,
-        executablePredicate: { url in url.lastPathComponent == "claude" || url.lastPathComponent == "codex" }
-    )
-
-    let claude = try resolver.command(for: .claude)
-    let codex = try resolver.command(for: .codex)
-
-    #expect(claude.arguments == ["auth", "login", "--claudeai"])
-    #expect(codex.arguments == ["login"])
-    #expect(claude.provider == .claude)
-    #expect(codex.provider == .codex)
-}
-
 @Test func resolverRejectsCursorWithoutLookingForAnExecutable() {
     let resolver = ProviderLoginCommandResolver(
         environment: ["HOME": "/tmp/needlbar-login-tests"],
@@ -39,14 +22,14 @@ import Testing
 @Test func resolverUsesPathBeforeFixedFallbackLocations() throws {
     let home = URL(fileURLWithPath: "/tmp/needlbar-login-tests/home")
     let pathDirectory = URL(fileURLWithPath: "/tmp/needlbar-login-tests/path-bin")
-    let expected = pathDirectory.appendingPathComponent("claude").standardizedFileURL
+    let expected = pathDirectory.appendingPathComponent("codex").standardizedFileURL
     let resolver = ProviderLoginCommandResolver(
         environment: ["HOME": home.path, "PATH": pathDirectory.path],
         homeDirectory: home,
         executablePredicate: { $0.standardizedFileURL == expected }
     )
 
-    #expect(try resolver.command(for: .claude).executableURL == expected)
+    #expect(try resolver.command(for: .codex).executableURL == expected)
 }
 
 @Test func resolverExposesFixedCandidateSearchOrderIncludingVersionManagers() {
@@ -73,45 +56,6 @@ import Testing
     ])
 }
 
-@Test func resolverBuildsMinimalProviderScopedEnvironment() throws {
-    let home = URL(fileURLWithPath: "/tmp/needlbar-login-tests/home")
-    let selected = URL(fileURLWithPath: "/tmp/needlbar-login-tests/wrapper/bin/claude")
-    let inherited = [
-        "HOME": home.path,
-        "USER": "test-user",
-        "LOGNAME": "test-login",
-        "TMPDIR": "/tmp/needlbar-login-tests/tmp",
-        "LANG": "en_US.UTF-8",
-        "HTTPS_PROXY": "http://proxy.invalid",
-        "SSL_CERT_FILE": "/tmp/cert.pem",
-        "PATH": "/tmp/needlbar-login-tests/wrapper/bin",
-        "CLAUDE_CONFIG_DIR": "/tmp/claude-config",
-        "CODEX_HOME": "/tmp/codex-home",
-        "ANTHROPIC_API_KEY": "must-not-leak",
-        "ANTHROPIC_AUTH_TOKEN": "must-not-leak",
-        "CLAUDE_CODE_OAUTH_TOKEN": "must-not-leak",
-        "OPENAI_API_KEY": "must-not-leak",
-        "FIXTURE_SECRET": "must-not-leak",
-    ]
-    let resolver = ProviderLoginCommandResolver(
-        environment: inherited,
-        homeDirectory: home,
-        executablePredicate: { $0.standardizedFileURL == selected.standardizedFileURL }
-    )
-
-    let environment = try resolver.command(for: .claude).environment
-
-    #expect(environment["PATH"] == "/tmp/needlbar-login-tests/wrapper/bin:/tmp/needlbar-login-tests/wrapper/bin")
-    #expect(environment["CLAUDE_CONFIG_DIR"] == "/tmp/claude-config")
-    #expect(environment["CODEX_HOME"] == nil)
-    #expect(environment["ANTHROPIC_API_KEY"] == nil)
-    #expect(environment["ANTHROPIC_AUTH_TOKEN"] == nil)
-    #expect(environment["CLAUDE_CODE_OAUTH_TOKEN"] == nil)
-    #expect(environment["OPENAI_API_KEY"] == nil)
-    #expect(environment["FIXTURE_SECRET"] == nil)
-    #expect(Set(environment.keys).isSubset(of: ProviderLoginCommandResolver.allowedEnvironmentKeys))
-}
-
 @MainActor
 @Test func coordinatorRejectsDuplicateProviderButAllowsClaudeAndCodexTogether() async {
     let runner = SuspendedLoginRunner()
@@ -120,7 +64,6 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
-        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -138,72 +81,6 @@ import Testing
 }
 
 @MainActor
-@Test func claudeFreshPreflightConnectsWithoutResolvingOrLaunchingTheCLI() async {
-    let resolver = CountingLoginResolver()
-    let runner = CountingLoginRunner()
-    let states = LoginStateRecorder()
-    let coordinator = ProviderLoginCoordinator(
-        resolver: resolver,
-        runner: runner,
-        refreshQuota: { _ in true },
-        preflightClaudeLogin: { .verified },
-        stateObserver: { provider, state in await states.record(provider, state) }
-    )
-
-    #expect(coordinator.connect(.claude))
-    await states.wait(for: .claude, state: .connected)
-
-    #expect(resolver.commandCount() == 0)
-    #expect(await runner.invocationCount() == 0)
-}
-
-@MainActor
-@Test func claudeAuthenticationPreflightRunsTheFixedCLIThenOneVerifier() async {
-    let resolver = CountingLoginResolver()
-    let runner = ImmediateLoginRunner(outcomes: [.claude: .exited(status: 0)])
-    let refresh = SuspendedQuotaRefresh()
-    let coordinator = ProviderLoginCoordinator(
-        resolver: resolver,
-        runner: runner,
-        refreshQuota: { provider in await refresh.refresh(provider) },
-        preflightClaudeLogin: { .requiresAuthentication }
-    )
-
-    #expect(coordinator.connect(.claude))
-    await refresh.waitForCall(.claude)
-    #expect(resolver.commandCount() == 1)
-    #expect(await runner.commands().map(\.provider) == [.claude])
-    #expect(await refresh.callCount(for: .claude) == 1)
-
-    await refresh.complete(.claude, with: true)
-    #expect(await eventually { coordinator.state(for: .claude) == .connected })
-}
-
-@MainActor
-@Test func claudePermissionPreflightRunsOneInteractiveVerifierWithoutCLIAndStopsAfterDenial() async {
-    let resolver = CountingLoginResolver()
-    let runner = CountingLoginRunner()
-    let refresh = SuspendedQuotaRefresh()
-    let states = LoginStateRecorder()
-    let coordinator = ProviderLoginCoordinator(
-        resolver: resolver,
-        runner: runner,
-        refreshQuota: { provider in await refresh.refresh(provider) },
-        preflightClaudeLogin: { .keychainPermissionRequired },
-        stateObserver: { provider, state in await states.record(provider, state) }
-    )
-
-    #expect(coordinator.connect(.claude))
-    await refresh.waitForCall(.claude)
-    await refresh.complete(.claude, with: false)
-    await states.wait(for: .claude, state: .failed(.verificationFailed))
-
-    #expect(resolver.commandCount() == 0)
-    #expect(await runner.invocationCount() == 0)
-    #expect(await refresh.callCount(for: .claude) == 1)
-}
-
-@MainActor
 @Test func coordinatorVerifiesExactlyOnceAfterAZeroExit() async {
     let runner = SuspendedLoginRunner()
     let refresh = SuspendedQuotaRefresh()
@@ -212,7 +89,6 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { provider in await refresh.refresh(provider) },
-        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -237,7 +113,6 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { provider in await refresh.refresh(provider) },
-        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -262,7 +137,6 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
-        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -285,7 +159,6 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
-        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) },
         runFinished: { provider in await finished.record(provider) }
     )
@@ -318,10 +191,9 @@ import Testing
         resolver: MissingLoginResolver(),
         runner: ImmediateLoginRunner(outcomes: [:]),
         refreshQuota: { _ in true },
-        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
-    #expect(missingCLI.connect(.claude))
+    #expect(!missingCLI.connect(.claude))
     await states.wait(for: .claude, state: .failed(.cliNotInstalled))
 
     let runner = ImmediateLoginRunner(outcomes: [.claude: .timedOut, .codex: .cancelled])
@@ -329,7 +201,6 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
-        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
     #expect(coordinator.connect(.claude))
@@ -344,8 +215,7 @@ import Testing
     let coordinator = ProviderLoginCoordinator(
         resolver: FixedLoginResolver(),
         runner: runner,
-        refreshQuota: { _ in true },
-        preflightClaudeLogin: { .requiresAuthentication }
+        refreshQuota: { _ in true }
     )
 
     #expect(coordinator.connect(.claude))
@@ -364,7 +234,6 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { provider in await refresh.refresh(provider) },
-        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -387,8 +256,7 @@ import Testing
     let coordinator = ProviderLoginCoordinator(
         resolver: FixedLoginResolver(),
         runner: runner,
-        refreshQuota: { _ in true },
-        preflightClaudeLogin: { .requiresAuthentication }
+        refreshQuota: { _ in true }
     )
 
     #expect(coordinator.connect(.claude))
@@ -425,7 +293,6 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
-        preflightClaudeLogin: { .requiresAuthentication },
         runFinished: { provider in await finished.record(provider) }
     )
 
@@ -472,7 +339,6 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
-        preflightClaudeLogin: { .requiresAuthentication },
         runFinished: { provider in await finished.record(provider) }
     )
 
@@ -515,7 +381,6 @@ import Testing
         resolver: resolver,
         runner: runner,
         refreshQuota: { _ in true },
-        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -548,8 +413,7 @@ import Testing
     let coordinator = ProviderLoginCoordinator(
         resolver: resolver,
         runner: runner,
-        refreshQuota: { _ in true },
-        preflightClaudeLogin: { .requiresAuthentication }
+        refreshQuota: { _ in true }
     )
 
     #expect(coordinator.connect(.claude))
@@ -591,7 +455,6 @@ import Testing
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { provider in await refresh.refresh(provider) },
-        preflightClaudeLogin: { .requiresAuthentication },
         beforeProcessStart: { _ in await startGate.wait() },
         runFinished: { provider in await finished.record(provider) }
     )
@@ -600,34 +463,6 @@ import Testing
     await startGate.waitForEntry()
     await coordinator.stop()
     await startGate.release()
-    await finished.wait(for: .claude)
-
-    #expect(coordinator.state(for: .claude) == .idle)
-    #expect(await runner.invocationCount() == 0)
-    #expect(await refresh.callCount(for: .claude) == 0)
-}
-
-@MainActor
-@Test func stoppingClaudeDuringPreflightCannotStartCLIOrInteractiveVerification() async {
-    let preflightGate = SuspensionGate()
-    let runner = CountingLoginRunner()
-    let refresh = SuspendedQuotaRefresh()
-    let finished = RunCompletionRecorder()
-    let coordinator = ProviderLoginCoordinator(
-        resolver: FixedLoginResolver(),
-        runner: runner,
-        refreshQuota: { provider in await refresh.refresh(provider) },
-        preflightClaudeLogin: {
-            await preflightGate.wait()
-            return .keychainPermissionRequired
-        },
-        runFinished: { provider in await finished.record(provider) }
-    )
-
-    #expect(coordinator.connect(.claude))
-    await preflightGate.waitForEntry()
-    await coordinator.stop()
-    await preflightGate.release()
     await finished.wait(for: .claude)
 
     #expect(coordinator.state(for: .claude) == .idle)
@@ -844,7 +679,6 @@ private struct ProviderLoginProcessRunnerTests {
         resolver: FixedLoginResolver(),
         runner: runner,
         refreshQuota: { _ in true },
-        preflightClaudeLogin: { .requiresAuthentication },
         stateObserver: { provider, state in await states.record(provider, state) }
     )
 
@@ -2123,4 +1957,77 @@ private enum CleanupEvent: Equatable, Sendable {
     case term(ProviderID)
     case kill(ProviderID)
     case reaped(ProviderID)
+}
+
+@Test func resolverBuildsOnlyTheFixedCodexCommand() throws {
+    let root = URL(fileURLWithPath: "/tmp/needlbar-login-tests")
+    let resolver = ProviderLoginCommandResolver(
+        environment: ["HOME": root.path, "PATH": "/usr/bin"],
+        homeDirectory: root,
+        executablePredicate: { url in url.lastPathComponent == "codex" }
+    )
+    let codex = try resolver.command(for: .codex)
+    #expect(codex.arguments == ["login"])
+    #expect(codex.provider == .codex)
+}
+
+@Test func resolverBuildsMinimalCodexEnvironment() throws {
+    let home = URL(fileURLWithPath: "/tmp/needlbar-login-tests/home")
+    let selected = URL(fileURLWithPath: "/tmp/needlbar-login-tests/wrapper/bin/codex")
+    let resolver = ProviderLoginCommandResolver(
+        environment: [
+            "HOME": home.path,
+            "USER": "test-user",
+            "LANG": "en_US.UTF-8",
+            "PATH": "/tmp/needlbar-login-tests/wrapper/bin",
+            "CLAUDE_CONFIG_DIR": "/tmp/claude-config",
+            "CODEX_HOME": "/tmp/codex-home",
+            "OPENAI_API_KEY": "must-not-leak",
+            "FIXTURE_SECRET": "must-not-leak",
+        ],
+        homeDirectory: home,
+        executablePredicate: { $0.standardizedFileURL == selected.standardizedFileURL }
+    )
+    let environment = try resolver.command(for: .codex).environment
+    #expect(environment["PATH"] == "/tmp/needlbar-login-tests/wrapper/bin:/tmp/needlbar-login-tests/wrapper/bin")
+    #expect(environment["CODEX_HOME"] == "/tmp/codex-home")
+    #expect(environment["CLAUDE_CONFIG_DIR"] == nil)
+    #expect(environment["OPENAI_API_KEY"] == nil)
+    #expect(environment["FIXTURE_SECRET"] == nil)
+    #expect(Set(environment.keys).isSubset(of: ProviderLoginCommandResolver.allowedEnvironmentKeys))
+}
+
+@Test func theProductionResolverNeverBuildsAClaudeCommand() {
+    let root = URL(fileURLWithPath: "/tmp/needlbar-login-tests")
+    let resolver = ProviderLoginCommandResolver(
+        environment: ["HOME": root.path, "PATH": "/usr/bin"],
+        homeDirectory: root,
+        executablePredicate: { _ in
+            Issue.record("Claude must not resolve an executable")
+            return true
+        }
+    )
+    #expect(throws: ProviderLoginCommandResolutionError.unsupportedProvider) {
+        try resolver.command(for: .claude)
+    }
+    #expect(resolver.candidateURLs(for: .claude).isEmpty)
+}
+
+@MainActor
+@Test func connectingClaudeThroughTheProductionResolverNeverLaunches() async {
+    let root = URL(fileURLWithPath: "/tmp/needlbar-login-tests")
+    let coordinator = ProviderLoginCoordinator(
+        resolver: ProviderLoginCommandResolver(
+            environment: ["HOME": root.path, "PATH": "/usr/bin"],
+            homeDirectory: root,
+            executablePredicate: { _ in true }
+        ),
+        runner: ImmediateLoginRunner(outcomes: [:]),
+        refreshQuota: { _ in
+            Issue.record("Claude has no login verification")
+            return false
+        }
+    )
+    #expect(!coordinator.connect(.claude))
+    #expect(coordinator.state(for: .claude) == .failed(.unsupportedProvider))
 }

@@ -20,6 +20,13 @@ ownership or the provider refresh cadence.
 > and direct observations keep no maximum age. See the amended selection rule
 > under "Source-aware value and freshness".
 
+> **Amendment — 2026-11-03:** Approved by the user in
+> `2026-11-03-claude-usage-report-source-design.md`. "No Claude
+> authentication/configuration write" no longer covers a renewal performed by
+> Claude Code itself during a spawned `/usage`. Needlbar itself still performs no
+> authentication or configuration write. Where this design says "direct", builds
+> prepared from that design read the usage report instead of the usage endpoint.
+
 ## Context and evidence
 
 On October 7, two Needlbar hosts emitted the allowlisted

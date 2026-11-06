@@ -40,11 +40,21 @@ struct ClaudeQuotaFailureDiagnosticEvent: Equatable, Sendable {
     let origin: ClaudeQuotaFailureOrigin
     let code: ClaudeQuotaFailureDiagnosticCode
     let attemptAt: String
+    let usageProbe: ClaudeUsageProbeDiagnostics?
 
-    /// The whole OSLog line, built only from the two closed values and the
+    init(origin: ClaudeQuotaFailureOrigin, code: ClaudeQuotaFailureDiagnosticCode, attemptAt: String,
+         usageProbe: ClaudeUsageProbeDiagnostics? = nil) {
+        self.origin = origin
+        self.code = code
+        self.attemptAt = attemptAt
+        self.usageProbe = usageProbe
+    }
+
+    /// The whole OSLog line, built only from closed values, counts and the
     /// formatted attempt time.
     var message: String {
-        "claudeQuotaFailure origin=\(origin.rawValue) code=\(code.rawValue) attempt=\(attemptAt)"
+        let base = "claudeQuotaFailure origin=\(origin.rawValue) code=\(code.rawValue) attempt=\(attemptAt)"
+        return usageProbe.map { "\(base) \($0.logFields)" } ?? base
     }
 }
 
@@ -104,7 +114,8 @@ final class ClaudeQuotaFailureDiagnosticsReporter: @unchecked Sendable {
         return ClaudeQuotaFailureDiagnosticEvent(
             origin: origin,
             code: ClaudeQuotaFailureDiagnosticCode(recordCode: provider.quotaErrorCode),
-            attemptAt: ISO8601DateFormatter().string(from: attemptAt)
+            attemptAt: ISO8601DateFormatter().string(from: attemptAt),
+            usageProbe: provider.claudeUsageProbe
         )
     }
 

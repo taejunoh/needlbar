@@ -12,13 +12,6 @@ thiserror.workspace = true
 async-trait.workspace = true
 reqwest.workspace = true
 tokio.workspace = true
-zeroize.workspace = true
-
-[target.'cfg(target_os = "macos")'.dependencies]
-security-framework.workspace = true
-security-framework-sys.workspace = true
-core-foundation.workspace = true
-core-foundation-sys.workspace = true
 libc.workspace = true
 
 [dev-dependencies]

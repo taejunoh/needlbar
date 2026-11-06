@@ -194,26 +194,33 @@ bridge receives values only from interactive terminal Claude Code sessions.
 Native overnight, quota-reset, sustained unattended, and native macOS 14
 acceptance remain unverified.
 
-### Claude Keychain access action (v0.3.15 prepared)
+### Claude quota from the Claude Code usage report (v0.3.15 prepared)
 
-The prepared v0.3.15 changes add one explicit action, **Allow Keychain access**,
-beside **View Claude usage** in the dashboard and the Settings Connection row
-while the Claude quota shows **Credential access unavailable**. On the default
-dashboard row (compact, remaining metric) the visible label is **Usage**
-(**View Claude usage** is its help and accessibility text), the new button sits
-on its own line, and without recent status-line values the reason is inside the
-collapsed **Quota details**. One click asks macOS once for the
-`Claude Code-credentials` item, which may show the macOS Keychain dialog; a line
-beside the button suggests choosing Always Allow. Nothing else ever does:
-timers, startup, wake and background updates still cannot show that dialog.
-Codex and Cursor quota keep updating while the dialog is open. Allowing access
-shows the Claude quota; cancelling or denying keeps the same state and action,
-with no retry. Whether later background updates can read the item depends on
-what macOS keeps from that dialog (the Always Allow suggestion is not verified
-to help), so the state can return at the next background read, including when
-the dashboard is reopened, and the action with it. Expired Claude Code access offers no action, and credential renewal is
-not implemented. This has not been tried against a real Keychain dialog, and it
-is not part of any public release yet.
+The prepared v0.3.15 changes replace how Needlbar gets Claude quota. Needlbar no
+longer reads Claude Code's Keychain item or credentials file and no longer calls
+the usage endpoint. It runs `/usage` through your installed `claude`
+(`~/.local/bin/claude`, `/opt/homebrew/bin/claude` or `/usr/local/bin/claude`,
+never through a shell) and reads the documented `usage_report` field, which is
+marked experimental. Runs happen at app start, on manual refresh (**Check now**, in the dashboard and in Settings), when Claude
+Code's local usage records change, when a displayed window's reset passes, and
+after 15 minutes without a run, at most once every 5 minutes. Opening the dashboard
+alone starts none. A reading stays current for 20 minutes, and usage outside Claude
+Code appears within about 15 minutes while the app is running and the Mac is awake.
+That can mean about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart. A run is
+limited to 30 seconds and 1 MiB of output, works in one fixed folder in the temporary directory that is emptied before each run,
+and its output is neither logged nor stored. After any exit Needlbar ends the process group it
+started; a process that moved to its own session or group is not covered. The status line remains the second
+source and last-known values the third; a newer valid reading wins. A window the
+report omits is hidden, not shown as zero. Without Claude Code the app shows
+install guidance and the usage link; with no usage available it says it could not check
+Claude Code, suggests running `claude` in Terminal to check its sign-in if that continues,
+and retries under backoff. It offers no button. Needlbar never runs `claude auth`
+and writes no Claude configuration, though Claude Code may renew its own login
+during a run, and `claude` itself may show a Keychain prompt. **Allow Keychain
+access**, which an earlier prepared build had, is removed. This has not run for
+24 hours on a real machine, and duration, memory, CPU, the cost of up to 288 runs a day and any rate limit on `/usage` have not been measured. It is not part of any
+public release yet, and a public release awaits a decision on Anthropic's terms for a local
+app that starts the user's `claude`.
 
 ### Usage and quota monitoring
 

@@ -81,7 +81,7 @@ public struct SystemDashboardPopoverView: View {
     private let onAPIBillingStateChanged: (DashboardAPIBillingLinkState) -> Void
     private let onClaudeUsageAction: () -> Bool
     private let onClaudeUsageStateChanged: (DashboardClaudeUsageLinkState) -> Void
-    private let onClaudeKeychainAccessAction: (ProviderAuthenticationAction) -> Void
+    private let onClaudeCheckNow: () -> Void
     private let onQuotaDetailsExpansionChanged: () -> Void
 
     public init(
@@ -94,7 +94,7 @@ public struct SystemDashboardPopoverView: View {
         onAPIBillingStateChanged: @escaping (DashboardAPIBillingLinkState) -> Void = { _ in },
         onClaudeUsageAction: @escaping () -> Bool = { false },
         onClaudeUsageStateChanged: @escaping (DashboardClaudeUsageLinkState) -> Void = { _ in },
-        onClaudeKeychainAccessAction: @escaping (ProviderAuthenticationAction) -> Void = { _ in },
+        onClaudeCheckNow: @escaping () -> Void = {},
         onQuotaDetailsExpansionChanged: @escaping () -> Void = {}
     ) {
         _model = ObservedObject(wrappedValue: model)
@@ -109,7 +109,7 @@ public struct SystemDashboardPopoverView: View {
         self.onAPIBillingStateChanged = onAPIBillingStateChanged
         self.onClaudeUsageAction = onClaudeUsageAction
         self.onClaudeUsageStateChanged = onClaudeUsageStateChanged
-        self.onClaudeKeychainAccessAction = onClaudeKeychainAccessAction
+        self.onClaudeCheckNow = onClaudeCheckNow
         self.onQuotaDetailsExpansionChanged = onQuotaDetailsExpansionChanged
     }
 
@@ -123,7 +123,7 @@ public struct SystemDashboardPopoverView: View {
         onAPIBillingStateChanged: @escaping (DashboardAPIBillingLinkState) -> Void = { _ in },
         onClaudeUsageAction: @escaping () -> Bool = { false },
         onClaudeUsageStateChanged: @escaping (DashboardClaudeUsageLinkState) -> Void = { _ in },
-        onClaudeKeychainAccessAction: @escaping (ProviderAuthenticationAction) -> Void = { _ in },
+        onClaudeCheckNow: @escaping () -> Void = {},
         onQuotaDetailsExpansionChanged: @escaping () -> Void = {}
     ) {
         _model = ObservedObject(wrappedValue: model)
@@ -138,7 +138,7 @@ public struct SystemDashboardPopoverView: View {
         self.onAPIBillingStateChanged = onAPIBillingStateChanged
         self.onClaudeUsageAction = onClaudeUsageAction
         self.onClaudeUsageStateChanged = onClaudeUsageStateChanged
-        self.onClaudeKeychainAccessAction = onClaudeKeychainAccessAction
+        self.onClaudeCheckNow = onClaudeCheckNow
         self.onQuotaDetailsExpansionChanged = onQuotaDetailsExpansionChanged
     }
 
@@ -160,7 +160,7 @@ public struct SystemDashboardPopoverView: View {
         onAPIBillingStateChanged = { _ in }
         onClaudeUsageAction = { false }
         onClaudeUsageStateChanged = { _ in }
-        onClaudeKeychainAccessAction = { _ in }
+        onClaudeCheckNow = {}
         onQuotaDetailsExpansionChanged = {}
     }
 
@@ -349,20 +349,12 @@ public struct SystemDashboardPopoverView: View {
 
     /// On its own line, so "View Claude usage" keeps its place and its width.
     @ViewBuilder
-    private func claudeKeychainAccessButton(_ provider: SystemDashboardPresentation.AIProvider) -> some View {
-        if let action = provider.keychainAccessAction {
-            let title = Self.accessibilityActionTitle(for: action)
-            Button(title) { onClaudeKeychainAccessAction(action) }
+    private func claudeCheckNowButton(_ provider: SystemDashboardPresentation.AIProvider) -> some View {
+        if let action = provider.checkNowAction {
+            Button(action.title) { onClaudeCheckNow() }
                 .buttonStyle(.borderless)
                 .font(.caption)
-                .accessibilityLabel(title)
-            if let detail = provider.keychainAccessDetailText {
-                Text(detail)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityLabel(detail)
-            }
+                .accessibilityLabel(action.title)
         }
     }
 
@@ -414,7 +406,7 @@ public struct SystemDashboardPopoverView: View {
                     .accessibilityLabel(claudeUsageState.failureMessage)
             }
 
-            claudeKeychainAccessButton(provider)
+            claudeCheckNowButton(provider)
 
             if let fable = provider.fable {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -556,7 +548,6 @@ public struct SystemDashboardPopoverView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityLabel(reason)
             }
-            claudeKeychainAccessButton(provider)
             if let lastChecked = provider.quotaLastCheckedText {
                 Text("\(provider.quotaObservationLabel) \(lastChecked)")
                     .font(.caption2)
@@ -570,6 +561,7 @@ public struct SystemDashboardPopoverView: View {
                     .foregroundStyle(.orange)
                     .accessibilityLabel(claudeUsageState.failureMessage)
             }
+            claudeCheckNowButton(provider)
             if let action = provider.apiBillingAction {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(action.providerLabel)
@@ -669,7 +661,7 @@ public struct SystemDashboardPopoverView: View {
         switch action {
         case .browserLogin:
             return "Sign in"
-        case let .openCursorSpending(title), let .openClaudeUsage(title), let .allowClaudeKeychainAccess(title):
+        case let .openCursorSpending(title), let .openClaudeUsage(title):
             return title
         }
     }
@@ -681,8 +673,7 @@ public struct SystemDashboardPopoverView: View {
 
     nonisolated internal static func accessibilityActionTitle(for action: ProviderAuthenticationAction) -> String {
         switch action {
-        case let .browserLogin(title), let .openCursorSpending(title), let .openClaudeUsage(title),
-             let .allowClaudeKeychainAccess(title): title
+        case let .browserLogin(title), let .openCursorSpending(title), let .openClaudeUsage(title): title
         }
     }
 

@@ -15,9 +15,10 @@ history database or history export.
 - There is no Needlbar backend, account, hosted sync service, or telemetry.
 - Needlbar does not upload token history, prompts, assistant responses, source code, file paths, account identifiers, or provider credentials.
 - It does not display prompt/response text or source-code content. The local usage engine reads known provider sources only to derive token metadata and cost information.
-- Claude and Codex quota requests go directly to their providers. Needlbar does not proxy or relay those requests.
-- Claude and Codex browser sign-in is explicit. Their buttons launch the installed provider
-  CLI, which owns browser navigation, OAuth callbacks, refresh, and credential storage.
+- Codex quota requests go directly to the provider. Prepared for the next release, not in v0.3.14: Claude quota comes from `/usage` run by the user's installed `claude`, and Needlbar makes no Claude request itself. Needlbar does not proxy or relay these requests.
+- Codex browser sign-in is explicit. Its button launches the installed provider CLI, which owns
+  browser navigation, OAuth callbacks, refresh, and credential storage. Prepared for the next
+  release, not in v0.3.14: Needlbar has no Claude sign-in and never runs `claude auth`.
   Needlbar never implements a duplicate OAuth flow or silently crawls browser profiles for
   cookies.
 - Cursor has no Needlbar credential integration, private endpoint, or remote usage hydration.
@@ -42,7 +43,7 @@ The following are the documented v0.1 boundaries. Paths are examples relative to
 
 | Provider | Usage metadata | Quota/authentication evidence |
 | --- | --- | --- |
-| Claude | `~/.claude/projects` and `~/.claude/transcripts`, delegated to the pinned `tokscale-core` engine | Background refresh uses existing file evidence from `CLAUDE_CONFIG_DIR/.credentials.json` when set, otherwise `~/.claude/.credentials.json`. After an explicit provider sign-in, macOS may authorize one exact `Claude Code-credentials` Keychain item for Claude quota verification. |
+| Claude | `~/.claude/projects` and `~/.claude/transcripts`, delegated to the pinned `tokscale-core` engine | Prepared for the next release, not in v0.3.14: none read by Needlbar. Quota comes from `/usage` run by the user's installed `claude`, which uses its own login. v0.3.14 still reads Claude Code's Keychain item or credentials file. |
 | Codex | `~/.codex/sessions` and archived sessions when available, delegated to `tokscale-core` | `$CODEX_HOME/auth.json` when `CODEX_HOME` is set; otherwise `~/.codex/auth.json` |
 | Cursor | An existing compatible local cache at `~/.config/tokscale/cursor-cache/usage.csv`, read by `tokscale-core` | None. Cursor quota is unavailable inside Needlbar and is represented by the fixed Spending dashboard action. |
 
@@ -105,9 +106,15 @@ The document contains only normalized usage and quota values, UTC timestamps, fi
 
 Usage and quota have separate network behavior:
 
-- Claude quota uses the Anthropic OAuth usage endpoint with existing local OAuth evidence.
-  Background Keychain access is interaction-forbidden and never prompts. Only the explicit
-  post-login Claude verification path may allow a macOS Keychain permission prompt.
+- Prepared for the next release, not in v0.3.14: Needlbar makes no Claude network request. It starts
+  the user's installed `claude` automatically, without a click: at app start, when Claude Code's local
+  usage records change, after a displayed window resets, on backoff retries and every 15 minutes, as
+  well as on manual refresh. Claude Code may renew its own login during such a run. Each run executes
+  `/usage` through the user's installed `claude`, with a fixed command, no shell, one fixed working
+  folder in the temporary directory that is emptied before each run, a minimal environment and a 30-second limit. Any network use, login renewal or Keychain
+  prompt during that run belongs to `claude`. Needlbar reads only the `usage_report` field and an
+  error label, and discards the rest without logging or storing it. It reads no Claude Keychain item
+  or credential file. v0.3.14 still uses the Anthropic usage endpoint with existing local evidence.
 - Codex quota tries the provider usage API first and can use the installed Codex CLI app-server RPC fallback when the API credential route is unavailable.
 - Cursor makes no authentication, usage-export, or personal-quota request. Clicking
   `Open Cursor Spending` hands only `https://cursor.com/dashboard/spending` to the macOS
@@ -118,10 +125,7 @@ Usage and quota have separate network behavior:
   analytics request.
 
 Requests are bounded and errors are redacted. Needlbar does not log authorization headers,
-cookies, response bodies, prompt text, response text, or source code. Raw Claude credential
-material is held only ephemerally inside the Rust quota adapter, with zeroizing storage where
-Needlbar owns the buffer; it is not persisted by Needlbar, copied into Swift, or exposed
-through the C ABI. A failed request leaves the previous valid snapshot available where the
+cookies, response bodies, prompt text, response text, command output, or source code. A failed request leaves the previous valid snapshot available where the
 subsystem supports last-known-good behavior.
 
 ## User controls and recovery
@@ -129,10 +133,10 @@ subsystem supports last-known-good behavior.
 Claude and Codex use provider-native CLI/browser sign-in. Needlbar does not own their
 credentials and has no separate disconnect action; sign out or revoke access through the
 provider's supported app/CLI controls, then retry in Needlbar. If the CLI is not installed,
-Needlbar reports a provider-scoped failure and leaves other providers available. If Claude
-Keychain access is denied or cancelled, grant access in macOS when appropriate or complete
-provider re-authentication, then retry; Needlbar does not broaden the Keychain query or fall
-back to browser-cookie crawling.
+Needlbar reports a provider-scoped failure and leaves other providers available. Needlbar does
+not crawl browser cookies. Prepared for the next release, not in v0.3.14: when Claude Code reports
+no usage, Needlbar says it could not check Claude Code, suggests running `claude` in Terminal to check
+its sign-in if that continues, and offers no button.
 
 Cursor Settings contains one `Open Cursor Spending` action and no credential field or
 connection controls. The provider popover offers the same action when Cursor quota is
@@ -141,8 +145,9 @@ open it is transient UI state and does not mutate usage or quota snapshots.
 
 ## What may leave the machine
 
-Only the minimum normalized data needed for Claude and Codex quota requests leaves the machine,
-and those requests go directly to their providers. Opening Cursor Spending navigates the
+Only the minimum normalized data needed for Codex quota requests leaves the machine, and those
+requests go directly to the provider. Prepared for the next release, not in v0.3.14: Needlbar sends
+nothing for Claude quota; the installed `claude` does its own work when Needlbar runs `/usage`. Opening Cursor Spending navigates the
 user's browser to Cursor's provider-owned page; Needlbar sends no Cursor credential, local
 usage cache, or private endpoint request. Needlbar has no destination to receive telemetry or
 content uploads. The app presents normalized counts, estimated costs, quota percentages, reset

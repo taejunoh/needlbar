@@ -14,6 +14,11 @@ import Testing
     let bridge = RustBridge()
     let usage = try RustUsageRepository(bridge: bridge).refresh()
     let quota = try RustQuotaRepository(bridge: bridge).refresh()
+    #expect(quota.snapshots[.claude] == nil)
+    #expect(quota.errors[.claude] == nil)
+    #expect(quota.snapshots[.codex] != nil)
+    let report = try RustQuotaRepository(bridge: bridge).refresh(intent: .claudeUsageReport(runID: 1))
+    #expect(report.snapshots[.claude] != nil)
     let now = try #require(BridgeDecoder.date("2026-08-14T12:00:00Z"))
     let store = ProviderSnapshotStore(now: { now })
 

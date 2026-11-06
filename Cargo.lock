@@ -885,18 +885,13 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
- "core-foundation",
- "core-foundation-sys",
  "libc",
  "reqwest",
- "security-framework",
- "security-framework-sys",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
- "zeroize",
 ]
 
 [[package]]

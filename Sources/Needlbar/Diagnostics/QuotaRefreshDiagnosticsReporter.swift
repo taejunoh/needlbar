@@ -44,9 +44,10 @@ final class QuotaRefreshDiagnosticsReporter: @unchecked Sendable {
         let logger = Logger(subsystem: "com.taejunoh.needlbar", category: "QuotaRefreshDiagnostic")
         let fields = "trigger=\(event.trigger.rawValue) phase=\(event.phase.rawValue) outcome=\(event.outcome?.rawValue ?? "-")"
             + " start=\(timestamp(event.startedAt)) complete=\(timestamp(event.completedAt))"
-            + " directSuccess=\(timestamp(event.directLastSuccessfulAt)) failureAttempt=\(timestamp(event.failureAttemptAt))"
+            + " usageReportSuccess=\(timestamp(event.directLastSuccessfulAt)) failureAttempt=\(timestamp(event.failureAttemptAt))"
             + " fiveHour=\(event.fiveHourSource.rawValue) sevenDay=\(event.sevenDaySource.rawValue) fable=\(event.fableSource.rawValue)"
             + " fiveHourReceipt=\(timestamp(event.fiveHourReceiptAt)) sevenDayReceipt=\(timestamp(event.sevenDayReceiptAt))"
+            + (event.claudeUsageProbe.map { " \($0.logFields)" } ?? "")
         logger.notice("quotaRefresh \(fields, privacy: .public)")
     }
 }

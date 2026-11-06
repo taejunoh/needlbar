@@ -7,8 +7,8 @@ import Testing
 struct ClaudeQuotaPresentationSelectorTests {
     private let observedAt = Date(timeIntervalSince1970: 1_800_000_000)
 
-    @Test(arguments: [899.0, 900.0, 901.0])
-    func directObservationExpiresAtStrictFifteenMinuteBoundary(age: Double) throws {
+    @Test(arguments: [1_199.0, 1_200.0, 1_201.0])
+    func directObservationExpiresAtStrictTwentyMinuteBoundary(age: Double) throws {
         let success = Date(timeIntervalSince1970: 1_800_000_000)
         let snapshot = ProviderSnapshot(
             provider: .claude, usage: nil,
@@ -20,7 +20,7 @@ struct ClaudeQuotaPresentationSelectorTests {
         let selected = ClaudeQuotaPresentationSelector.select(
             snapshot: snapshot, now: success.addingTimeInterval(age))
         #expect(selected.fiveHour?.remainingPercent == 75)
-        #expect(selected.fiveHour?.isLastKnown == (age >= 900))
+        #expect(selected.fiveHour?.isLastKnown == (age >= 1_200))
     }
 
     @Test func missingSuccessNeverUsesUpdatedAtAsObservationTime() throws {

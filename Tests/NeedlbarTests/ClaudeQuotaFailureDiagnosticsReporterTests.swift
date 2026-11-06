@@ -45,11 +45,13 @@ import NeedlbarCore
 @Test func reporterLogsEachSplitOtherFailureOriginWithItsProducerCode() async throws {
     let sink = DiagnosticEventSink()
     let cases = [
-        ("credentialStoreAmbiguous", "schemaChanged"),
-        ("credentialFormatUnrecognized", "schemaChanged"),
-        ("credentialFormatUnrecognized", "requiresAuthentication"),
-        ("usageEndpointServerError", "providerUnavailable"),
-        ("usageResponseUnrecognized", "schemaChanged"),
+        ("claudeCliNotFound", "notInstalled"),
+        ("usageReportNoUsage", "providerUnavailable"),
+        ("usageProbeTimedOut", "providerUnavailable"),
+        ("usageProbeOutputTooLarge", "providerUnavailable"),
+        ("usageProbeFailed", "providerUnavailable"),
+        ("usageReportRateLimited", "rateLimited"),
+        ("usageReportFormatChanged", "schemaChanged"),
     ]
     for (origin, code) in cases {
         let reporter = ClaudeQuotaFailureDiagnosticsReporter(
@@ -206,7 +208,7 @@ import NeedlbarCore
 @Test func reporterEventNeverIncludesUnrelatedRawSecretCanaryFields() async throws {
     let sink = DiagnosticEventSink()
     let fixture = try diagnosticsEnvelope(
-        origin: "usageEndpointForbidden",
+        origin: "usageProbeFailed",
         attempt: "2026-09-16T11:59:59.123Z",
         extraFields: "\"rawSecretCanary\":\"CLAUDE-CANARY-SECRET\",\"accountPath\":\"/private/canary\""
     )
@@ -218,7 +220,7 @@ import NeedlbarCore
     reporter.reportLatestClaudeQuotaFailure()
 
     let event = try #require(sink.values.first)
-    #expect(event.origin == .usageEndpointForbidden)
+    #expect(event.origin == .usageProbeFailed)
     #expect(event.attemptAt == "2026-09-16T11:59:59Z")
     #expect(!event.attemptAt.contains("CLAUDE-CANARY-SECRET"))
     #expect(!String(describing: event).contains("CLAUDE-CANARY-SECRET"))
@@ -234,11 +236,7 @@ import NeedlbarCore
             quotaCalls.increment()
             return nil
         },
-        claudePreflightQuotaCall: {
-            quotaCalls.increment()
-            return nil
-        },
-        claudeUserInitiatedQuotaCall: {
+        claudeUsageReportQuotaCall: { _ in
             quotaCalls.increment()
             return nil
         },
@@ -362,16 +360,22 @@ private final class CStringPointer: @unchecked Sendable {
 
 private extension ClaudeQuotaFailureOrigin {
     static let allCasesForTest: [Self] = [
-        .credentialMissing,
-        .keychainCredentialExpired,
-        .fileCredentialExpired,
-        .credentialAccessDenied,
-        .credentialStoreAmbiguous,
-        .credentialFormatUnrecognized,
-        .usageEndpointUnauthorized,
-        .usageEndpointForbidden,
-        .usageEndpointServerError,
-        .usageResponseUnrecognized,
-        .otherFailure,
+        .claudeCliNotFound, .usageReportNoUsage, .usageProbeTimedOut, .usageProbeOutputTooLarge,
+        .usageProbeFailed, .usageReportRateLimited, .usageReportFormatChanged, .otherFailure,
     ]
+}
+
+@Test func reporterLogLineAddsTheRunSummaryAndNothingElse() throws {
+    let json = """
+    {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-11-03T12:00:00Z","data":{"providers":[{"provider":"claude","usageStatus":"available","quotaStatus":"error","usageSource":"local","quotaSource":"usageReport","lastAttemptAt":"2026-11-03T11:59:59Z","quotaErrorCode":"schemaChanged","claudeQuotaFailureOrigin":"usageReportFormatChanged","claudeUsageProbe":{"durationMs":1832,"rowKinds":["weeklyAll"],"unknownRowCount":1,"skippedRowCount":0},"rawOutputCanary":"TEXT-CANARY"}]},"errors":[]}
+    """
+    let sink = DiagnosticEventSink()
+    let reporter = ClaudeQuotaFailureDiagnosticsReporter(
+        readDiagnostics: { try BridgeDecoder().decodeDiagnosticsEnvelope(Data(json.utf8)) },
+        sink: { sink.append($0) }
+    )
+    reporter.reportLatestClaudeQuotaFailure()
+    #expect(sink.values.map(\.message) == [
+        "claudeQuotaFailure origin=usageReportFormatChanged code=schemaChanged attempt=2026-11-03T11:59:59Z durationMs=1832 rows=weeklyAll unknownRows=1 skippedRows=0",
+    ])
 }

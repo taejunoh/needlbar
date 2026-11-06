@@ -77,28 +77,18 @@ pub enum QuotaErrorCode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ClaudeQuotaFailureOrigin {
-    CredentialMissing,
-    KeychainCredentialExpired,
-    FileCredentialExpired,
-    CredentialAccessDenied,
-    /// The Keychain lookup did not yield exactly one usable data item.
-    CredentialStoreAmbiguous,
-    /// A credential payload was found but its format was not recognized.
-    CredentialFormatUnrecognized,
-    UsageEndpointUnauthorized,
-    UsageEndpointForbidden,
-    /// The usage endpoint answered with HTTP 5xx.
-    UsageEndpointServerError,
-    /// The usage response body could not be read as a usage document.
-    UsageResponseUnrecognized,
+    /// No executable `claude` at any fixed location.
+    ClaudeCliNotFound,
+    /// `rate_limits` was null, or `limits` was null or empty.
+    UsageReportNoUsage,
+    UsageProbeTimedOut,
+    UsageProbeOutputTooLarge,
+    /// The process could not start or exited unsuccessfully.
+    UsageProbeFailed,
+    UsageReportRateLimited,
+    /// A run finished without a usable `usage_report`.
+    UsageReportFormatChanged,
     OtherFailure,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ClaudeUsageEndpointStatus {
-    Unauthorized,
-    Forbidden,
-    ServerError,
 }
 
 /// A deliberately provider-safe error. It never stores a source error, URL,
@@ -114,9 +104,7 @@ pub struct QuotaError {
     #[serde(skip)]
     claude_failure_origin: Option<ClaudeQuotaFailureOrigin>,
     #[serde(skip)]
-    usage_endpoint_status: Option<ClaudeUsageEndpointStatus>,
-    #[serde(skip)]
-    claude_credential_busy: bool,
+    claude_usage_report_cancelled: bool,
 }
 
 impl QuotaError {
@@ -131,35 +119,28 @@ impl QuotaError {
             message,
             retry_after: None,
             claude_failure_origin: None,
-            usage_endpoint_status: None,
-            claude_credential_busy: false,
+            claude_usage_report_cancelled: false,
         }
     }
 
-    /// A background Claude read that did not run because a user-initiated
-    /// Keychain read holds the sequence lock. It describes no attempt, so
-    /// collectors drop it rather than report a Claude outcome.
-    pub const fn claude_credential_busy() -> Self {
+    /// A run stopped because the app is stopping. It describes no outcome, so
+    /// collectors drop it rather than report a Claude failure.
+    pub const fn claude_usage_report_cancelled() -> Self {
         let mut error = Self::new(
             Some(ProviderId::Claude),
             QuotaErrorCode::ProviderUnavailable,
-            "Claude credential access is already in progress.",
+            "The Claude usage check was cancelled.",
         );
-        error.claude_credential_busy = true;
+        error.claude_usage_report_cancelled = true;
         error
     }
 
-    pub const fn is_claude_credential_busy(&self) -> bool {
-        self.claude_credential_busy
+    pub const fn is_claude_usage_report_cancelled(&self) -> bool {
+        self.claude_usage_report_cancelled
     }
 
     pub(crate) const fn with_retry_after(mut self, retry_after: Option<Duration>) -> Self {
         self.retry_after = retry_after;
-        self
-    }
-
-    pub(crate) const fn for_provider(mut self, provider: ProviderId) -> Self {
-        self.provider = Some(provider);
         self
     }
 
@@ -171,20 +152,8 @@ impl QuotaError {
         self
     }
 
-    pub(crate) const fn with_usage_endpoint_status(
-        mut self,
-        status: ClaudeUsageEndpointStatus,
-    ) -> Self {
-        self.usage_endpoint_status = Some(status);
-        self
-    }
-
     pub fn claude_failure_origin(&self) -> Option<ClaudeQuotaFailureOrigin> {
         self.claude_failure_origin
-    }
-
-    pub(crate) const fn usage_endpoint_status(&self) -> Option<ClaudeUsageEndpointStatus> {
-        self.usage_endpoint_status
     }
 }
 

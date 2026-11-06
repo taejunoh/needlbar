@@ -30,7 +30,9 @@ public struct ClaudeQuotaSelection: Equatable, Sendable {
 
 public enum ClaudeQuotaPresentationSelector {
     public static let recentStatusLineInterval: TimeInterval = 15 * 60
-    public static let recentDirectInterval: TimeInterval = 15 * 60
+    /// Longer than the slowest periodic refresh, which can finish 16:31 after the
+    /// last run started, so the label does not flip just before each refresh.
+    public static let recentDirectInterval: TimeInterval = 20 * 60
     /// A status-line window received longer ago than this is treated exactly
     /// like a missing one, so it is not presented even as last known (user
     /// decision, 2026-10-22). Direct observations have no such limit.
@@ -51,6 +53,8 @@ public enum ClaudeQuotaPresentationSelector {
         )
     }
 
+    /// A newer valid reading wins regardless of source (spec §5), the report on a
+    /// tie. A reading whose time is unusable ranks below any dated one.
     private static func choose(
         direct: QuotaWindow?,
         statusLine: StatusLineWindowObservation?,
@@ -59,8 +63,6 @@ public enum ClaudeQuotaPresentationSelector {
     ) -> DisplayedClaudeWindow? {
         let directDisplay = direct.map { directWindow($0, snapshot: snapshot, now: now) }
         let statusDisplay = statusLine.flatMap { statusLineWindow($0, now: now) }
-        if let directDisplay, !directDisplay.isLastKnown { return directDisplay }
-        if let statusDisplay, !statusDisplay.isLastKnown { return statusDisplay }
         switch (directDisplay, statusDisplay) {
         case let (.some(direct), .some(bridge)):
             switch (direct.observedAt, bridge.observedAt) {

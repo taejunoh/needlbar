@@ -34,13 +34,13 @@ Needlbar.app
                     ├── needlbar-project-analytics
                     │   └── observed-workspace mapping, bounded local Git, correlation, sanitization
                     ├── needlbar-quota
-                    │   └── Claude and Codex quota/auth adapters; Cursor unavailable result
+                    │   └── Claude usage report runner, Codex quota/auth adapter; Cursor unavailable result
                     └── vendor/tokscale-core
                         └── pinned local usage discovery/parsing/aggregation
 ```
 
 Needlbar's AppKit layer also owns `ProviderLoginCoordinator`. It launches only the fixed
-provider commands through the installed executable's direct path, while the provider CLI
+Codex login command through the installed executable's direct path, while the provider CLI
 owns browser navigation, OAuth callbacks, refresh, and credential storage. The coordinator
 does not capture provider stdout or stderr and reports only safe login states to SwiftUI.
 
@@ -164,19 +164,26 @@ Claude local session roots ───────────────┐
 Codex local session roots ────────────────┼─> tokscale-core -> usage envelope
 Cursor existing local cache ──────────────┘
 
-Claude OAuth evidence -> Anthropic usage API ───────┐
-Codex OAuth -> OpenAI usage API -> CLI RPC fallback ├─> quota envelope
-Cursor quota unavailable; Settings/popover open Spending dashboard ─┘
+Codex OAuth -> OpenAI usage API -> CLI RPC fallback ┐
+Cursor quota unavailable; Settings/popover open Spending dashboard ┴─> quota envelope
+
+Installed claude -> /usage -> usage_report ───────────> Claude quota envelope
 ```
 
 Quota collection runs providers independently and preserves usable partial results and provider-scoped safe errors. Cursor quota performs no credential, filesystem, or network I/O and returns a provider-scoped unavailable result. Cursor usage is a local read only; manual refresh does not imply remote synchronization.
 
-Claude and Codex login are explicit user actions. After a successful provider CLI exit,
-`NeedlbarCore` requests a quota-only refresh for that provider. Claude's dedicated
-post-authentication bridge path may allow the exact provider-owned macOS Keychain item to
-be read; ordinary background refresh always uses interaction-forbidden access. Codex uses
-its provider-specific quota path. A failed verification preserves the last-known-good
-quota state and does not mark all-provider background refresh fresh.
+Codex login is an explicit user action. After a successful CLI exit, `NeedlbarCore` requests a
+quota-only refresh for Codex. A failed verification preserves the last-known-good quota state and
+does not mark the background refresh fresh.
+
+Prepared for the next release, not in v0.3.14: Claude has no login path. `RefreshCoordinator` runs
+Claude on its own slot, off the cooperative pool, under `ClaudeUsageProbeSchedule`: at app start, on
+manual refresh, when the Claude total in the usage refresh changes, when a displayed reset passes,
+and after 15 minutes without a run, at most once every 5 minutes with backoff. The Codex and Cursor refresh never waits for it.
+A stop cancels by run ID through `needlbar_claude_usage_report_cancel_through`, which signals the
+process group before returning. After any exit the probe also sends SIGKILL to the process group it
+started; a process that moved to its own session or group is not covered. A dashboard open, a wake or a regained connection starts no Claude run; if
+Codex is failing, each dashboard open retries Codex, with no Claude run and no dialog.
 
 ## Bridge contract
 
@@ -185,7 +192,8 @@ The stable C surface is:
 ```c
 const char *needlbar_usage_snapshot_json(void);
 const char *needlbar_quota_snapshot_json(void);
-const char *needlbar_claude_user_initiated_quota_snapshot_json(void);
+const char *needlbar_claude_usage_report_quota_snapshot_json(uint64_t run_id);
+void needlbar_claude_usage_report_cancel_through(uint64_t run_id);
 const char *needlbar_codex_quota_snapshot_json(void);
 const char *needlbar_diagnostics_json(void);
 const char *needlbar_analytics_snapshot_json(void);
@@ -206,8 +214,8 @@ it does not invoke remote Git, a forge API, provider authentication, Keychain,
 or a network request. Its result is held in NeedlbarCore memory and is not
 written to a database, export, App Group file, widget, or notification ledger.
 
-Credential resolution and provider responses stay in Rust and are redacted before any error crosses the bridge. The raw Claude credential is ephemeral and zeroizing inside
-`needlbar-quota`; it is never persisted by Needlbar or exported through the C ABI. Cursor
+Credential resolution and provider responses stay in Rust and are redacted before any error crosses the bridge. Needlbar holds no Claude credential, and `claude` output stays inside
+`needlbar-quota`, which passes only windows and closed labels over the C ABI. Cursor
 has no credential integration or private endpoint path. Its only external action is the
 fixed Spending dashboard URL, and its local usage cache is never sent over a new network
 boundary.

@@ -1,5 +1,80 @@
 # Needlbar Development Status
 
+## 2026-11-05 Claude usage report source: local observation (not released)
+
+Local-only receipt from the maintainer's Mac. The build was made with `make package` at `059e01c`
+on `claude/claude-usage-report-source`: ad-hoc signed, without hardened runtime, with a synthetic
+App Group, and not notarized. It was installed in place of the unreleased v0.3.15 candidate on
+2026-11-04 and left running for about 38 hours under normal use. Nothing was merged, tagged or
+released.
+
+- **Runs.** Needlbar's unified log kept about the last 17 hours (from 2026-11-05 07:54 UTC). In that
+  window 125 runs completed and all succeeded: 90 after usage-record changes, 34 periodic and 1
+  after the weekly reset. The first runs after install (app start, a usage-record change and
+  **Check now**) also succeeded. No failure origin was logged.
+- **Values.** Every run returned `weeklyAll` and `weeklyScoped` (Fable). This account sends no
+  session row, and no five-hour value was shown or invented.
+- **Schedule.** Automatic runs were never less than 300 seconds apart.
+- **Duration.** Median about 4.9 s, 95th percentile about 6.1 s, maximum about 19.3 s, against the
+  30-second deadline. The 19.3 s run is close to the plan's 20-second review threshold; the deadline
+  stays at 30 seconds.
+- **Cost.** One user-run `/usr/bin/time -l` measurement: 4.32 s real, about 5.2 s of CPU, about
+  454 MB peak memory for the `claude` process, zero tokens. The app's own memory was about 85 MB
+  after 38 hours.
+- **Dialogs.** securityd logged no Keychain prompt for the whole period. The two `SecurityAgent`
+  processes in the log belonged to unlocking the screen and opening the lid.
+- **Leftovers.** No `/usage` process was left running, the fixed working folder was empty, and
+  Claude Code keeps one project entry for that folder. No token, email or path appeared in
+  Needlbar's diagnostics.
+- **Not verified.** A login renewal by Claude Code during the run is inferred from the length of
+  the period, not observed. Signed-out output, a Developer ID build, the widget's Claude row and the
+  first 21 hours of logs were not checked.
+
+## 2026-11-04 Check now (prepared, not released)
+
+Adds a **Check now** button for Claude quota, on its own line in the dashboard's Claude row and beside
+**View Claude usage** in Settings. It calls the existing manual refresh and leaves the panel open. Both
+surfaces show it whenever Claude is visible, including in failure states. Tests use closures only; no
+`claude` ran, and it has not been run on a real machine.
+
+## 2026-11-03 Claude usage report source (prepared, not released)
+
+Implements `docs/superpowers/specs/2026-11-03-claude-usage-report-source-design.md` through
+`docs/superpowers/plans/2026-11-03-claude-usage-report-source.md`. Not merged, tagged or released.
+
+- **Source.** Claude quota now comes from `/usage` run by the installed `claude`, read through the
+  documented `usage_report` field. The status line is second and last-known values third. A newer
+  valid reading wins. Claude left the all-provider refresh, so Codex and Cursor never wait for it.
+- **Removed.** Claude's Keychain read, credential-file read and direct endpoint; the
+  **Allow Keychain access** action, which never shipped; the keychain sequencing; the Claude login,
+  preflight and verification paths; the two matching C exports; and the Keychain crates as direct
+  dependencies. Codex code is unchanged and its tests run in every gate.
+- **Runs.** App start, manual refresh, a changed Claude total in the usage refresh, a passed reset of
+  a displayed window, and 15 minutes since the last run (user decision, 2026-11-03), at most once every
+  5 minutes, with backoff of 5, 10, 20, then 30 minutes. The popover, wake, connectivity and the
+  five-minute timer start none. After any exit the probe also sends SIGKILL to the process group it
+  started; a process that moved to its own session or group is not covered. If Codex is failing, each dashboard open retries Codex; that starts no
+  Claude run and no dialog.
+- **Freshness.** A report reading is current for 20 minutes, because a refresh due at 15 can finish
+  about a minute and a half later. The widget's Claude quota row follows it; Codex, usage and the
+  status line keep their windows.
+- **Change detection.** The usage file watcher fires only for a root directory's own entries, for
+  every provider, so it cannot see an append to a session file. The Claude total from the existing
+  usage refresh serves instead, at most 5 minutes late. No new watcher was added.
+- **Deviation from the design, reported to the user.** The design reads only `usage_report`, but that
+  field has no rate-limit signal, so the parser also reads the documented closed `error` value on the
+  same line, only when no report arrived. API-key, usage-billed and setup-token sessions produce no
+  report and show the no-readable-report state.
+
+Not established: no run on a real machine. A 24-hour run across a login renewal, how a signed-out
+`claude` reports itself, duration, memory, CPU, any rate limit on `/usage`, and the 30-second deadline
+are all user-run and open. So are the cost of up to 288 runs a day and whether the label stays steady
+across them. **Release gate:** no public build until the user resolves the
+terms question in spec §3. No Keychain item, credential file or cookie was read for this work, and no
+agent ran `claude`.
+
+Local verification on this branch: `make test` and `cargo test --workspace` passed (827 Swift and 159 Rust workspace tests with the fixture feature, 140 without it, plus 1401 vendored tokscale-core tests in `make test`). All process tests used a fake `claude`. `make package`, `scripts/smoke-app.sh` and the CI-only `cargo clippy` step were not run.
+
 ## 2026-11-02 Claude Keychain access action
 
 Defect: v0.3.14 disables legacy Keychain interaction for background reads, so

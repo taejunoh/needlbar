@@ -8,16 +8,28 @@ public enum WidgetDisplayFreshness: Equatable, Sendable {
 
 public enum WidgetPresentation {
     public static let freshnessHorizon: TimeInterval = 15 * 60
+    /// Claude quota can refresh only every 15 minutes, while Codex and usage refresh
+    /// every 5, so its row keeps the app's 20-minute window.
+    public static let claudeQuotaFreshnessHorizon: TimeInterval = 20 * 60
+
+    private static func quotaHorizon(for provider: WidgetProvider) -> TimeInterval {
+        provider == .claude ? claudeQuotaFreshnessHorizon : freshnessHorizon
+    }
 
     public static func freshness(
         _ state: WidgetStreamState,
         lastSuccessfulAt: Date?,
-        now: Date
+        now: Date,
+        horizon: TimeInterval = freshnessHorizon
     ) -> WidgetDisplayFreshness {
         guard let timestamp = lastSuccessfulAt, timestamp <= now else {
             return .unavailable
         }
-        return state == .fresh && now.timeIntervalSince(timestamp) < freshnessHorizon ? .fresh : .stale
+        return state == .fresh && now.timeIntervalSince(timestamp) < horizon ? .fresh : .stale
+    }
+
+    public static func freshness(_ row: WidgetQuotaRow, now: Date) -> WidgetDisplayFreshness {
+        freshness(row.stream, lastSuccessfulAt: row.lastSuccessfulAt, now: now, horizon: quotaHorizon(for: row.provider))
     }
 
     public static func todayIsCurrent(_ row: WidgetUsageRow, now: Date) -> Bool {
@@ -46,8 +58,9 @@ public enum WidgetPresentation {
         projection: WidgetProjection,
         calendar: Calendar
     ) -> Date {
-        let stale = (projection.quotaRows.map(\.lastSuccessfulAt) + projection.usageRows.map(\.lastSuccessfulAt))
-            .compactMap { $0?.addingTimeInterval(freshnessHorizon) }
+        let stale = projection.quotaRows.compactMap { row in
+            row.lastSuccessfulAt?.addingTimeInterval(quotaHorizon(for: row.provider))
+        } + projection.usageRows.compactMap { $0.lastSuccessfulAt?.addingTimeInterval(freshnessHorizon) }
         let reset = projection.quotaRows.compactMap(\.headline?.resetsAt).filter { $0 > now }
         let midnight = calendar.nextDate(
             after: now,

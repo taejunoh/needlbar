@@ -13,8 +13,8 @@ import NeedlbarClaudeStatusLineSupport
 @Suite @MainActor
 struct ClaudeStatusLineMaximumAgePresentationTests {
     nonisolated static let now = Date(timeIntervalSince1970: 1_800_000_000)
-    nonisolated static let shortText = "Claude Code access on this Mac expired"
-    nonisolated static let detailText = "Needlbar reads the access the Claude Code command-line tool saves on this Mac. The Claude desktop app does not renew it, so it updates after Claude Code runs in Terminal."
+    nonisolated static let shortText = "Install Claude Code to see quota"
+    nonisolated static let detailText = "Needlbar reads quota from the Claude Code command-line tool and did not find it on this Mac. View Claude usage still opens the usage page."
 
     // MARK: - Popover, Settings and dashboard (injected clock)
 
@@ -125,7 +125,7 @@ struct ClaudeStatusLineMaximumAgePresentationTests {
             provider: .claude, usage: nil,
             quota: QuotaSnapshot(windows: [try QuotaWindow(id: "claude.session", title: "Session", usedPercent: 40, resetsAt: nil)]),
             usageStatus: .unavailable, quotaStatus: .requiresAuthentication, updatedAt: Self.now,
-            claudeQuotaFailureReason: .claudeCodeAccessExpired, quotaLastSuccessfulAt: directAt,
+            claudeQuotaFailureReason: .claudeCodeNotInstalled, quotaLastSuccessfulAt: directAt,
             claudeStatusLineQuota: Self.record(age: 86_401))
         let popover = ProviderPopoverPresentation(snapshot: snapshot, now: Self.now)
         #expect(popover.quotaSourceText == "Claude usage")
@@ -202,7 +202,7 @@ struct ClaudeStatusLineMaximumAgePresentationTests {
         ProviderSnapshot(
             provider: .claude, usage: nil, quota: nil,
             usageStatus: .unavailable, quotaStatus: .requiresAuthentication, updatedAt: reference,
-            claudeQuotaFailureReason: .claudeCodeAccessExpired, claudeStatusLineQuota: statusLine)
+            claudeQuotaFailureReason: .claudeCodeNotInstalled, claudeStatusLineQuota: statusLine)
     }
 
     static func combined(_ claude: ProviderSnapshot) -> CombinedUsageSnapshot {

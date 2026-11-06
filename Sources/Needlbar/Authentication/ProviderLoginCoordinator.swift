@@ -50,7 +50,7 @@ public struct ProviderLoginCommandResolver: ProviderLoginCommandResolving, Senda
         "HOME", "USER", "LOGNAME", "TMPDIR", "PATH", "LANG", "LANGUAGE", "LC_ALL",
         "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy",
         "all_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE",
-        "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS", "CLAUDE_CONFIG_DIR", "CODEX_HOME",
+        "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS", "CODEX_HOME",
     ]
 
     private let environment: [String: String]
@@ -73,16 +73,9 @@ public struct ProviderLoginCommandResolver: ProviderLoginCommandResolving, Senda
     }
 
     public func command(for provider: ProviderID) throws -> ProviderLoginCommand {
-        let arguments: [String]
-        switch provider {
-        case .claude:
-            arguments = ["auth", "login", "--claudeai"]
-        case .codex:
-            arguments = ["login"]
-        case .cursor:
+        guard provider == .codex else {
             throw ProviderLoginCommandResolutionError.unsupportedProvider
         }
-
         guard let executableURL = candidateURLs(for: provider).first(where: executablePredicate) else {
             throw ProviderLoginCommandResolutionError.cliNotInstalled
         }
@@ -90,18 +83,14 @@ public struct ProviderLoginCommandResolver: ProviderLoginCommandResolving, Senda
         return ProviderLoginCommand(
             provider: provider,
             executableURL: standardizedURL,
-            arguments: arguments,
+            arguments: ["login"],
             environment: childEnvironment(for: provider, executableURL: standardizedURL)
         )
     }
 
     public func candidateURLs(for provider: ProviderID) -> [URL] {
-        let executableName: String
-        switch provider {
-        case .claude: executableName = "claude"
-        case .codex: executableName = "codex"
-        case .cursor: return []
-        }
+        guard provider == .codex else { return [] }
+        let executableName = "codex"
 
         let pathDirectories = (environment["PATH"] ?? "").split(separator: ":").map {
             URL(fileURLWithPath: String($0), isDirectory: true)
@@ -129,7 +118,6 @@ public struct ProviderLoginCommandResolver: ProviderLoginCommandResolving, Senda
         for (key, value) in environment where Self.permitsEnvironmentKey(key) {
             child[key] = value
         }
-        child["CLAUDE_CONFIG_DIR"] = provider == .claude ? environment["CLAUDE_CONFIG_DIR"] : nil
         child["CODEX_HOME"] = provider == .codex ? environment["CODEX_HOME"] : nil
 
         let parent = executableURL.deletingLastPathComponent().path
@@ -714,7 +702,6 @@ public final class ProviderLoginCoordinator: ObservableObject {
     private let resolver: any ProviderLoginCommandResolving
     private let runner: any ProviderLoginProcessRunning
     private let refreshQuota: @Sendable (ProviderID) async -> Bool
-    private let preflightClaudeLogin: @Sendable () async -> ClaudeLoginPreflightOutcome
     private let beforeProcessStart: @Sendable (ProviderID) async -> Void
     private let stateObserver: @Sendable (ProviderID, ProviderLoginState) async -> Void
     private let runFinished: @Sendable (ProviderID) async -> Void
@@ -730,7 +717,6 @@ public final class ProviderLoginCoordinator: ObservableObject {
         resolver: any ProviderLoginCommandResolving = ProviderLoginCommandResolver(),
         runner: any ProviderLoginProcessRunning = ProviderLoginProcessRunner(),
         refreshQuota: @escaping @Sendable (ProviderID) async -> Bool,
-        preflightClaudeLogin: @escaping @Sendable () async -> ClaudeLoginPreflightOutcome = { .verificationFailed },
         stateObserver: @escaping @Sendable (ProviderID, ProviderLoginState) async -> Void = { _, _ in },
         beforeProcessStart: @escaping @Sendable (ProviderID) async -> Void = { _ in },
         runFinished: @escaping @Sendable (ProviderID) async -> Void = { _ in }
@@ -738,7 +724,6 @@ public final class ProviderLoginCoordinator: ObservableObject {
         self.resolver = resolver
         self.runner = runner
         self.refreshQuota = refreshQuota
-        self.preflightClaudeLogin = preflightClaudeLogin
         self.stateObserver = stateObserver
         self.beforeProcessStart = beforeProcessStart
         self.runFinished = runFinished
@@ -749,15 +734,6 @@ public final class ProviderLoginCoordinator: ObservableObject {
         guard case .open = terminationAdmission else { return false }
         guard tasks[provider] == nil else { return false }
         updateState(.launching, for: provider)
-
-        if provider == .claude {
-            let generation = nextGeneration(for: provider)
-            tasks[provider] = Task { [weak self] in
-                await self?.runClaudePreflight(generation: generation)
-            }
-            taskGenerations[provider] = generation
-            return true
-        }
 
         let command: ProviderLoginCommand
         do {
@@ -776,59 +752,6 @@ public final class ProviderLoginCoordinator: ObservableObject {
         }
         taskGenerations[provider] = generation
         return true
-    }
-
-    private func runClaudePreflight(generation: UInt64) async {
-        let outcome = await preflightClaudeLogin()
-        guard isCurrent(generation, for: .claude), !Task.isCancelled else {
-            finishAdmission(for: .claude, generation: generation)
-            await notifyRunFinished(for: .claude)
-            return
-        }
-
-        switch outcome {
-        case .verified:
-            updateState(.connected, for: .claude)
-            finishAdmission(for: .claude, generation: generation)
-            await notifyRunFinished(for: .claude)
-        case .requiresAuthentication:
-            await resolveAndRunClaude(generation: generation)
-        case .keychainPermissionRequired:
-            updateState(.refreshingQuota, for: .claude)
-            let verified = await refreshQuota(.claude)
-            if isCurrent(generation, for: .claude), !Task.isCancelled {
-                updateState(verified ? .connected : .failed(.verificationFailed), for: .claude)
-            }
-            finishAdmission(for: .claude, generation: generation)
-            await notifyRunFinished(for: .claude)
-        case .verificationFailed:
-            updateState(.failed(.verificationFailed), for: .claude)
-            finishAdmission(for: .claude, generation: generation)
-            await notifyRunFinished(for: .claude)
-        }
-    }
-
-    private func resolveAndRunClaude(generation: UInt64) async {
-        let command: ProviderLoginCommand
-        do {
-            command = try resolver.command(for: .claude)
-        } catch let error as ProviderLoginCommandResolutionError {
-            updateState(error == .unsupportedProvider ? .failed(.unsupportedProvider) : .failed(.cliNotInstalled), for: .claude)
-            finishAdmission(for: .claude, generation: generation)
-            await notifyRunFinished(for: .claude)
-            return
-        } catch {
-            updateState(.failed(.cliNotInstalled), for: .claude)
-            finishAdmission(for: .claude, generation: generation)
-            await notifyRunFinished(for: .claude)
-            return
-        }
-        guard isCurrent(generation, for: .claude), !Task.isCancelled else {
-            finishAdmission(for: .claude, generation: generation)
-            await notifyRunFinished(for: .claude)
-            return
-        }
-        await run(command, provider: .claude, generation: generation)
     }
 
     public func state(for provider: ProviderID) -> ProviderLoginState {
