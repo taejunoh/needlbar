@@ -292,11 +292,6 @@ public enum WidgetPresentation {
         return WidgetTodayFooter(tokens: "Today \(compactTokens(tokens)) tokens", cost: costText(cost))
     }
 
-    public static func resetLabel(_ reset: Date?, now: Date, formatter: DateFormatter) -> String? {
-        guard let reset else { return nil }
-        return reset <= now ? "Awaiting fresh reading" : formatter.string(from: reset)
-    }
-
     // MARK: Reloads
 
     /// The next moment a fresh column's countdown text changes, or `nil` within the last

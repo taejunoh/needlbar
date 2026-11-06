@@ -242,13 +242,6 @@ struct WidgetProjectionTests {
     }
 
     @Test
-    func passedResetUsesFixedAwaitingFreshReadingLabel() {
-        let formatter = DateFormatter()
-        #expect(WidgetPresentation.resetLabel(referenceDate.addingTimeInterval(-1), now: referenceDate, formatter: formatter) == "Awaiting fresh reading")
-        #expect(WidgetPresentation.resetLabel(nil, now: referenceDate, formatter: formatter) == nil)
-    }
-
-    @Test
     func todayIsCurrentRejectsPreviousLocalGregorianDay() {
         let previous = Calendar(identifier: .gregorian).date(byAdding: .day, value: -1, to: referenceDate)!
         let (day, offset) = currentWidgetDayAndOffset(previous)
