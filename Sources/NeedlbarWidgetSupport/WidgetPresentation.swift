@@ -204,15 +204,7 @@ public enum WidgetPresentation {
         var isDimmed = false
         switch quotaStatus(row, now: now) {
         case .unavailable:
-            return WidgetQuotaColumn(
-                title: title,
-                figure: "—",
-                fraction: nil,
-                level: nil,
-                isDimmed: false,
-                detail: "Quota unavailable",
-                accessibilityLabel: "\(title), quota unavailable"
-            )
+            return unavailableColumn(title: title)
         case .fresh(let value):
             headline = value
             let window = value.id.categoryLabel
@@ -234,8 +226,10 @@ public enum WidgetPresentation {
             detail = "Awaiting fresh reading"
             spokenDetail = "awaiting fresh reading"
         }
-        // `quotaStatus` has already refused a value that is not finite.
-        let percent = wholePercent(headline.remainingPercent) ?? 0
+        // `quotaStatus` has already refused a value that is not finite; never show zero if that changes.
+        guard let percent = wholePercent(headline.remainingPercent) else {
+            return unavailableColumn(title: title)
+        }
         return WidgetQuotaColumn(
             title: title,
             figure: "\(percent)%",
@@ -244,6 +238,18 @@ public enum WidgetPresentation {
             isDimmed: isDimmed,
             detail: detail,
             accessibilityLabel: "\(title), \(percent) percent remaining, \(spokenDetail)"
+        )
+    }
+
+    private static func unavailableColumn(title: String) -> WidgetQuotaColumn {
+        WidgetQuotaColumn(
+            title: title,
+            figure: "—",
+            fraction: nil,
+            level: nil,
+            isDimmed: false,
+            detail: "Quota unavailable",
+            accessibilityLabel: "\(title), quota unavailable"
         )
     }
 
