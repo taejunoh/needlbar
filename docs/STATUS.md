@@ -1,5 +1,35 @@
 # Needlbar Development Status
 
+## 2026-11-05 Claude usage report source: local observation (not released)
+
+Local-only receipt from the maintainer's Mac. The build was made with `make package` at `059e01c`
+on `claude/claude-usage-report-source`: ad-hoc signed, without hardened runtime, with a synthetic
+App Group, and not notarized. It was installed in place of the unreleased v0.3.15 candidate on
+2026-11-04 and left running for about 38 hours under normal use. Nothing was merged, tagged or
+released.
+
+- **Runs.** Needlbar's unified log kept about the last 17 hours (from 2026-11-05 07:54 UTC). In that
+  window 125 runs completed and all succeeded: 90 after usage-record changes, 34 periodic and 1
+  after the weekly reset. The first runs after install (app start, a usage-record change and
+  **Check now**) also succeeded. No failure origin was logged.
+- **Values.** Every run returned `weeklyAll` and `weeklyScoped` (Fable). This account sends no
+  session row, and no five-hour value was shown or invented.
+- **Schedule.** Automatic runs were never less than 300 seconds apart.
+- **Duration.** Median about 4.9 s, 95th percentile about 6.1 s, maximum about 19.3 s, against the
+  30-second deadline. The 19.3 s run is close to the plan's 20-second review threshold; the deadline
+  stays at 30 seconds.
+- **Cost.** One user-run `/usr/bin/time -l` measurement: 4.32 s real, about 5.2 s of CPU, about
+  454 MB peak memory for the `claude` process, zero tokens. The app's own memory was about 85 MB
+  after 38 hours.
+- **Dialogs.** securityd logged no Keychain prompt for the whole period. The two `SecurityAgent`
+  processes in the log belonged to unlocking the screen and opening the lid.
+- **Leftovers.** No `/usage` process was left running, the fixed working folder was empty, and
+  Claude Code keeps one project entry for that folder. No token, email or path appeared in
+  Needlbar's diagnostics.
+- **Not verified.** A login renewal by Claude Code during the run is inferred from the length of
+  the period, not observed. Signed-out output, a Developer ID build, the widget's Claude row and the
+  first 21 hours of logs were not checked.
+
 ## 2026-11-04 Check now (prepared, not released)
 
 Adds a **Check now** button for Claude quota, on its own line in the dashboard's Claude row and beside

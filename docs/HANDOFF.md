@@ -1,7 +1,7 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-11-03, updated for the Claude usage report source, which is
-prepared and not released; it replaces the Claude Keychain access action of
+**Checkpoint:** 2026-11-05, updated for the Claude usage report source, which is
+prepared and not released and passed about 38 hours of local observation; it replaces the Claude Keychain access action of
 2026-11-02, which was never released (first written
 2026-10-20, updated after the v0.3.10 release on 2026-10-21, for credential
 renewal increment 1, the v0.3.11 release and the status-line maximum age on
@@ -159,9 +159,13 @@ passed reset, a backoff retry and every 15 minutes; a dashboard open, waking or
 regaining a connection starts none. If Codex is failing, each dashboard open
 retries Codex; that starts no Claude run and no dialog.
 
-None of this has run for 24 hours on a real machine. Still open: how a signed-out `claude` reports
-itself in this mode, run duration, memory and CPU, the cost of up to 288 runs a day, whether `/usage`
-has its own rate limit, and whether 30 seconds is the right deadline. Those checks are user-run; see Task 14 of the plan.
+A local ad-hoc build ran for about 38 hours on the maintainer's Mac (STATUS, 2026-11-05): every
+logged run succeeded, no Keychain prompt appeared, and runs took about 5 s (maximum about 19.3 s).
+Still open: how a signed-out `claude` reports itself in this mode, the same observation on a
+Developer ID build including the widget's Claude row, whether `/usage` has its own rate limit, and
+an observed login renewal. Also open: when Codex is failing, each dashboard open retries Codex; the
+menu bar and Overview show last-known values unlabelled; and only the three fixed install paths are
+found.
 
 **Release gate (spec §11):** before any public build, the user decides how to resolve the terms
 question in spec §3: ask Anthropic, or ship on a stated reading. Until then the build runs on this
@@ -190,8 +194,8 @@ fix (PR #38) are complete and shipped in v0.3.14.
 
 Known open items:
 
-- The Claude usage report source needs the user-run acceptance in Task 14 of its plan and a decision
-  on the release gate. The items below describe v0.3.14 and earlier and are kept as history.
+- The Claude usage report source passed local observation and still needs the open checks above and a
+  decision on the release gate. The items below describe v0.3.14 and earlier and are kept as history.
 - History, v0.3.14 and earlier; every origin name in the next two items is retired in the
   prepared source. Direct Claude quota retrieval on the maintainer's machine failed on every
   attempt with origin `otherFailure` from at least 2026-10-28 on installed
