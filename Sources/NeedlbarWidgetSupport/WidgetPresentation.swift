@@ -38,6 +38,33 @@ public enum WidgetRemainingLevel: Equatable, Sendable {
     case critical
 }
 
+
+/// What a quota column shows, before any text is made.
+public enum WidgetQuotaStatus: Equatable, Sendable {
+    case fresh(WidgetQuotaHeadline)
+    case stale(WidgetQuotaHeadline, lastCheckedAt: Date)
+    case awaitingFreshReading(WidgetQuotaHeadline)
+    case unavailable
+}
+
+/// Everything the widget draws for one provider column.
+public struct WidgetQuotaColumn: Equatable, Sendable {
+    public let title: String
+    public let figure: String
+    /// Bar fill from 0 to 1. `nil` draws an empty track.
+    public let fraction: Double?
+    /// `nil` means no colour.
+    public let level: WidgetRemainingLevel?
+    public let isDimmed: Bool
+    public let detail: String
+    public let accessibilityLabel: String
+}
+
+public struct WidgetTodayFooter: Equatable, Sendable {
+    public let tokens: String
+    public let cost: String
+}
+
 public enum WidgetPresentation {
     public static let freshnessHorizon: TimeInterval = 15 * 60
     /// Claude quota can refresh only every 15 minutes, while Codex and usage refresh
@@ -132,6 +159,129 @@ public enum WidgetPresentation {
         if percent < 10 { return .critical }
         if percent < 20 { return .low }
         return .normal
+    }
+
+
+    // MARK: Columns and footer
+
+    public static func providerTitle(_ provider: WidgetProvider) -> String {
+        switch provider {
+        case .claude: "Claude"
+        case .codex: "Codex"
+        case .cursor: "Cursor"
+        }
+    }
+
+    public static func quotaStatus(_ row: WidgetQuotaRow?, now: Date) -> WidgetQuotaStatus {
+        guard let row,
+              let headline = row.headline,
+              headline.remainingPercent.isFinite,
+              let checkedAt = row.lastSuccessfulAt else {
+            return .unavailable
+        }
+        let state = freshness(row, now: now)
+        guard state != .unavailable else { return .unavailable }
+        if let reset = headline.resetsAt, reset <= now {
+            return .awaitingFreshReading(headline)
+        }
+        return state == .fresh ? .fresh(headline) : .stale(headline, lastCheckedAt: checkedAt)
+    }
+
+    public static func quotaColumn(
+        for provider: WidgetProvider,
+        in projection: WidgetProjection?,
+        now: Date,
+        calendar: Calendar,
+        locale: Locale
+    ) -> WidgetQuotaColumn {
+        let title = providerTitle(provider)
+        let row = projection?.quotaRows.first { $0.provider == provider }
+        let headline: WidgetQuotaHeadline
+        let detail: String
+        let spokenDetail: String
+        var isDimmed = false
+        switch quotaStatus(row, now: now) {
+        case .unavailable:
+            return WidgetQuotaColumn(
+                title: title,
+                figure: "—",
+                fraction: nil,
+                level: nil,
+                isDimmed: false,
+                detail: "Quota unavailable",
+                accessibilityLabel: "\(title), quota unavailable"
+            )
+        case .fresh(let value):
+            headline = value
+            let window = value.id.categoryLabel
+            if let reset = value.resetsAt, let countdown = countdown(until: reset, now: now) {
+                detail = "\(window) · resets in \(countdown.text)"
+                spokenDetail = "\(window.lowercased()), resets in \(countdown.spokenText)"
+            } else {
+                detail = window
+                spokenDetail = window.lowercased()
+            }
+        case .stale(let value, let checkedAt):
+            headline = value
+            let time = lastCheckedTime(checkedAt, now: now, calendar: calendar, locale: locale)
+            detail = "Last checked \(time)"
+            spokenDetail = "last checked \(time)"
+        case .awaitingFreshReading(let value):
+            headline = value
+            isDimmed = true
+            detail = "Awaiting fresh reading"
+            spokenDetail = "awaiting fresh reading"
+        }
+        // `quotaStatus` has already refused a value that is not finite.
+        let percent = wholePercent(headline.remainingPercent) ?? 0
+        return WidgetQuotaColumn(
+            title: title,
+            figure: "\(percent)%",
+            fraction: min(max(headline.remainingPercent, 0), 100) / 100,
+            level: remainingLevel(percent: percent),
+            isDimmed: isDimmed,
+            detail: detail,
+            accessibilityLabel: "\(title), \(percent) percent remaining, \(spokenDetail)"
+        )
+    }
+
+    /// The whole percent to show, clamped to 0 through 100. `nil` for a value that is not finite.
+    static func wholePercent(_ value: Double) -> Int? {
+        guard value.isFinite else { return nil }
+        return Int(min(max(value, 0), 100).rounded())
+    }
+
+    /// The time only when it is the same day as `now`, otherwise the short date and time.
+    static func lastCheckedTime(_ checkedAt: Date, now: Date, calendar: Calendar, locale: Locale) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = locale
+        formatter.dateStyle = calendar.isDate(checkedAt, inSameDayAs: now) ? .none : .short
+        formatter.timeStyle = .short
+        return formatter.string(from: checkedAt)
+    }
+
+    /// Sums the providers whose today total is current. `nil` hides the footer.
+    public static func todayFooter(_ projection: WidgetProjection?, now: Date) -> WidgetTodayFooter? {
+        guard let projection else { return nil }
+        var tokens: UInt64 = 0
+        var cost = Decimal.zero
+        var contributors = 0
+        for row in projection.usageRows where todayIsCurrent(row, now: now) {
+            guard let rowTokens = row.todayTokens, let rowCost = row.todayCostUSD else { continue }
+            let (next, overflow) = tokens.addingReportingOverflow(rowTokens)
+            guard !overflow else { return nil }
+            var left = cost
+            var right = rowCost
+            var sum = Decimal()
+            guard NSDecimalAdd(&sum, &left, &right, .plain) == .noError else { return nil }
+            tokens = next
+            cost = sum
+            contributors += 1
+        }
+        guard contributors > 0 else { return nil }
+        return WidgetTodayFooter(tokens: "Today \(compactTokens(tokens)) tokens", cost: costText(cost))
     }
 
     public static func resetLabel(_ reset: Date?, now: Date, formatter: DateFormatter) -> String? {
