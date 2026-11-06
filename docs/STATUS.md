@@ -1,5 +1,28 @@
 # Needlbar Development Status
 
+## 2026-11-06 Glanceable Overview widget (prepared, not released)
+
+Implements `docs/superpowers/specs/2026-11-06-glanceable-overview-widget-design.md` through
+`docs/superpowers/plans/2026-11-06-glanceable-overview-widget.md`. Not merged, installed, tagged or
+released, and not yet seen on a real widget.
+
+- **Layout.** Claude and Codex each get a column with the remaining percent of the headline window,
+  a bar, and one line: `<window> · resets in <time>`, **Last checked** when stale, **Awaiting fresh
+  reading** after a passed reset, or `—` with **Quota unavailable**. A footer shows today's tokens and
+  estimated cost from providers whose today total is current, and is hidden when there are none. The
+  title row, the Fresh/Stale and Partial/Complete words, the Cursor row and the Today updated line are
+  gone.
+- **Colour.** Below 20 percent the figure and bar use system orange, below 10 percent system red,
+  judged on the whole percent shown. Bar accents are system orange for Claude and system blue for
+  Codex.
+- **Reloads.** The timeline also reloads when a fresh column's countdown text changes, and never
+  sooner than one minute after the current entry.
+- **Unchanged.** The projection, App Group contract, refresh behaviour, widget family and
+  `needlbar://overview` tap target.
+- **Verified.** Pure presentation tests, a real compile of the widget extension, the widget build and
+  search-guard checks, and `make test`. Light and dark appearance on an installed widget is the user's
+  manual check and has not been done.
+
 ## 2026-11-05 Claude usage report source: local observation (not released)
 
 Local-only receipt from the maintainer's Mac. The build was made with `make package` at `059e01c`

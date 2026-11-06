@@ -59,123 +59,98 @@ struct OverviewProvider: TimelineProvider {
 struct OverviewWidgetView: View {
     let entry: OverviewEntry
 
-    private var overallFreshnessLabel: String {
-        guard let projection = entry.projection else { return "Quota unavailable" }
-        let quotaIsFresh = projection.quotaRows.allSatisfy {
-            WidgetPresentation.freshness($0, now: entry.date) == .fresh
-        }
-        let usageIsFresh = projection.usageRows.allSatisfy {
-            WidgetPresentation.freshness($0.stream, lastSuccessfulAt: $0.lastSuccessfulAt, now: entry.date) == .fresh
-        }
-        return quotaIsFresh && usageIsFresh ? "Fresh" : "Stale"
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return calendar
     }
 
-    private var todayLabel: String {
-        guard let projection = entry.projection else {
-            return "Today unavailable"
-        }
-        let contributors = projection.usageRows.filter {
-            WidgetPresentation.todayIsCurrent($0, now: entry.date)
-                && $0.todayTokens != nil
-                && $0.todayCostUSD != nil
-        }
-        let values = contributors.compactMap { row -> (UInt64, Decimal)? in
-            guard let tokens = row.todayTokens, let cost = row.todayCostUSD else { return nil }
-            return (tokens, cost)
-        }
-        guard !values.isEmpty else { return "Today unavailable" }
-        var tokens: UInt64 = 0
-        var cost = Decimal.zero
-        for value in values {
-            let (next, overflow) = tokens.addingReportingOverflow(value.0)
-            guard !overflow else { return "Today unavailable" }
-            tokens = next
-            var left = cost
-            var right = value.1
-            var result = Decimal()
-            guard NSDecimalAdd(&result, &left, &right, .plain) == .noError else {
-                return "Today unavailable"
+    private func column(_ provider: WidgetProvider) -> WidgetQuotaColumn {
+        WidgetPresentation.quotaColumn(
+            for: provider,
+            in: entry.projection,
+            now: entry.date,
+            calendar: calendar,
+            locale: .current
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 14) {
+                QuotaColumnView(column: column(.claude), accent: .orange)
+                QuotaColumnView(column: column(.codex), accent: .blue)
             }
-            cost = result
-        }
-        let completeness = values.count < 3 ? "Partial" : "Complete"
-        let freshness = contributors.allSatisfy {
-            WidgetPresentation.freshness($0.stream, lastSuccessfulAt: $0.lastSuccessfulAt, now: entry.date) == .fresh
-        } ? "Fresh" : "Stale"
-        return "\(completeness) · \(freshness) · Tokens: \(tokens)  Cost: \(NSDecimalNumber(decimal: cost).stringValue)"
-    }
-
-    private var todayUpdatedLabel: String {
-        guard let projection = entry.projection else { return "Today updated: —" }
-        let formatter = timestampFormatter
-        let contributors = projection.usageRows.filter {
-            WidgetPresentation.todayIsCurrent($0, now: entry.date)
-                && $0.todayTokens != nil
-                && $0.todayCostUSD != nil
-        }
-        guard !contributors.isEmpty else { return "Today updated: —" }
-        return "Today updated: " + contributors.map {
-            "\(providerLabel($0.provider)): \($0.lastSuccessfulAt.map { formatter.string(from: $0) } ?? "—")"
-        }.joined(separator: " · ")
-    }
-
-    @ViewBuilder private func quotaLine(_ provider: WidgetProvider, title: String) -> some View {
-        let row = entry.projection?.quotaRows.first(where: { $0.provider == provider })
-        if let headline = row?.headline {
-            let formatter = timestampFormatter
-            let reset = WidgetPresentation.resetLabel(headline.resetsAt, now: entry.date, formatter: formatter) ?? "—"
-            HStack {
-                Text("\(title) \(headline.id.categoryLabel): \(Int(headline.remainingPercent.rounded()))%")
-                Spacer()
-                Text(reset)
-            }
-            Text(WidgetPresentation.freshness(row!, now: entry.date) == .fresh
-                ? "Fresh · \(row!.lastSuccessfulAt.map { formatter.string(from: $0) } ?? "—")"
-                : "Stale · \(row!.lastSuccessfulAt.map { formatter.string(from: $0) } ?? "—")")
-                .font(.caption2)
+            Spacer(minLength: 0)
+            if let footer = WidgetPresentation.todayFooter(entry.projection, now: entry.date) {
+                HStack {
+                    Text(footer.tokens)
+                    Spacer()
+                    Text(footer.cost)
+                }
+                .font(.caption)
+                .monospacedDigit()
                 .foregroundStyle(.secondary)
-        } else {
-            Text("\(title) — Quota unavailable")
+                .accessibilityElement(children: .combine)
+            }
         }
+        .widgetURL(URL(string: "needlbar://overview"))
     }
+}
 
-    private func providerLabel(_ provider: WidgetProvider) -> String {
-        switch provider {
-        case .claude: "Claude"
-        case .codex: "Codex"
-        case .cursor: "Cursor"
+private struct QuotaColumnView: View {
+    let column: WidgetQuotaColumn
+    let accent: Color
+
+    private var warning: Color? {
+        switch column.level {
+        case .critical: .red
+        case .low: .orange
+        case .normal, nil: nil
         }
-    }
-
-    private var timestampFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text("Needlbar").font(.headline)
-                Spacer()
-                Text(overallFreshnessLabel).font(.caption).foregroundStyle(.secondary)
-            }
-            quotaLine(.claude, title: "Claude")
-            quotaLine(.codex, title: "Codex")
-            Text("Cursor — Quota unavailable · local cached usage only")
-                .font(.caption2)
+            Text(column.title)
+                .font(.headline)
+            Text(column.figure)
+                .font(.system(size: 36, weight: .bold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .foregroundStyle(warning ?? Color.primary)
+                .opacity(column.isDimmed ? 0.45 : 1)
+            QuotaBar(fraction: column.fraction, fill: warning ?? accent)
+                .opacity(column.isDimmed ? 0.45 : 1)
+            Text(column.detail)
+                .font(.caption)
                 .foregroundStyle(.secondary)
-            Divider()
-            HStack {
-                Text("Today").font(.caption)
-                Spacer()
-                Text(todayLabel).font(.caption).monospacedDigit()
-            }
-            Text(todayUpdatedLabel).font(.caption2).foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
-        .padding(10)
-        .widgetURL(URL(string: "needlbar://overview"))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(column.accessibilityLabel)
+    }
+}
+
+private struct QuotaBar: View {
+    let fraction: Double?
+    let fill: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                if let fraction {
+                    Capsule()
+                        .fill(fill)
+                        .frame(width: proxy.size.width * min(max(fraction, 0), 1))
+                }
+            }
+        }
+        .frame(height: 6)
     }
 }
 
