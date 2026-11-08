@@ -1,5 +1,17 @@
 # Needlbar Development Status
 
+## 2026-11-08 Overview widget in reduced colour (prepared, not released)
+
+The glanceable widget was seen on a real desktop for the first time, from a Developer ID build of
+`main` at `7fa927b`. In full colour it matched the design. With the desktop not in front, macOS
+removed the colour and the bar fill rendered darker than its track, so the bar read backwards.
+
+- **Change.** Outside full colour the bar fill uses the primary colour over a faint primary track and
+  the figure stays primary. Full-colour drawing is unchanged.
+- **Limit.** The low-remaining colours cannot show outside full colour. The percent is the signal.
+- **Not yet verified.** Compile and existing tests cover this build; only a real widget with the
+  desktop not in front can confirm the drawing. Not merged, installed, tagged or released.
+
 ## 2026-11-06 Glanceable Overview widget (prepared, not released)
 
 Implements `docs/superpowers/specs/2026-11-06-glanceable-overview-widget-design.md` through
