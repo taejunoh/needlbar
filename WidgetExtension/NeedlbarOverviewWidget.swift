@@ -101,13 +101,9 @@ struct OverviewWidgetView: View {
 private struct QuotaColumnView: View {
     let column: WidgetQuotaColumn
     let accent: Color
-    @Environment(\.widgetRenderingMode) private var renderingMode
-
-    private var isFullColor: Bool { renderingMode == .fullColor }
 
     private var warning: Color? {
-        guard isFullColor else { return nil }
-        return switch column.level {
+        switch column.level {
         case .critical: .red
         case .low: .orange
         case .normal, nil: nil
@@ -125,11 +121,7 @@ private struct QuotaColumnView: View {
                 .minimumScaleFactor(0.7)
                 .foregroundStyle(warning ?? Color.primary)
                 .opacity(column.isDimmed ? 0.45 : 1)
-            QuotaBar(
-                fraction: column.fraction,
-                fill: isFullColor ? (warning ?? accent) : Color.primary,
-                track: isFullColor ? AnyShapeStyle(.quaternary) : AnyShapeStyle(Color.primary.opacity(0.2))
-            )
+            QuotaBar(fraction: column.fraction, fill: warning ?? accent)
                 .opacity(column.isDimmed ? 0.45 : 1)
             Text(column.detail)
                 .font(.caption)
@@ -146,12 +138,11 @@ private struct QuotaColumnView: View {
 private struct QuotaBar: View {
     let fraction: Double?
     let fill: Color
-    let track: AnyShapeStyle
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
-                Capsule().fill(track)
+                Capsule().fill(.quaternary).frame(height: 2).frame(maxHeight: .infinity)
                 if let fraction {
                     Capsule()
                         .fill(fill)

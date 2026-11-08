@@ -1,14 +1,18 @@
 # Needlbar Development Status
 
-## 2026-11-08 Overview widget in reduced colour (prepared, not released)
+## 2026-11-08 Overview widget bar shape (prepared, not released)
 
 The glanceable widget was seen on a real desktop for the first time, from a Developer ID build of
 `main` at `7fa927b`. In full colour it matched the design. With the desktop not in front, macOS
 removed the colour and the bar fill rendered darker than its track, so the bar read backwards.
 
-- **Change.** Outside full colour the bar fill uses the primary colour over a faint primary track and
-  the figure stays primary. Full-colour drawing is unchanged.
-- **Limit.** The low-remaining colours cannot show outside full colour. The percent is the signal.
+- **First attempt.** Branching on `widgetRenderingMode` (`486053b`) changed nothing on the real
+  widget: the Claude and Codex fills were still two different greys. The likely reading, not
+  confirmed, is that the widget still reports full colour and macOS processes the result afterwards.
+  The branch is removed.
+- **Change.** The track is now a 2-point line and the fill a 6-point bar in every appearance, so the
+  amount reads from shape rather than colour.
+- **Limit.** The low-remaining colours do not survive that state. The percent is the signal.
 - **Not yet verified.** Compile and existing tests cover this build; only a real widget with the
   desktop not in front can confirm the drawing. Not merged, installed, tagged or released.
 

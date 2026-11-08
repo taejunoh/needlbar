@@ -79,10 +79,12 @@ a day, the next whole hour. No reload is scheduled more often than once a minute
 - Colours are system colours and work in light and dark appearance. The bar uses a provider
   accent (Claude orange, Codex blue), as in the approved mock-up; the low-remaining colours in
   §4 replace it. The widget has no title row.
-- **Reduced colour (dated note, 2026-11-08):** when macOS draws the widget without full colour,
-  for example while the desktop is not in front, the bar fill uses the primary colour over a
-  faint primary track, and the figure stays primary. The accent and the low-remaining colours in
-  §4 apply in full colour only, so the percent itself is the signal there.
+- **Bar shape (dated note, 2026-11-08):** the track is a 2-point line and the fill a 6-point bar,
+  in every appearance. With the desktop not in front, macOS removed the widget's colour and the
+  fill rendered darker than a full-height track, so the bar read backwards; shape stays readable
+  whatever happens to the colours. A branch on `widgetRenderingMode` had no visible effect there
+  and was removed. The accent and the low-remaining colours in §4 are lost in that state, so the
+  percent itself is the signal.
 
 ## 7. Testing
 
