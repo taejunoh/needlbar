@@ -107,7 +107,7 @@ private struct QuotaColumnView: View {
 
     private var warning: Color? {
         guard isFullColor else { return nil }
-        switch column.level {
+        return switch column.level {
         case .critical: .red
         case .low: .orange
         case .normal, nil: nil
