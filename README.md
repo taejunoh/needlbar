@@ -217,8 +217,12 @@ Claude Code, suggests running `claude` in Terminal to check its sign-in if that 
 and retries under backoff. It offers no button. Needlbar never runs `claude auth`
 and writes no Claude configuration, though Claude Code may renew its own login
 during a run, and `claude` itself may show a Keychain prompt. **Allow Keychain
-access**, which an earlier prepared build had, is removed. This has not run for
-24 hours on a real machine, and duration, memory, CPU, the cost of up to 288 runs a day and any rate limit on `/usage` have not been measured. It is not part of any
+access**, which an earlier prepared build had, is removed. On one Mac, a local
+ad-hoc build ran for about 38 hours: all 125 runs in the retained 17 hours of logs
+succeeded, with a median of about 4.9 s and a maximum of about 19.3 s, and no Keychain
+prompt appeared. One `claude` run took about 5.2 s of CPU and 454 MB of peak memory.
+Any rate limit on `/usage` has not been measured, and a full day on a Developer ID
+build has not been observed. It is not part of any
 public release yet, and a public release awaits a decision on Anthropic's terms for a local
 app that starts the user's `claude`.
 
