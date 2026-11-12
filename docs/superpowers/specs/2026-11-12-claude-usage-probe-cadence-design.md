@@ -14,7 +14,7 @@ the 20-minute freshness window are unchanged.
 
 ## 1. Problem
 
-Runs of `/usage` have been getting slower, and one timed out. Each row comes from Needlbar's
+Runs of `/usage` have been getting slower, and two timed out. Each row comes from Needlbar's
 unified log (`QuotaRefreshDiagnostic`, `durationMs`), read on the date given.
 
 | Logs covering | Read on | Build | Claude Code CLI | Runs | Median | Longest completed | Over 20 s |
@@ -24,11 +24,14 @@ unified log (`QuotaRefreshDiagnostic`, `durationMs`), read on the date given.
 | 2026-11-11 23:31 to 11-12 17:12 | 2026-11-12 | Developer ID, `8cd964c` | 2.1.321 | 104 | 8.1 s | 23.1 s | 5 |
 
 The CLI version per row follows from the install dates: 2.1.292 on 2026-10-07, 2.1.321 on
-2026-11-09 at 17:09 local. One run on 2026-11-12 at 16:26 local was stopped at the
-30-second deadline (`usageProbeTimedOut`, 30.5 s with the stop grace); its real length is
-unknown. The next two runs succeeded in 17.3 s and 10.8 s. Nine of the ten slowest runs that
-day fell between 12:11 and 16:32, almost all started by usage-record changes while the user
-was working in Claude Code. The second row is a session receipt and is not in `docs/STATUS.md`.
+2026-11-09 at 17:09 local. Two runs on 2026-11-12 were stopped at the 30-second deadline
+(`usageProbeTimedOut`); their real lengths are unknown. The first started at 16:26 local
+(30.5 s with the stop grace), and the next two runs succeeded in 17.3 s and 10.8 s. The second
+started at 17:52 local (30.6 s with the stop grace), after the window the table covers, which
+ends at 17:12; it was seen in the log afterwards, and the next run succeeded in 11.1 s. Nine of
+the ten slowest runs that day fell between 12:11 and 16:32, almost all started by usage-record
+changes while the user was working in Claude Code. The second row is a session receipt and is
+not in `docs/STATUS.md`.
 
 ## 2. Cause
 
@@ -130,9 +133,9 @@ link from a change in them to a `/usage` run is removed.
 
 ## 6. Deadline
 
-60 seconds is twice the old deadline. The longest completed run was 23.1 seconds, and the run
-that was stopped at 30 seconds would have taken longer by an unknown amount. A run that times
-out has already paid its full cost and returns nothing, then is retried 5 minutes later, so a
+60 seconds is twice the old deadline. The longest completed run was 23.1 seconds, and the two
+runs that were stopped at 30 seconds would have taken longer by an unknown amount. A run that
+times out has already paid its full cost and returns nothing, then is retried 5 minutes later, so a
 deadline close to the observed lengths wastes more than it saves. 45 seconds was rejected
 because the cost grows with transcript volume.
 

@@ -96,7 +96,7 @@ The spec's §7 and §9 name the places to change. The code has a few more, and t
 4. **A 288 that stays.** The 2026-11-03 spec's working-directory limit says "up to 288 new directories a day". The new spec names only the §9 and §12 figures. That sentence records why a per-run directory was rejected, so it stays as written.
 5. **Release notes.** `docs/releases/v0.3.15.md` is the body of a release that was never published (`.github/workflows/release.yml:101`). It gets plain edits to the final behaviour, with the reason in the text and no dated history, which would read oddly in a public release body. STATUS and the commit carry the date.
 6. **README, full day.** The spec says to change "the sentence saying a full day on a Developer ID build has not been observed" without saying to what. The two Developer ID logs in spec §1 cover about 18 hours each (18 h 36 min and 17 h 41 min), so the sentence now says that, and that a full day has still not been observed.
-7. **A later timeout.** While this plan was written, the local unified log showed a second `usageProbeTimedOut` (30,552 ms) at 17:52 local on 2026-11-12, after the window the spec read (to 17:12). The documents below keep the spec's numbers, each tied to the date its log was read. It is reported with this plan and changes no decision.
+7. **A later timeout.** While this plan was written, the local unified log showed a second `usageProbeTimedOut` (30,552 ms) at 17:52 local on 2026-11-12, after the window the spec's table reads (to 17:12). The user decided on 2026-11-12 to record two timeouts, and the documents now do: the 16:26 run and the 17:52 run. The documents keep the table's numbers, each tied to the date and window its log was read, and the second run is described as seen in the log afterwards. It changes no decision.
 8. **Left alone.** `claude_usage_probe.rs` says of the kill after exit that "This job repeats every few minutes". That is still true at 15 minutes.
 
 ### 5. Documentation contracts
@@ -331,7 +331,7 @@ git add crates/needlbar-quota/src/providers/claude_usage_probe.rs \
   Tests/NeedlbarCoreTests/ClaudeUsageFreshnessTests.swift \
   Tests/NeedlbarCoreTests/ClaudeUsageProbeCoordinatorTests.swift
 git commit -m "fix(claude): give a /usage run 60 seconds" \
-  -m "Runs reached 23 seconds and one was stopped at the 30-second deadline, after paying its whole cost. The slowest periodic refresh now ends 17:01 after the last start, still inside the 20-minute freshness window." \
+  -m "Runs reached 23 seconds and two were stopped at the 30-second deadline, after paying their whole cost. The slowest periodic refresh now ends 17:01 after the last start, still inside the 20-minute freshness window." \
   -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -781,7 +781,7 @@ each run, not a new temporary folder per run (§6). The smoke script switches th
 
 **Amended 2026-11-12:** a change in Claude Code's local usage records no longer starts a run,
 and the run deadline is 60 seconds, up from 30. Each `/usage` run scans the last 7 days of
-Claude Code transcripts, so runs slowed to a median of about 8 seconds and one was stopped at
+Claude Code transcripts, so runs slowed to a median of about 8 seconds and two were stopped at
 the deadline, while usage-record changes started a run every 5 minutes during use. The design
 is `docs/superpowers/specs/2026-11-12-claude-usage-probe-cadence-design.md`; §6, §9 and §12
 below carry the dated changes.
@@ -867,7 +867,7 @@ with
 ```markdown
 Acceptance measures the real duration. If it does not fit, the deadline changes in
 this specification before release. *Amended 2026-11-12:* this clause was used. Runs reached
-23.1 seconds and one was stopped at 30 seconds, so the deadline is now 60 seconds.
+23.1 seconds and two were stopped at 30 seconds, so the deadline is now 60 seconds.
 ```
 
 The "288 a day" figures in §9 and §12, and the §12 item that said the cost was unmeasured:
@@ -913,7 +913,7 @@ with
 ```markdown
 - *Amended 2026-11-12:* this item said that duration, memory, and CPU under repeated runs had
   not been measured. Duration has been, and it grows with the user's Claude Code use: a median
-  of 4.9 s on 2026-11-05 and 8.1 s on 2026-11-12, with one run stopped at 30 seconds. One run
+  of 4.9 s on 2026-11-05 and 8.1 s on 2026-11-12, with two runs stopped at 30 seconds. One run
   on 2026-11-05 took about 5.2 s of CPU and 454 MB of peak memory; CPU and memory were not
   measured again. `docs/STATUS.md` has the details under 2026-11-05 and 2026-11-12.
 ```
@@ -980,7 +980,7 @@ alone starts none. A reading stays current for 20 minutes. Usage, in Claude Code
 outside it, appears within about 15 minutes while the app is running and the Mac is
 awake, or about 17 when a run is slow; **Check now** reads it at once.
 That means about 96 runs a day, plus runs after resets and retries after failures; it was up to 288 a day. A run is
-limited to 60 seconds (30 before 2026-11-12, when one run was stopped at that limit) and 1 MiB of output, works in one fixed folder in the temporary directory that is emptied before each run,
+limited to 60 seconds (30 before 2026-11-12, when two runs were stopped at that limit) and 1 MiB of output, works in one fixed folder in the temporary directory that is emptied before each run,
 ```
 
 In `README.md`, replace
@@ -1003,7 +1003,7 @@ succeeded, with a median of about 4.9 s and a maximum of about 19.3 s, and no Ke
 prompt appeared. One `claude` run then took about 5.2 s of CPU and 454 MB of peak memory.
 Runs got slower afterwards. Logs from Developer ID builds on the same Mac showed a median of
 about 6.2 s over 140 runs (read on 2026-11-09) and about 8.1 s over 104 runs (read on
-2026-11-12), when the longest completed run took 23.1 s and one run was stopped at the
+2026-11-12), when the longest completed run took 23.1 s and two runs were stopped at the
 30-second limit. CPU and memory were not measured again. The cost grows with the amount of
 recent Claude Code transcripts, which is why usage-record changes no longer start runs and the
 limit is 60 seconds.
@@ -1022,7 +1022,7 @@ In `docs/providers/claude.md`, replace
 with
 
 ```markdown
-  if the app already has it; 60 seconds (30 before 2026-11-12, when one run was stopped at that
+  if the app already has it; 60 seconds (30 before 2026-11-12, when two runs were stopped at that
   limit), then the process group is terminated; 1 MiB of standard
 ```
 
@@ -1149,7 +1149,7 @@ retries Codex; that starts no Claude run and no dialog.
 `docs/superpowers/plans/2026-11-12-claude-usage-probe-cadence.md`. A change in Claude Code's local
 usage records no longer starts a run, and the run deadline is 60 seconds, up from 30. Claude Code
 CLI 2.1.321 scans the last 7 days of transcripts on every `/usage` run; runs slowed to a median of
-about 8.1 s and one was stopped at 30 seconds, while usage-record changes started a run every 5
+about 8.1 s and two were stopped at 30 seconds, while usage-record changes started a run every 5
 minutes during use (STATUS, 2026-11-12). Automatic runs are now in practice 15 minutes apart, so a
 reading can be about 17 minutes old before the next one lands, 2 minutes 59 seconds inside the
 20-minute window. The `usageRecordsChanged` trigger no longer exists; Needlbar still reads the usage
@@ -1172,7 +1172,7 @@ with
 ```markdown
 logged run succeeded, no Keychain prompt appeared, and runs took about 5 s (maximum about 19.3 s).
 Logs from Developer ID builds were read on 2026-11-09 and 2026-11-12 for run counts, triggers and
-durations (STATUS, 2026-11-12): the median rose to about 8.1 s and one run was stopped at 30 seconds.
+durations (STATUS, 2026-11-12): the median rose to about 8.1 s and two runs were stopped at 30 seconds.
 Still open: how a signed-out `claude` reports itself in this mode, the same observation on a
 ```
 
@@ -1256,10 +1256,12 @@ released, and not yet run on a real machine.
 
   The CLI version per row follows from the install dates: 2.1.292 on 2026-10-07 and 2.1.321 on
   2026-11-09 at 17:09 local. The second row was a session receipt and is recorded here for the
-  first time. One run on 2026-11-12 at 16:26 local was stopped at the 30-second deadline
-  (`usageProbeTimedOut`, 30.5 s with the stop grace); its real length is unknown. The next two runs
-  succeeded in 17.3 s and 10.8 s. Nine of the ten slowest runs that day fell between 12:11 and
-  16:32, almost all started by usage-record changes while Claude Code was in use.
+  first time. Two runs on 2026-11-12 were stopped at the 30-second deadline (`usageProbeTimedOut`);
+  their real lengths are unknown. The first started at 16:26 local (30.5 s with the stop grace),
+  and the next two runs succeeded in 17.3 s and 10.8 s. The second started at 17:52 local (30.6 s
+  with the stop grace), after the window the table covers, which ends at 17:12; it was seen in the
+  log afterwards, and the next run succeeded in 11.1 s. Nine of the ten slowest runs that day fell
+  between 12:11 and 16:32, almost all started by usage-record changes while Claude Code was in use.
 - **Cause, observed.** Text extracted from the installed CLI 2.1.321 shows `/usage` in
   non-interactive mode scanning the transcripts under `~/.claude/projects` whose modification time
   is within a 7-day constant (604,800,000 ms), to build its usage breakdown. No flag, environment
