@@ -30,7 +30,7 @@ public struct ClaudeQuotaSelection: Equatable, Sendable {
 
 public enum ClaudeQuotaPresentationSelector {
     public static let recentStatusLineInterval: TimeInterval = 15 * 60
-    /// Longer than the slowest periodic refresh, which can finish 16:31 after the
+    /// Longer than the slowest periodic refresh, which can finish 17:01 after the
     /// last run started, so the label does not flip just before each refresh.
     public static let recentDirectInterval: TimeInterval = 20 * 60
     /// A status-line window received longer ago than this is treated exactly

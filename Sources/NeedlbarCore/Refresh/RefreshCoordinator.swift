@@ -516,7 +516,7 @@ public actor RefreshCoordinator {
         }
     }
 
-    /// A run can take 30 seconds, so it uses a dispatch thread rather than a
+    /// A run can take 60 seconds, so it uses a dispatch thread rather than a
     /// cooperative one, and its own slot rather than the Codex and Cursor one.
     private func beginClaudeUsageProbe(trigger: QuotaRefreshTrigger) {
         guard let repository = claudeUsageRepository, claudeUsageProbeTask == nil else { return }

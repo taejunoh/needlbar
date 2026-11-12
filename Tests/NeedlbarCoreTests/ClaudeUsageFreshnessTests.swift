@@ -25,7 +25,7 @@ struct ClaudeUsageFreshnessTests {
     @Test func theWindowOutlastsTheSlowestPeriodicRefresh() {
         let tick = TimeInterval(RefreshCoordinator.claudeUsageTickInterval.components.seconds)
         // The process deadline plus its termination grace, from `claude_usage_probe.rs`.
-        let slowestRun: TimeInterval = 30 + 1
+        let slowestRun: TimeInterval = 60 + 1
         #expect(ClaudeQuotaPresentationSelector.recentDirectInterval
             > ClaudeUsageProbeSchedule.periodicInterval + tick + slowestRun)
     }

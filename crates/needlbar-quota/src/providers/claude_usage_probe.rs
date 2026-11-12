@@ -46,9 +46,12 @@ pub struct UsageProbeLimits {
 }
 
 impl Default for UsageProbeLimits {
+    /// The deadline is 60 seconds (30 before 2026-11-12). `/usage` scans the
+    /// recent session transcripts, so a run takes longer as they grow, and a run
+    /// stopped at the deadline has paid its whole cost and returns nothing.
     fn default() -> Self {
         Self {
-            deadline: Duration::from_secs(30),
+            deadline: Duration::from_secs(60),
             max_stdout_bytes: 1024 * 1024,
         }
     }

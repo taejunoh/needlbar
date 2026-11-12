@@ -16,7 +16,7 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.waitUntilCompletedRuns(1)
         #expect(harness.probe.runIDs == [1])
         #expect(harness.events.values.first?.trigger == .startup)
-        #expect(harness.probe.everyCallRanOutsideAnyTask, "a 30-second run must not occupy a cooperative thread")
+        #expect(harness.probe.everyCallRanOutsideAnyTask, "a 60-second run must not occupy a cooperative thread")
         await harness.coordinator.stop()
     }
 
@@ -194,9 +194,9 @@ struct ClaudeUsageProbeCoordinatorTests {
         harness.probe.script(.result(try weeklyQuota(resetsAt: far)))
         await harness.startedAndIdle()
         await harness.advance(minutes: 14)
-        // The slowest refresh finishes 991 s after the last start.
+        // The slowest refresh finishes 1,021 s after the last start: 900 + 60 + 61.
         let beforeRefresh = ClaudeQuotaPresentationSelector.select(
-            snapshot: await harness.store.snapshot(for: .claude), now: Self.start.addingTimeInterval(991)).sevenDay
+            snapshot: await harness.store.snapshot(for: .claude), now: Self.start.addingTimeInterval(1_021)).sevenDay
         #expect(beforeRefresh?.isLastKnown == false)
         #expect(beforeRefresh?.observedAt == Self.start)
 
