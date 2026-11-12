@@ -13,13 +13,13 @@ struct ClaudeUsageProbeScheduleTests {
         #expect(schedule.request(.startup, now: start, inFlight: false) == .start)
     }
 
-    @Test func automaticRunsAreAtLeastFiveMinutesApartAndARefusedChangeStaysPending() {
+    @Test func automaticRunsAreAtLeastFiveMinutesApartAndARefusedRequestStaysPending() {
         var schedule = ClaudeUsageProbeSchedule()
         schedule.recordStart(at: start)
-        #expect(schedule.request(.usageRecordsChanged, now: at(299), inFlight: false) == .none)
-        #expect(schedule.pendingTrigger == .usageRecordsChanged)
+        #expect(schedule.request(.startup, now: at(299), inFlight: false) == .none)
+        #expect(schedule.pendingTrigger == .startup)
         #expect(schedule.dueTrigger(resetTimes: [], now: at(299), inFlight: false) == nil)
-        #expect(schedule.dueTrigger(resetTimes: [], now: at(300), inFlight: false) == .usageRecordsChanged)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(300), inFlight: false) == .startup)
         schedule.recordStart(at: at(300))
         #expect(schedule.pendingTrigger == nil)
     }
@@ -54,7 +54,7 @@ struct ClaudeUsageProbeScheduleTests {
         }
         schedule.recordStart(at: at(clock))
         schedule.recordSuccess()
-        schedule.recordFailure(trigger: .usageRecordsChanged, at: at(clock), retriesWhenBackoffEnds: true)
+        schedule.recordFailure(trigger: .periodic, at: at(clock), retriesWhenBackoffEnds: true)
         #expect(schedule.dueTrigger(resetTimes: [], now: at(clock + 300), inFlight: false) == .backoffRetry,
                 "the count restarted at five minutes")
     }
@@ -104,8 +104,8 @@ struct ClaudeUsageProbeScheduleTests {
         #expect(schedule.dueTrigger(resetTimes: [], now: at(899), inFlight: false) == nil)
         #expect(schedule.dueTrigger(resetTimes: [], now: at(900), inFlight: false) == .periodic,
                 "the periodic run is a trigger like any other")
-        #expect(schedule.request(.usageRecordsChanged, now: at(299), inFlight: false) == .none)
-        #expect(schedule.dueTrigger(resetTimes: [], now: at(300), inFlight: false) == .usageRecordsChanged)
+        #expect(schedule.request(.startup, now: at(299), inFlight: false) == .none)
+        #expect(schedule.dueTrigger(resetTimes: [], now: at(300), inFlight: false) == .startup)
     }
 
     @Test func aPassedResetIsDueOncePerRun() {
@@ -131,7 +131,7 @@ struct ClaudeUsageProbeScheduleTests {
         var schedule = ClaudeUsageProbeSchedule()
         schedule.recordStart(at: start)
         schedule.recordFailure(trigger: .startup, at: start, retriesWhenBackoffEnds: true)
-        #expect(schedule.request(.usageRecordsChanged, now: at(-86_400), inFlight: false) == .start)
+        #expect(schedule.request(.startup, now: at(-86_400), inFlight: false) == .start)
     }
 
     // MARK: - Periodic
@@ -156,8 +156,8 @@ struct ClaudeUsageProbeScheduleTests {
     @Test func thePeriodicRunComesLastInPriority() {
         var pending = ClaudeUsageProbeSchedule()
         pending.recordStart(at: start)
-        _ = pending.request(.usageRecordsChanged, now: at(1), inFlight: false)
-        #expect(pending.dueTrigger(resetTimes: [], now: at(900), inFlight: false) == .usageRecordsChanged)
+        _ = pending.request(.startup, now: at(1), inFlight: false)
+        #expect(pending.dueTrigger(resetTimes: [], now: at(900), inFlight: false) == .startup)
 
         var reset = ClaudeUsageProbeSchedule()
         reset.recordStart(at: start)
