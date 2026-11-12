@@ -178,8 +178,12 @@ does not mark the background refresh fresh.
 
 Prepared for the next release, not in v0.3.14: Claude has no login path. `RefreshCoordinator` runs
 Claude on its own slot, off the cooperative pool, under `ClaudeUsageProbeSchedule`: at app start, on
-manual refresh, when the Claude total in the usage refresh changes, when a displayed reset passes,
-and after 15 minutes without a run, at most once every 5 minutes with backoff. The Codex and Cursor refresh never waits for it.
+manual refresh, when a displayed reset passes,
+and after 15 minutes without a run, at most once every 5 minutes with backoff. Since 2026-11-12 a
+changed Claude total in the usage refresh no longer starts a run, because each run scans the last 7
+days of Claude Code transcripts, so automatic runs are in practice 15 minutes apart; the usage
+refresh still reads that total for tokens and cost. A run is stopped after 60 seconds (30 before
+that date). The Codex and Cursor refresh never waits for it.
 A stop cancels by run ID through `needlbar_claude_usage_report_cancel_through`, which signals the
 process group before returning. After any exit the probe also sends SIGKILL to the process group it
 started; a process that moved to its own session or group is not covered. A dashboard open, a wake or a regained connection starts no Claude run; if

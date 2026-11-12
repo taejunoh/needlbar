@@ -201,13 +201,18 @@ longer reads Claude Code's Keychain item or credentials file and no longer calls
 the usage endpoint. It runs `/usage` through your installed `claude`
 (`~/.local/bin/claude`, `/opt/homebrew/bin/claude` or `/usr/local/bin/claude`,
 never through a shell) and reads the documented `usage_report` field, which is
-marked experimental. Runs happen at app start, on manual refresh (**Check now**, in the dashboard and in Settings), when Claude
-Code's local usage records change, when a displayed window's reset passes, and
-after 15 minutes without a run, at most once every 5 minutes. Opening the dashboard
-alone starts none. A reading stays current for 20 minutes, and usage outside Claude
-Code appears within about 15 minutes while the app is running and the Mac is awake.
-That can mean about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart. A run is
-limited to 30 seconds and 1 MiB of output, works in one fixed folder in the temporary directory that is emptied before each run,
+marked experimental. Runs happen at app start, on manual refresh (**Check now**, in the dashboard and in Settings),
+when a displayed window's reset passes, and
+after 15 minutes without a run. Automatic runs are in practice 15 minutes apart; the
+5-minute minimum between them matters only after a reset or a failed run. Since
+2026-11-12 a change in Claude Code's local usage records no longer starts a run: each
+run makes `claude` scan its session transcripts from the last 7 days, and during use
+those changes started a run every 5 minutes. Opening the dashboard
+alone starts none. A reading stays current for 20 minutes. Usage, in Claude Code or
+outside it, appears within about 15 minutes while the app is running and the Mac is
+awake, or about 17 when a run is slow; **Check now** reads it at once.
+That means about 96 runs a day, plus runs after resets and retries after failures; it was up to 288 a day. A run is
+limited to 60 seconds (30 before 2026-11-12, when two runs were stopped at that limit) and 1 MiB of output, works in one fixed folder in the temporary directory that is emptied before each run,
 and its output is neither logged nor stored. After any exit Needlbar ends the process group it
 started; a process that moved to its own session or group is not covered. The status line remains the second
 source and last-known values the third; a newer valid reading wins. A window the
@@ -218,11 +223,17 @@ and retries under backoff. It offers no button. Needlbar never runs `claude auth
 and writes no Claude configuration, though Claude Code may renew its own login
 during a run, and `claude` itself may show a Keychain prompt. **Allow Keychain
 access**, which an earlier prepared build had, is removed. On one Mac, a local
-ad-hoc build ran for about 38 hours: all 125 runs in the retained 17 hours of logs
+ad-hoc build ran for about 38 hours to 2026-11-05: all 125 runs in the retained 17 hours of logs
 succeeded, with a median of about 4.9 s and a maximum of about 19.3 s, and no Keychain
-prompt appeared. One `claude` run took about 5.2 s of CPU and 454 MB of peak memory.
-Any rate limit on `/usage` has not been measured, and a full day on a Developer ID
-build has not been observed. It is not part of any
+prompt appeared. One `claude` run then took about 5.2 s of CPU and 454 MB of peak memory.
+Runs got slower afterwards. Logs from Developer ID builds on the same Mac showed a median of
+about 6.2 s over 140 runs (read on 2026-11-09) and about 8.1 s over 104 runs (read on
+2026-11-12), when the longest completed run took 23.1 s and two runs were stopped at the
+30-second limit. CPU and memory were not measured again. The cost grows with the amount of
+recent Claude Code transcripts, which is why usage-record changes no longer start runs and the
+limit is 60 seconds.
+Any rate limit on `/usage` has not been measured. Each of those two logs covers about 18
+hours, so a full day on a Developer ID build has still not been observed. It is not part of any
 public release yet, and a public release awaits a decision on Anthropic's terms for a local
 app that starts the user's `claude`.
 

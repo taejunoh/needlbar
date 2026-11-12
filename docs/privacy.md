@@ -107,12 +107,14 @@ The document contains only normalized usage and quota values, UTC timestamps, fi
 Usage and quota have separate network behavior:
 
 - Prepared for the next release, not in v0.3.14: Needlbar makes no Claude network request. It starts
-  the user's installed `claude` automatically, without a click: at app start, when Claude Code's local
-  usage records change, after a displayed window resets, on backoff retries and every 15 minutes, as
-  well as on manual refresh. Claude Code may renew its own login during such a run. Each run executes
+  the user's installed `claude` automatically, without a click: at app start, after a displayed
+  window resets, on backoff retries and every 15 minutes, as
+  well as on manual refresh. Since 2026-11-12 a change in Claude Code's local usage records no
+  longer starts it, because each run makes `claude` scan its own session transcripts from the last
+  7 days. Claude Code may renew its own login during such a run. Each run executes
   `/usage` through the user's installed `claude`, with a fixed command, no shell, one fixed working
-  folder in the temporary directory that is emptied before each run, a minimal environment and a 30-second limit. Any network use, login renewal or Keychain
-  prompt during that run belongs to `claude`. Needlbar reads only the `usage_report` field and an
+  folder in the temporary directory that is emptied before each run, a minimal environment and a 60-second limit (30 seconds before 2026-11-12). Any network use, login renewal, Keychain
+  prompt or transcript reading during that run belongs to `claude`. Needlbar reads only the `usage_report` field and an
   error label, and discards the rest without logging or storing it. It reads no Claude Keychain item
   or credential file. v0.3.14 still uses the Anthropic usage endpoint with existing local evidence.
 - Codex quota tries the provider usage API first and can use the installed Codex CLI app-server RPC fallback when the API credential route is unavailable.

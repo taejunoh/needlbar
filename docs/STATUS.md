@@ -1,5 +1,81 @@
 # Needlbar Development Status
 
+## 2026-11-12 Claude usage probe cadence and deadline (prepared, not released)
+
+Implements `docs/superpowers/specs/2026-11-12-claude-usage-probe-cadence-design.md` through
+`docs/superpowers/plans/2026-11-12-claude-usage-probe-cadence.md`. Not merged, installed, tagged or
+released, and not yet run on a real machine.
+
+- **Change.** A change in Claude Code's local usage records no longer starts a `/usage` run, and
+  the run deadline is 60 seconds, up from 30 (user decisions, 2026-11-12). App start, **Check now**,
+  a passed reset, the backoff retry and the 15-minute periodic run are unchanged. So are the
+  5-minute minimum interval, the backoff steps, the command, parsing and the 20-minute freshness
+  window. The `usageRecordsChanged` trigger is removed from the code. Needlbar still reads Claude
+  Code's usage records for token totals and cost.
+- **Measurements.** Local-only receipts from the maintainer's Mac, read from Needlbar's unified log
+  (`QuotaRefreshDiagnostic`, `durationMs`) on the date given:
+
+  | Logs covering | Read on | Build | Claude Code CLI | Runs | Median | Longest completed | Over 20 s |
+  |---|---|---|---|---|---|---|---|
+  | 17 h to 2026-11-05 | 2026-11-05 | local ad-hoc | 2.1.292 | 125 | 4.9 s | 19.3 s | 0 |
+  | 2026-11-08 12:42 to 11-09 07:18 | 2026-11-09 | Developer ID | 2.1.292 | 140 | 6.2 s | 22.5 s | 1 |
+  | 2026-11-11 23:31 to 11-12 17:12 | 2026-11-12 | Developer ID, `8cd964c` | 2.1.321 | 104 | 8.1 s | 23.1 s | 5 |
+
+  The CLI version per row follows from the install dates: 2.1.292 on 2026-10-07 and 2.1.321 on
+  2026-11-09 at 17:09 local. The second row was a session receipt and is recorded here for the
+  first time. Two runs on 2026-11-12 were stopped at the 30-second deadline (`usageProbeTimedOut`);
+  their real lengths are unknown. The first started at 16:26 local (30.5 s with the stop grace),
+  and the next two runs succeeded in 17.3 s and 10.8 s. The second started at 17:52 local (30.6 s
+  with the stop grace), after the window the table covers, which ends at 17:12; it was seen in the
+  log afterwards, and the next run succeeded in 11.1 s. Nine of the ten slowest runs that day fell
+  between 12:11 and 16:32, almost all started by usage-record changes while Claude Code was in use.
+- **Cause, observed.** Text extracted from the installed CLI 2.1.321 shows `/usage` in
+  non-interactive mode scanning the transcripts under `~/.claude/projects` whose modification time
+  is within a 7-day constant (604,800,000 ms), to build its usage breakdown. No flag, environment
+  variable or setting that turns this off was found. On 2026-11-12 the files in that window were
+  1,665 transcripts, about 4.93 GB (sizes only; no content was read). About 0.7 GB of transcripts
+  last modified on 2026-11-05 at 06:42 left the window on 2026-11-12 at 06:42, and quiet-time runs
+  went from 7.56 s (06:36) to 6.0 s (06:51) after three hours at 7.6 to 7.7 s. That is one event:
+  it shows that the volume in the window matters, not a rate per gigabyte.
+- **Cause, inferred.** Each run reads those files in full, and no cache between runs was found.
+  The second and third rows suggest 2.1.321 costs more per gigabyte than 2.1.292, because the
+  median rose while the window shrank; no run of both versions on the same data was made. The 15 to
+  30-second runs come from contention during heavy use: at the time of the investigation the Mac
+  had about 15.9 GB of swap in use, a load average of 8 to 11, and `fseventsd` near 100 percent CPU
+  after 41 days of uptime. Needlbar's own share is small: it logs completion 20 to 30 ms after the
+  child exits.
+- **Cost.** A run takes about 8 seconds of wall time at the median. CPU was last measured on
+  2026-11-05, at 5.2 seconds for a 4.3-second run; the bytes actually read were not measured. While
+  Claude Code was in use, usage-record changes started a run every 5 minutes, up to 12 an hour. On
+  2026-11-05 they were 90 of 125 runs.
+- **What the user sees.** Automatic runs are in practice 15 minutes apart, so a reading can be about
+  17 minutes old before the next one lands: 15 minutes, one 60-second check, and a run of up to 60
+  seconds with the stop grace, 1,021 seconds in all. That is 2 minutes 59 seconds inside the
+  20-minute freshness window. During continuous use the age was typically 6 to 7 minutes before. A
+  check that runs late under load can briefly show **Last known**. After a failed run the retry
+  comes 5 minutes later, so the next reading is about 21 to 24 minutes old. The five-hour and
+  seven-day alerts can arrive up to about 17 minutes after the change. **Check now** still reads at
+  once, or joins a run in flight, which can now take about 60 seconds.
+- **Options not taken.** A usage-record trigger held to 15 minutes after the last start, which
+  differs from the periodic run by at most one once-a-minute check. A 15-minute minimum for every
+  automatic run, which delays the run after a reset and the retry after a failure. A 45-second
+  deadline, because the cost grows with transcript volume. Pointing `CLAUDE_CONFIG_DIR` at a smaller
+  folder, which was not tested because it is expected to change where Claude Code finds its login.
+- **Not in scope.** The periodic run still makes about 96 runs a day, each scanning up to the whole
+  7-day window. A way to skip the scan, or a cache, would have to come from Claude Code. Revisit if
+  runs approach 60 seconds, rather than raising the deadline again, or if a later CLI version
+  changes the cost. The cause is specific to CLI 2.1.321 and to this Mac's data and load.
+- **Verified.** A new test that a changed usage total starts no run; the rewritten schedule,
+  coordinator and freshness tests; a Rust test that fixes the default deadline at 60 seconds;
+  `make test`; and the `cargo test --workspace` and `cargo clippy` commands that CI runs. Every
+  process test used a fake `claude`.
+
+Not established: the change has not run on a real machine. After installation, the unified log
+should show only the triggers `startup`, `manual`, `windowReset`, `backoffRetry` and `periodic`;
+automatic starts at least 15 minutes apart except after a reset or a failure; and no
+`usageProbeTimedOut` with `durationMs` under 60,000. No agent ran `claude` for this change, and the
+implementation read no credential file and no Keychain item.
+
 ## 2026-11-08 Overview widget bar shape (prepared, not released)
 
 The glanceable widget was seen on a real desktop for the first time, from a Developer ID build of
