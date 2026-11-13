@@ -1,5 +1,42 @@
 # Needlbar Development Status
 
+## 2026-11-13 Fable percent on the Overview widget (prepared, not released)
+
+Implements `docs/superpowers/specs/2026-11-13-widget-fable-percent-design.md` through
+`docs/superpowers/plans/2026-11-13-widget-fable-percent.md`. Not merged, installed, tagged or
+released, and not yet seen on a real widget.
+
+- **Change.** The Claude column's name line ends with the remaining Fable percent as small text,
+  for example `Fable 71%` (user decision, 2026-11-13; on 2026-11-06 the user had left Fable out).
+  It has no reset time, no bar and no added height. The large Claude figure stays the headline,
+  the lower of session and weekly, even when Fable is lower, because Fable is part of the weekly
+  pool and not separate capacity.
+- **States.** The text shows only when the Claude column shows a figure and the projection has a
+  Fable value. It reads `Fable —` once Fable's own reset has passed, and is hidden when there is
+  no value or the column shows `—`. It is system orange below 20 percent and system red below 10,
+  judged on the whole percent shown, and is not dimmed with the figure. VoiceOver reads it at the
+  end of the column's label. A missing value is never shown as zero or estimated.
+- **Projection.** The Claude quota row gains an optional `fable` reading: the remaining percent
+  and an optional reset time. The schema version stays 1, because a reader ignores a key it does
+  not know: on a scratch copy, the code before this change decoded a file with the new key, and a
+  projection without Fable encodes byte for byte as before. The mapper takes the value from the
+  `claude.fable.weekly` window and drops it without failing when it cannot be carried, so a
+  problem with Fable never stops widget updates. The headline allowlist is unchanged.
+- **Reloads.** Fable's reset time is one more reload deadline while it is in the future. Fable
+  adds no countdown step and no reload from the app.
+- **Risks.** A widget process left from before installation shows no Fable text, which looks like
+  a missing value: stop it by its process ID and check its executable after installing. Fable is
+  found in the usage report by its display name, so a rename removes the text without notice. A
+  report without Fable removes the text at once; there is no last-known Fable. Whether an account
+  that has not used Fable receives a row, which would show `Fable 100%`, is not verified.
+- **Verified.** Projection, mapper and presentation tests; a real compile of the widget
+  extension; the widget build and search-guard checks; and `make test`.
+
+Not established: the text has not been seen on a real widget. After a build and an installation,
+each the user's separate request, the user checks light and dark appearance, that `Fable 100%`
+fits on one line, that the text reads as part of the Claude column, and the low colour when it
+occurs. The tests ran locally on Swift 6.4; CI's Xcode 16.2 has not built this yet.
+
 ## 2026-11-12 Claude usage probe cadence and deadline (prepared, not released)
 
 Implements `docs/superpowers/specs/2026-11-12-claude-usage-probe-cadence-design.md` through

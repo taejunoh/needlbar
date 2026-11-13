@@ -328,8 +328,11 @@ Claude quota details can show Fable weekly remaining and reset when the provider
 supplies a supported Fable limit; Fable shares the plan's weekly pool and is not
 additional independent capacity. The separate Fable detail appears beneath
 Claude when its selected metric is Remaining. It does not change the menu-bar
-headline, snapshot export, widget, or quota notifications. Missing Fable data is
-shown as unavailable rather than estimated from tokens or the overall weekly quota.
+headline, snapshot export, or quota notifications, and in the released app it does
+not change the widget. Prepared, not released: the widget shows the remaining Fable
+percent as small text beside the Claude name (see Widget and quota notifications).
+Missing Fable data is shown as unavailable rather than estimated from tokens or the
+overall weekly quota.
 
 The live dashboard can show all six sections when enabled, alongside usage
 gauges, per-core CPU bars, and recent disk/network trends. Configured
@@ -390,6 +393,15 @@ Settings includes **Export snapshot…**, a user-initiated JSON export of the cu
 ### Widget and quota notifications
 
 The released app includes one medium Overview widget backed by a sanitized local projection. The widget does not refresh providers. Quota notifications are off by default, require explicit macOS permission, run only while Needlbar is running, and contain no credentials or raw provider data. They evaluate fresh Claude/Codex quota observations only, use conservative at-most-once local submission state, and do not apply to Cursor quota.
+
+Prepared, not released: beside the Claude name, the widget also shows the remaining Fable
+percent as small text, for example `Fable 71%`, when Claude Code's usage report includes a
+Fable limit (added 2026-11-13 at the user's request). It has no reset time and no bar, and the
+large Claude figure is still the lower of the session and weekly windows, because Fable is
+part of the weekly pool. The text is hidden when there is no Fable value or the Claude quota is
+unavailable, reads `Fable —` after Fable's own reset until the next reading, and is never
+estimated. For Fable, the projection carries only that percent and its reset time. It has
+not been seen on an installed widget yet.
 
 ## Native macOS 14 acceptance (maintainer-only)
 

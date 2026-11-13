@@ -209,6 +209,112 @@ struct WidgetOverviewPresentationTests {
         #expect(WidgetPresentation.wholePercent(0) == 0)
     }
 
+    // MARK: Fable text
+
+    @Test
+    func theFableTextShowsTheWholePercentBesideAFreshFigure() throws {
+        for resetIn in [6 * day, nil] as [TimeInterval?] {
+            let projection = try overview(claude: quota(
+                .claude, age: minute, headline: weekly(77, resetIn: 6 * day + 3 * hour), fable: fable(71.4, resetIn: resetIn)
+            ))
+            #expect(column(.claude, projection) == WidgetQuotaColumn(
+                title: "Claude",
+                figure: "77%",
+                fraction: 0.77,
+                level: .normal,
+                isDimmed: false,
+                detail: "Weekly · resets in 6d",
+                fable: WidgetFableText(text: "Fable 71%", level: .normal),
+                accessibilityLabel: "Claude, 77 percent remaining, weekly, resets in 6 days, Fable 71 percent remaining"
+            ))
+            #expect(column(.codex, projection).fable == nil)
+        }
+    }
+
+    @Test
+    func theFableTextIsShownAsReportedEvenAboveTheHeadline() throws {
+        let projection = try overview(claude: quota(.claude, age: minute, headline: weekly(12, resetIn: day), fable: fable(90, resetIn: day)))
+        let value = column(.claude, projection)
+        #expect(value.figure == "12%")
+        #expect(value.level == .low)
+        #expect(value.fable == WidgetFableText(text: "Fable 90%", level: .normal))
+    }
+
+    @Test
+    func aStaleColumnKeepsTheFableTextAndTheCaptionCarriesTheAge() throws {
+        let age = 20 * minute
+        let projection = try overview(claude: quota(.claude, age: age, headline: weekly(77, resetIn: day), fable: fable(71, resetIn: day)))
+        let time = shortText(referenceDate.addingTimeInterval(-age), includingDate: false)
+        let value = column(.claude, projection)
+        #expect(value.detail == "Last checked \(time)")
+        #expect(value.fable == WidgetFableText(text: "Fable 71%", level: .normal))
+        #expect(value.accessibilityLabel == "Claude, 77 percent remaining, last checked \(time), Fable 71 percent remaining")
+    }
+
+    @Test
+    func aPassedHeadlineResetDimsTheFigureButNotTheFableText() throws {
+        let projection = try overview(claude: quota(.claude, age: minute, headline: weekly(77, resetIn: -1), fable: fable(71, resetIn: day)))
+        let value = column(.claude, projection)
+        #expect(value.isDimmed)
+        #expect(value.detail == "Awaiting fresh reading")
+        #expect(value.fable == WidgetFableText(text: "Fable 71%", level: .normal))
+        #expect(value.accessibilityLabel == "Claude, 77 percent remaining, awaiting fresh reading, Fable 71 percent remaining")
+    }
+
+    @Test
+    func aPassedFableResetShowsADashWhateverTheHeadlineState() throws {
+        let awaiting = WidgetFableText(text: "Fable —", level: nil)
+        // A low value, so a colour here would mean the old percent was still judged.
+        let fresh = try overview(claude: quota(.claude, age: minute, headline: weekly(77, resetIn: day), fable: fable(5, resetIn: -1)))
+        #expect(column(.claude, fresh).fable == awaiting)
+        #expect(column(.claude, fresh).accessibilityLabel
+            == "Claude, 77 percent remaining, weekly, resets in 1 day, Fable awaiting fresh reading")
+
+        let exactlyAtTheReset = try overview(claude: quota(.claude, age: minute, headline: weekly(77, resetIn: day), fable: fable(5, resetIn: 0)))
+        #expect(column(.claude, exactlyAtTheReset).fable == awaiting)
+
+        let stale = try overview(claude: quota(.claude, age: hour, headline: weekly(77, resetIn: day), fable: fable(5, resetIn: -1)))
+        #expect(column(.claude, stale).fable == awaiting)
+        #expect(column(.claude, stale).accessibilityLabel.hasSuffix(", Fable awaiting fresh reading"))
+
+        let bothPassed = try overview(claude: quota(.claude, age: minute, headline: weekly(77, resetIn: -1), fable: fable(5, resetIn: -1)))
+        #expect(column(.claude, bothPassed).fable == awaiting)
+        #expect(column(.claude, bothPassed).accessibilityLabel
+            == "Claude, 77 percent remaining, awaiting fresh reading, Fable awaiting fresh reading")
+    }
+
+    @Test
+    func theFableTextIsHiddenWithoutAValueOrWithoutAFigure() throws {
+        let withoutFable = try overview(claude: quota(.claude, age: minute, headline: weekly(77, resetIn: day)))
+        #expect(column(.claude, withoutFable).fable == nil)
+        #expect(column(.claude, withoutFable).accessibilityLabel == "Claude, 77 percent remaining, weekly, resets in 1 day")
+
+        #expect(column(.claude, nil).fable == nil)
+
+        // The column shows a dash: no headline, or a last successful time after now.
+        let withoutHeadline = try overview(claude: quota(.claude, age: minute, headline: nil, fable: fable(71, resetIn: day)))
+        #expect(column(.claude, withoutHeadline).figure == "—")
+        #expect(column(.claude, withoutHeadline).fable == nil)
+        #expect(column(.claude, withoutHeadline).accessibilityLabel == "Claude, quota unavailable")
+        let future = try overview(claude: quota(.claude, age: -minute, headline: weekly(77, resetIn: day), fable: fable(71, resetIn: day)))
+        #expect(column(.claude, future).figure == "—")
+        #expect(column(.claude, future).fable == nil)
+    }
+
+    @Test
+    func theFableColourFollowsTheShownWholePercent() throws {
+        func shown(_ remaining: Double) throws -> WidgetFableText? {
+            let projection = try overview(claude: quota(.claude, age: minute, headline: weekly(77, resetIn: day), fable: fable(remaining, resetIn: day)))
+            return column(.claude, projection).fable
+        }
+        #expect(try shown(99.6) == WidgetFableText(text: "Fable 100%", level: .normal))
+        #expect(try shown(19.5) == WidgetFableText(text: "Fable 20%", level: .normal))
+        #expect(try shown(19.4) == WidgetFableText(text: "Fable 19%", level: .low))
+        #expect(try shown(9.5) == WidgetFableText(text: "Fable 10%", level: .low))
+        #expect(try shown(9.4) == WidgetFableText(text: "Fable 9%", level: .critical))
+        #expect(try shown(0.4) == WidgetFableText(text: "Fable 0%", level: .critical))
+    }
+
     // MARK: Footer
 
     @Test
@@ -269,6 +375,24 @@ struct WidgetOverviewPresentationTests {
     }
 
     @Test
+    func aFutureFableResetIsAReloadDeadlineAndAPassedOneIsNot() throws {
+        // No headline reset, so the only other deadline is the 20-minute freshness boundary.
+        let ahead = try overview(claude: quota(.claude, age: 0, headline: weekly(77, resetIn: nil), fable: fable(71, resetIn: 10 * minute)))
+        #expect(nextReload(ahead) == referenceDate.addingTimeInterval(10 * minute))
+        let passed = try overview(claude: quota(.claude, age: 0, headline: weekly(77, resetIn: nil), fable: fable(71, resetIn: -minute)))
+        #expect(nextReload(passed) == referenceDate.addingTimeInterval(20 * minute))
+        let none = try overview(claude: quota(.claude, age: 0, headline: weekly(77, resetIn: nil), fable: fable(71, resetIn: nil)))
+        #expect(nextReload(none) == referenceDate.addingTimeInterval(20 * minute))
+    }
+
+    @Test
+    func theFableResetAddsNoCountdownStep() throws {
+        // A headline reset 2 h 10 min away adds a step at 10 minutes; the same Fable reset must not.
+        let projection = try overview(claude: quota(.claude, age: 0, headline: weekly(77, resetIn: nil), fable: fable(71, resetIn: 2 * hour + 10 * minute)))
+        #expect(nextReload(projection) == referenceDate.addingTimeInterval(20 * minute))
+    }
+
+    @Test
     func theNextReloadIsNeverSoonerThanOneMinute() throws {
         let nearBoundary = try overview(claude: quota(.claude, age: 20 * minute - 10, headline: weekly(77, resetIn: nil)))
         #expect(nextReload(nearBoundary) == referenceDate.addingTimeInterval(minute))
@@ -298,13 +422,24 @@ private func primary(_ remaining: Double, resetIn seconds: TimeInterval?) -> Wid
     WidgetQuotaHeadline(id: .codexPrimary, remainingPercent: remaining, resetsAt: seconds.map { referenceDate.addingTimeInterval($0) })
 }
 
+private func fable(_ remaining: Double, resetIn seconds: TimeInterval?) -> WidgetFableReading {
+    WidgetFableReading(remainingPercent: remaining, resetsAt: seconds.map { referenceDate.addingTimeInterval($0) })
+}
+
 private func quota(
     _ provider: WidgetProvider,
     age: TimeInterval,
     stream: WidgetStreamState = .fresh,
-    headline: WidgetQuotaHeadline?
+    headline: WidgetQuotaHeadline?,
+    fable: WidgetFableReading? = nil
 ) throws -> WidgetQuotaRow {
-    try WidgetQuotaRow(provider: provider, stream: stream, lastSuccessfulAt: referenceDate.addingTimeInterval(-age), headline: headline)
+    try WidgetQuotaRow(
+        provider: provider,
+        stream: stream,
+        lastSuccessfulAt: referenceDate.addingTimeInterval(-age),
+        headline: headline,
+        fable: fable
+    )
 }
 
 private func noUsage(_ provider: WidgetProvider) -> WidgetUsageRow {

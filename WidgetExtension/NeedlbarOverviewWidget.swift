@@ -110,10 +110,33 @@ private struct QuotaColumnView: View {
         }
     }
 
+    private func fableColor(_ level: WidgetRemainingLevel?) -> Color {
+        switch level {
+        case .critical: return .red
+        case .low: return .orange
+        case .normal, nil: return .secondary
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(column.title)
-                .font(.headline)
+            // The name keeps its size; only the Fable text may shrink. A caption is shorter
+            // than the headline font, so the line is no taller with it.
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text(column.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                if let fable = column.fable {
+                    Spacer(minLength: 4)
+                    Text(fable.text)
+                        .font(.caption)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .foregroundStyle(fableColor(fable.level))
+                }
+            }
             Text(column.figure)
                 .font(.system(size: 36, weight: .bold))
                 .monospacedDigit()

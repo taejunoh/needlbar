@@ -1,6 +1,8 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-11-12, updated for the `/usage` cadence and deadline change, which is
+**Checkpoint:** 2026-11-13, updated for the Fable percent on the Overview widget, which is
+prepared and not released and not yet seen on a real widget; before that 2026-11-12, for the
+`/usage` cadence and deadline change, which is
 prepared and not released and not yet run on a real machine; before that 2026-11-05, for the
 Claude usage report source, which is
 prepared and not released and passed about 38 hours of local observation; it replaces the Claude Keychain access action of
@@ -175,6 +177,18 @@ again, or if a later CLI version changes the cost. Not yet checked on a real mac
 installation the unified log should show only the triggers `startup`, `manual`, `windowReset`,
 `backoffRetry` and `periodic`, automatic starts at least 15 minutes apart except after a reset or a
 failure, and no `usageProbeTimedOut` with `durationMs` under 60,000.
+
+**Fable on the widget (2026-11-13, prepared, not released).** Design:
+`docs/superpowers/specs/2026-11-13-widget-fable-percent-design.md`. Plan:
+`docs/superpowers/plans/2026-11-13-widget-fable-percent.md`. The Overview widget's Claude column
+shows the remaining Fable percent as small text on its name line, with no reset time, because the
+user asked to see that limit at a glance. The large figure is still the lower of session and
+weekly. The projection's Claude quota row carries an optional `fable` reading and the schema
+version stays 1. The text is hidden without a Fable value or when the column shows `—`, and reads
+`Fable —` after Fable's own reset. Not yet seen on a real widget. After installing, stop the old
+widget process by its process ID and check its executable, or the missing text looks like a
+missing value (STATUS, 2026-11-13). Fable is found in the usage report by its display name, so a
+rename removes the text without notice.
 
 A local ad-hoc build ran for about 38 hours on the maintainer's Mac (STATUS, 2026-11-05): every
 logged run succeeded, no Keychain prompt appeared, and runs took about 5 s (maximum about 19.3 s).

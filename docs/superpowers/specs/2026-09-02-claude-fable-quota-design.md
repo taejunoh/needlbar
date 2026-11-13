@@ -167,6 +167,13 @@ contract. Widget and notification ID allowlists remain unchanged: Fable is not
 exported, widgeted, or notified, and tests must prove that unknown IDs retain
 the existing ignore/reject behavior. No Settings or preference flag is added.
 
+> **Amendment — 2026-11-13:** Approved by the user in
+> `2026-11-13-widget-fable-percent-design.md`. Fable is now shown on the Overview widget, as
+> small secondary text on the Claude column, because the user asked to see it there. The
+> widget projection carries its remaining percent and reset time as a separate optional
+> reading. The widget's headline allowlist is still unchanged, so Fable never becomes the
+> widget's headline, and Fable is still not exported or notified.
+
 All other providers, authentication behavior, refresh ownership, bridge
 envelope, and provider action policy remain unchanged.
 

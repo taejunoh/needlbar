@@ -43,7 +43,22 @@ public struct WidgetProjectionMapper: Sendable {
                   window.remainingPercent.isFinite, (0...100).contains(window.remainingPercent) else { return nil }
             return .init(id: id, remainingPercent: window.remainingPercent, resetsAt: window.resetsAt)
         }.sorted { $0.remainingPercent == $1.remainingPercent ? $0.id.rawValue < $1.id.rawValue : $0.remainingPercent < $1.remainingPercent }
-        return try .init(provider: provider, stream: stream, lastSuccessfulAt: capture.quotaLastSuccessfulAt, headline: candidates.first)
+        return try .init(
+            provider: provider,
+            stream: stream,
+            lastSuccessfulAt: capture.quotaLastSuccessfulAt,
+            headline: candidates.first,
+            fable: fableReading(capture, provider: provider)
+        )
+    }
+
+    /// Fable is secondary text, so anything wrong with it drops it and never throws: the
+    /// publisher maps with `try?`, and a thrown error would stop every widget update.
+    private func fableReading(_ capture: WidgetProviderCapture, provider: WidgetProvider) -> WidgetFableReading? {
+        let windows = (capture.quota?.windows ?? []).filter { $0.id == QuotaWindow.claudeFableWeeklyID }
+        guard provider == .claude, windows.count == 1 else { return nil }
+        let reading = WidgetFableReading(remainingPercent: windows[0].remainingPercent, resetsAt: windows[0].resetsAt)
+        return reading.isValid(for: provider, lastSuccessfulAt: capture.quotaLastSuccessfulAt) ? reading : nil
     }
 
     private func mapUsage(_ capture: WidgetProviderCapture, provider: WidgetProvider) -> WidgetUsageRow {
