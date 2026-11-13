@@ -9,6 +9,11 @@ tag, and release each still need the user's separate request.
 **Scope:** The medium **Overview** widget's view only. The projection the app writes, the
 App Group contract, refresh behaviour, the widget's family, and its tap target are unchanged.
 
+**Dated note, 2026-11-13:** the projection is no longer unchanged. Its Claude quota row gains
+an optional Fable reading, because the user asked to see the Fable limit on the widget
+(`2026-11-13-widget-fable-percent-design.md`). The schema version stays 1, and the App Group
+contract, refresh behaviour, family and tap target are still unchanged.
+
 ## 1. Problem
 
 On the installed build the widget showed every line at the same visual weight: two quota
@@ -36,6 +41,12 @@ Two equal columns, then one footer line.
   `Secondary`).
 - **Fable:** not shown, because the projection has no Fable value. The dashboard and
   Settings still show it.
+- **Fable (dated note, 2026-11-13):** the line above no longer holds. The remaining Fable
+  percent is shown as small text, `Fable 71%`, at the right end of the Claude column's name
+  line, with no reset time and no added height, and the projection now carries the value. The
+  user now spends the Fable limit through a Fable-based agent and asked for it as secondary
+  information. The large Claude figure is still the headline window. Approved in
+  `2026-11-13-widget-fable-percent-design.md`.
 - **Removed:** the header's **Fresh**/**Stale** label, per-row "Fresh · <time>" lines, the
   Cursor row, and the "Today updated" line.
 
@@ -64,6 +75,14 @@ Two equal columns, then one footer line.
   percent, the system red. Unavailable values have no colour.
 - **Last checked:** the time only when it is today, otherwise the short date and time.
 - **No invented values:** an unavailable value is never shown as zero.
+- **Fable text (dated note, 2026-11-13):** added with the Fable percent in §2. It appears only
+  when the Claude column shows a figure and the projection has a Fable value. It reads
+  `Fable —` once Fable's own reset has passed, and is hidden when there is no value or the
+  column shows `—`; a missing value is never shown as zero. It is system orange below 20
+  percent and system red below 10, judged on the whole percent shown, and otherwise the
+  secondary colour. It is not dimmed when the headline's reset has passed, because its content
+  depends only on its own value and reset. Fable's reset is one of the resets §5 reloads at,
+  and it adds no countdown step.
 
 ## 5. Updating
 
@@ -76,6 +95,11 @@ a day, the next whole hour. No reload is scheduled more often than once a minute
 
 - Each column reads as one VoiceOver element, for example "Claude, 77 percent remaining,
   weekly, resets in 6 days", or "Claude, quota unavailable".
+- **VoiceOver (dated note, 2026-11-13):** when the Fable text shows, the Claude column's label
+  ends with ", Fable 71 percent remaining", or ", Fable awaiting fresh reading" once Fable's
+  reset has passed, so the column is still one element. Added because the label replaces the
+  column's visible text, which now includes Fable. "The widget has no title row" below means
+  the widget as a whole: each column starts with its name, and the Fable text shares that line.
 - Colours are system colours and work in light and dark appearance. The bar uses a provider
   accent (Claude orange, Codex blue), as in the approved mock-up; the low-remaining colours in
   §4 replace it. The widget has no title row.
@@ -94,6 +118,11 @@ a day, the next whole hour. No reload is scheduled more often than once a minute
   existing build and search-guard checks still pass.
 - **Manual:** the user checks the installed widget in light and dark appearance, with a
   fresh and an old value if one occurs.
+- **Fable (dated note, 2026-11-13):** added with the Fable percent in §2. The automated tests
+  also cover the Fable reading in the projection and in the app's mapper, its text, colour and
+  VoiceOver suffix in each state, and its reset as a reload deadline. The manual check adds
+  that `Fable 100%` fits on one line, that the text reads as part of the Claude column, and
+  the low colour when it occurs.
 
 ## 8. Specification changes
 
