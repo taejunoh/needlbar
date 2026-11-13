@@ -61,6 +61,75 @@ struct WidgetProjectionTests {
     let projection = try WidgetProjectionMapper(now: now).map(makeWidgetCapture(now: now, claudeQuota: claudeQuota, codexQuota: codexQuota))
     #expect(projection.quotaRows[0].headline?.id == .claudeSession)
     #expect(projection.quotaRows[1].headline?.id == .codexPrimary)
+    // Fable is lower than every allowlisted window and still never becomes the headline.
+    #expect(projection.quotaRows[0].headline?.remainingPercent == 20)
+    #expect(projection.quotaRows[0].fable == WidgetFableReading(remainingPercent: 0, resetsAt: now.addingTimeInterval(3600)))
+    #expect(projection.quotaRows[1].fable == nil)
+}
+
+@Test func mapperCopiesFableWithoutAResetTime() throws {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let claudeQuota = QuotaSnapshot(windows: [
+        try QuotaWindow(id: "claude.weekly", title: "private", usedPercent: 23, resetsAt: now.addingTimeInterval(3600)),
+        try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "private", usedPercent: 29, resetsAt: nil),
+    ])
+    let row = try WidgetProjectionMapper(now: now).map(makeWidgetCapture(now: now, claudeQuota: claudeQuota)).quotaRows[0]
+    #expect(row.headline?.id == .claudeWeekly)
+    #expect(row.fable == WidgetFableReading(remainingPercent: 71, resetsAt: nil))
+}
+
+@Test func mapperDropsFableWithoutThrowingWhenItCannotBeCarried() throws {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let reset = now.addingTimeInterval(3600)
+    let weekly = try QuotaWindow(id: "claude.weekly", title: "private", usedPercent: 23, resetsAt: reset)
+    func fable(usedPercent: Double = 29, resetsAt: Date?) throws -> QuotaWindow {
+        try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "private", usedPercent: usedPercent, resetsAt: resetsAt)
+    }
+    let cases: [[QuotaWindow]] = [
+        [weekly],
+        [weekly, try fable(resetsAt: reset), try fable(usedPercent: 40, resetsAt: reset)],
+        [weekly, try fable(resetsAt: Date(timeIntervalSinceReferenceDate: .infinity))],
+        [weekly, try fable(resetsAt: Date(timeIntervalSinceReferenceDate: .nan))],
+    ]
+    for windows in cases {
+        let capture = try makeWidgetCapture(now: now, claudeQuota: QuotaSnapshot(windows: windows))
+        let row = try WidgetProjectionMapper(now: now).map(capture).quotaRows[0]
+        #expect(row.headline?.id == .claudeWeekly)
+        #expect(row.fable == nil)
+    }
+
+    // A quota value with no last successful time: the row can carry neither a headline nor Fable.
+    let fableOnly = QuotaSnapshot(windows: [try fable(resetsAt: reset)])
+    let base = try makeWidgetCapture(now: now)
+    let undated = WidgetStoreCapture(exportedAt: now, providers: base.providers.map { value in
+        guard value.provider == .claude else { return value }
+        return WidgetProviderCapture(
+            provider: .claude,
+            usage: value.usage,
+            quota: fableOnly,
+            usageStatus: value.usageStatus,
+            quotaStatus: .unavailable,
+            usageLastSuccessfulAt: value.usageLastSuccessfulAt,
+            quotaLastSuccessfulAt: nil,
+            usageDayProvenance: value.usageDayProvenance
+        )
+    })
+    let undatedRow = try WidgetProjectionMapper(now: now).map(undated).quotaRows[0]
+    #expect(undatedRow.lastSuccessfulAt == nil)
+    #expect(undatedRow.headline == nil)
+    #expect(undatedRow.fable == nil)
+}
+
+@Test func mapperIgnoresAFableWindowInTheCodexSnapshot() throws {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let codexQuota = QuotaSnapshot(windows: [
+        try QuotaWindow(id: "codex.primary", title: "private", usedPercent: 50, resetsAt: now.addingTimeInterval(3600)),
+        try QuotaWindow(id: QuotaWindow.claudeFableWeeklyID, title: "private", usedPercent: 29, resetsAt: now.addingTimeInterval(3600)),
+    ])
+    let projection = try WidgetProjectionMapper(now: now).map(makeWidgetCapture(now: now, codexQuota: codexQuota))
+    #expect(projection.quotaRows[1].headline?.id == .codexPrimary)
+    #expect(projection.quotaRows[1].fable == nil)
+    #expect(projection.quotaRows[0].fable == nil)
 }
 
 @Test func publisherSkipsByteIdenticalProjectionAndReloadsOnce() async throws {
