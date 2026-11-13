@@ -118,32 +118,50 @@ private struct QuotaColumnView: View {
         }
     }
 
+    private var figure: some View {
+        Text(column.figure)
+            .font(.system(size: 36, weight: .bold))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .foregroundStyle(warning ?? Color.primary)
+            .opacity(column.isDimmed ? 0.45 : 1)
+    }
+
+    private func fableText(_ text: String, level: WidgetRemainingLevel?) -> some View {
+        Text(text)
+            .font(.caption)
+            .monospacedDigit()
+            .foregroundStyle(fableColor(level))
+            .fixedSize()
+    }
+
+    // The Fable text sits beside the figure and never shrinks it: one line when it fits, two
+    // lines (the value on the figure's baseline) when it does not, otherwise the figure alone.
+    @ViewBuilder
+    private var figureRow: some View {
+        if let fable = column.fable {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    figure.fixedSize()
+                    fableText(fable.text, level: fable.level)
+                }
+                HStack(alignment: .lastTextBaseline, spacing: 6) {
+                    figure.fixedSize()
+                    fableText(fable.text.replacingOccurrences(of: " ", with: "\n"), level: fable.level)
+                }
+                figure
+            }
+        } else {
+            figure
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            // The name keeps its size; only the Fable text may shrink. A caption is shorter
-            // than the headline font, so the line is no taller with it.
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text(column.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .layoutPriority(1)
-                if let fable = column.fable {
-                    Spacer(minLength: 4)
-                    Text(fable.text)
-                        .font(.caption)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .foregroundStyle(fableColor(fable.level))
-                }
-            }
-            Text(column.figure)
-                .font(.system(size: 36, weight: .bold))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .foregroundStyle(warning ?? Color.primary)
-                .opacity(column.isDimmed ? 0.45 : 1)
+            Text(column.title)
+                .font(.headline)
+            figureRow
             QuotaBar(fraction: column.fraction, fill: warning ?? accent)
                 .opacity(column.isDimmed ? 0.45 : 1)
             Text(column.detail)

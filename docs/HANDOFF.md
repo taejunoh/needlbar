@@ -1,7 +1,7 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-11-13, updated for the Fable percent on the Overview widget, which is
-prepared and not released and not yet seen on a real widget; before that 2026-11-12, for the
+**Checkpoint:** 2026-11-13, updated for the Fable percent on the Overview widget, now beside the big Claude figure, which is
+prepared and not released and not yet seen installed in that placement; before that 2026-11-12, for the
 `/usage` cadence and deadline change, which is
 prepared and not released and not yet run on a real machine; before that 2026-11-05, for the
 Claude usage report source, which is
@@ -181,11 +181,14 @@ failure, and no `usageProbeTimedOut` with `durationMs` under 60,000.
 **Fable on the widget (2026-11-13, prepared, not released).** Design:
 `docs/superpowers/specs/2026-11-13-widget-fable-percent-design.md`. Plan:
 `docs/superpowers/plans/2026-11-13-widget-fable-percent.md`. The Overview widget's Claude column
-shows the remaining Fable percent as small text on its name line, with no reset time, because the
+shows the remaining Fable percent as small text beside the big Claude figure (moved there on
+2026-11-13 from the name line, where it read as Codex's), with no reset time, because the
 user asked to see that limit at a glance. The large figure is still the lower of session and
 weekly. The projection's Claude quota row carries an optional `fable` reading and the schema
 version stays 1. The text is hidden without a Fable value or when the column shows `—`, and reads
-`Fable —` after Fable's own reset. Not yet seen on a real widget. After installing, stop the old
+`Fable —` after Fable's own reset. Seen on 2026-11-13 on the installed Developer ID build of 0a8f430 (light, and the desktop-not-in-front
+faded rendering: the tone matched the caption and the bar reads correctly), then moved beside the
+figure, which is not yet seen installed. After installing, stop the old
 widget process by its process ID and check its executable, or the missing text looks like a
 missing value (STATUS, 2026-11-13). Fable is found in the usage report by its display name, so a
 rename removes the text without notice.

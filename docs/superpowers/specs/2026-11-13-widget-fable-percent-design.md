@@ -7,6 +7,11 @@ appears as small text on the Claude column's name line, with no reset time. It a
 implementation plan only. Implementation, merge, installation, tag, and release each still
 need the user's separate request.
 
+**Amendment (2026-11-13):** after the first version was installed, the user chose to move the
+text beside the big Claude figure, because at the end of the name line it sat closer to the
+Codex title and could read as Codex's. §2 "Where", §4 "Layout" and §6 are amended below;
+the rest stands. The text as first approved read `Fable 71%` on the name line.
+
 **Scope:** The medium **Overview** widget and the projection the app writes for it. It amends
 `docs/superpowers/specs/2026-11-06-glanceable-overview-widget-design.md`, which left Fable
 out. The widget's family, tap target, refresh behaviour, columns, figures, bars, captions and
@@ -22,9 +27,10 @@ as secondary information, small.
 
 ## 2. Decision
 
-- **Where:** `Fable 71%` at the right end of the Claude column's name line, in caption size,
-  on the same line as **Claude**. The widget gains no height. (The 2026-11-06 spec's "no title
-  row" refers to the widget as a whole; each column already starts with its name.)
+- **Where (amended 2026-11-13):** `Fable 71%` beside the big Claude figure, baseline-aligned
+  with it, in caption size. The name line is the plain title again. The widget gains no height:
+  the row stays the figure's height, about 43 points. (First approved at the right end of the
+  name line, where it read as Codex's on the installed widget.)
 - **What:** the remaining Fable percent only, rounded to a whole number like the other figures.
   No reset time. The user's reading is that Fable resets with the weekly window shown below;
   the repository does not confirm this, and the usage report gives Fable its own reset time,
@@ -92,13 +98,17 @@ reset; the column's caption carries freshness. This rule was adopted at the spec
 - **Never invented:** a missing value is hidden, never shown as zero, and Fable is never
   estimated from the weekly value. Fable can read higher than the weekly figure; it is shown as
   reported.
-- **Layout:** the name line becomes a first-baseline row of the name, a spacer and the Fable
-  text. The name keeps layout priority, so only the Fable text shrinks; it keeps one line,
-  uses monospaced digits, and may scale down to 0.8. Measured with AppKit, "Claude" at the
-  headline font is about 45 points and "Fable 100%" at caption size about 57 points, against a
-  column computed at about 141 points from a 329-point widget with default margins (not
-  measured on the installed widget). The caption font is shorter than the headline font, so the
-  line keeps its height.
+- **Layout (amended 2026-11-13):** the Fable text sits beside the Claude figure, aligned to its
+  baseline, in caption size with monospaced digits. The figure never shrinks because of
+  Fable. The ladder is: one line (`Fable 71%`); then two lines (`Fable` over the value, the
+  value on the figure's baseline); then hidden. The row height stays the figure's, about 43
+  points. Measured, one line fits for every one- and two-digit Claude figure except beside
+  `Fable 100%` at a column of about 141 points; Claude `100%` uses two lines, and the text is
+  hidden only if the column is under about 139 points with Claude at `100%`. (As first
+  approved: a first-baseline row of the name, a spacer and the Fable text on the name line,
+  scaling down to 0.8; measured with AppKit, "Claude" at the headline font about 45 points and
+  "Fable 100%" at caption size about 57 points, against a column of about 141 points from a
+  329-point widget with default margins.)
 
 ## 5. Updating
 
@@ -130,8 +140,9 @@ no reloads from the app: every successful `/usage` run already rewrites the proj
   certain words anywhere in the widget sources, comments included.
 - **Not automated, checked by the user on the installed widget** after a tagless Developer ID
   build and installation (both separate requests): light and dark appearance; `Fable 100%`
-  fits on one line without truncation; the text reads as part of the Claude column; the low
-  colour, when it occurs.
+  reads as Claude's, on one line normally and on two lines when Claude is at `100%`, or a
+  two-digit figure sits beside `Fable 100%`, without truncation; the text reads as part of the
+  Claude column; the low colour, when it occurs.
 
 ## 7. Risks
 
