@@ -47,6 +47,15 @@ public enum WidgetQuotaStatus: Equatable, Sendable {
     case unavailable
 }
 
+/// The small Fable text at the right end of the Claude column's name line.
+public struct WidgetFableText: Equatable, Sendable {
+    /// `Fable 71%`, or `Fable —` once Fable's own reset has passed.
+    public let text: String
+    /// The level of the shown percent, or `nil` for the dash. Low is orange and critical is
+    /// red; anything else uses the secondary colour.
+    public let level: WidgetRemainingLevel?
+}
+
 /// Everything the widget draws for one provider column.
 public struct WidgetQuotaColumn: Equatable, Sendable {
     public let title: String
@@ -57,7 +66,29 @@ public struct WidgetQuotaColumn: Equatable, Sendable {
     public let level: WidgetRemainingLevel?
     public let isDimmed: Bool
     public let detail: String
+    /// `nil` hides the text: no Fable value, or the column shows no figure.
+    public let fable: WidgetFableText?
     public let accessibilityLabel: String
+
+    init(
+        title: String,
+        figure: String,
+        fraction: Double?,
+        level: WidgetRemainingLevel?,
+        isDimmed: Bool,
+        detail: String,
+        fable: WidgetFableText? = nil,
+        accessibilityLabel: String
+    ) {
+        self.title = title
+        self.figure = figure
+        self.fraction = fraction
+        self.level = level
+        self.isDimmed = isDimmed
+        self.detail = detail
+        self.fable = fable
+        self.accessibilityLabel = accessibilityLabel
+    }
 }
 
 public struct WidgetTodayFooter: Equatable, Sendable {
@@ -230,6 +261,9 @@ public enum WidgetPresentation {
         guard let percent = wholePercent(headline.remainingPercent) else {
             return unavailableColumn(title: title)
         }
+        // Reached only when the column shows a figure, so Fable never sits beside a dash.
+        // The row type already refuses Fable on Codex; the check keeps that true here too.
+        let fable = provider == .claude ? fableReadout(row?.fable, now: now) : nil
         return WidgetQuotaColumn(
             title: title,
             figure: "\(percent)%",
@@ -237,7 +271,26 @@ public enum WidgetPresentation {
             level: remainingLevel(percent: percent),
             isDimmed: isDimmed,
             detail: detail,
+            fable: fable?.text,
             accessibilityLabel: "\(title), \(percent) percent remaining, \(spokenDetail)"
+                + (fable.map { ", \($0.spoken)" } ?? "")
+        )
+    }
+
+    /// The Fable text and its spoken form. They depend only on Fable's own value and reset;
+    /// the column's caption carries freshness. `nil` when there is no value to show.
+    private static func fableReadout(
+        _ reading: WidgetFableReading?,
+        now: Date
+    ) -> (text: WidgetFableText, spoken: String)? {
+        // Validation has already refused a value that is not finite; never show zero if that changes.
+        guard let reading, let percent = wholePercent(reading.remainingPercent) else { return nil }
+        if let reset = reading.resetsAt, reset <= now {
+            return (WidgetFableText(text: "Fable —", level: nil), "Fable awaiting fresh reading")
+        }
+        return (
+            WidgetFableText(text: "Fable \(percent)%", level: remainingLevel(percent: percent)),
+            "Fable \(percent) percent remaining"
         )
     }
 
@@ -310,6 +363,8 @@ public enum WidgetPresentation {
 
     /// The earliest of a freshness boundary, a reset, local midnight and a fresh column's
     /// next countdown step, but never sooner than `minimumReloadInterval` after `now`.
+    /// Fable's reset counts as a reset, so its text turns to a dash when it passes; Fable
+    /// shows no countdown, so it adds no countdown step.
     public static func nextDeadline(
         after now: Date,
         projection: WidgetProjection,
@@ -319,6 +374,7 @@ public enum WidgetPresentation {
             row.lastSuccessfulAt?.addingTimeInterval(quotaHorizon(for: row.provider))
         } + projection.usageRows.compactMap { $0.lastSuccessfulAt?.addingTimeInterval(freshnessHorizon) }
         let reset = projection.quotaRows.compactMap(\.headline?.resetsAt)
+            + projection.quotaRows.compactMap(\.fable?.resetsAt)
         let midnight = calendar.nextDate(
             after: now,
             matching: DateComponents(hour: 0, minute: 0),
