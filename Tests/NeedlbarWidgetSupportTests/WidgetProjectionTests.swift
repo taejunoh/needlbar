@@ -266,6 +266,115 @@ struct WidgetProjectionTests {
         #expect(projection.today.totalTokens == 10)
         #expect(WidgetPresentation.freshness(.stale, lastSuccessfulAt: referenceDate, now: referenceDate) == .stale)
     }
+
+    // MARK: Fable reading
+
+    @Test
+    func aFableReadingRoundTripsWithAndWithoutAReset() throws {
+        let readings = [
+            WidgetFableReading(remainingPercent: 71.5, resetsAt: referenceDate.addingTimeInterval(3_600)),
+            WidgetFableReading(remainingPercent: 71.5, resetsAt: nil),
+        ]
+        for reading in readings {
+            let projection = try fableProjection(claude: claudeRow(fable: reading))
+            let decoded = try WidgetProjection.decode(WidgetProjection.encode(projection), referenceDate: referenceDate)
+            #expect(decoded == projection)
+            #expect(decoded.quotaRows[0].fable == reading)
+            #expect(decoded.quotaRows[1].fable == nil)
+
+            // The row's own coding, which the projection decoder does not use.
+            let row = try JSONDecoder().decode(WidgetQuotaRow.self, from: JSONEncoder().encode(projection.quotaRows[0]))
+            #expect(row.fable == reading)
+        }
+    }
+
+    @Test
+    func aFileWithoutFableOrWithANullFableDecodesAsNoValue() throws {
+        let withoutKey = try WidgetProjection.decode(document(), referenceDate: referenceDate)
+        #expect(withoutKey.quotaRows[0].fable == nil)
+        #expect(withoutKey.quotaRows[0].headline?.remainingPercent == 77)
+
+        let null = try WidgetProjection.decode(document(claude: claudeRowJSON + ",\"fable\":null"), referenceDate: referenceDate)
+        #expect(null.quotaRows[0].fable == nil)
+
+        let present = try WidgetProjection.decode(document(claude: claudeRowJSON + fableJSON), referenceDate: referenceDate)
+        #expect(present.quotaRows[0].fable
+            == WidgetFableReading(remainingPercent: 71, resetsAt: referenceDate.addingTimeInterval(3_600)))
+    }
+
+    /// Schema version 1 is kept on the strength of this: a reader ignores a key it does not know.
+    @Test
+    func anUnknownKeyOnAQuotaRowIsIgnored() throws {
+        let extraKeys = ",\"later\":{\"remainingPercent\":5},\"fable\":{\"remainingPercent\":71,\"resetsAt\":null,\"label\":\"x\"}"
+        let decoded = try WidgetProjection.decode(document(claude: claudeRowJSON + extraKeys), referenceDate: referenceDate)
+        #expect(decoded.quotaRows[0].headline?.remainingPercent == 77)
+        #expect(decoded.quotaRows[0].fable == WidgetFableReading(remainingPercent: 71, resetsAt: nil))
+
+        let row = try JSONDecoder().decode(
+            WidgetQuotaRow.self,
+            from: Data(#"{"provider":"claude","stream":"fresh","lastSuccessfulAt":0,"later":1,"fable":{"remainingPercent":71,"label":"x"}}"#.utf8)
+        )
+        #expect(row.fable == WidgetFableReading(remainingPercent: 71, resetsAt: nil))
+    }
+
+    @Test
+    func aProjectionWithoutFableEncodesExactlyAsBefore() throws {
+        let projection = try fableProjection(claude: claudeRow(fable: nil))
+        let encoded = String(decoding: try WidgetProjection.encode(projection), as: UTF8.self)
+        #expect(!encoded.contains("fable"))
+        // The bytes the code before this change wrote for the same projection.
+        #expect(encoded == #"{"quotaRows":[{"headline":{"id":"claude.weekly","remainingPercent":77},"lastSuccessfulAt":"2027-01-15T08:00:00Z","provider":"claude","stream":"fresh"},{"provider":"codex","stream":"unavailable"}],"schemaVersion":1,"today":{"completeness":"unavailable"},"usageRows":[{"provider":"claude","stream":"unavailable"},{"provider":"codex","stream":"unavailable"},{"provider":"cursor","stream":"unavailable"}]}"#)
+
+        let withFable = try fableProjection(claude: claudeRow(fable: WidgetFableReading(remainingPercent: 71, resetsAt: nil)))
+        #expect(String(decoding: try WidgetProjection.encode(withFable), as: UTF8.self)
+            .contains(#""fable":{"remainingPercent":71},"headline""#))
+    }
+
+    @Test
+    func fableIsRejectedOffTheClaudeRowOutOfRangeOrWithoutALastSuccessfulTime() {
+        let valid = WidgetFableReading(remainingPercent: 71, resetsAt: nil)
+        #expect(throws: WidgetProjectionError.invalidQuotaRow) {
+            try WidgetQuotaRow(provider: .codex, stream: .fresh, lastSuccessfulAt: referenceDate, headline: nil, fable: valid)
+        }
+        #expect(throws: WidgetProjectionError.invalidQuotaRow) {
+            try WidgetQuotaRow(provider: .claude, stream: .unavailable, lastSuccessfulAt: nil, headline: nil, fable: valid)
+        }
+        for percent in [101, -1, Double.nan, .infinity] {
+            #expect(throws: WidgetProjectionError.invalidQuotaRow) {
+                try claudeRow(fable: WidgetFableReading(remainingPercent: percent, resetsAt: nil))
+            }
+        }
+        for reset in [Double.nan, .infinity, -.infinity] {
+            #expect(throws: WidgetProjectionError.invalidQuotaRow) {
+                try claudeRow(fable: WidgetFableReading(remainingPercent: 71, resetsAt: Date(timeIntervalSinceReferenceDate: reset)))
+            }
+        }
+    }
+
+    @Test
+    func aFileWithAnInvalidFableIsRejectedLikeAnyOtherInvalidRow() {
+        let onCodex = document(codex: codexRowJSON + fableJSON)
+        let tooHigh = document(claude: claudeRowJSON + ",\"fable\":{\"remainingPercent\":101,\"resetsAt\":null}")
+        let negative = document(claude: claudeRowJSON + ",\"fable\":{\"remainingPercent\":-1,\"resetsAt\":null}")
+        let withoutLastSuccess = document(
+            claude: #""provider":"claude","stream":"unavailable","lastSuccessfulAt":null,"headline":null"# + fableJSON
+        )
+        for bytes in [onCodex, tooHigh, negative, withoutLastSuccess] {
+            #expect(throws: WidgetProjectionError.invalidQuotaRow) {
+                try WidgetProjection.decode(bytes, referenceDate: referenceDate)
+            }
+        }
+    }
+
+    @Test
+    func aStaleRowKeepsItsFable() throws {
+        let reading = WidgetFableReading(remainingPercent: 0, resetsAt: referenceDate.addingTimeInterval(-60))
+        let projection = try fableProjection(claude: claudeRow(stream: .stale, fable: reading))
+        let decoded = try WidgetProjection.decode(WidgetProjection.encode(projection), referenceDate: referenceDate)
+        #expect(decoded.quotaRows[0].stream == .stale)
+        #expect(decoded.quotaRows[0].fable == reading)
+        #expect(WidgetFableReading(remainingPercent: 100, resetsAt: nil).isValid(for: .claude, lastSuccessfulAt: referenceDate))
+    }
 }
 
 private let referenceDate = Date(timeIntervalSince1970: 1_800_000_000)
@@ -283,6 +392,39 @@ private func makeQuotaRows() throws -> [WidgetQuotaRow] {
         try WidgetQuotaRow(provider: .claude, stream: .unavailable, lastSuccessfulAt: nil, headline: nil),
         try WidgetQuotaRow(provider: .codex, stream: .unavailable, lastSuccessfulAt: nil, headline: nil),
     ]
+}
+
+private func claudeRow(stream: WidgetStreamState = .fresh, fable: WidgetFableReading?) throws -> WidgetQuotaRow {
+    try WidgetQuotaRow(
+        provider: .claude,
+        stream: stream,
+        lastSuccessfulAt: referenceDate,
+        headline: WidgetQuotaHeadline(id: .claudeWeekly, remainingPercent: 77, resetsAt: nil),
+        fable: fable
+    )
+}
+
+private func fableProjection(claude: WidgetQuotaRow) throws -> WidgetProjection {
+    try WidgetProjection(
+        quotaRows: [claude, try WidgetQuotaRow(provider: .codex, stream: .unavailable, lastSuccessfulAt: nil, headline: nil)],
+        usageRows: makeUnavailableUsageRows(),
+        today: unavailableToday
+    )
+}
+
+// `referenceDate` is 2027-01-15T08:00:00Z.
+private let claudeRowJSON = #""provider":"claude","stream":"fresh","lastSuccessfulAt":"2027-01-15T08:00:00Z","headline":{"id":"claude.weekly","remainingPercent":77,"resetsAt":null}"#
+private let codexRowJSON = #""provider":"codex","stream":"fresh","lastSuccessfulAt":"2027-01-15T08:00:00Z","headline":{"id":"codex.primary","remainingPercent":85,"resetsAt":null}"#
+private let fableJSON = #","fable":{"remainingPercent":71,"resetsAt":"2027-01-15T09:00:00Z"}"#
+
+/// A whole projection file whose two quota rows are the given JSON members, without braces.
+private func document(claude: String = claudeRowJSON, codex: String = codexRowJSON) -> Data {
+    let usage = ["claude", "codex", "cursor"].map {
+        "{\"provider\":\"\($0)\",\"stream\":\"unavailable\",\"localDayKey\":null,\"utcOffsetSeconds\":null,\"lastSuccessfulAt\":null,\"todayTokens\":null,\"todayCostUSD\":null}"
+    }.joined(separator: ",")
+    let text = "{\"schemaVersion\":1,\"quotaRows\":[{" + claude + "},{" + codex + "}],\"usageRows\":[" + usage
+        + "],\"today\":{\"completeness\":\"unavailable\",\"totalTokens\":null,\"estimatedCostUSD\":null}}"
+    return Data(text.utf8)
 }
 
 private func makeUnavailableUsageRows() -> [WidgetUsageRow] {

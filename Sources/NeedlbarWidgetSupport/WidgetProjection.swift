@@ -44,25 +44,54 @@ public struct WidgetQuotaHeadline: Codable, Sendable, Equatable {
     }
 }
 
+/// The remaining Fable percent, shown as secondary text on the Claude column. It has no
+/// window ID and no timestamp of its own: it comes from the same report as the Claude
+/// headline, so the row's freshness and last successful time apply to it.
+public struct WidgetFableReading: Codable, Sendable, Equatable {
+    public let remainingPercent: Double
+    public let resetsAt: Date?
+
+    public init(remainingPercent: Double, resetsAt: Date?) {
+        self.remainingPercent = remainingPercent
+        self.resetsAt = resetsAt
+    }
+
+    /// Whether a quota row for `provider` with this last successful time may carry the
+    /// reading. The row, the projection and the app's mapper all use this one rule.
+    public func isValid(for provider: WidgetProvider, lastSuccessfulAt: Date?) -> Bool {
+        provider == .claude
+            && lastSuccessfulAt != nil
+            && remainingPercent.isFinite
+            && (0...100).contains(remainingPercent)
+            && (resetsAt?.timeIntervalSinceReferenceDate.isFinite ?? true)
+    }
+}
+
 public struct WidgetQuotaRow: Codable, Sendable, Equatable {
     public let provider: WidgetProvider
     public let stream: WidgetStreamState
     public let lastSuccessfulAt: Date?
     public let headline: WidgetQuotaHeadline?
+    /// Only on the Claude row. `nil` encodes as no key, as before the field existed.
+    public let fable: WidgetFableReading?
 
     public init(
         provider: WidgetProvider,
         stream: WidgetStreamState,
         lastSuccessfulAt: Date?,
-        headline: WidgetQuotaHeadline?
+        headline: WidgetQuotaHeadline?,
+        fable: WidgetFableReading? = nil
     ) throws {
-        guard provider != .cursor, headline.map({ $0.id.provider == provider }) ?? true else {
+        guard provider != .cursor,
+              headline.map({ $0.id.provider == provider }) ?? true,
+              fable.map({ $0.isValid(for: provider, lastSuccessfulAt: lastSuccessfulAt) }) ?? true else {
             throw WidgetProjectionError.invalidQuotaRow
         }
         self.provider = provider
         self.stream = stream
         self.lastSuccessfulAt = lastSuccessfulAt
         self.headline = headline
+        self.fable = fable
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -70,6 +99,7 @@ public struct WidgetQuotaRow: Codable, Sendable, Equatable {
         case stream
         case lastSuccessfulAt
         case headline
+        case fable
     }
 
     public init(from decoder: Decoder) throws {
@@ -83,7 +113,8 @@ public struct WidgetQuotaRow: Codable, Sendable, Equatable {
             provider: provider,
             stream: stream,
             lastSuccessfulAt: try container.decodeIfPresent(Date.self, forKey: .lastSuccessfulAt),
-            headline: headline
+            headline: headline,
+            fable: try container.decodeIfPresent(WidgetFableReading.self, forKey: .fable)
         )
     }
 }
@@ -313,6 +344,7 @@ public struct WidgetProjection: Codable, Sendable, Equatable {
         let stream: String
         let lastSuccessfulAt: Date?
         let headline: RawQuotaHeadline?
+        let fable: WidgetFableReading?
     }
 
     private struct RawUsageRow: Decodable {
@@ -350,7 +382,8 @@ public struct WidgetProjection: Codable, Sendable, Equatable {
                 provider: provider,
                 stream: stream,
                 lastSuccessfulAt: row.lastSuccessfulAt,
-                headline: headline
+                headline: headline,
+                fable: row.fable
             )
         }
 
@@ -387,7 +420,8 @@ public struct WidgetProjection: Codable, Sendable, Equatable {
                           && $0.remainingPercent.isFinite
                           && (0...100).contains($0.remainingPercent)
                   }) ?? true,
-                  row.headline == nil || row.lastSuccessfulAt != nil else {
+                  row.headline == nil || row.lastSuccessfulAt != nil,
+                  row.fable.map({ $0.isValid(for: row.provider, lastSuccessfulAt: row.lastSuccessfulAt) }) ?? true else {
                 throw WidgetProjectionError.invalidQuotaRow
             }
             try validateTimestamp(row.lastSuccessfulAt, referenceDate)
