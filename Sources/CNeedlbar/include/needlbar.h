@@ -15,7 +15,7 @@ const char *needlbar_quota_snapshot_json(void);
 // needlbar_quota_snapshot_json.
 const char *needlbar_codex_quota_snapshot_json(void);
 // Runs `/usage` through the user's installed claude. Blocks for at most about
-// 31 seconds. Ownership matches needlbar_quota_snapshot_json. run_id is at
+// 61 seconds. Ownership matches needlbar_quota_snapshot_json. run_id is at
 // least 1 and larger than any ID already passed to the cancel call.
 const char *needlbar_claude_usage_report_quota_snapshot_json(uint64_t run_id);
 // Cancels every run with an ID at most run_id, including one not yet started.

@@ -28,7 +28,7 @@ pub struct QuotaCollection {
     pub claude_usage_probe: Option<ClaudeUsageProbeSummary>,
 }
 
-/// The Claude quota run. A dedicated collection, so a run of up to 30 seconds
+/// The Claude quota run. A dedicated collection, so a run of up to 60 seconds
 /// never holds the Codex and Cursor refresh.
 pub trait ClaudeUsageReportSource: Send + Sync {
     fn run_usage_report<'a>(
@@ -74,7 +74,7 @@ pub fn cancel_claude_usage_report_through(run_id: u64) {
 }
 
 /// Collects Codex and Cursor concurrently. Claude has its own collection and
-/// slot, so a run of up to 30 seconds cannot hold these two.
+/// slot, so a run of up to 60 seconds cannot hold these two.
 pub async fn collect_quota() -> QuotaCollection {
     #[cfg(feature = "bridge-test-runtime")]
     if let Some((codex, cursor)) = crate::test_runtime::background_quota_providers() {

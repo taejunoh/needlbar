@@ -15,6 +15,13 @@ signed-out signal (§7, §8). The `/usage` working directory is one fixed folder
 each run, not a new temporary folder per run (§6). The smoke script switches the probe off
 (§6).
 
+**Amended 2026-11-12:** a change in Claude Code's local usage records no longer starts a run,
+and the run deadline is 60 seconds, up from 30. Each `/usage` run scans the last 7 days of
+Claude Code transcripts, so runs slowed to a median of about 8 seconds and two were stopped at
+the deadline, while usage-record changes started a run every 5 minutes during use. The design
+is `docs/superpowers/specs/2026-11-12-claude-usage-probe-cadence-design.md`; §6, §9 and §12
+below carry the dated changes.
+
 **Scope:** Replace how Needlbar obtains Claude quota. Codex, Cursor, local usage,
 and API billing are out of scope.
 
@@ -138,7 +145,6 @@ or `NeedlbarCore`, following existing structure.
 
 - app start
 - manual refresh
-- a change in Claude Code's local usage records
 - passing the `resets_at` of a displayed window
 - 15 minutes since the last run started (periodic; user decision, 2026-11-03)
 
@@ -149,13 +155,21 @@ a connection.
 
 *Amended 2026-11-04:* the manual refresh control is **Check now**, on the dashboard's Claude row and in Settings beside **View Claude usage**.
 
+*Amended 2026-11-12:* a change in Claude Code's local usage records was a trigger until this
+date and is removed. Each run scans the last 7 days of transcripts, and during use those
+changes started a run every 5 minutes. The periodic run now keeps readings current during use
+and in quiet periods alike, so automatic runs are in practice 15 minutes apart. The 5-minute
+minimum stays and matters only after a passed reset or a failed run.
+
 The periodic run is a trigger like any other, last in priority, under the same interval,
 backoff, and single-run rules. It is checked about once a minute. A clock set backwards
 does not make it due. Time asleep counts, so a run that fell due during sleep can start
 within about a minute of waking.
 
 **Freshness:** a usage report reading is current for 20 minutes, then **Last known**. A
-refresh that is due at 15 minutes can finish about a minute and a half later, so a shorter
+refresh that is due at 15 minutes can finish about two minutes later (amended 2026-11-12, from
+about a minute and a half: with the 60-second deadline the slowest refresh ends 17:01 after
+the last start), so a shorter
 window would flip the label just before each refresh. A failed run shows **Last known** at
 once. This applies wherever a Claude reading is labelled, including the widget's Claude
 quota row. The status line keeps its 15-minute recency and its 24-hour maximum age.
@@ -191,12 +205,14 @@ claude -p /usage --no-session-persistence --strict-mcp-config
   that child would outlive the killed app.
 - a minimal environment: `HOME`, `USER`, `LOGNAME`, `TMPDIR`, a fixed `PATH`, and
   `CLAUDE_CONFIG_DIR` only if the app already has it
-- a 30-second deadline, then terminate the process group
+- a 60-second deadline, then terminate the process group (amended 2026-11-12: it was 30
+  seconds)
 - 1 MiB of stdout, then terminate; stderr is drained and discarded
 - cancelled on app stop; results from an older generation are ignored
 
 Acceptance measures the real duration. If it does not fit, the deadline changes in
-this specification before release.
+this specification before release. *Amended 2026-11-12:* this clause was used. Runs reached
+23.1 seconds and two were stopped at 30 seconds, so the deadline is now 60 seconds.
 
 Needlbar never runs `claude auth`, never opens a login flow, and never writes Claude
 configuration. Claude Code may renew its own login during a run. This is a deliberate
@@ -277,7 +293,9 @@ duration, and the row kinds seen. They never record tokens, output text, or emai
 - Needlbar causes no `SecurityAgent` dialog.
 - Quota keeps updating after renewal with no user action.
 - Record run duration, peak memory, and CPU.
-- Record the cost of up to 288 runs a day, and whether the label stays current across them.
+- Record the cost of about 96 runs a day, plus runs after resets and retries, and whether the
+  label stays current across them (amended 2026-11-12: it was up to 288 runs a day while
+  usage-record changes started runs).
 - Confirm a `claude` prompt, if any, is noticed and recorded honestly.
 
 ## 10. Specification changes
@@ -317,14 +335,20 @@ This ends the Keychain approval loop in Needlbar. It does not promise that quota
 never fail.
 
 - Usage outside Claude Code, such as on the web, appears within about 15 minutes while
-  the app is running and awake. This means about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart, whose memory and CPU cost
-  is unmeasured.
+  the app is running and awake. This means about 96 runs a day from the periodic run, plus runs
+  after resets and retries after failures. *Amended 2026-11-12:* it was up to 288 a day while
+  usage-record changes started runs, and its cost is no longer unmeasured (see the amended
+  item on duration below).
 - `usage_report` is experimental and can change; Needlbar then shows last known values.
 - Fable matching depends on a display label.
 - `claude` itself may show a Keychain prompt while running. None was logged in the one
   observed run, and an upstream report describes this happening.
 - Users without the CLI get status-line data and the usage link only.
-- Duration, memory, and CPU under repeated runs have not been measured.
+- *Amended 2026-11-12:* this item said that duration, memory, and CPU under repeated runs had
+  not been measured. Duration has been, and it grows with the user's Claude Code use: a median
+  of 4.9 s on 2026-11-05 and 8.1 s on 2026-11-12, with two runs stopped at 30 seconds. One run
+  on 2026-11-05 took about 5.2 s of CPU and 454 MB of peak memory; CPU and memory were not
+  measured again. `docs/STATUS.md` has the details under 2026-11-05 and 2026-11-12.
 - Whether `/usage` has its own rate limit has not been measured. The periodic run makes
   this more likely to matter. If a limit shows up as `rate_limits: null`, the app shows
   **Could not check Claude Code** and retries under backoff (amended 2026-11-03).

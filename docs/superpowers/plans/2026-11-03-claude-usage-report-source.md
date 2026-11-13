@@ -24,6 +24,20 @@
 > `tempfile` stays a dev-dependency only. `scripts/smoke-app.sh` also launches the app with
 > `NEEDLBAR_DISABLE_CLAUDE_USAGE_PROBE=1`, which `AppDelegate` honours by passing no Claude usage
 > repository, so a smoke launch never starts a real `claude`.
+>
+> **Amendment — 2026-11-12:** a change in Claude Code's local usage records no longer starts a
+> run, and the deadline is 60 seconds, because each `/usage` run scans the last 7 days of
+> transcripts (`docs/superpowers/specs/2026-11-12-claude-usage-probe-cadence-design.md`, implemented
+> through `docs/superpowers/plans/2026-11-12-claude-usage-probe-cadence.md`). These parts below are
+> superseded and kept as the record of what was first written. In Global Constraints, the usage
+> records trigger and the 30-second deadline. Decisions 2, which detects a change in the usage
+> records, and with it `.usageRecordsChanged` and `noteClaudeUsageRecords` in Tasks 6 and 7.
+> Decisions 3a: the slowest refresh now ends 17:01 after the last start, not 16:31, and the margin
+> is 2:59, not 3:29. In the Task 14 acceptance checklist: the 30-second decision; the
+> `trigger=usageRecordsChanged` item, which can no longer appear; and every "288 runs a day"
+> figure, which is now about 96 a day plus runs after resets and retries. Automatic starts are
+> still never under 5 minutes apart, and are in practice 15 minutes apart except after a reset or
+> a failure.
 
 ## Global Constraints
 

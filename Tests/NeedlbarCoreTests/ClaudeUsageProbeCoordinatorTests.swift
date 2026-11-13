@@ -16,7 +16,7 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.waitUntilCompletedRuns(1)
         #expect(harness.probe.runIDs == [1])
         #expect(harness.events.values.first?.trigger == .startup)
-        #expect(harness.probe.everyCallRanOutsideAnyTask, "a 30-second run must not occupy a cooperative thread")
+        #expect(harness.probe.everyCallRanOutsideAnyTask, "a 60-second run must not occupy a cooperative thread")
         await harness.coordinator.stop()
     }
 
@@ -81,39 +81,33 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.coordinator.stop()
     }
 
-    @Test func aChangedUsageTotalStartsARunButTheFirstObservationDoesNot() async throws {
+    @Test func aChangedUsageTotalStartsNoRun() async throws {
         let harness = Harness(claudeTotal: 100)
         await harness.startedAndIdle()
         await harness.waitUntilUsageApplied(100)
-        await harness.coordinator.requestUsageRefresh()
-        await harness.usage.waitUntilCallCount(2)
-        await settle(watchingFor: { harness.probe.callCount > 1 })
-        #expect(harness.probe.callCount == 1, "an unchanged total is no trigger")
 
-        harness.clock.setNowWithoutWakingSleepers(Self.start.addingTimeInterval(301))
-        harness.usage.setClaudeTotal(250)
-        await harness.coordinator.requestUsageRefresh()
-        await harness.probe.waitUntilCallCount(2)
-        #expect(harness.probe.triggersSeen(in: harness.events) == [.startup, .usageRecordsChanged])
-        await harness.coordinator.stop()
-    }
-
-    @Test func aChangeInsideTheIntervalRunsWhenTheIntervalEnds() async throws {
-        let harness = Harness(claudeTotal: 100)
-        await harness.startedAndIdle()
-        await harness.waitUntilUsageApplied(100)
+        // A change inside five minutes of the startup run.
         harness.usage.setClaudeTotal(250)
         await harness.coordinator.requestUsageRefresh()
         await harness.waitUntilUsageApplied(250)
-        await settle(watchingFor: { harness.probe.callCount > 1 })
-        #expect(harness.probe.callCount == 1, "inside five minutes")
 
-        await harness.advance(minutes: 4)
+        // A change more than five minutes after it.
+        await harness.advance(minutes: 6)
+        harness.usage.setClaudeTotal(400)
+        await harness.coordinator.requestUsageRefresh()
+        await harness.waitUntilUsageApplied(400)
+        await settle(watchingFor: { harness.probe.callCount > 1 })
+        #expect(harness.probe.callCount == 1, "a change in usage records starts no run")
+
+        // Only the periodic run follows, 15 minutes after the startup run.
+        await harness.advance(minutes: 8)
         await settle(watchingFor: { harness.probe.callCount > 1 })
         #expect(harness.probe.callCount == 1)
         await harness.advance(minutes: 1)
         await harness.probe.waitUntilCallCount(2)
-        #expect(harness.probe.startTimes.last == Self.start.addingTimeInterval(300))
+        await harness.waitUntilCompletedRuns(2)
+        #expect(harness.probe.startTimes.map { $0.timeIntervalSince(Self.start) } == [0, 900])
+        #expect(harness.probe.triggersSeen(in: harness.events) == [.startup, .periodic])
         await harness.coordinator.stop()
     }
 
@@ -194,9 +188,9 @@ struct ClaudeUsageProbeCoordinatorTests {
         harness.probe.script(.result(try weeklyQuota(resetsAt: far)))
         await harness.startedAndIdle()
         await harness.advance(minutes: 14)
-        // The slowest refresh finishes 991 s after the last start.
+        // The slowest refresh finishes 1,021 s after the last start: 900 + 60 + 61.
         let beforeRefresh = ClaudeQuotaPresentationSelector.select(
-            snapshot: await harness.store.snapshot(for: .claude), now: Self.start.addingTimeInterval(991)).sevenDay
+            snapshot: await harness.store.snapshot(for: .claude), now: Self.start.addingTimeInterval(1_021)).sevenDay
         #expect(beforeRefresh?.isLastKnown == false)
         #expect(beforeRefresh?.observedAt == Self.start)
 
@@ -247,35 +241,37 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.coordinator.stop()
     }
 
-    @Test func notInstalledRetriesOnlyOnATriggerAndUnderBackoff() async throws {
-        for code in ["notInstalled"] {
-            let harness = Harness(claudeTotal: 100)
-            harness.probe.script(.result(claudeError(code)))
-            harness.probe.script(.result(claudeError(code)))
-            await harness.startedAndIdle()
-            await harness.waitUntilUsageApplied(100)
-            // The five-minute backoff ends here and nothing retries by itself.
-            await harness.advance(minutes: 14)
-            await settle(watchingFor: { harness.probe.callCount > 1 })
-            #expect(harness.probe.callCount == 1, "\(code) does not retry when backoff ends")
+    @Test func notInstalledRetriesOnlyOnThePeriodicRunAndUnderBackoff() async throws {
+        let harness = Harness()
+        for _ in 0 ..< 3 { harness.probe.script(.result(claudeError("notInstalled"))) }
+        await harness.startedAndIdle()
+        // The five-minute backoff ends at 300 s and nothing retries by itself.
+        await harness.advance(minutes: 14)
+        await settle(watchingFor: { harness.probe.callCount > 1 })
+        #expect(harness.probe.callCount == 1, "notInstalled does not retry when backoff ends")
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(2)
 
-            await harness.advance(minutes: 1)
-            await harness.probe.waitUntilCallCount(2)
-            await harness.waitUntilCompletedRuns(2)
-            #expect(harness.events.values.last?.trigger == .periodic, "\(code)")
+        // The second failure backs off ten minutes, which ends before the next periodic run.
+        await harness.advance(minutes: 14)
+        await settle(watchingFor: { harness.probe.callCount > 2 })
+        #expect(harness.probe.callCount == 2)
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(3)
+        await harness.waitUntilCompletedRuns(3)
 
-            // The second failure backs off ten minutes, which also holds a real trigger.
-            harness.usage.setClaudeTotal(250)
-            await harness.coordinator.requestUsageRefresh()
-            await harness.waitUntilUsageApplied(250)
-            await harness.advance(minutes: 9)
-            await settle(watchingFor: { harness.probe.callCount > 2 })
-            #expect(harness.probe.callCount == 2, "\(code) waits for backoff")
-            await harness.advance(minutes: 1)
-            await harness.probe.waitUntilCallCount(3)
-            #expect(harness.probe.startTimes.last == Self.start.addingTimeInterval(1_500), "\(code)")
-            await harness.coordinator.stop()
-        }
+        // The third failure backs off twenty minutes, which holds the periodic run
+        // due at 2,700 s until 3,000 s.
+        await harness.advance(minutes: 19)
+        await settle(watchingFor: { harness.probe.callCount > 3 })
+        #expect(harness.probe.callCount == 3, "the periodic run waits for backoff")
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(4)
+        await harness.waitUntilCompletedRuns(4)
+        #expect(harness.probe.startTimes.map { $0.timeIntervalSince(Self.start) } == [0, 900, 1_800, 3_000])
+        #expect(harness.probe.triggersSeen(in: harness.events) == [.startup, .periodic, .periodic, .periodic])
+        await harness.coordinator.stop()
     }
 
     @Test func aFailedPeriodicRunKeepsTheReadingAsLastKnownAndBacksOff() async throws {
@@ -771,23 +767,14 @@ private final class BackgroundRepository: QuotaRepository, @unchecked Sendable {
 
 private final class ScriptedUsageRepository: UsageRepository, @unchecked Sendable {
     private let lock = NSLock()
-    private let changes = ConditionWaiters()
     private var total: UInt64
-    private var calls = 0
 
     init(claudeTotal: UInt64) { total = claudeTotal }
 
     func setClaudeTotal(_ value: UInt64) { lock.withLock { total = value } }
-    func waitUntilCallCount(_ expected: Int) async {
-        await changes.wait { self.lock.withLock { self.calls } >= expected }
-    }
 
     func refresh() throws -> UsageRefreshResult {
-        let current = lock.withLock { () -> UInt64 in
-            calls += 1
-            return total
-        }
-        changes.signal()
+        let current = lock.withLock { total }
         return .init(snapshots: [.claude: usage(total: current)], errors: [:])
     }
 }

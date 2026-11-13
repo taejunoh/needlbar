@@ -88,6 +88,13 @@ async fn assert_pid_gone(pid_file: &Path) {
 }
 
 #[test]
+fn the_default_limits_are_sixty_seconds_and_one_mebibyte() {
+    let limits = UsageProbeLimits::default();
+    assert_eq!(limits.deadline, Duration::from_secs(60));
+    assert_eq!(limits.max_stdout_bytes, 1024 * 1024);
+}
+
+#[test]
 fn locator_takes_the_first_executable_regular_file_in_order() {
     let temp = TempDir::new().unwrap();
     let first = temp.path().join("first");

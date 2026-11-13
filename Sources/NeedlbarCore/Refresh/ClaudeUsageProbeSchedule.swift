@@ -5,13 +5,14 @@ import Foundation
 struct ClaudeUsageProbeSchedule: Sendable, Equatable {
     enum Action: Equatable, Sendable {
         case start
-        /// Refused or joined. A refused startup or usage change stays in
+        /// Refused or joined. A refused startup request stays in
         /// `pendingTrigger`; a manual request joins the run in flight.
         case none
     }
 
     static let minimumInterval: TimeInterval = 5 * 60
-    /// Keeps readings current during quiet periods (user decision, 2026-11-03).
+    /// Keeps readings current, during use and in quiet periods alike (user
+    /// decisions, 2026-11-03 and 2026-11-12).
     static let periodicInterval: TimeInterval = 15 * 60
     static let backoffSteps: [TimeInterval] = [5 * 60, 10 * 60, 20 * 60, 30 * 60]
 

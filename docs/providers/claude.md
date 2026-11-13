@@ -36,16 +36,20 @@ reading wins regardless of source, and no source invents a value.
   refused if it is a symlink or not a directory, and emptied before each run (the CLI keeps records
   per working directory, so a new folder per run could accumulate); no standard input; an
   environment of only `HOME`, `USER`, `LOGNAME`, `TMPDIR`, a fixed `PATH`, and `CLAUDE_CONFIG_DIR`
-  if the app already has it; 30 seconds, then the process group is terminated; 1 MiB of standard
+  if the app already has it; 60 seconds (30 before 2026-11-12, when two runs were stopped at that
+  limit), then the process group is terminated; 1 MiB of standard
   output, then the same; standard error discarded; cancelled when the app stops. After any exit,
   including a normal one, the process group also receives SIGKILL. That covers the group Needlbar
   started; a process that moved to its own session or group is not covered.
 - **Switch:** launching the app with `NEEDLBAR_DISABLE_CLAUDE_USAGE_PROBE=1` starts no run. The smoke
   script sets it, so a smoke launch never starts a real `claude` that could renew the login and outlive
   the killed app.
-- **When:** at app start, on manual refresh (**Check now**, on the dashboard's Claude row and in Settings beside **View Claude usage**), when Claude Code's local usage records change, when a
-  displayed window's reset passes, and after 15 minutes without a run. Automatic runs happen at most
-  once every 5 minutes and only one at a time. Manual refresh skips the interval and backoff but joins
+- **When:** at app start, on manual refresh (**Check now**, on the dashboard's Claude row and in Settings beside **View Claude usage**), when a
+  displayed window's reset passes, and after 15 minutes without a run. Automatic runs are in
+  practice 15 minutes apart: the minimum of 5 minutes between them matters only after a reset or a
+  failed run. Only one runs at a time. Since 2026-11-12 a change in Claude Code's local usage
+  records no longer starts a run, because each run makes `claude` scan its session transcripts from
+  the last 7 days and those changes started a run every 5 minutes during use. Manual refresh skips the interval and backoff but joins
   a run in flight. Opening the dashboard, waking the Mac and regaining a connection do not
   themselves start a run, but a periodic run that fell due during sleep starts within about a minute
   of waking, when the once-a-minute check finds it overdue. If Codex is failing, each dashboard open retries Codex; that starts no Claude run and no dialog.
@@ -79,9 +83,13 @@ The run after 15 minutes counts as a trigger, so the first state is tried again 
 Claude Code's schema reports while its own usage fetch is failing (offline, 429, 5xx), so it is not
 treated as signed out. How a signed-out `claude` reports itself in this mode has not been observed,
 and Needlbar does not guess it; until it is, a non-zero exit counts as a process failure. API-key, usage-billed and `claude setup-token` sessions produce no `usage_report`,
-so they show the no-readable-report state. Usage outside Claude Code, such as on the web, appears
-within about 15 minutes while the app is running and the Mac is awake. That means about 96 runs a day from the periodic run alone, and up to 288 a day with other triggers, because runs are at least 5 minutes apart,
-whose memory and CPU cost has not been measured.
+so they show the no-readable-report state. Usage, in Claude Code or outside it such as on the web,
+appears within about 15 minutes while the app is running and the Mac is awake, or about 17 when a
+run is slow. That means about 96 runs a day, plus runs after resets and retries after failures
+(amended 2026-11-12: it was up to 288 a day while usage-record changes started runs). A run costs
+more as the recent transcripts grow: on one Mac the median run took about 4.9 s on 2026-11-05 and
+about 8.1 s on 2026-11-12, and one run on 2026-11-05 took about 5.2 s of CPU and 454 MB of peak
+memory. CPU and memory were not measured again.
 
 Diagnostics record the failure reason, the run duration and the row kinds seen, never tokens, output
 text or emails. The `ClaudeQuotaFailureDiagnostic` and `QuotaRefreshDiagnostic` log categories stay

@@ -19,7 +19,7 @@ public struct SystemClock: ClockLike {
 public actor RefreshCoordinator {
     public static let safetyInterval: Duration = .seconds(5 * 60)
     public static let popoverQuotaRefreshThreshold: TimeInterval = 60
-    /// How often a passed reset, a deferred usage change, a backoff retry and the
+    /// How often a deferred startup run, a passed reset, a backoff retry and the
     /// periodic run are checked. It reads only actor and store state.
     static let claudeUsageTickInterval: Duration = .seconds(60)
 
@@ -45,7 +45,6 @@ public actor RefreshCoordinator {
     /// Retained until the physical call returns, so runs never overlap across a restart.
     private var claudeUsageProbeTask: Task<Void, Never>?
     private var claudeUsageTickTask: Task<Void, Never>?
-    private var lastClaudeUsageTotalTokens: UInt64?
 
     private struct UserQuotaWaiter {
         let generation: UInt64
@@ -184,7 +183,6 @@ public actor RefreshCoordinator {
         quotaAttemptLedger.advance(to: runGeneration)
         claudeUsageAttemptLedger.advance(to: runGeneration)
         claudeUsageSchedule = ClaudeUsageProbeSchedule()
-        lastClaudeUsageTotalTokens = nil
         isRunning = true
         let generation = runGeneration
         if let usageFileWatcher {
@@ -406,7 +404,7 @@ public actor RefreshCoordinator {
         case .scheduled:
             guard let scheduledDueAt, let last = backgroundAttemptClock.latest else { return true }
             return last < scheduledDueAt
-        case .startup, .manual, .popover, .usageRecordsChanged, .windowReset, .backoffRetry, .periodic:
+        case .startup, .manual, .popover, .windowReset, .backoffRetry, .periodic:
             return true
         }
     }
@@ -516,7 +514,7 @@ public actor RefreshCoordinator {
         }
     }
 
-    /// A run can take 30 seconds, so it uses a dispatch thread rather than a
+    /// A run can take 60 seconds, so it uses a dispatch thread rather than a
     /// cooperative one, and its own slot rather than the Codex and Cursor one.
     private func beginClaudeUsageProbe(trigger: QuotaRefreshTrigger) {
         guard let repository = claudeUsageRepository, claudeUsageProbeTask == nil else { return }
@@ -583,15 +581,6 @@ public actor RefreshCoordinator {
             retries = code != "notInstalled"
         }
         claudeUsageSchedule.recordFailure(trigger: trigger, at: date, retriesWhenBackoffEnds: retries)
-    }
-
-    /// Compares the Claude total from the existing usage refresh. The first
-    /// observation after start only sets the baseline, because start runs anyway.
-    private func noteClaudeUsageRecords(_ total: UInt64?) {
-        guard let total else { return }
-        defer { lastClaudeUsageTotalTokens = total }
-        guard let previous = lastClaudeUsageTotalTokens, previous != total else { return }
-        requestClaudeUsageProbe(trigger: .usageRecordsChanged)
     }
 
     private func requestStatusLineRead() {
@@ -666,10 +655,6 @@ public actor RefreshCoordinator {
                 guard generation == runGeneration, applyResult else { return }
                 await store.markUsageFailure(for: provider, status: status(for: error), at: clock.now)
             }
-            // The last store call suspended: a stop and start in that gap must not set
-            // the new generation's baseline from this old result.
-            guard generation == runGeneration, applyResult else { return }
-            noteClaudeUsageRecords(refresh.snapshots[.claude]?.totalTokens)
         case .failure(let error):
             let status = DataStatus.error(message: String(describing: error), lastSuccessfulAt: nil)
             for provider in ProviderID.allCases {

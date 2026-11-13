@@ -1,6 +1,8 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-11-05, updated for the Claude usage report source, which is
+**Checkpoint:** 2026-11-12, updated for the `/usage` cadence and deadline change, which is
+prepared and not released and not yet run on a real machine; before that 2026-11-05, for the
+Claude usage report source, which is
 prepared and not released and passed about 38 hours of local observation; it replaces the Claude Keychain access action of
 2026-11-02, which was never released (first written
 2026-10-20, updated after the v0.3.10 release on 2026-10-21, for credential
@@ -154,13 +156,30 @@ lookup, credential format or usage endpoint is retired there; those sections are
 history for the public v0.3.14.
 
 The probe sends SIGKILL to its process group after any exit. That covers the group it
-started; a process that moved to its own session or group is not covered. Claude runs only on app start, manual refresh, usage-record changes, a
+started; a process that moved to its own session or group is not covered. Claude runs only on app start, manual refresh, a
 passed reset, a backoff retry and every 15 minutes; a dashboard open, waking or
 regaining a connection starts none. If Codex is failing, each dashboard open
 retries Codex; that starts no Claude run and no dialog.
 
+**Cadence and deadline (2026-11-12, prepared, not released).** Design:
+`docs/superpowers/specs/2026-11-12-claude-usage-probe-cadence-design.md`. Plan:
+`docs/superpowers/plans/2026-11-12-claude-usage-probe-cadence.md`. A change in Claude Code's local
+usage records no longer starts a run, and the run deadline is 60 seconds, up from 30. Claude Code
+CLI 2.1.321 scans the last 7 days of transcripts on every `/usage` run; runs slowed to a median of
+about 8.1 s and two were stopped at 30 seconds, while usage-record changes started a run every 5
+minutes during use (STATUS, 2026-11-12). Automatic runs are now in practice 15 minutes apart, so a
+reading can be about 17 minutes old before the next one lands, 2 minutes 59 seconds inside the
+20-minute window. The `usageRecordsChanged` trigger no longer exists; Needlbar still reads the usage
+records for tokens and cost. Revisit if runs approach 60 seconds, rather than raising the deadline
+again, or if a later CLI version changes the cost. Not yet checked on a real machine: after
+installation the unified log should show only the triggers `startup`, `manual`, `windowReset`,
+`backoffRetry` and `periodic`, automatic starts at least 15 minutes apart except after a reset or a
+failure, and no `usageProbeTimedOut` with `durationMs` under 60,000.
+
 A local ad-hoc build ran for about 38 hours on the maintainer's Mac (STATUS, 2026-11-05): every
 logged run succeeded, no Keychain prompt appeared, and runs took about 5 s (maximum about 19.3 s).
+Logs from Developer ID builds were read on 2026-11-09 and 2026-11-12 for run counts, triggers and
+durations (STATUS, 2026-11-12): the median rose to about 8.1 s and two runs were stopped at 30 seconds.
 Still open: how a signed-out `claude` reports itself in this mode, the same observation on a
 Developer ID build including the widget's Claude row, whether `/usage` has its own rate limit, and
 an observed login renewal. Also open: when Codex is failing, each dashboard open retries Codex; the
