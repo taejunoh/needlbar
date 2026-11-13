@@ -1,5 +1,17 @@
 # Needlbar Development Status
 
+## 2026-11-13 Fable percent moved beside the Claude figure (prepared, not released)
+
+- **Seen installed.** The Developer ID build of 0a8f430 showed `Fable 57%` on the Claude name
+  line on one line, with no truncation. In the faded rendering (desktop not in front) its tone
+  matched the caption, and the earlier bar-shape fix (#48) also read correctly there.
+- **Why it moved.** At the end of the name line the text sat closer to the **Codex** title and
+  could read as Codex's. It now sits beside the big Claude figure, on the figure's baseline.
+- **Ladder.** One line, then two lines (`Fable` over the value) when the one-line form does not
+  fit, then hidden. The figure never shrinks for it and the row keeps the figure's height. Only
+  Claude `100%` in a column of about 141 points needs two lines.
+- **Not yet verified.** The installed widget with the new placement, and CI's Xcode 16.2 build.
+
 ## 2026-11-13 Fable percent on the Overview widget (prepared, not released)
 
 Implements `docs/superpowers/specs/2026-11-13-widget-fable-percent-design.md` through

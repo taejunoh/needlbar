@@ -42,8 +42,8 @@ Two equal columns, then one footer line.
 - **Fable:** not shown, because the projection has no Fable value. The dashboard and
   Settings still show it.
 - **Fable (dated note, 2026-11-13):** the line above no longer holds. The remaining Fable
-  percent is shown as small text, `Fable 71%`, at the right end of the Claude column's name
-  line, with no reset time and no added height, and the projection now carries the value. The
+  percent is shown as small text, `Fable 71%`, beside the big Claude figure (moved there on 2026-11-13 from the
+  name line, where it read as Codex's), with no reset time and no added height, and the projection now carries the value. The
   user now spends the Fable limit through a Fable-based agent and asked for it as secondary
   information. The large Claude figure is still the headline window. Approved in
   `2026-11-13-widget-fable-percent-design.md`.

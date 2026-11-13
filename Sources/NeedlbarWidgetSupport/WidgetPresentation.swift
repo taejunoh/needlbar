@@ -47,7 +47,7 @@ public enum WidgetQuotaStatus: Equatable, Sendable {
     case unavailable
 }
 
-/// The small Fable text at the right end of the Claude column's name line.
+/// The small Fable text beside the Claude figure.
 public struct WidgetFableText: Equatable, Sendable {
     /// `Fable 71%`, or `Fable —` once Fable's own reset has passed.
     public let text: String
