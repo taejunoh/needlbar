@@ -8,8 +8,9 @@
 - **Why it moved.** At the end of the name line the text sat closer to the **Codex** title and
   could read as Codex's. It now sits beside the big Claude figure, on the figure's baseline.
 - **Ladder.** One line, then two lines (`Fable` over the value) when the one-line form does not
-  fit, then hidden. The figure never shrinks for it and the row keeps the figure's height. Only
-  Claude `100%` in a column of about 141 points needs two lines.
+  fit, then hidden. The figure never shrinks for it and the row keeps the figure's height. At a
+  column of about 141 points, two lines are used when Claude is at `100%`, and for a two-digit
+  figure beside `Fable 100%`.
 - **Not yet verified.** The installed widget with the new placement, and CI's Xcode 16.2 build.
 
 ## 2026-11-13 Fable percent on the Overview widget (prepared, not released)

@@ -140,8 +140,9 @@ no reloads from the app: every successful `/usage` run already rewrites the proj
   certain words anywhere in the widget sources, comments included.
 - **Not automated, checked by the user on the installed widget** after a tagless Developer ID
   build and installation (both separate requests): light and dark appearance; `Fable 100%`
-  reads as Claude's, on one line normally and on two lines when Claude is at `100%`, without
-  truncation; the text reads as part of the Claude column; the low colour, when it occurs.
+  reads as Claude's, on one line normally and on two lines when Claude is at `100%`, or a
+  two-digit figure sits beside `Fable 100%`, without truncation; the text reads as part of the
+  Claude column; the low colour, when it occurs.
 
 ## 7. Risks
 
