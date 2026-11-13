@@ -1,7 +1,7 @@
 # Claude continuation handoff
 
 **Checkpoint:** 2026-11-13, updated for the Fable percent on the Overview widget, now beside the big Claude figure, which is
-prepared and not released and not yet seen installed in that placement; before that 2026-11-12, for the
+not released and was seen installed on 2026-11-13 (`fef7cf7`, Developer ID, light and dark); before that 2026-11-12, for the
 `/usage` cadence and deadline change, which is
 prepared and not released and not yet run on a real machine; before that 2026-11-05, for the
 Claude usage report source, which is
@@ -186,9 +186,10 @@ shows the remaining Fable percent as small text beside the big Claude figure (mo
 user asked to see that limit at a glance. The large figure is still the lower of session and
 weekly. The projection's Claude quota row carries an optional `fable` reading and the schema
 version stays 1. The text is hidden without a Fable value or when the column shows `—`, and reads
-`Fable —` after Fable's own reset. Seen on 2026-11-13 on the installed Developer ID build of 0a8f430 (light, and the desktop-not-in-front
-faded rendering: the tone matched the caption and the bar reads correctly), then moved beside the
-figure, which is not yet seen installed. After installing, stop the old
+`Fable —` after Fable's own reset. Seen installed on 2026-11-13 on the Developer ID build of `fef7cf7` (light and dark, desktop in
+front): `Fable 50%` beside the Claude `64%` on one line and on the figure's baseline, with no
+truncation, reading as Claude's, and the tone matching the caption. The two-line form and the low
+colours (orange below 20%, red below 10%) remain unobserved. After installing, stop the old
 widget process by its process ID and check its executable, or the missing text looks like a
 missing value (STATUS, 2026-11-13). Fable is found in the usage report by its display name, so a
 rename removes the text without notice.
