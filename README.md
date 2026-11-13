@@ -400,8 +400,8 @@ Fable limit (added 2026-11-13 at the user's request). It has no reset time and n
 large Claude figure is still the lower of the session and weekly windows, because Fable is
 part of the weekly pool. The text is hidden when there is no Fable value or the Claude quota is
 unavailable, reads `Fable —` after Fable's own reset until the next reading, and is never
-estimated. The projection carries only that percent and its reset time. It has not been seen
-on an installed widget yet.
+estimated. For Fable, the projection carries only that percent and its reset time. It has
+not been seen on an installed widget yet.
 
 ## Native macOS 14 acceptance (maintainer-only)
 

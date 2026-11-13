@@ -35,7 +35,7 @@ released, and not yet seen on a real widget.
 Not established: the text has not been seen on a real widget. After a build and an installation,
 each the user's separate request, the user checks light and dark appearance, that `Fable 100%`
 fits on one line, that the text reads as part of the Claude column, and the low colour when it
-occurs.
+occurs. The tests ran locally on Swift 6.4; CI's Xcode 16.2 has not built this yet.
 
 ## 2026-11-12 Claude usage probe cadence and deadline (prepared, not released)
 
