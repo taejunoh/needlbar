@@ -1,5 +1,24 @@
 # Needlbar Development Status
 
+## 2026-11-13 Overview widget seen on the installed build (local receipt, not released)
+
+Observed by the user on 2026-11-13 from screenshots. Local receipt only: nothing tagged or released.
+
+- **Build.** A Developer ID tagless validation build of `main` at `fef7cf7` (release run
+  43474631096), installed on the maintainer's Mac. The app and widget extension processes were
+  restarted and the widget process was confirmed to run the installed executable.
+- **Light, desktop in front.** The Claude column showed `64%` with `Fable 50%` beside it on one
+  line, on the figure's baseline, with no truncation. It read as Claude's. Codex showed `69%`.
+  The bars, captions and footer were unchanged.
+- **Dark, desktop in front.** Same layout. The Fable text tone matched the caption, and the
+  orange and blue bars and the thin track were distinct.
+- **Earlier the same day on `0a8f430`** (Fable on the name line, desktop not in front, faded
+  rendering): the Fable tone matched the caption and the bar-shape fix (#48) read correctly (thick
+  fill = remaining). That placement read as Codex's, which is why it moved.
+- **Still not checked.** The two-line form (Claude at `100%`, or a two-digit figure beside
+  `Fable 100%`) and the low colours (orange below 20%, red below 10%), since those states have
+  not occurred.
+
 ## 2026-11-13 Fable percent moved beside the Claude figure (prepared, not released)
 
 - **Seen installed.** The Developer ID build of 0a8f430 showed `Fable 57%` on the Claude name
