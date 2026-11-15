@@ -327,6 +327,10 @@ If this design is approved, these are amended with dated notes rather than rewri
 - **Release gate:** before any public build, the user decides how to resolve the §3
   question: ask Anthropic, or ship on a stated reading of the terms. Until then the
   build runs on this Mac only.
+  *Amended 2026-11-15:* the user chose both: ship on the reading stated in the README
+  section "Claude Code and Anthropic's terms" and ask Anthropic to confirm it. The
+  legal page now also lists the conditions for running Claude Code in a product
+  (unmodified binary, each user's own sign-in), which Needlbar meets.
 - If Anthropic objects, the fallback is status line, last known, and the usage link.
 
 ## 12. Known limits

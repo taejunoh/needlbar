@@ -1,5 +1,19 @@
 # Needlbar Development Status
 
+## 2026-11-15 Terms question decided: stated reading plus inquiry (prepared, not released)
+
+- **Decision.** The user chose to ship on a stated reading of Anthropic's terms and ask Anthropic to
+  confirm it at the same time (spec 2026-11-03 §11, amended). Nothing was tagged or released.
+- **Reading.** Added to the README as "Claude Code and Anthropic's terms": Needlbar does not
+  include, modify or host Claude Code, runs the user's own installed `claude`, has no Claude sign-in
+  and handles no credentials or billing. The legal page, read again on 2026-11-15, now lists
+  conditions for running Claude Code in a product (unmodified binary, each user's own sign-in),
+  which Needlbar meets.
+- **Inquiry.** Drafted for Anthropic's contact-sales form, not yet sent; the user sends it. It also
+  asks about about 96 `/usage` runs a day and the Claude icon in the app.
+- **Still open before release.** A weekday log check, the signed-out `claude` check, a new release
+  plan and the user's separate request.
+
 ## 2026-11-13 Overview widget seen on the installed build (local receipt, not released)
 
 Observed by the user on 2026-11-13 from screenshots. Local receipt only: nothing tagged or released.
