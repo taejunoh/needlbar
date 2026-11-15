@@ -204,9 +204,12 @@ an observed login renewal. Also open: when Codex is failing, each dashboard open
 menu bar and Overview show last-known values unlabelled; and only the three fixed install paths are
 found.
 
-**Release gate (spec §11):** before any public build, the user decides how to resolve the terms
-question in spec §3: ask Anthropic, or ship on a stated reading. Until then the build runs on this
-Mac only. No tag or release is authorized, and the v0.3.15 release plan of 2026-11-02 is superseded.
+**Release gate (spec §11):** on 2026-11-15 the user decided the terms question in spec §3: ship on
+a stated reading and ask Anthropic at the same time. The reading is in the README section "Claude
+Code and Anthropic's terms". The inquiry is drafted and the user sends it. If Anthropic objects, the
+§11 fallback applies. A public release still needs a weekday log check, the signed-out `claude`
+check, a new release plan and the user's separate request. No tag or release is authorized, and the
+v0.3.15 release plan of 2026-11-02 is superseded.
 
 ## CI runners
 
