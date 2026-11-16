@@ -24,8 +24,9 @@ and it is simple to describe truthfully in the README and the inquiry.
 ## 2. Decisions
 
 - **Off by default,** for new installs and for people updating. A missing preference means off.
-- **Check now stays.** While off, `claude` starts only on a manual refresh (Check now, or Retry,
-  which calls the same refresh; see §8). A manual run never turns the schedule on. Wake and
+- **Check now stays.** While off, `claude` starts only on a manual refresh (Check now). *Corrected
+  2026-11-16 while planning:* no built surface has a Retry that reaches the manual refresh (its only
+  button belongs to a menu-bar controller that is no longer built), so the copy names Check now only. A manual run never turns the schedule on. Wake and
   connectivity recovery never start Claude, as today.
 - **The user is told three ways:** a first-run window shown once, a prompt in the Claude row while
   off, and a Settings toggle.
@@ -33,7 +34,7 @@ and it is simple to describe truthfully in the README and the inquiry.
 - **Cadence unchanged:** 15 minutes, 5-minute floor, backoff 5/10/20/30 minutes, 60-second limit.
 - **Out of scope:** the Claude logo (kept; the inquiry asks for permission and it is replaced with
   the existing `sparkles` symbol only if Anthropic refuses), persisting the last reading across
-  launches, and narrowing Retry.
+  launches.
 
 ## 3. Gate
 
@@ -74,7 +75,7 @@ One rule, in one place: **an automatic run may start only while automatic runs a
 | Trigger | Off | On, Claude shown | On, Claude hidden |
 |---|---|---|---|
 | `startup`, `periodic`, `windowReset`, `backoffRetry`, `automaticResumed` | no run | runs | no run |
-| `manual` (Check now, Retry) | runs | runs | runs |
+| `manual` (Check now) | runs | runs | runs |
 | popover or Settings opened | no run | no run | no run |
 
 ## 4. Hidden
@@ -88,8 +89,10 @@ holds:
 The widget and notifications do not count: a placed widget does not keep automatic runs going, and
 its Claude column keeps the last value written. Becoming shown again while the preference is on
 resumes like turning on. The README states it as "paused while Claude is hidden from both the menu
-bar and the dashboard". The stored `needlbar.menuBar.claude.enabled` flag is ignored: it belongs
-to a menu-bar controller that is no longer built and has no control in the app.
+bar and the dashboard". `claudeIsShown` does not read the `needlbar.menuBar.claude.enabled` flag,
+which belongs to a menu-bar controller that is no longer built. `ModuleConfiguration` still uses it
+as the last fallback for provider visibility when no newer key exists, and `claudeIsShown` takes
+the resolved configuration, so it always agrees with what is drawn.
 
 ## 5. First-run window
 
@@ -106,6 +109,9 @@ to a menu-bar controller that is no longer built and has no control in the app.
   script sets it, so smoke runs neither flash the window nor use up the developer's answer); and
   while Claude is hidden, in which case nothing is recorded and it waits for a later launch. These
   rules are one pure function, `shouldShow(answeredVersion:probeDisabled:claudeShown:)`.
+- **Already on.** If the preference is already on at the first-run step (turned on in
+  Settings during a launch when the window waited), the window is not shown and the answer is
+  recorded.
 - **Answered elsewhere.** If the preference is turned on from Settings or the Claude row while the
   window is open, the window closes and the answer is recorded.
 - **Claude Code not installed:** shown anyway. Needlbar does not look for the CLI from Swift; turning
@@ -115,7 +121,7 @@ to a menu-bar controller that is no longer built and has no control in the app.
   - Body: "Needlbar can run /usage in the Claude Code you installed, under your own sign-in: when
     Needlbar starts, about every 15 minutes while it is running, when a limit resets, and sooner
     after a failed check. Needlbar does not read your Claude sign-in. If you leave this off, it runs
-    only when you click Check now or Retry. You can change this in Settings."
+    only when you click Check now. You can change this in Settings."
   - Buttons: "Turn on" and "Not now", with "Not now" as the default button, because the window can
     appear at login and Return must not opt in. Closing the window counts as "Not now".
   - The copy does not say whether a run uses quota or sends a model request; neither is verified.
@@ -133,8 +139,7 @@ to a menu-bar controller that is no longer built and has no control in the app.
   the preference. The acceptance build shows no prompt, so its fixtures do not depend on the
   developer's defaults.
 - **Settings:** in the Claude pane, a toggle "Check Claude quota automatically" with one caption
-  line: "Runs /usage in your Claude Code about every 15 minutes. Off: only when you click Check now
-  or Retry." While on and Claude is hidden, the caption reads "Paused while Claude is hidden." The
+  line: "Runs /usage in your Claude Code about every 15 minutes. Off: only when you click Check now." While on and Claude is hidden, the caption reads "Paused while Claude is hidden." The
   Settings Check now button and its visibility rule are unchanged.
 - **Check now:** runs once; it does not turn the schedule on.
 - **Menu bar and widget:** unchanged, "—" or the last value. The projection is unchanged.
@@ -144,7 +149,7 @@ to a menu-bar controller that is no longer built and has no control in the app.
 - **README**, "Claude Code and Anthropic's terms": add, replacing any sentence that says runs are
   scheduled unconditionally: "Needlbar runs `claude` on a schedule only if you turn that on. It is
   off by default, including after an update, and Needlbar asks once. While it is off, Needlbar
-  starts `claude` only when you click Check now or Retry. While it is on, it runs `/usage` when
+  starts `claude` only when you click Check now. While it is on, it runs `/usage` when
   Needlbar starts, when you turn it on or show Claude again, about every 15 minutes, after a shown
   limit resets, and 5 to 30 minutes after a failed automatic run. Automatic runs pause while Claude
   is hidden from both the menu bar and the dashboard. Turning it off stops new automatic runs; one
@@ -159,9 +164,8 @@ to a menu-bar controller that is no longer built and has no control in the app.
 
 ## 8. Risks
 
-- **Retry starts Claude.** Retry on a Codex, Cursor or Overview error calls the same manual refresh,
-  so it also runs `claude`. The README says "Check now or Retry". Narrowing Retry is a separate
-  change.
+- **A Retry wired later.** If a future change connects a Retry button to the manual refresh, it will
+  also run `claude`, and the copy must name it.
 - **No value after launch.** Readings live in memory, so with automatic runs off each launch starts
   with no Claude value until Check now. Persisting the last reading is a separate change.
 - **Fewer alerts.** While off, Claude quota alerts fire only from manual readings.
@@ -189,7 +193,8 @@ to a menu-bar controller that is no longer built and has no control in the app.
   - a `claudeIsShown` truth table;
   - a `shouldShow` truth table;
   - pushes reach the coordinator in order (off after on stays off);
-  - a fake presenter in the lifecycle tests: shown once, recorded on answer and on close, closed and
+  - a fake presenter in the lifecycle tests: shown once, recorded on answer and on close, not shown
+    and recorded when already on, closed and
     recorded when turned on elsewhere, not shown with the smoke variable;
   - presentation: the neutral off state and the prompt.
 - The smoke and acceptance scripts still pass and show no window.
