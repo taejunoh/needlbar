@@ -153,6 +153,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let moduleConfiguration: ModuleConfiguration
     private let notificationPreferences: QuotaNotificationPreferences
     private let notificationService: QuotaNotificationService
+    private let claudeAutomaticChecks: ClaudeAutomaticChecksPreferences
     private let widgetPublisher: WidgetProjectionPublisher?
     private let systemMetricsService: SystemMetricsService?
     private let menuBarController: MenuBarController
@@ -181,6 +182,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let combinedSnapshotStore = CombinedSnapshotStore()
         let moduleConfiguration = ModuleConfiguration()
         let notificationPreferences = QuotaNotificationPreferences()
+        let claudeAutomaticChecks = ClaudeAutomaticChecksPreferences()
+        self.claudeAutomaticChecks = claudeAutomaticChecks
         self.snapshotStore = snapshotStore
         self.combinedSnapshotStore = combinedSnapshotStore
         self.moduleConfiguration = moduleConfiguration
@@ -203,6 +206,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 usageRepository: RustUsageRepository(bridge: bridge),
                 quotaRepository: RustQuotaRepository(bridge: bridge),
                 claudeUsageRepository: ClaudeUsageProbeSwitch.isDisabled() ? nil : RustQuotaRepository(bridge: bridge),
+                // Off unless the user turned automatic checks on, and paused while
+                // Claude is hidden.
+                claudeAutomaticRunsAllowed: claudeAutomaticChecks.isEnabled
+                    && claudeIsShown(moduleConfiguration.systemMonitor),
                 store: snapshotStore,
                 usageFileWatcher: usageFileWatcher,
                 statusLineRepository: ClaudeStatusLineCacheRepository(),

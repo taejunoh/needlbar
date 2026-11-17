@@ -107,7 +107,7 @@ func restartedCoordinatorRejectsAnOldWatcherRequestAfterDebounceBeforeAcceptance
     let coordinator = RefreshCoordinator(
         usageRepository: usage,
         quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: clock,
         usageFileWatcher: watcher
     )

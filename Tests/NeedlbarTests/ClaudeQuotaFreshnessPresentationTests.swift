@@ -243,7 +243,7 @@ private final class TwoFrameQuotaClock: ClockLike, @unchecked Sendable {
         let repository = CachedQuotaRepositorySpy(quota: .init(windows: [try window()]))
         let store = ProviderSnapshotStore(now: { success })
         let coordinator = RefreshCoordinator(usageRepository: CachedEmptyUsageRepository(),
-            quotaRepository: repository, store: store, clock: FrozenQuotaClock(now: success))
+            quotaRepository: repository, claudeAutomaticRunsAllowed: true, store: store, clock: FrozenQuotaClock(now: success))
         await coordinator.start()
         for _ in 0..<10_000 {
             if await store.snapshot(for: .claude).quotaLastSuccessfulAt == success { break }

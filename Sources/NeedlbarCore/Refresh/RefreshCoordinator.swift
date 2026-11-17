@@ -41,7 +41,10 @@ public actor RefreshCoordinator {
     private let quotaAttemptLedger: QuotaAttemptLedger
     /// Reports Claude runs. `quotaAttemptLedger` only gates the other refresh.
     private let claudeUsageAttemptLedger: QuotaAttemptLedger
-    private var claudeUsageSchedule = ClaudeUsageProbeSchedule(automaticRunsEnabled: true)
+    /// Whether an automatic Claude run may start: the user's setting and Claude
+    /// being shown, computed by the app. It survives `stop()` and `start()`.
+    private var claudeAutomaticRunsAllowed: Bool
+    private var claudeUsageSchedule: ClaudeUsageProbeSchedule
     /// Retained until the physical call returns, so runs never overlap across a restart.
     private var claudeUsageProbeTask: Task<Void, Never>?
     private var claudeUsageTickTask: Task<Void, Never>?
@@ -94,6 +97,7 @@ public actor RefreshCoordinator {
         usageRepository: any UsageRepository,
         quotaRepository: any QuotaRepository,
         claudeUsageRepository: (any QuotaRepository)? = nil,
+        claudeAutomaticRunsAllowed: Bool,
         store: ProviderSnapshotStore,
         clock: any ClockLike = SystemClock(),
         lastQuotaSuccessfulAt: Date? = nil,
@@ -108,6 +112,7 @@ public actor RefreshCoordinator {
             usageRepository: usageRepository,
             quotaRepository: quotaRepository,
             claudeUsageRepository: claudeUsageRepository,
+            claudeAutomaticRunsAllowed: claudeAutomaticRunsAllowed,
             store: store,
             clock: clock,
             lastQuotaSuccessfulAt: lastQuotaSuccessfulAt,
@@ -128,6 +133,7 @@ public actor RefreshCoordinator {
         usageRepository: any UsageRepository,
         quotaRepository: any QuotaRepository,
         claudeUsageRepository: (any QuotaRepository)? = nil,
+        claudeAutomaticRunsAllowed: Bool,
         store: ProviderSnapshotStore,
         clock: any ClockLike = SystemClock(),
         lastQuotaSuccessfulAt: Date? = nil,
@@ -156,6 +162,8 @@ public actor RefreshCoordinator {
         self.claudeQuotaOperationCompleted = claudeQuotaOperationCompleted
         self.claudeQuotaDiagnostics = claudeQuotaDiagnostics
         self.claudeUsageRepository = claudeUsageRepository
+        self.claudeAutomaticRunsAllowed = claudeAutomaticRunsAllowed
+        self.claudeUsageSchedule = ClaudeUsageProbeSchedule(automaticRunsEnabled: claudeAutomaticRunsAllowed)
         self.backgroundQuotaOperationCompleted = backgroundQuotaOperationCompleted
         self.quotaAttemptLedger = QuotaAttemptLedger(observer: nil)
         self.claudeUsageAttemptLedger = QuotaAttemptLedger(observer: quotaAttemptObserver)
@@ -182,7 +190,7 @@ public actor RefreshCoordinator {
         runGeneration &+= 1
         quotaAttemptLedger.advance(to: runGeneration)
         claudeUsageAttemptLedger.advance(to: runGeneration)
-        claudeUsageSchedule = ClaudeUsageProbeSchedule(automaticRunsEnabled: true)
+        claudeUsageSchedule = ClaudeUsageProbeSchedule(automaticRunsEnabled: claudeAutomaticRunsAllowed)
         isRunning = true
         let generation = runGeneration
         if let usageFileWatcher {
@@ -239,6 +247,20 @@ public actor RefreshCoordinator {
             return
         }
         requestQuotaRefresh(trigger: .popover)
+    }
+
+    /// Turns automatic Claude runs on or off. Manual runs are never affected.
+    /// While stopped it only stores the value, which `start()` then uses. Turning
+    /// off drops queued and delayed runs and leaves a run in flight alone: it ends
+    /// within its own limit and its reading is applied. Turning on requests one
+    /// `automaticResumed` run through the automatic path, so the five-minute floor
+    /// still applies. A call that does not change the value does nothing.
+    public func setClaudeAutomaticRunsAllowed(_ allowed: Bool) {
+        guard allowed != claudeAutomaticRunsAllowed else { return }
+        claudeAutomaticRunsAllowed = allowed
+        guard isRunning else { return }
+        claudeUsageSchedule.setAutomaticRunsEnabled(allowed)
+        if allowed { requestClaudeUsageProbe(trigger: .automaticResumed) }
     }
 
     public func manualRefresh() async {
