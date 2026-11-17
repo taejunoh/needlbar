@@ -82,6 +82,7 @@ public struct SystemDashboardPopoverView: View {
     private let onClaudeUsageAction: () -> Bool
     private let onClaudeUsageStateChanged: (DashboardClaudeUsageLinkState) -> Void
     private let onClaudeCheckNow: () -> Void
+    private let onClaudeAutomaticChecksTurnOn: () -> Void
     private let onQuotaDetailsExpansionChanged: () -> Void
 
     public init(
@@ -95,6 +96,7 @@ public struct SystemDashboardPopoverView: View {
         onClaudeUsageAction: @escaping () -> Bool = { false },
         onClaudeUsageStateChanged: @escaping (DashboardClaudeUsageLinkState) -> Void = { _ in },
         onClaudeCheckNow: @escaping () -> Void = {},
+        onClaudeAutomaticChecksTurnOn: @escaping () -> Void = {},
         onQuotaDetailsExpansionChanged: @escaping () -> Void = {}
     ) {
         _model = ObservedObject(wrappedValue: model)
@@ -110,6 +112,7 @@ public struct SystemDashboardPopoverView: View {
         self.onClaudeUsageAction = onClaudeUsageAction
         self.onClaudeUsageStateChanged = onClaudeUsageStateChanged
         self.onClaudeCheckNow = onClaudeCheckNow
+        self.onClaudeAutomaticChecksTurnOn = onClaudeAutomaticChecksTurnOn
         self.onQuotaDetailsExpansionChanged = onQuotaDetailsExpansionChanged
     }
 
@@ -124,6 +127,7 @@ public struct SystemDashboardPopoverView: View {
         onClaudeUsageAction: @escaping () -> Bool = { false },
         onClaudeUsageStateChanged: @escaping (DashboardClaudeUsageLinkState) -> Void = { _ in },
         onClaudeCheckNow: @escaping () -> Void = {},
+        onClaudeAutomaticChecksTurnOn: @escaping () -> Void = {},
         onQuotaDetailsExpansionChanged: @escaping () -> Void = {}
     ) {
         _model = ObservedObject(wrappedValue: model)
@@ -139,6 +143,7 @@ public struct SystemDashboardPopoverView: View {
         self.onClaudeUsageAction = onClaudeUsageAction
         self.onClaudeUsageStateChanged = onClaudeUsageStateChanged
         self.onClaudeCheckNow = onClaudeCheckNow
+        self.onClaudeAutomaticChecksTurnOn = onClaudeAutomaticChecksTurnOn
         self.onQuotaDetailsExpansionChanged = onQuotaDetailsExpansionChanged
     }
 
@@ -161,6 +166,7 @@ public struct SystemDashboardPopoverView: View {
         onClaudeUsageAction = { false }
         onClaudeUsageStateChanged = { _ in }
         onClaudeCheckNow = {}
+        onClaudeAutomaticChecksTurnOn = {}
         onQuotaDetailsExpansionChanged = {}
     }
 
@@ -348,13 +354,28 @@ public struct SystemDashboardPopoverView: View {
     }
 
     /// On its own line, so "View Claude usage" keeps its place and its width.
+    /// While automatic checks are off, a neutral caption sits above it and
+    /// "Turn on" beside it.
     @ViewBuilder
-    private func claudeCheckNowButton(_ provider: SystemDashboardPresentation.AIProvider) -> some View {
+    private func claudeCheckControls(_ provider: SystemDashboardPresentation.AIProvider) -> some View {
+        if let prompt = provider.automaticChecksPrompt {
+            Text(prompt.caption)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
         if let action = provider.checkNowAction {
-            Button(action.title) { onClaudeCheckNow() }
-                .buttonStyle(.borderless)
-                .font(.caption)
-                .accessibilityLabel(action.title)
+            HStack(spacing: 12) {
+                Button(action.title) { onClaudeCheckNow() }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .accessibilityLabel(action.title)
+                if let prompt = provider.automaticChecksPrompt {
+                    Button(prompt.actionTitle) { onClaudeAutomaticChecksTurnOn() }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .accessibilityLabel(prompt.actionTitle)
+                }
+            }
         }
     }
 
@@ -406,7 +427,7 @@ public struct SystemDashboardPopoverView: View {
                     .accessibilityLabel(claudeUsageState.failureMessage)
             }
 
-            claudeCheckNowButton(provider)
+            claudeCheckControls(provider)
 
             if let fable = provider.fable {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -561,7 +582,7 @@ public struct SystemDashboardPopoverView: View {
                     .foregroundStyle(.orange)
                     .accessibilityLabel(claudeUsageState.failureMessage)
             }
-            claudeCheckNowButton(provider)
+            claudeCheckControls(provider)
             if let action = provider.apiBillingAction {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(action.providerLabel)
