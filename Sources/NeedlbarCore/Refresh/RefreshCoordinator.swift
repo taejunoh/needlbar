@@ -77,6 +77,9 @@ public actor RefreshCoordinator {
     private var quotaSafetyTask: Task<Void, Never>?
     private var lastBackgroundQuotaSuccessfulAt: Date?
     private var isRunning = false
+    /// False while `start()` is suspended before its Claude `startup` request, so a
+    /// setter call in that window only updates the schedule and the request covers it.
+    private var claudeStartupRequested = false
     private var usageRefreshRequestedWhileInFlight = false
     private var usageQueuedGeneration: UInt64?
     private var runGeneration: UInt64 = 0
@@ -191,6 +194,7 @@ public actor RefreshCoordinator {
         quotaAttemptLedger.advance(to: runGeneration)
         claudeUsageAttemptLedger.advance(to: runGeneration)
         claudeUsageSchedule = ClaudeUsageProbeSchedule(automaticRunsEnabled: claudeAutomaticRunsAllowed)
+        claudeStartupRequested = false
         isRunning = true
         let generation = runGeneration
         if let usageFileWatcher {
@@ -201,6 +205,7 @@ public actor RefreshCoordinator {
         }
         requestUsageRefresh()
         requestStatusLineRead()
+        claudeStartupRequested = true
         requestClaudeUsageProbe(trigger: .startup)
         requestQuotaRefresh(trigger: .startup)
         scheduleSafetyRefreshes()
@@ -254,13 +259,15 @@ public actor RefreshCoordinator {
     /// off drops queued and delayed runs and leaves a run in flight alone: it ends
     /// within its own limit and its reading is applied. Turning on requests one
     /// `automaticResumed` run through the automatic path, so the five-minute floor
-    /// still applies. A call that does not change the value does nothing.
+    /// still applies. A call that does not change the value does nothing. Before
+    /// `start()` has made its `startup` request it only updates the schedule, since
+    /// that request is the one run at launch.
     public func setClaudeAutomaticRunsAllowed(_ allowed: Bool) {
         guard allowed != claudeAutomaticRunsAllowed else { return }
         claudeAutomaticRunsAllowed = allowed
         guard isRunning else { return }
         claudeUsageSchedule.setAutomaticRunsEnabled(allowed)
-        if allowed { requestClaudeUsageProbe(trigger: .automaticResumed) }
+        if allowed, claudeStartupRequested { requestClaudeUsageProbe(trigger: .automaticResumed) }
     }
 
     public func manualRefresh() async {
@@ -337,6 +344,7 @@ public actor RefreshCoordinator {
         claudeUsageTickTask?.cancel()
         claudeUsageTickTask = nil
         isRunning = false
+        claudeStartupRequested = false
         usageTask?.cancel()
         quotaTask?.cancel()
         statusLineTask?.cancel()

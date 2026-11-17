@@ -284,6 +284,22 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.coordinator.stop()
     }
 
+    @Test func turningOnWhileStartIsSuspendedInTheWatcherGivesOneStartupRun() async throws {
+        let watcher = GatedUsageFileWatcher()
+        let harness = Harness(automaticRuns: false, usageFileWatcher: watcher)
+        let starting = Task { await harness.coordinator.start() }
+        await watcher.waitUntilStartSuspended()
+        await harness.coordinator.setClaudeAutomaticRunsAllowed(true)
+        await watcher.resumeStart()
+        await starting.value
+        await harness.waitUntilCompletedRuns(1)
+        await harness.advance(minutes: 6)
+        await settle(watchingFor: { harness.probe.callCount > 1 })
+        #expect(harness.probe.callCount == 1)
+        #expect(harness.probe.triggersSeen(in: harness.events) == [.startup])
+        await harness.coordinator.stop()
+    }
+
     // MARK: - Manual
 
     @Test func manualRefreshSkipsTheIntervalAndBackoff() async throws {
@@ -744,7 +760,8 @@ private struct Harness {
     let events = AttemptEvents()
     let coordinator: RefreshCoordinator
 
-    init(claudeRepository: Bool = true, claudeTotal: UInt64 = 0, automaticRuns: Bool = true) {
+    init(claudeRepository: Bool = true, claudeTotal: UInt64 = 0, automaticRuns: Bool = true,
+         usageFileWatcher: (any UsageFileWatching)? = nil) {
         let clock = ManualClock(now: ClaudeUsageProbeCoordinatorTests.start)
         let events = self.events
         let probe = ProbeRepository(clock: clock)
@@ -765,6 +782,7 @@ private struct Harness {
             claudeAutomaticRunsAllowed: automaticRuns,
             store: store,
             clock: clock,
+            usageFileWatcher: usageFileWatcher,
             claudeQuotaDiagnostics: diagnostics.completion,
             quotaAttemptObserver: { events.record($0) }
         )
@@ -800,6 +818,34 @@ private struct Harness {
             clock.advance(by: 60)
             await clock.waitUntilSleeperCount(3)
         }
+    }
+}
+
+/// A watcher whose `start` stays suspended until the test resumes it.
+private actor GatedUsageFileWatcher: UsageFileWatching {
+    private var startContinuation: CheckedContinuation<Void, Never>?
+    private var suspendedWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func start(using refreshRequest: UsageRefreshRequestToken) async {
+        await withCheckedContinuation { continuation in
+            startContinuation = continuation
+            let waiters = suspendedWaiters
+            suspendedWaiters = []
+            for waiter in waiters { waiter.resume() }
+        }
+    }
+
+    func stop() {}
+
+    func waitUntilStartSuspended() async {
+        if startContinuation != nil { return }
+        await withCheckedContinuation { suspendedWaiters.append($0) }
+    }
+
+    func resumeStart() {
+        let continuation = startContinuation
+        startContinuation = nil
+        continuation?.resume()
     }
 }
 
