@@ -96,6 +96,13 @@ last run's duration.
 | 15 minutes since the last start (periodic) | Unchanged. |
 | Change in Claude Code's local usage records | **Removed.** |
 
+*Amended 2026-11-16:* every trigger in this table except **Check now** applies only while automatic
+checks are on and Claude is shown on the menu bar or the dashboard, and automatic checks are off by
+default. Turning them on, or showing Claude again, adds one trigger, `automaticResumed`: it starts
+a run at once when 5 minutes have passed since the last start, and otherwise the periodic run
+follows 15 minutes after that start. The design is
+`docs/superpowers/specs/2026-11-16-claude-automatic-checks-opt-in-design.md`.
+
 The 5-minute minimum interval, single flight, the once-a-minute trigger check, and the rule
 that opening the dashboard, waking the Mac or regaining a connection starts no run all stay.
 In practice automatic runs are now 15 minutes apart; the 5-minute minimum matters only after a
