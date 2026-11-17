@@ -14,7 +14,10 @@
   trigger, the pause while Claude is hidden from both the menu bar and the dashboard, the stored
   setting, the Settings toggle, and the dashboard row prompt with its neutral off state. The
   cadence, the limits and the parser are unchanged.
-- **First-run window.** Not built yet; it is the plan's second part.
+- **First-run window.** Built in the plan's second part: a non-modal window shown once after the
+  menu bar has started, with **Not now** as the default button. The answer is recorded when the
+  user answers or closes the window. It is not shown on smoke or acceptance runs or while Claude is
+  hidden. Its layout, in light and dark, has not been seen on a real machine.
 - **Verification.** Automated tests only. Nothing was installed and no real `claude` was run. Not
   yet seen on a real machine: the log with the setting off, `automaticResumed` then `periodic` after
   turning on, and the toggle and the row prompt in light and dark.

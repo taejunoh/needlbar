@@ -5,6 +5,9 @@ import WidgetKit
 @MainActor
 protocol ProductionLifecycleServing: AnyObject {
     func startProductionMenu() async
+    /// The first-run question about automatic Claude checks. The acceptance
+    /// lifecycle has no such step, so acceptance runs never show it.
+    func presentProductionOnboarding() async
     func startProductionSystem() async
     func startProductionNotifications() async
     func startProductionPublisher() async
@@ -60,6 +63,8 @@ final class ProductionLifecycleController {
         generation &+= 1
         let generation = generation
         await services.startProductionMenu()
+        guard running, generation == self.generation else { return }
+        await services.presentProductionOnboarding()
         guard running, generation == self.generation else { return }
         await services.startProductionSystem()
         guard running, generation == self.generation else { return }
@@ -155,6 +160,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let notificationService: QuotaNotificationService
     private let claudeAutomaticChecks: ClaudeAutomaticChecksPreferences
     private var claudeAutomaticRunsRelay: ClaudeAutomaticRunsRelay?
+    private var claudeUsageOnboarding: ClaudeUsageOnboardingController?
     private let widgetPublisher: WidgetProjectionPublisher?
     private let systemMetricsService: SystemMetricsService?
     private let menuBarController: MenuBarController
@@ -245,6 +251,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 preferences: claudeAutomaticChecks,
                 configuration: moduleConfiguration,
                 apply: { await refreshCoordinator.setClaudeAutomaticRunsAllowed($0) }
+            )
+            self.claudeUsageOnboarding = ClaudeUsageOnboardingController(
+                defaults: .standard,
+                preferences: claudeAutomaticChecks,
+                presenter: ClaudeUsageOnboardingWindowController(),
+                probeDisabled: { ClaudeUsageProbeSwitch.isDisabled() },
+                claudeShown: { claudeIsShown(moduleConfiguration.systemMonitor) }
             )
             self.refreshCoordinator = refreshCoordinator
             self.quotaRecoveryLifecycle = QuotaRecoveryLifecycleController(
@@ -414,6 +427,10 @@ extension AppDelegate: ProductionLifecycleServing {
         // settings entry still belongs to the active connection.
         _ = try? ClaudeStatusLineConnectionManager().refreshEnabledHelper()
         await menuBarController.startObserving()
+    }
+
+    func presentProductionOnboarding() async {
+        claudeUsageOnboarding?.presentIfNeeded()
     }
 
     func startProductionSystem() async {

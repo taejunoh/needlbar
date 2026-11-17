@@ -45,7 +45,8 @@ reading wins regardless of source, and no source invents a value.
   script sets it, so a smoke launch never starts a real `claude` that could renew the login and outlive
   the killed app.
 - **When:** on manual refresh (**Check now**, on the dashboard's Claude row and in Settings beside **View Claude usage**) at any time.
-  Automatic runs are opt-in since 2026-11-16 and off by default, including after an update: Settings
+  Automatic runs are opt-in since 2026-11-16 and off by default, including after an update: a
+  first-run window asks once, Settings
   has the toggle **Check Claude quota automatically**, and while it is off the dashboard's Claude row
   says "Automatic checks are off." with **Turn on** beside **Check now**. Only with that on, and while
   Claude is shown on the menu bar or the dashboard, a run also starts at app start, when automatic
