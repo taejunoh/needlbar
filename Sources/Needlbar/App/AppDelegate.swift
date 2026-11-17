@@ -154,6 +154,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let notificationPreferences: QuotaNotificationPreferences
     private let notificationService: QuotaNotificationService
     private let claudeAutomaticChecks: ClaudeAutomaticChecksPreferences
+    private var claudeAutomaticRunsRelay: ClaudeAutomaticRunsRelay?
     private let widgetPublisher: WidgetProjectionPublisher?
     private let systemMetricsService: SystemMetricsService?
     private let menuBarController: MenuBarController
@@ -237,6 +238,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 loginCoordinator: loginCoordinator,
                 snapshotExportController: snapshotExportController,
                 claudeCheckNow: { Task { await refreshCoordinator.manualRefresh() } }
+            )
+            // Sends every later change of that value, in order.
+            self.claudeAutomaticRunsRelay = ClaudeAutomaticRunsRelay(
+                preferences: claudeAutomaticChecks,
+                configuration: moduleConfiguration,
+                apply: { await refreshCoordinator.setClaudeAutomaticRunsAllowed($0) }
             )
             self.refreshCoordinator = refreshCoordinator
             self.quotaRecoveryLifecycle = QuotaRecoveryLifecycleController(
