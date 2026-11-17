@@ -41,7 +41,7 @@ public actor RefreshCoordinator {
     private let quotaAttemptLedger: QuotaAttemptLedger
     /// Reports Claude runs. `quotaAttemptLedger` only gates the other refresh.
     private let claudeUsageAttemptLedger: QuotaAttemptLedger
-    private var claudeUsageSchedule = ClaudeUsageProbeSchedule()
+    private var claudeUsageSchedule = ClaudeUsageProbeSchedule(automaticRunsEnabled: true)
     /// Retained until the physical call returns, so runs never overlap across a restart.
     private var claudeUsageProbeTask: Task<Void, Never>?
     private var claudeUsageTickTask: Task<Void, Never>?
@@ -182,7 +182,7 @@ public actor RefreshCoordinator {
         runGeneration &+= 1
         quotaAttemptLedger.advance(to: runGeneration)
         claudeUsageAttemptLedger.advance(to: runGeneration)
-        claudeUsageSchedule = ClaudeUsageProbeSchedule()
+        claudeUsageSchedule = ClaudeUsageProbeSchedule(automaticRunsEnabled: true)
         isRunning = true
         let generation = runGeneration
         if let usageFileWatcher {
@@ -404,7 +404,7 @@ public actor RefreshCoordinator {
         case .scheduled:
             guard let scheduledDueAt, let last = backgroundAttemptClock.latest else { return true }
             return last < scheduledDueAt
-        case .startup, .manual, .popover, .windowReset, .backoffRetry, .periodic:
+        case .startup, .manual, .popover, .windowReset, .backoffRetry, .periodic, .automaticResumed:
             return true
         }
     }
