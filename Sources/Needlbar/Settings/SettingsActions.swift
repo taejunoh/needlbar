@@ -6,22 +6,30 @@ import NeedlbarCore
 public final class SettingsActions: ObservableObject {
     @Published public private(set) var loginStates: [ProviderID: ProviderLoginState]
     @Published public private(set) var exportState: SnapshotExportState
+    /// The automatic Claude checks setting, or nil when these actions carry no
+    /// preference (the acceptance build and tests), which hides its controls.
+    @Published public private(set) var claudeAutomaticChecksEnabled: Bool?
 
     private let loginCoordinator: ProviderLoginCoordinator?
     private let snapshotExportController: SnapshotExportController?
     private let claudeCheckNow: (@MainActor () -> Void)?
+    private let claudeAutomaticChecks: ClaudeAutomaticChecksPreferences?
     private var cancellables: Set<AnyCancellable> = []
 
     public init(
         loginCoordinator: ProviderLoginCoordinator,
         snapshotExportController: SnapshotExportController,
-        claudeCheckNow: (@MainActor () -> Void)? = nil
+        claudeCheckNow: (@MainActor () -> Void)? = nil,
+        claudeAutomaticChecks: ClaudeAutomaticChecksPreferences? = nil
     ) {
         loginStates = Dictionary(uniqueKeysWithValues: ProviderID.allCases.map { ($0, loginCoordinator.state(for: $0)) })
         exportState = snapshotExportController.state
         self.loginCoordinator = loginCoordinator
         self.snapshotExportController = snapshotExportController
         self.claudeCheckNow = claudeCheckNow
+        self.claudeAutomaticChecks = claudeAutomaticChecks
+        claudeAutomaticChecksEnabled = claudeAutomaticChecks?.isEnabled
+        observeClaudeAutomaticChecks()
 
         loginCoordinator.objectWillChange
             .sink { [weak self, weak loginCoordinator] _ in
@@ -40,12 +48,18 @@ public final class SettingsActions: ObservableObject {
             .store(in: &cancellables)
     }
 
-    public init(claudeCheckNow: (@MainActor () -> Void)? = nil) {
+    public init(
+        claudeCheckNow: (@MainActor () -> Void)? = nil,
+        claudeAutomaticChecks: ClaudeAutomaticChecksPreferences? = nil
+    ) {
         loginStates = [:]
         exportState = .idle
         loginCoordinator = nil
         snapshotExportController = nil
         self.claudeCheckNow = claudeCheckNow
+        self.claudeAutomaticChecks = claudeAutomaticChecks
+        claudeAutomaticChecksEnabled = claudeAutomaticChecks?.isEnabled
+        observeClaudeAutomaticChecks()
     }
 
     public func loginState(for provider: ProviderID) -> ProviderLoginState {
@@ -66,6 +80,27 @@ public final class SettingsActions: ObservableObject {
     /// which joins a run already in flight, so repeated clicks need no state here.
     public func checkClaudeNow() {
         claudeCheckNow?()
+    }
+
+    /// Sets the automatic Claude checks preference. It starts no run itself: the
+    /// app observes the preference and tells the refresh coordinator.
+    public func setClaudeAutomaticChecksEnabled(_ enabled: Bool) {
+        guard let claudeAutomaticChecks else { return }
+        claudeAutomaticChecks.setEnabled(enabled)
+        claudeAutomaticChecksEnabled = enabled
+    }
+
+    /// Follows a change made elsewhere: the dashboard row or the first-run window.
+    private func observeClaudeAutomaticChecks() {
+        guard let claudeAutomaticChecks else { return }
+        claudeAutomaticChecks.$isEnabled.dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.claudeAutomaticChecksEnabled = self.claudeAutomaticChecks?.isEnabled
+                }
+            }
+            .store(in: &cancellables)
     }
 
     public func exportSnapshot() {

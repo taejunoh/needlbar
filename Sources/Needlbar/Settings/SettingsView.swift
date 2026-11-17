@@ -240,7 +240,9 @@ public struct SettingsView: View {
     @ViewBuilder private func connectionPane(_ provider: ProviderID) -> some View {
         SettingsStudioSection(title: "Connection") {
             switch provider {
-            case .claude: claudeUsageRow
+            case .claude:
+                claudeUsageRow
+                claudeAutomaticChecksRows
             case .codex: providerLoginRow(provider: .codex, title: "Codex", actionTitle: "Sign in with ChatGPT")
             case .cursor:
                 HStack(alignment: .top, spacing: 8) {
@@ -330,6 +332,27 @@ public struct SettingsView: View {
             }
         }
         .frame(minHeight: 54)
+    }
+
+    /// The opt-in for automatic `/usage` runs, under the Claude connection row.
+    /// Absent when the actions carry no preference, as in the acceptance build.
+    @ViewBuilder var claudeAutomaticChecksRows: some View {
+        if let enabled = actions.claudeAutomaticChecksEnabled {
+            Divider().padding(.top, 12)
+            SettingsStudioToggle(title: ClaudeAutomaticChecksCopy.settingsToggle, value: Binding(
+                get: { actions.claudeAutomaticChecksEnabled ?? false },
+                set: { actions.setClaudeAutomaticChecksEnabled($0) }))
+            Text(claudeAutomaticChecksCaption(enabled: enabled))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Reads the stored configuration, like `claudeCheckNowAction`, so it is
+    /// current whenever the pane is drawn again after a visibility change.
+    func claudeAutomaticChecksCaption(enabled: Bool) -> String {
+        ClaudeAutomaticChecksCopy.settingsCaption(
+            enabled: enabled, claudeShown: claudeIsShown(configuration.systemMonitor))
     }
 
     private var claudeStatusLinePane: some View {

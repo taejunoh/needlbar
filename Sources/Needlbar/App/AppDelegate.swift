@@ -237,7 +237,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             let actions = SettingsActions(
                 loginCoordinator: loginCoordinator,
                 snapshotExportController: snapshotExportController,
-                claudeCheckNow: { Task { await refreshCoordinator.manualRefresh() } }
+                claudeCheckNow: { Task { await refreshCoordinator.manualRefresh() } },
+                claudeAutomaticChecks: claudeAutomaticChecks
             )
             // Sends every later change of that value, in order.
             self.claudeAutomaticRunsRelay = ClaudeAutomaticRunsRelay(
