@@ -34,7 +34,7 @@ struct ClaudeStatusLineFallbackIntegrationTests {
         let coordinator = RefreshCoordinator(
             usageRepository: EmptyUsageRepository(),
             quotaRepository: ExpiredClaudeQuotaRepository(),
-            store: store,
+            claudeAutomaticRunsAllowed: true, store: store,
             clock: FixedFallbackClock(now: now),
             statusLineRepository: ClaudeStatusLineCacheRepository(store: privateStore)
         )

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import NeedlbarCore
 import SwiftUI
 
@@ -467,6 +468,8 @@ public final class MenuBarController: NSObject {
     private let openClaudeUsage: @MainActor () -> Bool
     private let openAPIBilling: @MainActor (ProviderAPIBillingAction) -> Bool
     private let settingsWindowController: SettingsWindowController
+    private let actions: SettingsActions
+    private var claudeAutomaticChecksObservation: AnyCancellable?
     private var statusItem: (any StatusItemHandle)?
     private var deepLinkStatusItem: (any StatusItemHandle)?
     private var cachedCombinedSnapshot: CombinedUsageSnapshot
@@ -485,6 +488,10 @@ public final class MenuBarController: NSObject {
     private var displayedClaudeUsageState = DashboardClaudeUsageLinkState()
 
     var settingsPreviewResult: MenuBarDashboardRenderResult { settingsWindowController.previewResult }
+    /// Whether the dashboard model currently carries the automatic checks prompt.
+    var dashboardShowsClaudeAutomaticChecksPrompt: Bool {
+        dashboardModel?.presentation.ai.contains { $0.automaticChecksPrompt != nil } ?? false
+    }
 
     public init(
         configuration: ModuleConfiguration,
@@ -522,6 +529,7 @@ public final class MenuBarController: NSObject {
         self.openCursorSpending = openCursorSpending
         self.openClaudeUsage = openClaudeUsage
         self.openAPIBilling = openAPIBilling
+        self.actions = actions
         self.settingsWindowController = SettingsWindowController(
             configuration: configuration,
             actions: actions,
@@ -621,6 +629,13 @@ public final class MenuBarController: NSObject {
                 self.reconcile(using: self.cachedCombinedSnapshot)
             }
         }
+        // The Claude row's prompt follows the automatic checks setting.
+        claudeAutomaticChecksObservation = actions.$claudeAutomaticChecksEnabled.dropFirst().sink { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.observationGeneration == generation else { return }
+                self.reconcile(using: self.cachedCombinedSnapshot)
+            }
+        }
         if let providerUpdates {
             providerObservationTask = Task { @MainActor [weak self] in
                 for await snapshots in providerUpdates {
@@ -646,6 +661,7 @@ public final class MenuBarController: NSObject {
         providerObservationTask = nil
         combinedObservationTask?.cancel()
         combinedObservationTask = nil
+        claudeAutomaticChecksObservation = nil
         if let configurationObserver {
             NotificationCenter.default.removeObserver(configurationObserver)
             self.configurationObserver = nil
@@ -673,9 +689,13 @@ public final class MenuBarController: NSObject {
         let monitorConfiguration = configuration.systemMonitor
         settingsWindowController.update(snapshot: snapshot, configuration: monitorConfiguration)
         if let dashboardModel {
-            dashboardModel.update(snapshot: snapshot, configuration: monitorConfiguration)
+            dashboardModel.update(
+                snapshot: snapshot, configuration: monitorConfiguration,
+                claudeAutomaticChecksOff: claudeAutomaticChecksOff)
         } else {
-            dashboardModel = SystemDashboardModel(snapshot: snapshot, configuration: monitorConfiguration)
+            dashboardModel = SystemDashboardModel(
+                snapshot: snapshot, configuration: monitorConfiguration,
+                claudeAutomaticChecksOff: claudeAutomaticChecksOff)
         }
         resizeDisplayedDashboardIfNeeded()
         let item: any StatusItemHandle
@@ -736,7 +756,9 @@ public final class MenuBarController: NSObject {
         if let dashboardModel {
             model = dashboardModel
         } else {
-            model = SystemDashboardModel(snapshot: snapshot, configuration: monitorConfiguration)
+            model = SystemDashboardModel(
+                snapshot: snapshot, configuration: monitorConfiguration,
+                claudeAutomaticChecksOff: claudeAutomaticChecksOff)
             dashboardModel = model
         }
         displayedBillingState = .init()
@@ -775,6 +797,9 @@ public final class MenuBarController: NSObject {
             },
             onClaudeCheckNow: { [weak self] in
                 self?.performClaudeCheckNowAction()
+            },
+            onClaudeAutomaticChecksTurnOn: { [weak self] in
+                self?.performClaudeAutomaticChecksTurnOnAction()
             },
             onQuotaDetailsExpansionChanged: { [weak self] in
                 self?.resizeDisplayedDashboardIfNeeded()
@@ -864,6 +889,19 @@ public final class MenuBarController: NSObject {
     /// shown, so the user can watch the value change.
     func performClaudeCheckNowAction() {
         onRetryRequested()
+    }
+
+    /// Only an explicit false shows the prompt: nil means these actions carry no
+    /// preference, as in the acceptance build, whose fixtures must not depend on
+    /// the developer's defaults.
+    private var claudeAutomaticChecksOff: Bool {
+        actions.claudeAutomaticChecksEnabled == false
+    }
+
+    /// "Turn on" sets the preference and leaves the panel shown. It starts no run
+    /// here: the app observes the preference and tells the refresh coordinator.
+    func performClaudeAutomaticChecksTurnOnAction() {
+        actions.setClaudeAutomaticChecksEnabled(true)
     }
 
     func performAPIBillingAction(_ action: ProviderAPIBillingAction) -> Bool {

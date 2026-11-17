@@ -201,17 +201,20 @@ longer reads Claude Code's Keychain item or credentials file and no longer calls
 the usage endpoint. It runs `/usage` through your installed `claude`
 (`~/.local/bin/claude`, `/opt/homebrew/bin/claude` or `/usr/local/bin/claude`,
 never through a shell) and reads the documented `usage_report` field, which is
-marked experimental. Runs happen at app start, on manual refresh (**Check now**, in the dashboard and in Settings),
-when a displayed window's reset passes, and
-after 15 minutes without a run. Automatic runs are in practice 15 minutes apart; the
+marked experimental. Since 2026-11-16 automatic runs are opt-in and off by default. A run happens
+on manual refresh (**Check now**, in the dashboard and in Settings) and, only with automatic checks
+turned on and Claude shown, at app start, when automatic checks are turned on or Claude is shown
+again, when a displayed window's reset passes, and
+after 15 minutes without a run. Automatic runs are then in practice 15 minutes apart; the
 5-minute minimum between them matters only after a reset or a failed run. Since
 2026-11-12 a change in Claude Code's local usage records no longer starts a run: each
 run makes `claude` scan its session transcripts from the last 7 days, and during use
 those changes started a run every 5 minutes. Opening the dashboard
-alone starts none. A reading stays current for 20 minutes. Usage, in Claude Code or
+alone starts none. A reading stays current for 20 minutes. With automatic checks on, usage, in Claude Code or
 outside it, appears within about 15 minutes while the app is running and the Mac is
-awake, or about 17 when a run is slow; **Check now** reads it at once.
-That means about 96 runs a day, plus runs after resets and retries after failures; it was up to 288 a day. A run is
+awake, or about 17 when a run is slow; **Check now** reads it at once. With automatic checks off,
+it appears only after **Check now**.
+With automatic checks on, that means about 96 runs a day, plus runs after resets and retries after failures; it was up to 288 a day. With them off, no run starts without a click. A run is
 limited to 60 seconds (30 before 2026-11-12, when two runs were stopped at that limit) and 1 MiB of output, works in one fixed folder in the temporary directory that is emptied before each run,
 and its output is neither logged nor stored. After any exit Needlbar ends the process group it
 started; a process that moved to its own session or group is not covered. The status line remains the second
@@ -219,7 +222,7 @@ source and last-known values the third; a newer valid reading wins. A window the
 report omits is hidden, not shown as zero. Without Claude Code the app shows
 install guidance and the usage link; with no usage available it says it could not check
 Claude Code, suggests running `claude` in Terminal to check its sign-in if that continues,
-and retries under backoff. It offers no button. Needlbar never runs `claude auth`
+and, with automatic checks on, retries under backoff. It offers no button. Needlbar never runs `claude auth`
 and writes no Claude configuration, though Claude Code may renew its own login
 during a run, and `claude` itself may show a Keychain prompt. **Allow Keychain
 access**, which an earlier prepared build had, is removed. On one Mac, a local
@@ -495,6 +498,14 @@ Needlbar starts that copy of `claude` on the same Mac to run `/usage`. It runs a
 installed and signed it in, and Needlbar reads only its usage report. Needlbar has no Claude
 sign-in. It does not read, store or pass on Claude credentials or session tokens, and it does
 not pay for, resell or route anyone's Claude usage.
+
+Needlbar runs `claude` on a schedule only if you turn that on. It is off by default, including
+after an update, and Needlbar asks once. While it is off, Needlbar starts `claude` only when you
+click Check now. While it is on, it runs `/usage` when Needlbar starts, when you turn it
+on or show Claude again, about every 15 minutes, after a shown limit resets, and 5 to 30 minutes
+after a failed automatic run. Automatic runs pause while Claude is hidden from both the menu bar
+and the dashboard. Turning it off stops new automatic runs; one already started is stopped at 60
+seconds at the latest.
 
 Anthropic's [legal and compliance page](https://code.claude.com/docs/en/legal-and-compliance)
 requires its Commercial Terms for "preinstalling or running Claude Code in your products or

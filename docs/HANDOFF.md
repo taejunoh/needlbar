@@ -1,6 +1,7 @@
 # Claude continuation handoff
 
-**Checkpoint:** 2026-11-13, updated for the Fable percent on the Overview widget, now beside the big Claude figure, which is
+**Checkpoint:** 2026-11-16, updated for opt-in automatic Claude checks, which are prepared and not
+released and not yet run on a real machine; before that 2026-11-13, for the Fable percent on the Overview widget, now beside the big Claude figure, which is
 not released and was seen installed on 2026-11-13 (`fef7cf7`, Developer ID, light and dark); before that 2026-11-12, for the
 `/usage` cadence and deadline change, which is
 prepared and not released and not yet run on a real machine; before that 2026-11-05, for the
@@ -158,7 +159,8 @@ lookup, credential format or usage endpoint is retired there; those sections are
 history for the public v0.3.14.
 
 The probe sends SIGKILL to its process group after any exit. That covers the group it
-started; a process that moved to its own session or group is not covered. Claude runs only on app start, manual refresh, a
+started; a process that moved to its own session or group is not covered. Claude runs on manual refresh and, only with
+automatic checks on (see below), on app start, a
 passed reset, a backoff retry and every 15 minutes; a dashboard open, waking or
 regaining a connection starts none. If Codex is failing, each dashboard open
 retries Codex; that starts no Claude run and no dialog.
@@ -175,8 +177,27 @@ reading can be about 17 minutes old before the next one lands, 2 minutes 59 seco
 records for tokens and cost. Revisit if runs approach 60 seconds, rather than raising the deadline
 again, or if a later CLI version changes the cost. Not yet checked on a real machine: after
 installation the unified log should show only the triggers `startup`, `manual`, `windowReset`,
-`backoffRetry` and `periodic`, automatic starts at least 15 minutes apart except after a reset or a
+`backoffRetry`, `periodic` and, since 2026-11-16, `automaticResumed`, automatic starts at least 15 minutes apart except after a reset or a
 failure, and no `usageProbeTimedOut` with `durationMs` under 60,000.
+
+**Automatic checks are opt-in (2026-11-16, prepared, not released).** Design:
+`docs/superpowers/specs/2026-11-16-claude-automatic-checks-opt-in-design.md`. Plan:
+`docs/superpowers/plans/2026-11-16-claude-automatic-checks-opt-in.md`. Needlbar starts `claude`
+without a click only if the user turned that on. The setting is
+`needlbar.claude.automaticUsageChecks.enabled`; a missing value means off, so it is off for new
+installs and after an update. While off, only a manual refresh starts a run, and the schedule keeps
+no pending run, retry or backoff. While on, automatic runs still pause while Claude is hidden from
+both the menu bar and the dashboard (`claudeIsShown`); the widget and notifications do not count.
+Turning on, or showing Claude again, requests one run with the new trigger `automaticResumed`, which
+respects the 5-minute minimum; turning off never cancels a run in flight. Settings has the toggle
+**Check Claude quota automatically** in the Claude pane, and while off the dashboard's Claude row
+shows "Automatic checks are off." with **Turn on** beside **Check now**. The acceptance build shows
+neither. The first-run window that asks once is the plan's second part and is not built yet, so the
+README sentence "Needlbar asks once" is ahead of the code until then. With automatic checks off,
+each launch starts with no Claude value until **Check now**, and Claude quota alerts fire only from
+manual readings. `docs/releases/v0.3.15.md` describes opt-in automatic runs
+(2026-11-16); the new release plan still reviews it. Not yet checked on a real machine: with the setting off the unified log shows no
+automatic trigger, and after turning on it shows `automaticResumed` and then `periodic`.
 
 **Fable on the widget (2026-11-13, prepared, not released).** Design:
 `docs/superpowers/specs/2026-11-13-widget-fable-percent-design.md`. Plan:
@@ -207,8 +228,10 @@ found.
 **Release gate (spec §11):** on 2026-11-15 the user decided the terms question in spec §3: ship on
 a stated reading and ask Anthropic at the same time. The reading is in the README section "Claude
 Code and Anthropic's terms". The inquiry is drafted and the user sends it. If Anthropic objects, the
-§11 fallback applies. A public release still needs a weekday log check, the signed-out `claude`
-check, a new release plan and the user's separate request. No tag or release is authorized, and the
+§11 fallback applies. The inquiry draft is not in this repository; before it is sent it must say
+that automatic runs are off until the user turns them on (spec 2026-11-16 §7). A public release
+still needs a weekday log check, the signed-out `claude`
+check, the inquiry sent, a new release plan and the user's separate request. No tag or release is authorized, and the
 v0.3.15 release plan of 2026-11-02 is superseded.
 
 ## CI runners
@@ -322,6 +345,9 @@ Useful verified source locations:
 - `crates/needlbar-quota/src/providers/claude_usage_probe.rs`
 - `crates/needlbar-quota/src/providers/claude_usage_report.rs`
 - `Sources/NeedlbarCore/Refresh/ClaudeUsageProbeSchedule.swift`
+- `Sources/NeedlbarCore/Configuration/ClaudeVisibility.swift`
+- `Sources/Needlbar/App/ClaudeAutomaticChecksPreferences.swift`
+- `Sources/Needlbar/App/ClaudeAutomaticRunsRelay.swift`
 - `Sources/NeedlbarCore/Widget/WidgetProjectionMapper.swift`
 - `Sources/NeedlbarWidgetSupport/WidgetProjection.swift`
 - `WidgetExtension/NeedlbarOverviewWidget.swift`

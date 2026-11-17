@@ -44,8 +44,16 @@ reading wins regardless of source, and no source invents a value.
 - **Switch:** launching the app with `NEEDLBAR_DISABLE_CLAUDE_USAGE_PROBE=1` starts no run. The smoke
   script sets it, so a smoke launch never starts a real `claude` that could renew the login and outlive
   the killed app.
-- **When:** at app start, on manual refresh (**Check now**, on the dashboard's Claude row and in Settings beside **View Claude usage**), when a
-  displayed window's reset passes, and after 15 minutes without a run. Automatic runs are in
+- **When:** on manual refresh (**Check now**, on the dashboard's Claude row and in Settings beside **View Claude usage**) at any time.
+  Automatic runs are opt-in since 2026-11-16 and off by default, including after an update: Settings
+  has the toggle **Check Claude quota automatically**, and while it is off the dashboard's Claude row
+  says "Automatic checks are off." with **Turn on** beside **Check now**. Only with that on, and while
+  Claude is shown on the menu bar or the dashboard, a run also starts at app start, when automatic
+  checks are turned on or Claude is shown again (at once if 5 minutes have passed since the last
+  start, otherwise with the next periodic run), when a
+  displayed window's reset passes, and after 15 minutes without a run. The widget and notifications
+  do not count as shown. Turning automatic checks off drops queued runs and backoff and does not
+  stop a run already started. Automatic runs are in
   practice 15 minutes apart: the minimum of 5 minutes between them matters only after a reset or a
   failed run. Only one runs at a time. Since 2026-11-12 a change in Claude Code's local usage
   records no longer starts a run, because each run makes `claude` scan its session transcripts from
@@ -54,6 +62,7 @@ reading wins regardless of source, and no source invents a value.
   themselves start a run, but a periodic run that fell due during sleep starts within about a minute
   of waking, when the once-a-minute check finds it overdue. If Codex is failing, each dashboard open retries Codex; that starts no Claude run and no dialog.
 - **After failures:** automatic runs wait 5, 10, 20, then 30 minutes. Any success resets this.
+  Turning automatic checks off clears it, and while they are off no failure starts a wait or a retry.
 - **Freshness:** a reading is current for 20 minutes, then **Last known**. A failed run shows **Last
   known** at once. Status-line readings keep their own 15-minute recency and 24-hour maximum age.
 
@@ -78,12 +87,13 @@ clamped to 0-100. Everything else in the output is discarded without being logge
 | Rate limited | **Temporarily limited** and the last checked time | Last known | Backoff |
 | No readable report | **Could not read Claude Code's usage report** and the last checked time | Last known | Backoff |
 
-The run after 15 minutes counts as a trigger, so the first state is tried again about every
-15 minutes, further apart under backoff. A null `rate_limits` or null or empty `limits` is also what
+With automatic checks on, the run after 15 minutes counts as a trigger, so the first state is tried
+again about every 15 minutes, further apart under backoff. With automatic checks off, the next
+attempt in every row is the next **Check now**. A null `rate_limits` or null or empty `limits` is also what
 Claude Code's schema reports while its own usage fetch is failing (offline, 429, 5xx), so it is not
 treated as signed out. How a signed-out `claude` reports itself in this mode has not been observed,
 and Needlbar does not guess it; until it is, a non-zero exit counts as a process failure. API-key, usage-billed and `claude setup-token` sessions produce no `usage_report`,
-so they show the no-readable-report state. Usage, in Claude Code or outside it such as on the web,
+so they show the no-readable-report state. With automatic checks on, usage, in Claude Code or outside it such as on the web,
 appears within about 15 minutes while the app is running and the Mac is awake, or about 17 when a
 run is slow. That means about 96 runs a day, plus runs after resets and retries after failures
 (amended 2026-11-12: it was up to 288 a day while usage-record changes started runs). A run costs

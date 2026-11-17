@@ -107,9 +107,12 @@ The document contains only normalized usage and quota values, UTC timestamps, fi
 Usage and quota have separate network behavior:
 
 - Prepared for the next release, not in v0.3.14: Needlbar makes no Claude network request. It starts
-  the user's installed `claude` automatically, without a click: at app start, after a displayed
-  window resets, on backoff retries and every 15 minutes, as
-  well as on manual refresh. Since 2026-11-12 a change in Claude Code's local usage records no
+  the user's installed `claude` without a click only if the user turned automatic checks on. That
+  setting is off by default, including after an update. While it is on, runs start at app start,
+  when it is turned on or Claude is shown again, after a displayed window resets, on backoff
+  retries and every 15 minutes, and they pause while Claude is hidden from both the menu bar and
+  the dashboard. While it is off, `claude` starts only on manual refresh (**Check now**),
+  which is always available. Since 2026-11-12 a change in Claude Code's local usage records no
   longer starts it, because each run makes `claude` scan its own session transcripts from the last
   7 days. Claude Code may renew its own login during such a run. Each run executes
   `/usage` through the user's installed `claude`, with a fixed command, no shell, one fixed working
