@@ -195,8 +195,8 @@ shows "Automatic checks are off." with **Turn on** beside **Check now**. The acc
 neither. The first-run window that asks once is the plan's second part and is not built yet, so the
 README sentence "Needlbar asks once" is ahead of the code until then. With automatic checks off,
 each launch starts with no Claude value until **Check now**, and Claude quota alerts fire only from
-manual readings. `docs/releases/v0.3.15.md` still describes unconditional runs; the new release plan
-rewrites it. Not yet checked on a real machine: with the setting off the unified log shows no
+manual readings. `docs/releases/v0.3.15.md` describes opt-in automatic runs
+(2026-11-16); the new release plan still reviews it. Not yet checked on a real machine: with the setting off the unified log shows no
 automatic trigger, and after turning on it shows `automaticResumed` and then `periodic`.
 
 **Fable on the widget (2026-11-13, prepared, not released).** Design:
