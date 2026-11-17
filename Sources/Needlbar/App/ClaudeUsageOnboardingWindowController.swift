@@ -23,7 +23,7 @@ final class ClaudeUsageOnboardingWindowController: NSObject, ClaudeUsageOnboardi
     func present(onAnswer: @escaping @MainActor (ClaudeUsageOnboardingAnswer) -> Void) {
         guard window == nil else { return }
         self.onAnswer = onAnswer
-        let content = makeContent()
+        let (content, notNow) = makeContent()
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: content.fittingSize),
             styleMask: [.titled, .closable],
@@ -32,6 +32,9 @@ final class ClaudeUsageOnboardingWindowController: NSObject, ClaudeUsageOnboardi
         )
         window.title = "Needlbar"
         window.contentView = content
+        // With keyboard navigation on, AppKit focuses the first key view ("Turn on"),
+        // and Space would opt in. Start on "Not now" instead.
+        window.initialFirstResponder = notNow
         window.isReleasedWhenClosed = false
         window.delegate = self
         self.window = window
@@ -43,7 +46,7 @@ final class ClaudeUsageOnboardingWindowController: NSObject, ClaudeUsageOnboardi
         closeWindow()
     }
 
-    private func makeContent() -> NSView {
+    private func makeContent() -> (view: NSView, notNow: NSButton) {
         let title = NSTextField(labelWithString: ClaudeUsageOnboardingCopy.title)
         title.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
         let body = NSTextField(wrappingLabelWithString: ClaudeUsageOnboardingCopy.body)
@@ -67,7 +70,7 @@ final class ClaudeUsageOnboardingWindowController: NSObject, ClaudeUsageOnboardi
             body.widthAnchor.constraint(equalToConstant: Self.textWidth),
             buttons.widthAnchor.constraint(equalTo: body.widthAnchor),
         ])
-        return stack
+        return (stack, notNow)
     }
 
     @objc private func turnOnClicked() { answer(.turnOn) }

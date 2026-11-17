@@ -18,6 +18,8 @@ struct ClaudeUsageOnboardingWindowTests {
         let buttons = Self.buttons(in: content)
         #expect(buttons.map(\.title) == ["Turn on", "Not now"])
         #expect(buttons.filter { $0.keyEquivalent == "\r" }.map(\.title) == ["Not now"], "Return must not opt in")
+        let notNow = try #require(buttons.first { $0.title == "Not now" })
+        #expect(window.initialFirstResponder === notNow, "Space with keyboard navigation must not opt in")
         #expect(Self.labels(in: content) == [ClaudeUsageOnboardingCopy.title, ClaudeUsageOnboardingCopy.body])
         #expect(content.fittingSize.width == 460)
 
