@@ -240,7 +240,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 claudeCheckNow: { Task { await refreshCoordinator.manualRefresh() } },
                 claudeAutomaticChecks: claudeAutomaticChecks
             )
-            // Sends every later change of that value, in order.
+            // Sends every later change of `claudeAutomaticRunsAllowed` (setting on and Claude shown) to the coordinator, in order.
             self.claudeAutomaticRunsRelay = ClaudeAutomaticRunsRelay(
                 preferences: claudeAutomaticChecks,
                 configuration: moduleConfiguration,
