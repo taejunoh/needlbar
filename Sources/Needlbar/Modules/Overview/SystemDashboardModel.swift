@@ -73,6 +73,19 @@ public struct SystemDashboardHistory: Equatable, Sendable {
     }
 }
 
+/// The dashboard's prompt in the Claude row while automatic checks are off: one
+/// caption line, which is also the row's reason for having no reading, and a
+/// button that turns them on.
+public struct ClaudeAutomaticChecksPrompt: Equatable, Sendable {
+    public let caption: String
+    public let actionTitle: String
+
+    public static let turnOn = ClaudeAutomaticChecksPrompt(
+        caption: ClaudeAutomaticChecksCopy.offCaption,
+        actionTitle: ClaudeAutomaticChecksCopy.turnOn
+    )
+}
+
 public struct SystemDashboardPresentation: Equatable, Sendable {
     public struct FableQuotaDetail: Equatable, Sendable {
         public let remaining: String
@@ -146,6 +159,11 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         /// Claude only. The row exists only while Claude is visible on the dashboard,
         /// and the action does not depend on the quota state.
         public let checkNowAction: ClaudeCheckNowAction?
+        /// Claude only, while automatic checks are off. Its caption is neutral:
+        /// secondary colour, and it changes no status, so a row that has no reading
+        /// because nothing has run shows no error. A failure from a manual run
+        /// keeps its own reason beside it.
+        public let automaticChecksPrompt: ClaudeAutomaticChecksPrompt?
         public let apiBillingAction: ProviderAPIBillingAction?
         public let fable: FableQuotaDetail?
         public let quotaIsLastKnown: Bool
@@ -168,7 +186,12 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
     public let battery: Battery
     public let ai: [AIProvider]
 
-    public init(snapshot: CombinedUsageSnapshot, configuration: SystemMonitorConfiguration, now: Date = .now) {
+    public init(
+        snapshot: CombinedUsageSnapshot,
+        configuration: SystemMonitorConfiguration,
+        claudeAutomaticChecksOff: Bool = false,
+        now: Date = .now
+    ) {
         let system = snapshot.system
         let cpuUsage = system?.cpu.totalUsage?.value
         cpu = CPU(
@@ -244,6 +267,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                 statusText: statusText,
                 action: popover.authenticationAction,
                 checkNowAction: provider == .claude ? .checkNow : nil,
+                automaticChecksPrompt: provider == .claude && claudeAutomaticChecksOff ? .turnOn : nil,
                 apiBillingAction: preference.apiBillingLinkVisible ? ProviderAPIBillingAction(provider: provider) : nil,
                 fable: Self.fableDetail(
                     provider: provider, metric: preference.metric, snapshot: providerSnapshot,
@@ -423,26 +447,40 @@ public final class SystemDashboardModel: ObservableObject {
     @Published public private(set) var history: SystemDashboardHistory
     private var latestSnapshot: CombinedUsageSnapshot
     private var latestConfiguration: SystemMonitorConfiguration
+    private var latestClaudeAutomaticChecksOff: Bool
 
-    public init(snapshot: CombinedUsageSnapshot, configuration: SystemMonitorConfiguration) {
+    public init(
+        snapshot: CombinedUsageSnapshot,
+        configuration: SystemMonitorConfiguration,
+        claudeAutomaticChecksOff: Bool = false
+    ) {
         latestSnapshot = snapshot
         latestConfiguration = configuration
-        presentation = SystemDashboardPresentation(snapshot: snapshot, configuration: configuration)
+        latestClaudeAutomaticChecksOff = claudeAutomaticChecksOff
+        presentation = SystemDashboardPresentation(
+            snapshot: snapshot, configuration: configuration, claudeAutomaticChecksOff: claudeAutomaticChecksOff)
         var initialHistory = SystemDashboardHistory()
         initialHistory.append(snapshot.system)
         history = initialHistory
     }
 
-    public func update(snapshot: CombinedUsageSnapshot, configuration: SystemMonitorConfiguration) {
+    public func update(
+        snapshot: CombinedUsageSnapshot,
+        configuration: SystemMonitorConfiguration,
+        claudeAutomaticChecksOff: Bool = false
+    ) {
         latestSnapshot = snapshot
         latestConfiguration = configuration
-        presentation = SystemDashboardPresentation(snapshot: snapshot, configuration: configuration)
+        latestClaudeAutomaticChecksOff = claudeAutomaticChecksOff
+        presentation = SystemDashboardPresentation(
+            snapshot: snapshot, configuration: configuration, claudeAutomaticChecksOff: claudeAutomaticChecksOff)
         history.append(snapshot.system)
     }
 
     public func reproject(at now: Date) {
         presentation = SystemDashboardPresentation(
-            snapshot: latestSnapshot, configuration: latestConfiguration, now: now)
+            snapshot: latestSnapshot, configuration: latestConfiguration,
+            claudeAutomaticChecksOff: latestClaudeAutomaticChecksOff, now: now)
     }
 }
 

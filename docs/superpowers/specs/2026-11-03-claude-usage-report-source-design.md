@@ -22,6 +22,12 @@ the deadline, while usage-record changes started a run every 5 minutes during us
 is `docs/superpowers/specs/2026-11-12-claude-usage-probe-cadence-design.md`; §6, §9 and §12
 below carry the dated changes.
 
+**Amended 2026-11-16:** automatic runs are opt-in and off by default. Without the user's choice
+only a manual refresh starts `claude`; the automatic triggers apply only while the setting is on
+and Claude is shown on the menu bar or the dashboard. The design is
+`docs/superpowers/specs/2026-11-16-claude-automatic-checks-opt-in-design.md`; §3, §5 and §11 below
+carry the dated changes.
+
 **Scope:** Replace how Needlbar obtains Claude quota. Codex, Cursor, local usage,
 and API billing are out of scope.
 
@@ -97,6 +103,11 @@ services" requires the Commercial Terms, with examples about hosted sandboxes an
 agent infrastructure. It does not clearly address a local app starting the user's
 own installed CLI. This is an open **release gate** (§11).
 
+*Amended 2026-11-16:* a review of Anthropic's terms on this date found that Consumer Terms §3
+restrict access "through automated or non-human means" unless Anthropic explicitly permits it.
+Automatic runs are therefore off until the user turns them on, which is the position Needlbar takes
+while it asks Anthropic.
+
 ## 4. Options
 
 | Option | Outcome | Reason |
@@ -120,6 +131,11 @@ Source order for Claude quota:
 `usage_report` is [documented](https://code.claude.com/docs/en/agent-sdk/typescript)
 and marked experimental. A newer valid reading wins regardless of source, and no
 source may invent a value.
+
+*Amended 2026-11-16:* the order is unchanged, but the first source is read without a click only
+while automatic checks are on and Claude is shown on the menu bar or the dashboard. While they are
+off it is read only on a manual refresh, so after a launch the status line or nothing is shown
+until **Check now**.
 
 **Removed:**
 
@@ -332,6 +348,9 @@ If this design is approved, these are amended with dated notes rather than rewri
   legal page now also lists the conditions for running Claude Code in a product
   (unmodified binary, each user's own sign-in), which Needlbar meets.
 - If Anthropic objects, the fallback is status line, last known, and the usage link.
+- *Amended 2026-11-16:* automatic runs ship off by default, and the inquiry says so. The release
+  still needs a weekday log check, the signed-out `claude` check, the inquiry sent, a new release
+  plan and the user's separate request.
 
 ## 12. Known limits
 
