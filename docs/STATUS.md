@@ -1,5 +1,23 @@
 # Needlbar Development Status
 
+## 2026-11-20 Claude plan usage unavailable state (prepared, not released)
+
+- **Observed.** On 2026-11-19 the terminal `claude` on the maintainer's Mac became signed out.
+  Every `/usage` run then exited 0 with the session cost summary and no `usage_report`; Needlbar
+  showed a changed format, retried under backoff, and the widget kept the last value with only its
+  last checked time for about a day. After `claude auth login` the next **Check now** succeeded.
+- **Change.** A run that names the `usage` command and returns no `usage_report` key is its own
+  state: "Claude Code didn't report plan usage", with a line naming `claude auth login` in Terminal
+  and **Check now**. Bridge code `requiresAuthentication`, origin `usageReportPlanUsageUnavailable`.
+  No backoff retry; the periodic run and **Check now** try again. The widget's Claude column dims and
+  says "Sign in to Claude Code" with the last checked time. Design:
+  `docs/superpowers/specs/2026-11-20-claude-plan-usage-unavailable-design.md`; plan:
+  `docs/superpowers/plans/2026-11-20-claude-plan-usage-unavailable.md`.
+- **Fixture.** `Fixtures/quota/claude/usage-report-signed-out.jsonl` keeps only the assistant line
+  and the result line of the 2026-11-20 output, with every identifier removed and numbers zeroed.
+- **Not checked.** The widget caption on an installed build in light and dark and its fallback when
+  narrow; the output of an API-key or usage-billed account. Nothing was tagged or released.
+
 ## 2026-11-15 Terms question decided: stated reading plus inquiry (prepared, not released)
 
 - **Decision.** The user chose to ship on a stated reading of Anthropic's terms and ask Anthropic to

@@ -114,8 +114,9 @@ Usage and quota have separate network behavior:
   7 days. Claude Code may renew its own login during such a run. Each run executes
   `/usage` through the user's installed `claude`, with a fixed command, no shell, one fixed working
   folder in the temporary directory that is emptied before each run, a minimal environment and a 60-second limit (30 seconds before 2026-11-12). Any network use, login renewal, Keychain
-  prompt or transcript reading during that run belongs to `claude`. Needlbar reads only the `usage_report` field and an
-  error label, and discards the rest without logging or storing it. It reads no Claude Keychain item
+  prompt or transcript reading during that run belongs to `claude`. Needlbar reads only the `usage_report` field, an
+  error label and, since 2026-11-20, whether `local_command_run` names the `usage` command, which
+  tells a run without plan usage from a changed format and is compared, never kept. It discards the rest without logging or storing it. It reads no Claude Keychain item
   or credential file. v0.3.14 still uses the Anthropic usage endpoint with existing local evidence.
   Needlbar does not bundle or modify Claude Code and has no Claude sign-in; how this relates to
   Anthropic's terms is described in the README section "Claude Code and Anthropic's terms".

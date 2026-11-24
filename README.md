@@ -237,6 +237,19 @@ hours, so a full day on a Developer ID build has still not been observed. It is 
 public release yet. How it relates to Anthropic's terms is described under
 [Claude Code and Anthropic's terms](#claude-code-and-anthropics-terms).
 
+When `/usage` finishes without plan usage, which Claude Code does when it does not consider itself
+signed in with a Claude plan (signed out, an API key, usage-based billing), the app shows **Claude
+Code didn't report plan usage** with "Claude Code usually shows plan usage only when it's signed in
+with a Claude plan. Run claude auth login in Terminal, then choose Check now in Needlbar. API keys
+and usage-billed accounts have no plan limits to show." (prepared 2026-11-20, not released). Until
+then such a run read as a changed format and was retried under backoff, while the widget kept the
+last value with only its last checked time. Needlbar tells the two apart only when the run named
+the `usage` command and returned no `usage_report` key at all; any other missing report still reads
+as a changed format. This state is not retried under backoff, like a missing Claude Code: the next
+automatic run or **Check now** tries again. After an earlier reading, the Overview widget dims the
+Claude figure and says "Sign in to Claude Code" with the last checked time. Needlbar still never
+runs `claude auth` and offers no sign-in button.
+
 ### Usage and quota monitoring
 
 Needlbar presents locally aggregated token usage and estimated cost together with provider quota windows and reset times. Overview combines today’s tokens and estimated cost, the most constrained eligible quota, a seven-day usage chart, provider status, and Settings. Provider views show today’s usage/cost, input/output/cache token detail, quota/reset information, freshness, and safe recovery states. Usage and quota are independent refresh streams; a failure in one does not replace a previously valid value with zero.

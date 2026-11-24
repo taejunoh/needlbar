@@ -77,6 +77,7 @@ clamped to 0-100. Everything else in the output is discarded without being logge
 | Timed out, too much output, or the process failed | **Could not check Claude Code** and the last checked time | Last known | Backoff |
 | Rate limited | **Temporarily limited** and the last checked time | Last known | Backoff |
 | No readable report | **Could not read Claude Code's usage report** and the last checked time | Last known | Backoff |
+| Plan usage not reported (since 2026-11-20) | **Claude Code didn't report plan usage**, and "Claude Code usually shows plan usage only when it's signed in with a Claude plan. Run claude auth login in Terminal, then choose Check now in Needlbar. API keys and usage-billed accounts have no plan limits to show."; no sign-in button. The widget says "Sign in to Claude Code" with the last checked time | Last known or none | Next trigger, with backoff, as for Claude Code not found |
 
 The run after 15 minutes counts as a trigger, so the first state is tried again about every
 15 minutes, further apart under backoff. A null `rate_limits` or null or empty `limits` is also what
@@ -98,3 +99,35 @@ on this Mac.
 **View Claude usage** opens only `https://claude.ai/settings/usage` after an explicit click.
 
 Needlbar does not own Claude credentials and therefore does not provide a Claude Disconnect button. Sign out or revoke the provider session through Claude's supported controls; Needlbar will then show the no-usage state on the next run.
+
+### Plan usage not reported (2026-11-20, prepared, not released)
+
+A signed-out `claude` was observed on 2026-11-19: `/usage` exited 0 with `result` `subtype:
+"success"`, an assistant line with `local_command_run: {"command": "usage"}`, the session cost text
+and no `usage_report` key. A static read of Claude Code 2.1.325 and 2.1.328 shows the same branch
+whenever Claude Code does not consider itself signed in with a Claude plan: signed out, an API key,
+usage-based billing, or a token without the profile scope. This replaces three statements above:
+a signed-out run is no longer unobserved, such runs no longer show the no-readable-report state,
+and signing out now shows this state rather than the no-usage state.
+
+Needlbar shows this state only when no assistant line has a non-null `usage_report`, none reports a
+rate limit, at least one has a `local_command_run` whose `command` is `usage`, and none has a
+`usage_report` key at all, not even `null`. Another command name, a `null` report, a malformed
+report or no assistant line still reads as a changed format. The bridge code is
+`requiresAuthentication` and the diagnostics origin `usageReportPlanUsageUnavailable`. With no
+earlier reading the quota status is authentication required; after one it is an error with the
+last-known values, as for a changed format. Claude still has no sign-in button, and the menu bar is
+unchanged. While status-line windows are recent, the reason sits once on the Fable line, which only
+`/usage` fills. There is no backoff retry, and the backoff time is still recorded, so repeated
+failures can push the periodic run out to 20 or 30 minutes. **Check now** runs once and the same
+reason returns.
+
+The Overview widget's Claude row carries `staleReason: "planUsageUnavailable"` only after an earlier
+reading, while the row is not fresh; the schema version stays 1, and an older widget ignores the key.
+The column dims the figure and bar and says "Sign in to Claude Code · <time>", falling back to "Sign
+in to Claude Code" when the full caption does not fit, and VoiceOver always speaks the time. It is set
+even when a status-line reading is newer, because the widget shows only `/usage` values. With no
+`/usage` success since launch the widget shows "Quota unavailable" with no reason. If Claude Code
+renames `usage_report`, runs would show this state instead of a changed format; the distinct origin
+keeps that visible in the log. The output of an API-key or usage-billed account has not been
+observed.
