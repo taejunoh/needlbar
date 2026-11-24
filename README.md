@@ -494,9 +494,10 @@ This describes the next release, prepared but not yet released. The current publ
 still reads Claude Code's Keychain item or credentials file, as the privacy policy says.
 
 Needlbar does not include, install, modify or host Claude Code. If Claude Code is installed,
-Needlbar starts that copy of `claude` on the same Mac to run `/usage`. It runs as the user has
-installed and signed it in, and Needlbar reads only its usage report. Needlbar has no Claude
-sign-in. It does not read, store or pass on Claude credentials or session tokens, and it does
+Needlbar starts that copy of `claude` on the same Mac to run `/usage`. It runs the installed
+binary unmodified, under the user's own sign-in, with fixed arguments (hooks and MCP servers off)
+and a minimal environment. Needlbar keeps only the rate-limit rows of its usage report and
+discards the rest. Needlbar has no Claude sign-in. It does not read, store or pass on Claude credentials or session tokens, and it does
 not pay for, resell or route anyone's Claude usage.
 
 Needlbar runs `claude` on a schedule only if you turn that on. It is off by default, including
@@ -511,10 +512,17 @@ Anthropic's [legal and compliance page](https://code.claude.com/docs/en/legal-an
 requires its Commercial Terms for "preinstalling or running Claude Code in your products or
 services", with hosted sandboxes and agent infrastructure as examples. As of 2026-11-15 it does
 not say whether a local app starting a user's own installed CLI is covered. Our reading is that
-it is not covered. Needlbar also meets the conditions that section sets either way: Claude Code
-runs unmodified, and each user signs in with their own account. We are asking Anthropic to
-confirm this reading. If Anthropic objects, a later release will stop running `claude` and keep
-the status-line source, last-known values and the usage link.
+it is not covered. If it is covered, that section requires the Commercial Terms as well as its
+conditions. Needlbar meets the conditions (the binary runs unmodified, and each user signs in with
+their own account); whether the Commercial Terms are needed is part of what we are asking.
+
+Runs are scheduled: about 96 a day while Needlbar is running, which for a menu-bar app is
+usually all day. Anthropic's [Consumer Terms](https://www.anthropic.com/legal/consumer-terms)
+restrict access "through automated or non-human means" unless Anthropic explicitly permits it,
+and its plan limits assume ordinary, individual usage. We are asking Anthropic whether a scheduled
+`/usage` check of the user's own CLI is within that. Until Anthropic answers, this is our reading,
+not Anthropic's confirmation. If Anthropic objects, a later release will stop running `claude` and
+keep the status-line source, last-known values and the usage link.
 
 Needlbar is an independent project. It is not made, endorsed or sponsored by Anthropic, and it
 is not affiliated with Anthropic. Claude and Claude Code are trademarks of Anthropic.
