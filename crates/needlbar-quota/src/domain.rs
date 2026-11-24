@@ -88,6 +88,9 @@ pub enum ClaudeQuotaFailureOrigin {
     UsageReportRateLimited,
     /// A run finished without a usable `usage_report`.
     UsageReportFormatChanged,
+    /// `/usage` finished with no `usage_report` key: Claude Code does not
+    /// consider itself signed in with a Claude plan.
+    UsageReportPlanUsageUnavailable,
     OtherFailure,
 }
 

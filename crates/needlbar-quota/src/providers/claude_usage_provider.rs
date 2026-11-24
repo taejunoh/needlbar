@@ -136,13 +136,14 @@ impl ClaudeUsageReportProvider {
                 )),
                 ClaudeUsageRowSummary::default(),
             ),
-            // Mapped to its own code and origin in the next commit; until then it
-            // fails exactly as it did before the parser told it apart.
+            // Claude Code is not signed in with a Claude plan, as far as it can
+            // tell. The app does not retry this under backoff: waiting does not
+            // sign it in.
             ClaudeUsageReportOutcome::PlanUsageUnavailable => (
                 Err(failure(
-                    QuotaErrorCode::SchemaChanged,
-                    "Claude usage data was not in the expected format.",
-                    ClaudeQuotaFailureOrigin::UsageReportFormatChanged,
+                    QuotaErrorCode::RequiresAuthentication,
+                    "Claude Code did not report plan usage.",
+                    ClaudeQuotaFailureOrigin::UsageReportPlanUsageUnavailable,
                 )),
                 ClaudeUsageRowSummary::default(),
             ),
