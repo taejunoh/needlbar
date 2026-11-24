@@ -77,8 +77,10 @@ public struct WidgetProviderCapture: Sendable, Equatable {
     public let usageLastSuccessfulAt: Date?
     public let quotaLastSuccessfulAt: Date?
     public let usageDayProvenance: WidgetUsageDayProvenance?
+    /// The store's safe Claude failure reason; `nil` for other providers.
+    public let claudeQuotaFailureReason: ClaudeQuotaFailureReason?
 
-    public init(provider: ProviderID, usage: UsageSnapshot?, quota: QuotaSnapshot?, usageStatus: DataStatus, quotaStatus: DataStatus, usageLastSuccessfulAt: Date?, quotaLastSuccessfulAt: Date?, usageDayProvenance: WidgetUsageDayProvenance?) {
+    public init(provider: ProviderID, usage: UsageSnapshot?, quota: QuotaSnapshot?, usageStatus: DataStatus, quotaStatus: DataStatus, usageLastSuccessfulAt: Date?, quotaLastSuccessfulAt: Date?, usageDayProvenance: WidgetUsageDayProvenance?, claudeQuotaFailureReason: ClaudeQuotaFailureReason? = nil) {
         self.provider = provider
         self.usage = usage
         self.quota = quota
@@ -87,5 +89,6 @@ public struct WidgetProviderCapture: Sendable, Equatable {
         self.usageLastSuccessfulAt = usageLastSuccessfulAt
         self.quotaLastSuccessfulAt = quotaLastSuccessfulAt
         self.usageDayProvenance = usageDayProvenance
+        self.claudeQuotaFailureReason = claudeQuotaFailureReason
     }
 }

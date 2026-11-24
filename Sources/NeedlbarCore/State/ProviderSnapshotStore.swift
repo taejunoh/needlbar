@@ -212,7 +212,8 @@ public actor ProviderSnapshotStore {
                 quotaStatus: status(for: state.quota),
                 usageLastSuccessfulAt: state.usage.lastSuccessfulAt,
                 quotaLastSuccessfulAt: state.quota.lastSuccessfulAt,
-                usageDayProvenance: state.usage.usageDayProvenance
+                usageDayProvenance: state.usage.usageDayProvenance,
+                claudeQuotaFailureReason: provider == .claude ? state.claudeQuotaFailureReason : nil
             )
         })
     }
