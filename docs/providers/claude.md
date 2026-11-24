@@ -84,7 +84,7 @@ The run after 15 minutes counts as a trigger, so the first state is tried again 
 Claude Code's schema reports while its own usage fetch is failing (offline, 429, 5xx), so it is not
 treated as signed out. *Superseded 2026-11-20:* a signed-out run is now recognised from its own output and shows plan usage unavailable (see below); a null `rate_limits` or null or empty `limits` is still not treated as signed out. How a signed-out `claude` reports itself in this mode has not been observed,
 and Needlbar does not guess it; until it is, a non-zero exit counts as a process failure. *Superseded 2026-11-20:* it has been observed, and it exits 0 with no `usage_report`, so this is no longer a process failure; a non-zero exit still is. API-key, usage-billed and `claude setup-token` sessions produce no `usage_report`,
-so they show the no-readable-report state. *Superseded 2026-11-20:* they now show plan usage unavailable. Usage, in Claude Code or outside it such as on the web,
+so they show the no-readable-report state. *Superseded 2026-11-20:* by a static read of Claude Code (not observed), they take the same branch as a signed-out run and show plan usage unavailable. Usage, in Claude Code or outside it such as on the web,
 appears within about 15 minutes while the app is running and the Mac is awake, or about 17 when a
 run is slow. That means about 96 runs a day, plus runs after resets and retries after failures
 (amended 2026-11-12: it was up to 288 a day while usage-record changes started runs). A run costs
