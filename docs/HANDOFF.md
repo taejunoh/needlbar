@@ -215,7 +215,8 @@ A local ad-hoc build ran for about 38 hours on the maintainer's Mac (STATUS, 202
 logged run succeeded, no Keychain prompt appeared, and runs took about 5 s (maximum about 19.3 s).
 Logs from Developer ID builds were read on 2026-11-09 and 2026-11-12 for run counts, triggers and
 durations (STATUS, 2026-11-12): the median rose to about 8.1 s and two runs were stopped at 30 seconds.
-Still open: how a signed-out `claude` reports itself in this mode, the same observation on a
+*Superseded 2026-11-20:* how a signed-out `claude` reports itself in this mode is no longer open;
+see "Plan usage unavailable" above. Still open: the same observation on a
 Developer ID build including the widget's Claude row, whether `/usage` has its own rate limit, and
 an observed login renewal. Also open: when Codex is failing, each dashboard open retries Codex; the
 menu bar and Overview show last-known values unlabelled; and only the three fixed install paths are
@@ -225,7 +226,7 @@ found.
 a stated reading and ask Anthropic at the same time. The reading is in the README section "Claude
 Code and Anthropic's terms". The inquiry is drafted and the user sends it. If Anthropic objects, the
 §11 fallback applies. A public release still needs a weekday log check, the signed-out `claude`
-check, a new release plan and the user's separate request. No tag or release is authorized, and the
+check (*done 2026-11-20:* observed and handled by the plan usage unavailable state), a new release plan and the user's separate request. No tag or release is authorized, and the
 v0.3.15 release plan of 2026-11-02 is superseded.
 
 ## CI runners

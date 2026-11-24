@@ -219,7 +219,7 @@ source and last-known values the third; a newer valid reading wins. A window the
 report omits is hidden, not shown as zero. Without Claude Code the app shows
 install guidance and the usage link; with no usage available it says it could not check
 Claude Code, suggests running `claude` in Terminal to check its sign-in if that continues,
-and retries under backoff. It offers no button. Needlbar never runs `claude auth`
+and retries under backoff. It offers no button. A run that reports no plan usage at all is a separate state, described below. Needlbar never runs `claude auth`
 and writes no Claude configuration, though Claude Code may renew its own login
 during a run, and `claude` itself may show a Keychain prompt. **Allow Keychain
 access**, which an earlier prepared build had, is removed. On one Mac, a local

@@ -77,14 +77,14 @@ clamped to 0-100. Everything else in the output is discarded without being logge
 | Timed out, too much output, or the process failed | **Could not check Claude Code** and the last checked time | Last known | Backoff |
 | Rate limited | **Temporarily limited** and the last checked time | Last known | Backoff |
 | No readable report | **Could not read Claude Code's usage report** and the last checked time | Last known | Backoff |
-| Plan usage not reported (since 2026-11-20) | **Claude Code didn't report plan usage**, and "Claude Code usually shows plan usage only when it's signed in with a Claude plan. Run claude auth login in Terminal, then choose Check now in Needlbar. API keys and usage-billed accounts have no plan limits to show."; no sign-in button. The widget says "Sign in to Claude Code" with the last checked time | Last known or none | Next trigger, with backoff, as for Claude Code not found |
+| Plan usage not reported (since 2026-11-20) | **Claude Code didn't report plan usage**, and "Claude Code usually shows plan usage only when it's signed in with a Claude plan. Run claude auth login in Terminal, then choose Check now in Needlbar. API keys and usage-billed accounts have no plan limits to show."; no sign-in button. The widget says "Sign in to Claude Code" with the last checked time | Last known or none | The next periodic run (no backoff retry; the backoff time still delays it) or Check now |
 
 The run after 15 minutes counts as a trigger, so the first state is tried again about every
 15 minutes, further apart under backoff. A null `rate_limits` or null or empty `limits` is also what
 Claude Code's schema reports while its own usage fetch is failing (offline, 429, 5xx), so it is not
-treated as signed out. How a signed-out `claude` reports itself in this mode has not been observed,
-and Needlbar does not guess it; until it is, a non-zero exit counts as a process failure. API-key, usage-billed and `claude setup-token` sessions produce no `usage_report`,
-so they show the no-readable-report state. Usage, in Claude Code or outside it such as on the web,
+treated as signed out. *Superseded 2026-11-20:* a signed-out run is now recognised from its own output and shows plan usage unavailable (see below); a null `rate_limits` or null or empty `limits` is still not treated as signed out. How a signed-out `claude` reports itself in this mode has not been observed,
+and Needlbar does not guess it; until it is, a non-zero exit counts as a process failure. *Superseded 2026-11-20:* it has been observed, and it exits 0 with no `usage_report`, so this is no longer a process failure; a non-zero exit still is. API-key, usage-billed and `claude setup-token` sessions produce no `usage_report`,
+so they show the no-readable-report state. *Superseded 2026-11-20:* they now show plan usage unavailable. Usage, in Claude Code or outside it such as on the web,
 appears within about 15 minutes while the app is running and the Mac is awake, or about 17 when a
 run is slow. That means about 96 runs a day, plus runs after resets and retries after failures
 (amended 2026-11-12: it was up to 288 a day while usage-record changes started runs). A run costs
@@ -98,7 +98,7 @@ on this Mac.
 
 **View Claude usage** opens only `https://claude.ai/settings/usage` after an explicit click.
 
-Needlbar does not own Claude credentials and therefore does not provide a Claude Disconnect button. Sign out or revoke the provider session through Claude's supported controls; Needlbar will then show the no-usage state on the next run.
+Needlbar does not own Claude credentials and therefore does not provide a Claude Disconnect button. Sign out or revoke the provider session through Claude's supported controls; Needlbar will then show the no-usage state on the next run. *Superseded 2026-11-20:* it now shows plan usage unavailable on the next run.
 
 ### Plan usage not reported (2026-11-20, prepared, not released)
 
@@ -108,7 +108,7 @@ and no `usage_report` key. A static read of Claude Code 2.1.325 and 2.1.328 show
 whenever Claude Code does not consider itself signed in with a Claude plan: signed out, an API key,
 usage-based billing, or a token without the profile scope. This replaces three statements above:
 a signed-out run is no longer unobserved, such runs no longer show the no-readable-report state,
-and signing out now shows this state rather than the no-usage state.
+and signing out now shows plan usage unavailable rather than the no-usage state.
 
 Needlbar shows this state only when no assistant line has a non-null `usage_report`, none reports a
 rate limit, at least one has a `local_command_run` whose `command` is `usage`, and none has a
