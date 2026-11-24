@@ -375,6 +375,91 @@ struct WidgetProjectionTests {
         #expect(decoded.quotaRows[0].fable == reading)
         #expect(WidgetFableReading(remainingPercent: 100, resetsAt: nil).isValid(for: .claude, lastSuccessfulAt: referenceDate))
     }
+
+    // MARK: Stale reason
+
+    @Test
+    func aStaleReasonRoundTripsThroughBothDecodePaths() throws {
+        let projection = try fableProjection(claude: staleClaudeRow(staleReason: .planUsageUnavailable))
+        let decoded = try WidgetProjection.decode(WidgetProjection.encode(projection), referenceDate: referenceDate)
+        #expect(decoded == projection)
+        #expect(decoded.quotaRows[0].staleReason == .planUsageUnavailable)
+        #expect(decoded.quotaRows[1].staleReason == nil)
+        #expect(String(decoding: try WidgetProjection.encode(projection), as: UTF8.self)
+            .contains(#""staleReason":"planUsageUnavailable""#))
+
+        // The row's own coding, which the projection decoder does not use.
+        let row = try JSONDecoder().decode(WidgetQuotaRow.self, from: JSONEncoder().encode(projection.quotaRows[0]))
+        #expect(row.staleReason == .planUsageUnavailable)
+
+        let without = try fableProjection(claude: staleClaudeRow(staleReason: nil))
+        let encoded = String(decoding: try WidgetProjection.encode(without), as: UTF8.self)
+        #expect(!encoded.contains("staleReason"))
+        #expect(try WidgetProjection.decode(Data(encoded.utf8), referenceDate: referenceDate) == without)
+    }
+
+    @Test
+    func anAbsentNullOrUnknownStaleReasonDecodesAsNoReason() throws {
+        let cases = [
+            staleClaudeRowJSON,
+            staleClaudeRowJSON + #","staleReason":null"#,
+            staleClaudeRowJSON + #","staleReason":"signInExpired""#,
+            // An unknown value is dropped before validation, so it cannot reject a fresh row.
+            claudeRowJSON + #","staleReason":"signInExpired""#,
+        ]
+        let rowDecoder = JSONDecoder()
+        rowDecoder.dateDecodingStrategy = .iso8601
+        for members in cases {
+            let decoded = try WidgetProjection.decode(document(claude: members), referenceDate: referenceDate)
+            #expect(decoded.quotaRows[0].staleReason == nil, "\(members)")
+            #expect(decoded.quotaRows[0].headline?.remainingPercent == 77)
+
+            let row = try rowDecoder.decode(WidgetQuotaRow.self, from: Data(("{" + members + "}").utf8))
+            #expect(row.staleReason == nil, "\(members)")
+        }
+        let known = try WidgetProjection.decode(
+            document(claude: staleClaudeRowJSON + #","staleReason":"planUsageUnavailable""#), referenceDate: referenceDate)
+        #expect(known.quotaRows[0].staleReason == .planUsageUnavailable)
+    }
+
+    @Test
+    func aStaleReasonIsRejectedOffAStoppedClaudeRow() {
+        let reason = WidgetQuotaStaleReason.planUsageUnavailable
+        let headline = WidgetQuotaHeadline(id: .claudeWeekly, remainingPercent: 77, resetsAt: nil)
+        // Codex, no last successful time, no headline, a fresh stream.
+        #expect(throws: WidgetProjectionError.invalidQuotaRow) {
+            try WidgetQuotaRow(provider: .codex, stream: .stale, lastSuccessfulAt: referenceDate,
+                               headline: WidgetQuotaHeadline(id: .codexPrimary, remainingPercent: 85, resetsAt: nil),
+                               staleReason: reason)
+        }
+        #expect(throws: WidgetProjectionError.invalidQuotaRow) {
+            try WidgetQuotaRow(provider: .claude, stream: .unavailable, lastSuccessfulAt: nil, headline: nil, staleReason: reason)
+        }
+        #expect(throws: WidgetProjectionError.invalidQuotaRow) {
+            try WidgetQuotaRow(provider: .claude, stream: .stale, lastSuccessfulAt: referenceDate, headline: nil, staleReason: reason)
+        }
+        #expect(throws: WidgetProjectionError.invalidQuotaRow) {
+            try WidgetQuotaRow(provider: .claude, stream: .fresh, lastSuccessfulAt: referenceDate, headline: headline, staleReason: reason)
+        }
+        #expect(reason.isValid(for: .claude, stream: .stale, lastSuccessfulAt: referenceDate, headline: headline))
+        #expect(reason.isValid(for: .claude, stream: .unavailable, lastSuccessfulAt: referenceDate, headline: headline))
+    }
+
+    @Test
+    func aFileWithAStaleReasonOnAnInvalidRowIsRejected() {
+        let reason = #","staleReason":"planUsageUnavailable""#
+        let onCodex = document(codex: #""provider":"codex","stream":"stale","lastSuccessfulAt":"2027-01-15T08:00:00Z","headline":{"id":"codex.primary","remainingPercent":85,"resetsAt":null}"# + reason)
+        let onFresh = document(claude: claudeRowJSON + reason)
+        let withoutHeadline = document(
+            claude: #""provider":"claude","stream":"stale","lastSuccessfulAt":"2027-01-15T08:00:00Z","headline":null"# + reason)
+        let withoutLastSuccess = document(
+            claude: #""provider":"claude","stream":"unavailable","lastSuccessfulAt":null,"headline":null"# + reason)
+        for bytes in [onCodex, onFresh, withoutHeadline, withoutLastSuccess] {
+            #expect(throws: WidgetProjectionError.invalidQuotaRow) {
+                try WidgetProjection.decode(bytes, referenceDate: referenceDate)
+            }
+        }
+    }
 }
 
 private let referenceDate = Date(timeIntervalSince1970: 1_800_000_000)
@@ -404,6 +489,16 @@ private func claudeRow(stream: WidgetStreamState = .fresh, fable: WidgetFableRea
     )
 }
 
+private func staleClaudeRow(staleReason: WidgetQuotaStaleReason?) throws -> WidgetQuotaRow {
+    try WidgetQuotaRow(
+        provider: .claude,
+        stream: .stale,
+        lastSuccessfulAt: referenceDate,
+        headline: WidgetQuotaHeadline(id: .claudeWeekly, remainingPercent: 77, resetsAt: nil),
+        staleReason: staleReason
+    )
+}
+
 private func fableProjection(claude: WidgetQuotaRow) throws -> WidgetProjection {
     try WidgetProjection(
         quotaRows: [claude, try WidgetQuotaRow(provider: .codex, stream: .unavailable, lastSuccessfulAt: nil, headline: nil)],
@@ -414,6 +509,7 @@ private func fableProjection(claude: WidgetQuotaRow) throws -> WidgetProjection 
 
 // `referenceDate` is 2027-01-15T08:00:00Z.
 private let claudeRowJSON = #""provider":"claude","stream":"fresh","lastSuccessfulAt":"2027-01-15T08:00:00Z","headline":{"id":"claude.weekly","remainingPercent":77,"resetsAt":null}"#
+private let staleClaudeRowJSON = #""provider":"claude","stream":"stale","lastSuccessfulAt":"2027-01-15T08:00:00Z","headline":{"id":"claude.weekly","remainingPercent":77,"resetsAt":null}"#
 private let codexRowJSON = #""provider":"codex","stream":"fresh","lastSuccessfulAt":"2027-01-15T08:00:00Z","headline":{"id":"codex.primary","remainingPercent":85,"resetsAt":null}"#
 private let fableJSON = #","fable":{"remainingPercent":71,"resetsAt":"2027-01-15T09:00:00Z"}"#
 
