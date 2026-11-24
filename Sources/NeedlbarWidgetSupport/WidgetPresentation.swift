@@ -43,6 +43,8 @@ public enum WidgetRemainingLevel: Equatable, Sendable {
 public enum WidgetQuotaStatus: Equatable, Sendable {
     case fresh(WidgetQuotaHeadline)
     case stale(WidgetQuotaHeadline, lastCheckedAt: Date)
+    /// Claude Code stopped reporting plan usage after this reading.
+    case planUsageUnavailable(WidgetQuotaHeadline, lastCheckedAt: Date)
     case awaitingFreshReading(WidgetQuotaHeadline)
     case unavailable
 }
@@ -66,6 +68,9 @@ public struct WidgetQuotaColumn: Equatable, Sendable {
     public let level: WidgetRemainingLevel?
     public let isDimmed: Bool
     public let detail: String
+    /// A shorter caption for when `detail` does not fit at full size. `nil` when the
+    /// caption has no shorter form.
+    public let compactDetail: String?
     /// `nil` hides the text: no Fable value, or the column shows no figure.
     public let fable: WidgetFableText?
     public let accessibilityLabel: String
@@ -77,6 +82,7 @@ public struct WidgetQuotaColumn: Equatable, Sendable {
         level: WidgetRemainingLevel?,
         isDimmed: Bool,
         detail: String,
+        compactDetail: String? = nil,
         fable: WidgetFableText? = nil,
         accessibilityLabel: String
     ) {
@@ -86,6 +92,7 @@ public struct WidgetQuotaColumn: Equatable, Sendable {
         self.level = level
         self.isDimmed = isDimmed
         self.detail = detail
+        self.compactDetail = compactDetail
         self.fable = fable
         self.accessibilityLabel = accessibilityLabel
     }
@@ -214,6 +221,10 @@ public enum WidgetPresentation {
         }
         let state = freshness(row, now: now)
         guard state != .unavailable else { return .unavailable }
+        // Before the reset check: after a passed reset this reading still cannot update.
+        if row.staleReason == .planUsageUnavailable {
+            return .planUsageUnavailable(headline, lastCheckedAt: checkedAt)
+        }
         if let reset = headline.resetsAt, reset <= now {
             return .awaitingFreshReading(headline)
         }
@@ -232,6 +243,7 @@ public enum WidgetPresentation {
         let headline: WidgetQuotaHeadline
         let detail: String
         let spokenDetail: String
+        var compactDetail: String?
         var isDimmed = false
         switch quotaStatus(row, now: now) {
         case .unavailable:
@@ -251,6 +263,13 @@ public enum WidgetPresentation {
             let time = lastCheckedTime(checkedAt, now: now, calendar: calendar, locale: locale)
             detail = "Last checked \(time)"
             spokenDetail = "last checked \(time)"
+        case .planUsageUnavailable(let value, let checkedAt):
+            headline = value
+            isDimmed = true
+            let time = lastCheckedTime(checkedAt, now: now, calendar: calendar, locale: locale)
+            detail = "Sign in to Claude Code · \(time)"
+            compactDetail = "Sign in to Claude Code"
+            spokenDetail = "not updating, sign in to Claude Code, last checked \(time)"
         case .awaitingFreshReading(let value):
             headline = value
             isDimmed = true
@@ -271,6 +290,7 @@ public enum WidgetPresentation {
             level: remainingLevel(percent: percent),
             isDimmed: isDimmed,
             detail: detail,
+            compactDetail: compactDetail,
             fable: fable?.text,
             accessibilityLabel: "\(title), \(percent) percent remaining, \(spokenDetail)"
                 + (fable.map { ", \($0.spoken)" } ?? "")

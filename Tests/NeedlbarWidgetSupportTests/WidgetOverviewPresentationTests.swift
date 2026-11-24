@@ -399,6 +399,94 @@ struct WidgetOverviewPresentationTests {
         let onTheHour = try overview(claude: quota(.claude, age: 0, headline: weekly(77, resetIn: 2 * hour)))
         #expect(nextReload(onTheHour) == referenceDate.addingTimeInterval(minute))
     }
+
+    // MARK: Plan usage unavailable
+
+    @Test
+    func planUsageUnavailableAsksToSignInWithTheLastCheckedTimeAndDims() throws {
+        let age = 30 * minute
+        let projection = try overview(claude: quota(
+            .claude, age: age, stream: .stale, headline: weekly(77, resetIn: day), staleReason: .planUsageUnavailable
+        ))
+        let time = shortText(referenceDate.addingTimeInterval(-age), includingDate: false)
+        #expect(column(.claude, projection) == WidgetQuotaColumn(
+            title: "Claude",
+            figure: "77%",
+            fraction: 0.77,
+            level: .normal,
+            isDimmed: true,
+            detail: "Sign in to Claude Code · \(time)",
+            compactDetail: "Sign in to Claude Code",
+            accessibilityLabel: "Claude, 77 percent remaining, not updating, sign in to Claude Code, last checked \(time)"
+        ))
+        #expect(WidgetPresentation.quotaStatus(projection.quotaRows[0], now: referenceDate)
+            == .planUsageUnavailable(weekly(77, resetIn: day), lastCheckedAt: referenceDate.addingTimeInterval(-age)))
+        #expect(column(.codex, projection).compactDetail == nil)
+    }
+
+    @Test
+    func theSignInCaptionCarriesTheDateLikeLastChecked() throws {
+        let checkedAt = referenceDate.addingTimeInterval(-9 * hour)
+        let projection = try overview(claude: quota(
+            .claude, age: 9 * hour, stream: .stale, headline: weekly(77, resetIn: day), staleReason: .planUsageUnavailable
+        ))
+        let expected = shortText(checkedAt, includingDate: true)
+        #expect(expected != shortText(checkedAt, includingDate: false))
+        let value = column(.claude, projection)
+        #expect(value.detail == "Sign in to Claude Code · \(expected)")
+        #expect(value.compactDetail == "Sign in to Claude Code")
+        // The time is spoken even when the shown caption drops it.
+        #expect(value.accessibilityLabel.hasSuffix("last checked \(expected)"))
+    }
+
+    @Test
+    func theSignInCaptionTakesPrecedenceOverAPassedReset() throws {
+        let projection = try overview(claude: quota(
+            .claude, age: hour, stream: .stale, headline: weekly(77, resetIn: -1), staleReason: .planUsageUnavailable
+        ))
+        let value = column(.claude, projection)
+        #expect(value.isDimmed)
+        #expect(value.detail.hasPrefix("Sign in to Claude Code · "))
+        #expect(value.compactDetail == "Sign in to Claude Code")
+    }
+
+    @Test
+    func theFableTextKeepsItsOwnRulesBesideTheSignInCaption() throws {
+        let age = 30 * minute
+        let time = shortText(referenceDate.addingTimeInterval(-age), includingDate: false)
+        let projection = try overview(claude: quota(
+            .claude, age: age, stream: .stale, headline: weekly(77, resetIn: day),
+            fable: fable(71, resetIn: day), staleReason: .planUsageUnavailable
+        ))
+        let value = column(.claude, projection)
+        #expect(value.fable == WidgetFableText(text: "Fable 71%", level: .normal))
+        #expect(value.accessibilityLabel
+            == "Claude, 77 percent remaining, not updating, sign in to Claude Code, last checked \(time), Fable 71 percent remaining")
+        let passed = try overview(claude: quota(
+            .claude, age: age, stream: .stale, headline: weekly(77, resetIn: day),
+            fable: fable(71, resetIn: -minute), staleReason: .planUsageUnavailable
+        ))
+        #expect(column(.claude, passed).fable == WidgetFableText(text: "Fable —", level: nil))
+    }
+
+    @Test
+    func noOtherColumnHasACompactCaptionAndTheCopyStaysFactual() throws {
+        let fresh = try overview(claude: quota(.claude, age: minute, headline: weekly(77, resetIn: day)))
+        let stale = try overview(claude: quota(.claude, age: hour, stream: .stale, headline: weekly(77, resetIn: day)))
+        let awaitingReset = try overview(claude: quota(.claude, age: minute, headline: weekly(77, resetIn: -1)))
+        for projection in [fresh, stale, awaitingReset] {
+            #expect(column(.claude, projection).compactDetail == nil)
+        }
+        #expect(column(.claude, nil).compactDetail == nil)
+
+        let signIn = column(.claude, try overview(claude: quota(
+            .claude, age: hour, stream: .stale, headline: weekly(77, resetIn: day), staleReason: .planUsageUnavailable
+        )))
+        let text = "\(signIn.detail) \(signIn.compactDetail ?? "") \(signIn.accessibilityLabel)"
+        for forbidden in ["token", "signed out", "automatically"] {
+            #expect(!text.localizedCaseInsensitiveContains(forbidden), "\(forbidden)")
+        }
+    }
 }
 
 private let referenceDate = Date(timeIntervalSince1970: 1_800_000_000)
@@ -431,14 +519,16 @@ private func quota(
     age: TimeInterval,
     stream: WidgetStreamState = .fresh,
     headline: WidgetQuotaHeadline?,
-    fable: WidgetFableReading? = nil
+    fable: WidgetFableReading? = nil,
+    staleReason: WidgetQuotaStaleReason? = nil
 ) throws -> WidgetQuotaRow {
     try WidgetQuotaRow(
         provider: provider,
         stream: stream,
         lastSuccessfulAt: referenceDate.addingTimeInterval(-age),
         headline: headline,
-        fable: fable
+        fable: fable,
+        staleReason: staleReason
     )
 }
 
