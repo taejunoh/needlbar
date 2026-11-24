@@ -44,8 +44,16 @@ reading wins regardless of source, and no source invents a value.
 - **Switch:** launching the app with `NEEDLBAR_DISABLE_CLAUDE_USAGE_PROBE=1` starts no run. The smoke
   script sets it, so a smoke launch never starts a real `claude` that could renew the login and outlive
   the killed app.
-- **When:** at app start, on manual refresh (**Check now**, on the dashboard's Claude row and in Settings beside **View Claude usage**), when a
-  displayed window's reset passes, and after 15 minutes without a run. Automatic runs are in
+- **When:** on manual refresh (**Check now**, on the dashboard's Claude row and in Settings beside **View Claude usage**) at any time.
+  Automatic runs are opt-in since 2026-11-16 and off by default, including after an update: Settings
+  has the toggle **Check Claude quota automatically**, and while it is off the dashboard's Claude row
+  says "Automatic checks are off." with **Turn on** beside **Check now**. Only with that on, and while
+  Claude is shown on the menu bar or the dashboard, a run also starts at app start, when automatic
+  checks are turned on or Claude is shown again (at once if 5 minutes have passed since the last
+  start, otherwise with the next periodic run), when a
+  displayed window's reset passes, and after 15 minutes without a run. The widget and notifications
+  do not count as shown. Turning automatic checks off drops queued runs and backoff and does not
+  stop a run already started. Automatic runs are in
   practice 15 minutes apart: the minimum of 5 minutes between them matters only after a reset or a
   failed run. Only one runs at a time. Since 2026-11-12 a change in Claude Code's local usage
   records no longer starts a run, because each run makes `claude` scan its session transcripts from
@@ -54,6 +62,7 @@ reading wins regardless of source, and no source invents a value.
   themselves start a run, but a periodic run that fell due during sleep starts within about a minute
   of waking, when the once-a-minute check finds it overdue. If Codex is failing, each dashboard open retries Codex; that starts no Claude run and no dialog.
 - **After failures:** automatic runs wait 5, 10, 20, then 30 minutes. Any success resets this.
+  Turning automatic checks off clears it, and while they are off no failure starts a wait or a retry.
 - **Freshness:** a reading is current for 20 minutes, then **Last known**. A failed run shows **Last
   known** at once. Status-line readings keep their own 15-minute recency and 24-hour maximum age.
 
@@ -77,14 +86,15 @@ clamped to 0-100. Everything else in the output is discarded without being logge
 | Timed out, too much output, or the process failed | **Could not check Claude Code** and the last checked time | Last known | Backoff |
 | Rate limited | **Temporarily limited** and the last checked time | Last known | Backoff |
 | No readable report | **Could not read Claude Code's usage report** and the last checked time | Last known | Backoff |
-| Plan usage not reported (since 2026-11-20) | **Claude Code didn't report plan usage**, and "Claude Code usually shows plan usage only when it's signed in with a Claude plan. Run claude auth login in Terminal, then choose Check now in Needlbar. API keys and usage-billed accounts have no plan limits to show."; no sign-in button. The widget says "Sign in to Claude Code" with the last checked time | Last known or none | The next periodic run (no backoff retry; the backoff time still delays it) or Check now |
+| Plan usage not reported (since 2026-11-20) | **Claude Code didn't report plan usage**, and "Claude Code usually shows plan usage only when it's signed in with a Claude plan. Run claude auth login in Terminal, then choose Check now in Needlbar. API keys and usage-billed accounts have no plan limits to show."; no sign-in button. The widget says "Sign in to Claude Code" with the last checked time | Last known or none | The next periodic run when automatic checks are on (no backoff retry; the backoff time still delays it), or Check now |
 
-The run after 15 minutes counts as a trigger, so the first state is tried again about every
-15 minutes, further apart under backoff. A null `rate_limits` or null or empty `limits` is also what
+With automatic checks on, the run after 15 minutes counts as a trigger, so the first state is tried
+again about every 15 minutes, further apart under backoff. With automatic checks off, the next
+attempt in every row is the next **Check now**. A null `rate_limits` or null or empty `limits` is also what
 Claude Code's schema reports while its own usage fetch is failing (offline, 429, 5xx), so it is not
 treated as signed out. *Superseded 2026-11-20:* a signed-out run is now recognised from its own output and shows plan usage unavailable (see below); a null `rate_limits` or null or empty `limits` is still not treated as signed out. How a signed-out `claude` reports itself in this mode has not been observed,
 and Needlbar does not guess it; until it is, a non-zero exit counts as a process failure. *Superseded 2026-11-20:* it has been observed, and it exits 0 with no `usage_report`, so this is no longer a process failure; a non-zero exit still is. API-key, usage-billed and `claude setup-token` sessions produce no `usage_report`,
-so they show the no-readable-report state. *Superseded 2026-11-20:* by a static read of Claude Code (not observed), they take the same branch as a signed-out run and show plan usage unavailable. Usage, in Claude Code or outside it such as on the web,
+so they show the no-readable-report state. *Superseded 2026-11-20:* by a static read of Claude Code (not observed), they take the same branch as a signed-out run and show plan usage unavailable. With automatic checks on, usage, in Claude Code or outside it such as on the web,
 appears within about 15 minutes while the app is running and the Mac is awake, or about 17 when a
 run is slow. That means about 96 runs a day, plus runs after resets and retries after failures
 (amended 2026-11-12: it was up to 288 a day while usage-record changes started runs). A run costs
@@ -119,7 +129,7 @@ earlier reading the quota status is authentication required; after one it is an 
 last-known values, as for a changed format. Claude still has no sign-in button, and the menu bar is
 unchanged. While status-line windows are recent, the reason sits once on the Fable line, which only
 `/usage` fills. There is no backoff retry, and the backoff time is still recorded, so repeated
-failures can push the periodic run out to 20 or 30 minutes. **Check now** runs once and the same
+failures can push the periodic run, when automatic checks are on, out to 20 or 30 minutes. **Check now** runs once and the same
 reason returns.
 
 The Overview widget's Claude row carries `staleReason: "planUsageUnavailable"` only after an earlier

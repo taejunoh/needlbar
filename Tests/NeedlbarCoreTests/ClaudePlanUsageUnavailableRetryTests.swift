@@ -144,6 +144,7 @@ private struct RetryHarness {
             usageRepository: RetryUsageRepository(),
             quotaRepository: other,
             claudeUsageRepository: probe,
+            claudeAutomaticRunsAllowed: true,
             store: store,
             clock: clock,
             quotaAttemptObserver: { events.record($0) }

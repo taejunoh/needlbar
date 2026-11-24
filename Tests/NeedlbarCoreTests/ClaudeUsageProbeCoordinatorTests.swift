@@ -136,6 +136,170 @@ struct ClaudeUsageProbeCoordinatorTests {
         await harness.coordinator.stop()
     }
 
+    // MARK: - Automatic runs are opt-in (spec 2026-11-16)
+
+    @Test func withAutomaticRunsOffNothingRunsOverManyTicks() async throws {
+        let harness = Harness(automaticRuns: false)
+        await harness.startedWithoutARun()
+        await harness.advance(minutes: 45)
+        await settle(watchingFor: { harness.probe.callCount > 0 })
+        #expect(harness.probe.callCount == 0)
+        #expect(harness.events.values.isEmpty)
+        await harness.coordinator.stop()
+    }
+
+    @Test func aFailedManualRunWhileOffGivesNoLaterRun() async throws {
+        let harness = Harness(automaticRuns: false)
+        harness.probe.script(.result(providerUnavailable()))
+        await harness.startedWithoutARun()
+        await harness.coordinator.manualRefresh()
+        await harness.waitUntilCompletedRuns(1)
+        // Long enough for every backoff step and the periodic interval.
+        await harness.advance(minutes: 45)
+        await settle(watchingFor: { harness.probe.callCount > 1 })
+        #expect(harness.probe.callCount == 1, "no backoff or retry exists while off")
+        #expect(harness.probe.triggersSeen(in: harness.events) == [.manual])
+        await harness.coordinator.stop()
+    }
+
+    @Test func anAutomaticRunThatFailsAfterTurningOffLeavesNoRetry() async throws {
+        let harness = Harness()
+        harness.probe.holdNext()
+        harness.probe.script(.result(providerUnavailable()))
+        await harness.coordinator.start()
+        await harness.probe.waitUntilHeld()
+        await harness.coordinator.setClaudeAutomaticRunsAllowed(false)
+        harness.probe.release()
+        await harness.waitUntilCompletedRuns(1)
+        await harness.other.waitUntilCallCount(1)
+        await harness.advance(minutes: 45)
+        await settle(watchingFor: { harness.probe.callCount > 1 })
+        #expect(harness.probe.callCount == 1)
+        await harness.coordinator.stop()
+    }
+
+    @Test func turningOnRightAfterCheckNowStartsNoSecondRunInsideTheFloor() async throws {
+        let harness = Harness(automaticRuns: false)
+        await harness.startedWithoutARun()
+        await harness.coordinator.manualRefresh()
+        await harness.waitUntilCompletedRuns(1)
+        await harness.advance(minutes: 1)
+        await harness.coordinator.setClaudeAutomaticRunsAllowed(true)
+        await harness.advance(minutes: 13)
+        await settle(watchingFor: { harness.probe.callCount > 1 })
+        #expect(harness.probe.callCount == 1, "nothing is queued; the periodic run follows the manual one")
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(2)
+        #expect(harness.probe.startTimes.map { $0.timeIntervalSince(Self.start) } == [0, 900])
+        #expect(harness.probe.triggersSeen(in: harness.events) == [.manual, .periodic])
+        await harness.coordinator.stop()
+    }
+
+    @Test func onOffOnWithinFiveMinutesStartsNoExtraRun() async throws {
+        let harness = Harness()
+        await harness.startedAndIdle()
+        await harness.advance(minutes: 1)
+        await harness.coordinator.setClaudeAutomaticRunsAllowed(false)
+        await harness.advance(minutes: 1)
+        await harness.coordinator.setClaudeAutomaticRunsAllowed(true)
+        await harness.advance(minutes: 12)
+        await settle(watchingFor: { harness.probe.callCount > 1 })
+        #expect(harness.probe.callCount == 1)
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(2)
+        #expect(harness.probe.startTimes.map { $0.timeIntervalSince(Self.start) } == [0, 900])
+        #expect(harness.probe.triggersSeen(in: harness.events) == [.startup, .periodic])
+        await harness.coordinator.stop()
+    }
+
+    @Test func startWithAutomaticRunsOnGivesOneStartupRunAndNoResume() async throws {
+        let harness = Harness()
+        await harness.startedAndIdle()
+        // The value does not change, so this does nothing.
+        await harness.coordinator.setClaudeAutomaticRunsAllowed(true)
+        await harness.advance(minutes: 6)
+        await settle(watchingFor: { harness.probe.callCount > 1 })
+        #expect(harness.probe.callCount == 1)
+        #expect(harness.probe.triggersSeen(in: harness.events) == [.startup])
+        await harness.coordinator.stop()
+    }
+
+    @Test func turningOnStartsOneResumedRunThenPeriodicRuns() async throws {
+        let harness = Harness(automaticRuns: false)
+        await harness.startedWithoutARun()
+        await harness.advance(minutes: 7)
+        await harness.coordinator.setClaudeAutomaticRunsAllowed(true)
+        await harness.probe.waitUntilCallCount(1)
+        await harness.waitUntilCompletedRuns(1)
+        await harness.coordinator.setClaudeAutomaticRunsAllowed(true)
+        await harness.advance(minutes: 14)
+        await settle(watchingFor: { harness.probe.callCount > 1 })
+        #expect(harness.probe.callCount == 1, "exactly one resumed run")
+        await harness.advance(minutes: 1)
+        await harness.probe.waitUntilCallCount(2)
+        await harness.waitUntilCompletedRuns(2)
+        await harness.advance(minutes: 15)
+        await harness.probe.waitUntilCallCount(3)
+        await harness.waitUntilCompletedRuns(3)
+        #expect(harness.probe.startTimes.map { $0.timeIntervalSince(Self.start) } == [420, 1_320, 2_220])
+        #expect(harness.probe.triggersSeen(in: harness.events) == [.automaticResumed, .periodic, .periodic])
+        await harness.coordinator.stop()
+    }
+
+    @Test func turningOffWithARunInFlightLetsItFinishAndAppliesItsReading() async throws {
+        let harness = Harness()
+        harness.probe.holdNext()
+        await harness.coordinator.start()
+        await harness.probe.waitUntilHeld()
+        await harness.coordinator.setClaudeAutomaticRunsAllowed(false)
+        harness.probe.release()
+        await harness.waitUntilCompletedRuns(1)
+        #expect(await harness.store.snapshot(for: .claude).quota != nil, "the reading is applied")
+        #expect(harness.probe.cancelledThrough.isEmpty, "turning off never cancels")
+        await harness.other.waitUntilCallCount(1)
+        await harness.advance(minutes: 30)
+        await settle(watchingFor: { harness.probe.callCount > 1 })
+        #expect(harness.probe.callCount == 1)
+        await harness.coordinator.stop()
+    }
+
+    @Test func theFlagIsOnlyStoredWhileStoppedAndSurvivesStopAndStart() async throws {
+        let harness = Harness(automaticRuns: false)
+        await harness.coordinator.setClaudeAutomaticRunsAllowed(true)
+        await settle(watchingFor: { harness.probe.callCount > 0 })
+        #expect(harness.probe.callCount == 0, "while stopped the setter only stores the value")
+        await harness.coordinator.start()
+        await harness.waitUntilCompletedRuns(1)
+        #expect(harness.probe.triggersSeen(in: harness.events) == [.startup])
+
+        await harness.coordinator.setClaudeAutomaticRunsAllowed(false)
+        await harness.coordinator.stop()
+        await harness.coordinator.start()
+        await harness.other.waitUntilCallCount(2)
+        await harness.advance(minutes: 20)
+        await settle(watchingFor: { harness.probe.callCount > 1 })
+        #expect(harness.probe.callCount == 1, "off survives a restart")
+        await harness.coordinator.stop()
+    }
+
+    @Test func turningOnWhileStartIsSuspendedInTheWatcherGivesOneStartupRun() async throws {
+        let watcher = GatedUsageFileWatcher()
+        let harness = Harness(automaticRuns: false, usageFileWatcher: watcher)
+        let starting = Task { await harness.coordinator.start() }
+        await watcher.waitUntilStartSuspended()
+        await harness.coordinator.setClaudeAutomaticRunsAllowed(true)
+        await watcher.resumeStart()
+        await starting.value
+        await harness.waitUntilCompletedRuns(1)
+        await harness.advance(minutes: 6)
+        await settle(watchingFor: { harness.probe.callCount > 1 })
+        #expect(harness.probe.callCount == 1)
+        #expect(harness.probe.triggersSeen(in: harness.events) == [.startup])
+        await harness.coordinator.stop()
+    }
+
     // MARK: - Manual
 
     @Test func manualRefreshSkipsTheIntervalAndBackoff() async throws {
@@ -596,7 +760,8 @@ private struct Harness {
     let events = AttemptEvents()
     let coordinator: RefreshCoordinator
 
-    init(claudeRepository: Bool = true, claudeTotal: UInt64 = 0) {
+    init(claudeRepository: Bool = true, claudeTotal: UInt64 = 0, automaticRuns: Bool = true,
+         usageFileWatcher: (any UsageFileWatching)? = nil) {
         let clock = ManualClock(now: ClaudeUsageProbeCoordinatorTests.start)
         let events = self.events
         let probe = ProbeRepository(clock: clock)
@@ -614,8 +779,10 @@ private struct Harness {
             usageRepository: usage,
             quotaRepository: other,
             claudeUsageRepository: claudeRepository ? probe : nil,
+            claudeAutomaticRunsAllowed: automaticRuns,
             store: store,
             clock: clock,
+            usageFileWatcher: usageFileWatcher,
             claudeQuotaDiagnostics: diagnostics.completion,
             quotaAttemptObserver: { events.record($0) }
         )
@@ -624,6 +791,13 @@ private struct Harness {
     func startedAndIdle() async {
         await coordinator.start()
         await waitUntilCompletedRuns(1)
+        await other.waitUntilCallCount(1)
+    }
+
+    /// For a coordinator whose automatic runs are off: start, and wait for the
+    /// Codex and Cursor refresh instead of a Claude run that must not come.
+    func startedWithoutARun() async {
+        await coordinator.start()
         await other.waitUntilCallCount(1)
     }
 
@@ -644,6 +818,34 @@ private struct Harness {
             clock.advance(by: 60)
             await clock.waitUntilSleeperCount(3)
         }
+    }
+}
+
+/// A watcher whose `start` stays suspended until the test resumes it.
+private actor GatedUsageFileWatcher: UsageFileWatching {
+    private var startContinuation: CheckedContinuation<Void, Never>?
+    private var suspendedWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func start(using refreshRequest: UsageRefreshRequestToken) async {
+        await withCheckedContinuation { continuation in
+            startContinuation = continuation
+            let waiters = suspendedWaiters
+            suspendedWaiters = []
+            for waiter in waiters { waiter.resume() }
+        }
+    }
+
+    func stop() {}
+
+    func waitUntilStartSuspended() async {
+        if startContinuation != nil { return }
+        await withCheckedContinuation { suspendedWaiters.append($0) }
+    }
+
+    func resumeStart() {
+        let continuation = startContinuation
+        startContinuation = nil
+        continuation?.resume()
     }
 }
 

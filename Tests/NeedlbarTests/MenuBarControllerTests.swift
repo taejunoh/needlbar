@@ -997,6 +997,62 @@ struct MenuBarControllerTests {
         #expect(presenter.dismissCount == 0)
     }
 
+    @Test func theDashboardTurnOnButtonSetsThePreferenceRunsNothingAndLeavesThePanelShown() throws {
+        let defaults = freshMenuBarDefaults()
+        let preferences = ClaudeAutomaticChecksPreferences(defaults: defaults)
+        var checks = 0
+        var refreshes = 0
+        let presenter = FakeMenuPanelPresenter()
+        let controller = makeMenuBarController(
+            defaults: defaults,
+            actions: SettingsActions(claudeCheckNow: { checks += 1 }, claudeAutomaticChecks: preferences),
+            panelPresenter: presenter,
+            onRetryRequested: { refreshes += 1 }
+        )
+
+        controller.openOverview()
+        let shown = try #require(presenter.presentedContentViewControllers.last)
+        try AccessibilityHostedView(view: shown.view, width: 360) { hosted in
+            #expect(hosted.buttons.filter { $0 == "Turn on" }.count == 1, "\(hosted.buttons)")
+            try hosted.press("Turn on")
+        }
+
+        #expect(preferences.isEnabled)
+        #expect(checks == 0)
+        #expect(refreshes == 0, "turning on is not a manual refresh")
+        #expect(presenter.isShown)
+        #expect(presenter.dismissCount == 0)
+    }
+
+    @Test func theDashboardPromptFollowsThePreferenceWhileObserving() async {
+        let defaults = freshMenuBarDefaults()
+        let preferences = ClaudeAutomaticChecksPreferences(defaults: defaults)
+        let controller = makeMenuBarController(
+            defaults: defaults,
+            actions: SettingsActions(claudeAutomaticChecks: preferences)
+        )
+        await controller.startObserving()
+        #expect(controller.dashboardShowsClaudeAutomaticChecksPrompt, "off by default")
+
+        preferences.setEnabled(true)
+        #expect(await eventually { !controller.dashboardShowsClaudeAutomaticChecksPrompt })
+        preferences.setEnabled(false)
+        #expect(await eventually { controller.dashboardShowsClaudeAutomaticChecksPrompt })
+        controller.stopObserving()
+    }
+
+    @Test func withoutAPreferenceTheDashboardShowsNoPrompt() async throws {
+        let presenter = FakeMenuPanelPresenter()
+        let controller = makeMenuBarController(
+            defaults: freshMenuBarDefaults(), actions: SettingsActions(), panelPresenter: presenter)
+        controller.openOverview()
+        #expect(!controller.dashboardShowsClaudeAutomaticChecksPrompt)
+        let shown = try #require(presenter.presentedContentViewControllers.last)
+        try AccessibilityHostedView(view: shown.view, width: 360) { hosted in
+            #expect(!hosted.buttons.contains("Turn on"), "\(hosted.buttons)")
+        }
+    }
+
     @Test func stopObservingDismissesShownPanelAndCancelsMonitoringOnlyOnce() {
         let configuration = ModuleConfiguration(defaults: freshMenuBarDefaults())
         let monitor = FakeGlobalMouseDownMonitor()
@@ -1028,6 +1084,29 @@ private func freshMenuBarDefaults() -> UserDefaults {
 @MainActor
 private func testLoginCoordinator() -> ProviderLoginCoordinator {
     ProviderLoginCoordinator(refreshQuota: { _ in false })
+}
+
+/// A controller built from explicit actions, for the automatic checks prompt.
+@MainActor
+private func makeMenuBarController(
+    defaults: UserDefaults,
+    actions: SettingsActions,
+    panelPresenter: any MenuPanelPresenting = FakeMenuPanelPresenter(),
+    onRetryRequested: @escaping @MainActor () -> Void = {}
+) -> MenuBarController {
+    let snapshotStore = ProviderSnapshotStore()
+    let notificationPreferences = QuotaNotificationPreferences(defaults: defaults)
+    return MenuBarController(
+        configuration: ModuleConfiguration(defaults: defaults),
+        snapshotStore: snapshotStore,
+        actions: actions,
+        notificationPreferences: notificationPreferences,
+        notificationService: QuotaNotificationService(store: snapshotStore, preferences: notificationPreferences),
+        statusItemFactory: FakeStatusItemFactory(),
+        globalMouseDownMonitor: FakeGlobalMouseDownMonitor(),
+        panelPresenter: panelPresenter,
+        onRetryRequested: onRetryRequested
+    )
 }
 
 @MainActor

@@ -50,6 +50,9 @@ public struct QuotaAttemptEvent: Sendable, Equatable {
 public enum QuotaRefreshTrigger: String, Sendable, Equatable {
     case startup, scheduled, wake, connectivity, popover, manual
     case windowReset, backoffRetry, periodic
+    /// The one run requested when automatic Claude runs are turned on, or Claude is
+    /// shown again, during a session. It keeps `startup` out of the middle of a log.
+    case automaticResumed
 }
 
 public struct QuotaRecoveryRequestToken: Sendable {

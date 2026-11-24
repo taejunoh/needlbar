@@ -9,7 +9,7 @@
 - **Change.** A run that names the `usage` command and returns no `usage_report` key is its own
   state: "Claude Code didn't report plan usage", with a line naming `claude auth login` in Terminal
   and **Check now**. Bridge code `requiresAuthentication`, origin `usageReportPlanUsageUnavailable`.
-  No backoff retry; the periodic run and **Check now** try again. The widget's Claude column dims and
+  No backoff retry; the next periodic run when automatic checks are on, or **Check now**, tries again. The widget's Claude column dims and
   says "Sign in to Claude Code" with the last checked time. Design:
   `docs/superpowers/specs/2026-11-20-claude-plan-usage-unavailable-design.md`; plan:
   `docs/superpowers/plans/2026-11-20-claude-plan-usage-unavailable.md`.
@@ -17,6 +17,28 @@
   and the result line of the 2026-11-20 output, with every identifier removed and numbers zeroed.
 - **Not checked.** The widget caption on an installed build in light and dark and its fallback when
   narrow; the output of an API-key or usage-billed account. Nothing was tagged or released.
+
+## 2026-11-16 Automatic Claude checks become opt-in (prepared, not released)
+
+- **Change.** Needlbar starts `claude` without a click only if the user turned automatic checks on.
+  It is off by default, for new installs and after an update. Design:
+  `docs/superpowers/specs/2026-11-16-claude-automatic-checks-opt-in-design.md`; plan:
+  `docs/superpowers/plans/2026-11-16-claude-automatic-checks-opt-in.md`.
+- **Why.** The prepared build ran `/usage` about 96 times a day without the user choosing it, and
+  Anthropic's Consumer Terms §3 restrict access "through automated or non-human means" unless
+  Anthropic explicitly permits it. A schedule the user turned on is the position Needlbar takes
+  while it asks Anthropic.
+- **Built.** The gate in `ClaudeUsageProbeSchedule` and `RefreshCoordinator`, the `automaticResumed`
+  trigger, the pause while Claude is hidden from both the menu bar and the dashboard, the stored
+  setting, the Settings toggle, and the dashboard row prompt with its neutral off state. The
+  cadence, the limits and the parser are unchanged.
+- **First-run window.** Not built yet; it is the plan's second part.
+- **Verification.** Automated tests only. Nothing was installed and no real `claude` was run. Not
+  yet seen on a real machine: the log with the setting off, `automaticResumed` then `periodic` after
+  turning on, and the toggle and the row prompt in light and dark.
+- **Still open before release.** A weekday log check, the signed-out `claude` check, the inquiry
+  sent (its draft is not in this repository and must say automatic runs are off until the user
+  turns them on), a new release plan and the user's separate request.
 
 ## 2026-11-15 Terms question decided: stated reading plus inquiry (prepared, not released)
 

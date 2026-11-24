@@ -28,7 +28,7 @@ struct RefreshCoordinatorTests {
     let clock = ManualClock(now: now)
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(), clock: clock,
         quotaApplicationWillApply: { await application.pause() },
         claudeQuotaOperationCompleted: { await completion.pause() },
         quotaAttemptObserver: { events.record($0) })
@@ -66,7 +66,7 @@ struct RefreshCoordinatorTests {
     let events = QuotaAttemptCollector()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: ProviderSnapshotStore(), clock: ManualClock(now: Self.fixedStart),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(), clock: ManualClock(now: Self.fixedStart),
         quotaAttemptObserver: { events.record($0) })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -109,7 +109,7 @@ struct RefreshCoordinatorTests {
     let events = QuotaAttemptCollector()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: store, clock: clock,
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, claudeAutomaticRunsAllowed: true, store: store, clock: clock,
         quotaAttemptObserver: { events.record($0) })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -155,7 +155,7 @@ struct RefreshCoordinatorTests {
     let events = QuotaAttemptCollector()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: store, clock: ManualClock(now: now),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, claudeAutomaticRunsAllowed: true, store: store, clock: ManualClock(now: now),
         quotaAttemptObserver: { events.record($0) })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -177,7 +177,7 @@ struct RefreshCoordinatorTests {
     let events = QuotaAttemptCollector()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: ProviderSnapshotStore(), clock: ManualClock(now: Self.fixedStart),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(), clock: ManualClock(now: Self.fixedStart),
         quotaAttemptObserver: { events.record($0) })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -207,7 +207,7 @@ struct RefreshCoordinatorTests {
     let events = QuotaAttemptCollector()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: ProviderSnapshotStore(), clock: ManualClock(now: now),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(), clock: ManualClock(now: now),
         statusLineRepository: cache, quotaAttemptObserver: { events.record($0) })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -231,7 +231,7 @@ struct RefreshCoordinatorTests {
     let events = QuotaAttemptCollector()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, store: ProviderSnapshotStore(), clock: ManualClock(now: Self.fixedStart),
+        quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])), claudeUsageRepository: quota, claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(), clock: ManualClock(now: Self.fixedStart),
         claudeQuotaOperationCompleted: { await callback.pause() }, quotaAttemptObserver: { events.record($0) })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -266,7 +266,7 @@ struct RefreshCoordinatorTests {
         schemaVersion: 1, generation: generation, fiveHour: nil, sevenDay: nil))
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        quotaRepository: quota, claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(), clock: clock,
         statusLineRepository: cache)
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -294,7 +294,7 @@ struct RefreshCoordinatorTests {
     let completed = ClaudeQuotaCompletionRecorder()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        quotaRepository: quota, claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(), clock: clock,
         backgroundQuotaOperationCompleted: { await completed.record() })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -324,7 +324,7 @@ struct RefreshCoordinatorTests {
     let completed = ClaudeQuotaCompletionRecorder()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: ProviderSnapshotStore(),
+        quotaRepository: quota, claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: ManualClock(now: Date(timeIntervalSince1970: 0)),
         backgroundQuotaOperationCompleted: { await completed.record() })
     let oldToken = await coordinator.recoveryRequestToken()
@@ -350,7 +350,7 @@ func recoveryBurstQueuesOneAggregateFollowUp(includesPopover: Bool) async throws
     let completed = ClaudeQuotaCompletionRecorder()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        quotaRepository: quota, claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(), clock: clock,
         backgroundQuotaOperationCompleted: { await completed.record() })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -382,7 +382,7 @@ func recoveryBurstQueuesOneAggregateFollowUp(includesPopover: Bool) async throws
     let completed = ClaudeQuotaCompletionRecorder()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        quotaRepository: quota, claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(), clock: clock,
         quotaApplicationWillApply: { await gate.pause() },
         backgroundQuotaOperationCompleted: { await completed.record() })
     await coordinator.start()
@@ -416,7 +416,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
         schemaVersion: 1, generation: generation, fiveHour: nil, sevenDay: nil))
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        quotaRepository: quota, claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(), clock: clock,
         statusLineRepository: cache,
         backgroundQuotaOperationCompleted: { await completed.record() })
     await coordinator.start()
@@ -462,7 +462,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     let gate = QuotaApplicationGate()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: store, clock: clock,
+        quotaRepository: quota, claudeAutomaticRunsAllowed: true, store: store, clock: clock,
         quotaApplicationWillApply: { await gate.pause() })
     await coordinator.start()
     await quota.waitUntilCallCount(1)
@@ -498,7 +498,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     let registrations = QuotaIntentRegistrationGate()
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        quotaRepository: quota, store: ProviderSnapshotStore(), clock: clock,
+        quotaRepository: quota, claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(), clock: clock,
         quotaApplicationWillApply: { await gate.pause() },
         quotaIntentRegistered: { registrations.record($0) })
     await coordinator.start()
@@ -538,7 +538,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        store: store, clock: ManualClock(now: now), lastQuotaSuccessfulAt: now,
+        claudeAutomaticRunsAllowed: true, store: store, clock: ManualClock(now: now), lastQuotaSuccessfulAt: now,
         statusLineApplicationWillApply: {
             await applications.record()
             if await applications.count == 1 { await gate.pause() }
@@ -565,7 +565,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        store: store, clock: ManualClock(now: now),
+        claudeAutomaticRunsAllowed: true, store: store, clock: ManualClock(now: now),
         statusLineApplicationWillApply: { await gate.pause() }, statusLineRepository: cache)
     await coordinator.start()
     await gate.waitUntilEntered()
@@ -600,7 +600,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota,
-        store: store,
+        claudeAutomaticRunsAllowed: true, store: store,
         clock: ManualClock(now: now),
         statusLineRepository: cache
     )
@@ -631,7 +631,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota,
-        store: store,
+        claudeAutomaticRunsAllowed: true, store: store,
         clock: ManualClock(now: now),
         lastQuotaSuccessfulAt: now,
         statusLineRepository: cache
@@ -657,7 +657,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        store: store, clock: ManualClock(now: now),
+        claudeAutomaticRunsAllowed: true, store: store, clock: ManualClock(now: now),
         statusLineApplicationWillApply: { await gate.pause() }, statusLineRepository: cache
     )
 
@@ -685,7 +685,7 @@ func periodicAndRecoveryBoundaryShareOnePhysicalAttempt(periodicFirst: Bool) asy
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        store: store, clock: ManualClock(now: now),
+        claudeAutomaticRunsAllowed: true, store: store, clock: ManualClock(now: now),
         statusLineApplicationWillApply: { await gate.pause() }, statusLineRepository: cache
     )
 
@@ -771,7 +771,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: usage,
         quotaRepository: quota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: clock,
         lastQuotaSuccessfulAt: now.addingTimeInterval(-30)
     )
@@ -791,7 +791,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: usage,
         quotaRepository: quota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: clock,
         lastQuotaSuccessfulAt: now.addingTimeInterval(-61)
     )
@@ -813,7 +813,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota,
-        store: store,
+        claudeAutomaticRunsAllowed: true, store: store,
         clock: ManualClock(now: now)
     )
 
@@ -840,7 +840,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota,
-        store: store,
+        claudeAutomaticRunsAllowed: true, store: store,
         clock: ManualClock(now: now)
     )
 
@@ -879,7 +879,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
             let coordinator = RefreshCoordinator(
                 usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
                 quotaRepository: quota,
-                store: store,
+                claudeAutomaticRunsAllowed: true, store: store,
                 clock: ManualClock(now: now),
                 backgroundQuotaOperationCompleted: { await completionGate.pause() }
             )
@@ -905,7 +905,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: usage,
         quotaRepository: quota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: clock
     )
 
@@ -931,7 +931,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: usage,
         quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: ManualClock(now: now)
     )
 
@@ -966,7 +966,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: usage,
         quotaRepository: quota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: clock
     )
 
@@ -1000,7 +1000,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: usage,
         quotaRepository: quota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: ManualClock(now: now)
     )
 
@@ -1023,7 +1023,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: usage,
         quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: ManualClock(now: now),
         usageFileWatcher: watcher
     )
@@ -1252,7 +1252,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: ManualClock(now: now),
         lastQuotaSuccessfulAt: now.addingTimeInterval(-61)
     )
@@ -1291,7 +1291,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: clock
     )
     await coordinator.start()
@@ -1315,7 +1315,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: ManualClock(now: try #require(BridgeDecoder.date("2026-08-25T12:00:00Z"))),
         quotaApplicationWillApply: { await storeGate.pause() }
     )
@@ -1341,7 +1341,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: ManualClock(now: try #require(BridgeDecoder.date("2026-08-25T12:00:00Z"))),
         quotaApplicationWillApply: { await storeGate.pause() },
         quotaIntentRegistered: registrations.record
@@ -1446,7 +1446,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: ManualClock(now: Self.fixedStart),
         backgroundQuotaOperationCompleted: { await observerGate.pause() }
     )
@@ -1473,7 +1473,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: quota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: ManualClock(now: Self.fixedStart),
         quotaApplicationWillApply: { await gate.pause() },
         backgroundQuotaOperationCompleted: { await observer.record() }
@@ -1494,7 +1494,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let codexCoordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: codexQuota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: ManualClock(now: Self.fixedStart),
         backgroundQuotaOperationCompleted: { await codexCounter.record() }
     )
@@ -1512,7 +1512,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let cancelledCoordinator = RefreshCoordinator(
         usageRepository: UsageRefreshSpy(result: .init(snapshots: [:], errors: [:])),
         quotaRepository: cancelledQuota,
-        store: ProviderSnapshotStore(),
+        claudeAutomaticRunsAllowed: true, store: ProviderSnapshotStore(),
         clock: ManualClock(now: Self.fixedStart),
         backgroundQuotaOperationCompleted: { await cancelledCounter.record() }
     )
@@ -1544,7 +1544,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
     let coordinator = RefreshCoordinator(
         usageRepository: usage,
         quotaRepository: QuotaRefreshSpy(result: .init(snapshots: [:], errors: [:])),
-        store: store,
+        claudeAutomaticRunsAllowed: true, store: store,
         clock: ManualClock(now: Self.fixedStart),
         widgetUsageDayCapture: FixedDayCapture(values: [context, context])
     )
@@ -1582,7 +1582,7 @@ private func makeRunningCoordinator(
     RefreshCoordinator(
         usageRepository: usage,
         quotaRepository: quota,
-        store: store,
+        claudeAutomaticRunsAllowed: true, store: store,
         clock: ManualClock(now: BridgeDecoder.date("2026-08-25T12:00:00Z")!),
         quotaIntentRegistered: quotaIntentRegistered
     )
