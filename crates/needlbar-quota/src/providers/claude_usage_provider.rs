@@ -136,6 +136,16 @@ impl ClaudeUsageReportProvider {
                 )),
                 ClaudeUsageRowSummary::default(),
             ),
+            // Mapped to its own code and origin in the next commit; until then it
+            // fails exactly as it did before the parser told it apart.
+            ClaudeUsageReportOutcome::PlanUsageUnavailable => (
+                Err(failure(
+                    QuotaErrorCode::SchemaChanged,
+                    "Claude usage data was not in the expected format.",
+                    ClaudeQuotaFailureOrigin::UsageReportFormatChanged,
+                )),
+                ClaudeUsageRowSummary::default(),
+            ),
             ClaudeUsageReportOutcome::FormatChanged { rows } => (
                 Err(failure(
                     QuotaErrorCode::SchemaChanged,
