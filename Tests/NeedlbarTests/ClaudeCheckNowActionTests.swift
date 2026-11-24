@@ -18,6 +18,7 @@ struct ClaudeCheckNowActionTests {
     nonisolated static let allReasons: [ClaudeQuotaFailureReason] = [
         .quotaAccessUnavailable, .connectionUnavailable, .temporarilyLimited, .couldNotUpdateQuota,
         .claudeCodeNotInstalled, .claudeCodeCheckFailed, .usageReportFormatChanged,
+        .planUsageUnavailable,
     ]
 
     // MARK: - The action and its copy
