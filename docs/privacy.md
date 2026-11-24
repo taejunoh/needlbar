@@ -117,7 +117,8 @@ Usage and quota have separate network behavior:
   prompt or transcript reading during that run belongs to `claude`. Needlbar reads only the `usage_report` field, an
   error label and, since 2026-11-20, whether `local_command_run` names the `usage` command, which
   tells a run without plan usage from a changed format and is compared, never kept. It discards the rest without logging or storing it. It reads no Claude Keychain item
-  or credential file. v0.3.14 still uses the Anthropic usage endpoint with existing local evidence.
+  or credential file. v0.3.14 still calls the Anthropic usage endpoint with the token it reads from Claude Code's
+  Keychain item or credentials file.
   Needlbar does not bundle or modify Claude Code and has no Claude sign-in; how this relates to
   Anthropic's terms is described in the README section "Claude Code and Anthropic's terms".
 - Codex quota tries the provider usage API first and can use the installed Codex CLI app-server RPC fallback when the API credential route is unavailable.
