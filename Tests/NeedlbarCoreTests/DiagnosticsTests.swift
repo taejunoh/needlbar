@@ -65,7 +65,8 @@ import Testing
 @Test func diagnosticsDecoderAcceptsOnlyClosedClaudeFailureOriginsAndOptionalAttemptTime() throws {
     let origins: [ClaudeQuotaFailureOrigin] = [
         .claudeCliNotFound, .usageReportNoUsage, .usageProbeTimedOut, .usageProbeOutputTooLarge,
-        .usageProbeFailed, .usageReportRateLimited, .usageReportFormatChanged, .otherFailure,
+        .usageProbeFailed, .usageReportRateLimited, .usageReportFormatChanged,
+        .usageReportPlanUsageUnavailable, .otherFailure,
     ]
     for origin in origins {
         let payload = """
@@ -127,6 +128,7 @@ import Testing
     for origin in [
         "claudeCliNotFound", "usageReportNoUsage", "usageProbeTimedOut", "usageProbeOutputTooLarge",
         "usageProbeFailed", "usageReportRateLimited", "usageReportFormatChanged",
+        "usageReportPlanUsageUnavailable",
     ] {
         let payload = """
         {"schemaVersion":"needlbar.v1","ok":true,"generatedAt":"2026-11-03T12:00:00Z","data":{"providers":[{"provider":"claude","usageStatus":"available","quotaStatus":"error","usageSource":"local","quotaSource":"usageReport","lastAttemptAt":"2026-11-03T11:59:59Z","claudeQuotaFailureOrigin":"\(origin)","claudeUsageProbe":{"durationMs":1832,"rowKinds":["weeklyAll","weeklyScoped"],"unknownRowCount":1,"skippedRowCount":2}}]},"errors":[]}

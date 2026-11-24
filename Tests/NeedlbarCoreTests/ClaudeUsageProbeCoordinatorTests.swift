@@ -520,7 +520,7 @@ struct ClaudeUsageProbeCoordinatorTests {
     }
 
     @Test(arguments: [
-        ("requiresAuthentication", ClaudeQuotaFailureReason.quotaAccessUnavailable),
+        ("requiresAuthentication", ClaudeQuotaFailureReason.planUsageUnavailable),
         ("notInstalled", .claudeCodeNotInstalled),
         ("providerUnavailable", .claudeCodeCheckFailed),
         ("rateLimited", .temporarilyLimited),

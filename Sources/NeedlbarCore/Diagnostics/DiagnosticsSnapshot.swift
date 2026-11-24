@@ -114,6 +114,9 @@ public enum ClaudeQuotaFailureOrigin: String, Decodable, Sendable, Equatable {
     case usageReportRateLimited
     /// A run finished without a usable `usage_report`.
     case usageReportFormatChanged
+    /// `/usage` finished with no `usage_report` key: Claude Code does not
+    /// consider itself signed in with a Claude plan.
+    case usageReportPlanUsageUnavailable
     case otherFailure
 }
 
