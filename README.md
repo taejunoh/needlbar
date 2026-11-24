@@ -516,11 +516,11 @@ it is not covered. If it is covered, that section requires the Commercial Terms 
 conditions. Needlbar meets the conditions (the binary runs unmodified, and each user signs in with
 their own account); whether the Commercial Terms are needed is part of what we are asking.
 
-Runs are scheduled: about 96 a day while Needlbar is running, which for a menu-bar app is
-usually all day. Anthropic's [Consumer Terms](https://www.anthropic.com/legal/consumer-terms)
+With automatic checks on, runs are scheduled: about 96 a day while Needlbar is running, which for
+a menu-bar app is usually all day. Anthropic's [Consumer Terms](https://www.anthropic.com/legal/consumer-terms)
 restrict access "through automated or non-human means" unless Anthropic explicitly permits it,
 and its plan limits assume ordinary, individual usage. We are asking Anthropic whether a scheduled
-`/usage` check of the user's own CLI is within that. Until Anthropic answers, this is our reading,
+`/usage` check of the user's own CLI that the user turned on is within that. Until Anthropic answers, this is our reading,
 not Anthropic's confirmation. If Anthropic objects, a later release will stop running `claude` and
 keep the status-line source, last-known values and the usage link.
 
