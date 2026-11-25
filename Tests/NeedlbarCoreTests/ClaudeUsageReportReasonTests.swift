@@ -8,10 +8,8 @@ import Testing
 struct ClaudeUsageReportReasonTests {
     @Test(arguments: [
         ("notInstalled", ClaudeQuotaFailureReason.claudeCodeNotInstalled),
-        // No Claude path reports this any more, because a null usage report is
-        // a failed check rather than proof of a signed-out user. The generic
-        // mapping is the same as for an expired sign-in.
-        ("requiresAuthentication", .quotaAccessUnavailable),
+        // Only a `/usage` run that finished without plan usage sends this.
+        ("requiresAuthentication", .planUsageUnavailable),
         ("authenticationExpired", .quotaAccessUnavailable),
         ("providerUnavailable", .claudeCodeCheckFailed),
         ("rateLimited", .temporarilyLimited),
@@ -33,6 +31,13 @@ struct ClaudeUsageReportReasonTests {
         #expect(ClaudeQuotaFailureReason.usageReportFormatChanged.detailText == nil)
     }
 
+    @Test func planUsageUnavailableNamesWhatClaudeCodeDidAndTheTerminalCommand() {
+        #expect(ClaudeQuotaFailureReason.planUsageUnavailable.displayText == "Claude Code didn't report plan usage")
+        #expect(ClaudeQuotaFailureReason.planUsageUnavailable.detailText
+            == "Claude Code usually shows plan usage only when it's signed in with a Claude plan. Run claude auth login in Terminal, then choose Check now in Needlbar. API keys and usage-billed accounts have no plan limits to show.")
+        #expect(ClaudeQuotaFailureReason.planUsageUnavailable.rawValue == "planUsageUnavailable")
+    }
+
     @Test func theNewCopyComesFromLocalizableKeys() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("needlbar-usage-report-\(UUID().uuidString).bundle", isDirectory: true)
@@ -44,6 +49,8 @@ struct ClaudeUsageReportReasonTests {
         "claudeQuota.reason.claudeCodeCheckFailed" = "E";
         "claudeQuota.reason.claudeCodeCheckFailed.detail" = "D";
         "claudeQuota.reason.usageReportFormatChanged" = "F";
+        "claudeQuota.reason.planUsageUnavailable" = "G";
+        "claudeQuota.reason.planUsageUnavailable.detail" = "H";
         """
         try Data(table.utf8).write(to: directory.appendingPathComponent("Localizable.strings"))
         let bundle = try #require(Bundle(url: directory))
@@ -52,6 +59,8 @@ struct ClaudeUsageReportReasonTests {
         #expect(ClaudeQuotaFailureReason.claudeCodeCheckFailed.localizedDisplayText(bundle: bundle) == "E")
         #expect(ClaudeQuotaFailureReason.claudeCodeCheckFailed.localizedDetailText(bundle: bundle) == "D")
         #expect(ClaudeQuotaFailureReason.usageReportFormatChanged.localizedDisplayText(bundle: bundle) == "F")
+        #expect(ClaudeQuotaFailureReason.planUsageUnavailable.localizedDisplayText(bundle: bundle) == "G")
+        #expect(ClaudeQuotaFailureReason.planUsageUnavailable.localizedDetailText(bundle: bundle) == "H")
     }
 
     // MARK: - Source order

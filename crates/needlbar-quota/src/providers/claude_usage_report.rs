@@ -1,10 +1,12 @@
 //! Pure parser for `claude -p /usage --output-format stream-json`. It knows
-//! nothing about processes. Everything except `usage_report`, and the closed
-//! `error` value used when no report arrived, is discarded here: serde skips
-//! other fields without building them, and no text is kept or logged.
+//! nothing about processes. Everything except `usage_report`, the closed
+//! `error` value used when no report arrived, and whether `local_command_run`
+//! names the `usage` command is discarded here: serde skips other fields without
+//! building them, `local_command_run` is compared and dropped, and no text is
+//! kept or logged.
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 use crate::QuotaWindow;
@@ -40,6 +42,9 @@ pub enum ClaudeUsageReportOutcome {
         rows: ClaudeUsageRowSummary,
     },
     RateLimited,
+    /// Claude Code ran `/usage` and finished without a `usage_report` key: it
+    /// does not consider itself signed in with a Claude plan.
+    PlanUsageUnavailable,
     FormatChanged {
         rows: ClaudeUsageRowSummary,
     },
@@ -49,15 +54,26 @@ pub enum ClaudeUsageReportOutcome {
 struct StreamLine {
     #[serde(default, rename = "type")]
     line_type: Option<Value>,
-    #[serde(default)]
+    /// `None` when the key is absent and `Some(Value::Null)` when it is `null`.
+    #[serde(default, deserialize_with = "present")]
     usage_report: Option<Value>,
     #[serde(default)]
     error: Option<Value>,
+    /// Untyped, so another shape never makes serde skip the line.
+    #[serde(default)]
+    local_command_run: Option<Value>,
+}
+
+/// Serde reads a present `null` as `None`; this keeps it as `Some(Value::Null)`.
+fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(deserializer).map(Some)
 }
 
 pub fn parse_usage_report_stream(bytes: &[u8]) -> ClaudeUsageReportOutcome {
     let mut report = None;
     let mut rate_limited = false;
+    let mut report_key_seen = false;
+    let mut usage_command_ran = false;
     for line in bytes.split(|byte| *byte == b'\n') {
         let Ok(parsed) = serde_json::from_slice::<StreamLine>(line) else {
             continue;
@@ -66,6 +82,13 @@ pub fn parse_usage_report_stream(bytes: &[u8]) -> ClaudeUsageReportOutcome {
             continue;
         }
         rate_limited |= parsed.error.as_ref().and_then(Value::as_str) == Some("rate_limit");
+        usage_command_ran |= parsed
+            .local_command_run
+            .as_ref()
+            .and_then(|run| run.get("command"))
+            .and_then(Value::as_str)
+            == Some("usage");
+        report_key_seen |= parsed.usage_report.is_some();
         if let Some(candidate) = parsed.usage_report.filter(|value| !value.is_null()) {
             report = Some(candidate);
         }
@@ -73,9 +96,11 @@ pub fn parse_usage_report_stream(bytes: &[u8]) -> ClaudeUsageReportOutcome {
     match report {
         Some(report) => classify_report(&report),
         None if rate_limited => ClaudeUsageReportOutcome::RateLimited,
-        None => ClaudeUsageReportOutcome::FormatChanged {
-            rows: ClaudeUsageRowSummary::default(),
-        },
+        // A missing key alone is not enough: a renamed field would look the same.
+        None if usage_command_ran && !report_key_seen => {
+            ClaudeUsageReportOutcome::PlanUsageUnavailable
+        }
+        None => format_changed(),
     }
 }
 

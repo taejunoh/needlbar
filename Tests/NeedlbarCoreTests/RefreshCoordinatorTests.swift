@@ -855,7 +855,7 @@ private final class StatusLineCacheSpy: ClaudeStatusLineCacheReading, @unchecked
 
     @Test func returnedClaudeQuotaErrorsMapOnlyAllowlistedCodesToSafeReasons() async throws {
         let cases: [(String, ClaudeQuotaFailureReason)] = [
-            ("requiresAuthentication", .quotaAccessUnavailable),
+            ("requiresAuthentication", .planUsageUnavailable),
             ("authenticationExpired", .quotaAccessUnavailable),
             ("permissionDenied", .couldNotUpdateQuota),
             ("networkUnavailable", .connectionUnavailable),

@@ -821,6 +821,10 @@ mod tests {
             (Origin::UsageProbeFailed, "usageProbeFailed"),
             (Origin::UsageReportRateLimited, "usageReportRateLimited"),
             (Origin::UsageReportFormatChanged, "usageReportFormatChanged"),
+            (
+                Origin::UsageReportPlanUsageUnavailable,
+                "usageReportPlanUsageUnavailable",
+            ),
             (Origin::OtherFailure, "otherFailure"),
         ] {
             let quota = Envelope {

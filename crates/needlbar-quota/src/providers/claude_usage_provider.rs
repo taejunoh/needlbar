@@ -136,6 +136,17 @@ impl ClaudeUsageReportProvider {
                 )),
                 ClaudeUsageRowSummary::default(),
             ),
+            // Claude Code is not signed in with a Claude plan, as far as it can
+            // tell. The app does not retry this under backoff: waiting does not
+            // sign it in.
+            ClaudeUsageReportOutcome::PlanUsageUnavailable => (
+                Err(failure(
+                    QuotaErrorCode::RequiresAuthentication,
+                    "Claude Code did not report plan usage.",
+                    ClaudeQuotaFailureOrigin::UsageReportPlanUsageUnavailable,
+                )),
+                ClaudeUsageRowSummary::default(),
+            ),
             ClaudeUsageReportOutcome::FormatChanged { rows } => (
                 Err(failure(
                     QuotaErrorCode::SchemaChanged,

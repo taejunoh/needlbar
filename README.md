@@ -222,7 +222,7 @@ source and last-known values the third; a newer valid reading wins. A window the
 report omits is hidden, not shown as zero. Without Claude Code the app shows
 install guidance and the usage link; with no usage available it says it could not check
 Claude Code, suggests running `claude` in Terminal to check its sign-in if that continues,
-and, with automatic checks on, retries under backoff. It offers no button. Needlbar never runs `claude auth`
+and, with automatic checks on, retries under backoff. It offers no button. A run that reports no plan usage at all is a separate state, described below. Needlbar never runs `claude auth`
 and writes no Claude configuration, though Claude Code may renew its own login
 during a run, and `claude` itself may show a Keychain prompt. **Allow Keychain
 access**, which an earlier prepared build had, is removed. On one Mac, a local
@@ -239,6 +239,19 @@ Any rate limit on `/usage` has not been measured. Each of those two logs covers 
 hours, so a full day on a Developer ID build has still not been observed. It is not part of any
 public release yet. How it relates to Anthropic's terms is described under
 [Claude Code and Anthropic's terms](#claude-code-and-anthropics-terms).
+
+When `/usage` finishes without plan usage, which Claude Code does when it does not consider itself
+signed in with a Claude plan (signed out, an API key, usage-based billing), the app shows **Claude
+Code didn't report plan usage** with "Claude Code usually shows plan usage only when it's signed in
+with a Claude plan. Run claude auth login in Terminal, then choose Check now in Needlbar. API keys
+and usage-billed accounts have no plan limits to show." (prepared 2026-11-20, not released). Until
+then such a run read as a changed format and was retried under backoff, while the widget kept the
+last value with only its last checked time. Needlbar tells the two apart only when the run named
+the `usage` command and returned no `usage_report` key at all; any other missing report still reads
+as a changed format. This state is not retried under backoff, like a missing Claude Code: the next
+periodic run when automatic checks are on, or **Check now**, tries again. After an earlier reading, the Overview widget dims the
+Claude figure and says "Sign in to Claude Code" with the last checked time. Needlbar still never
+runs `claude auth` and offers no sign-in button.
 
 ### Usage and quota monitoring
 

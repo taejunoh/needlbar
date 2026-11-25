@@ -95,7 +95,7 @@ struct ClaudeUsageReportPresentationTests {
             schemaVersion: StatusLineQuotaRecord.currentSchemaVersion, generation: UUID(),
             fiveHour: StatusLineWindowObservation(usedPercent: 25, resetsAt: nil, receivedAt: now.addingTimeInterval(-30)),
             sevenDay: StatusLineWindowObservation(usedPercent: 35, resetsAt: nil, receivedAt: now.addingTimeInterval(-30)))
-        for reason in [ClaudeQuotaFailureReason.claudeCodeNotInstalled] {
+        for reason in [ClaudeQuotaFailureReason.claudeCodeNotInstalled, .planUsageUnavailable] {
             let popover = ProviderPopoverPresentation(
                 snapshot: claude(windows: [try fable()], reason: reason, age: 3_600, statusLine: record), now: now)
             #expect(popover.hasRecentClaudeQuota)
@@ -106,11 +106,32 @@ struct ClaudeUsageReportPresentationTests {
 
     @Test func noCopyOffersAnAutomaticSignIn() {
         for reason in [ClaudeQuotaFailureReason.claudeCodeNotInstalled,
-                       .claudeCodeCheckFailed, .usageReportFormatChanged] {
+                       .claudeCodeCheckFailed, .usageReportFormatChanged, .planUsageUnavailable] {
             let text = "\(reason.displayText) \(reason.detailText ?? "")"
-            for forbidden in ["Keychain", "credential", "Always Allow", "token"] {
+            for forbidden in ["Keychain", "credential", "Always Allow", "token", "signed out", "automatically"] {
                 #expect(!text.localizedCaseInsensitiveContains(forbidden), "\(reason) \(forbidden)")
             }
         }
+    }
+
+    @Test func planUsageUnavailableShowsItsReasonAndDetailAndKeepsTheUsageLink() throws {
+        let reason = ClaudeQuotaFailureReason.planUsageUnavailable
+        // With no earlier success the store reports the authentication status.
+        let neverChecked = ProviderSnapshot(
+            provider: .claude, usage: nil, quota: nil, usageStatus: .fresh,
+            quotaStatus: .requiresAuthentication, updatedAt: now, claudeQuotaFailureReason: reason)
+        // After one it reports an error and keeps the last value.
+        let checkedBefore = claude(windows: [try weekly()], reason: reason, age: 7_200)
+        for snapshot in [neverChecked, checkedBefore] {
+            let popover = ProviderPopoverPresentation(snapshot: snapshot, now: now)
+            #expect(popover.quotaFailureReasonText == "Claude Code didn't report plan usage")
+            #expect(popover.quotaFailureDetailText == reason.detailText)
+            #expect(popover.authenticationAction == .openClaudeUsage(title: "View Claude usage"))
+            #expect(!popover.requiresProviderSignIn)
+            #expect(dashboardRow(snapshot).quotaFailureReasonText == reason.displayText)
+        }
+        let lastKnown = ProviderPopoverPresentation(snapshot: checkedBefore, now: now)
+        #expect(lastKnown.quotaIsLastKnown)
+        #expect(lastKnown.lastKnownQuotaRemaining == "26%")
     }
 }

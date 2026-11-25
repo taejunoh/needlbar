@@ -7,6 +7,9 @@ use needlbar_quota::{
 const ALL_ROWS: &str = include_str!("../../../Fixtures/quota/claude/usage-report-all-rows.jsonl");
 const WEEKLY_ONLY: &str =
     include_str!("../../../Fixtures/quota/claude/usage-report-weekly-only.jsonl");
+/// Recorded from a signed-out `claude` on 2026-11-20, with every identifier removed.
+const SIGNED_OUT: &str =
+    include_str!("../../../Fixtures/quota/claude/usage-report-signed-out.jsonl");
 
 fn stream(rate_limits: &str) -> Vec<u8> {
     format!(
@@ -202,4 +205,101 @@ fn nothing_but_closed_values_survives_parsing() {
     ] {
         assert!(!debug.contains(canary), "{canary}");
     }
+}
+
+const USAGE_RUN: &str = r#""local_command_run":{"command":"usage","args":""}"#;
+
+/// One assistant line with the given extra top-level fields.
+fn assistant(fields: &str) -> Vec<u8> {
+    format!("{{\"type\":\"assistant\",\"message\":{{\"content\":[]}},{fields}}}\n").into_bytes()
+}
+
+#[test]
+fn a_finished_usage_command_without_a_report_key_is_plan_usage_unavailable() {
+    assert_eq!(
+        parse_usage_report_stream(SIGNED_OUT.as_bytes()),
+        ClaudeUsageReportOutcome::PlanUsageUnavailable
+    );
+    assert_eq!(
+        parse_usage_report_stream(&assistant(USAGE_RUN)),
+        ClaudeUsageReportOutcome::PlanUsageUnavailable
+    );
+    // The command may be on any assistant line, and other lines may lack it.
+    let mut two_lines = assistant(r#""local_command_run":null"#);
+    two_lines.extend_from_slice(&assistant(USAGE_RUN));
+    assert_eq!(
+        parse_usage_report_stream(&two_lines),
+        ClaudeUsageReportOutcome::PlanUsageUnavailable
+    );
+}
+
+#[test]
+fn anything_short_of_that_shape_stays_format_changed() {
+    let mut null_report_elsewhere = assistant(USAGE_RUN);
+    null_report_elsewhere.extend_from_slice(&assistant(r#""usage_report":null"#));
+    let result_line_only = SIGNED_OUT
+        .lines()
+        .nth(1)
+        .expect("result line")
+        .as_bytes()
+        .to_vec();
+    for input in [
+        assistant(r#""local_command_run":{"command":"cost","args":""}"#),
+        assistant(r#""local_command_run":{"command":"Usage"}"#),
+        assistant(r#""local_command_run":{"command":7}"#),
+        assistant(r#""local_command_run":"usage""#),
+        assistant(r#""local_command_run":["usage"]"#),
+        assistant(&format!(r#"{USAGE_RUN},"usage_report":null"#)),
+        null_report_elsewhere,
+        assistant(&format!(r#"{USAGE_RUN},"usage_report":{{}}"#)),
+        assistant(&format!(r#"{USAGE_RUN},"usage_report":7"#)),
+        assistant(&format!(
+            r#"{USAGE_RUN},"usage_report":{{"rate_limits":{{"limits":"none"}}}}"#
+        )),
+        br#"{"type":"user","local_command_run":{"command":"usage"}}"#.to_vec(),
+        result_line_only,
+    ] {
+        assert!(
+            matches!(
+                parse_usage_report_stream(&input),
+                ClaudeUsageReportOutcome::FormatChanged { .. }
+            ),
+            "{}",
+            String::from_utf8_lossy(&input)
+        );
+    }
+}
+
+#[test]
+fn a_report_and_a_rate_limit_still_come_first() {
+    let with_report = stream(&format!("{{\"limits\":[{WEEKLY_ROW}]}}"))
+        .into_iter()
+        .chain(assistant(USAGE_RUN))
+        .collect::<Vec<u8>>();
+    assert!(matches!(
+        parse_usage_report_stream(&with_report),
+        ClaudeUsageReportOutcome::Windows { .. }
+    ));
+    assert_eq!(
+        parse_usage_report_stream(&assistant(&format!(r#"{USAGE_RUN},"error":"rate_limit""#))),
+        ClaudeUsageReportOutcome::RateLimited
+    );
+}
+
+#[test]
+fn a_strangely_shaped_local_command_run_never_hides_a_report() {
+    let line = format!(
+        "{{\"type\":\"assistant\",\"local_command_run\":[1,{{}}],\"usage_report\":{{\"rate_limits\":{{\"limits\":[{WEEKLY_ROW}]}}}}}}\n"
+    );
+    assert!(matches!(
+        parse_usage_report_stream(line.as_bytes()),
+        ClaudeUsageReportOutcome::Windows { .. }
+    ));
+}
+
+#[test]
+fn nothing_from_a_run_without_plan_usage_survives_parsing() {
+    let input = br#"{"type":"assistant","message":{"content":[{"type":"text","text":"TEXT-CANARY"}]},"local_command_run":{"command":"usage","args":"ARGS-CANARY"}}"#;
+    let debug = format!("{:?}", parse_usage_report_stream(input));
+    assert_eq!(debug, "PlanUsageUnavailable");
 }

@@ -52,6 +52,7 @@ import NeedlbarCore
         ("usageProbeFailed", "providerUnavailable"),
         ("usageReportRateLimited", "rateLimited"),
         ("usageReportFormatChanged", "schemaChanged"),
+        ("usageReportPlanUsageUnavailable", "requiresAuthentication"),
     ]
     for (origin, code) in cases {
         let reporter = ClaudeQuotaFailureDiagnosticsReporter(
@@ -361,7 +362,8 @@ private final class CStringPointer: @unchecked Sendable {
 private extension ClaudeQuotaFailureOrigin {
     static let allCasesForTest: [Self] = [
         .claudeCliNotFound, .usageReportNoUsage, .usageProbeTimedOut, .usageProbeOutputTooLarge,
-        .usageProbeFailed, .usageReportRateLimited, .usageReportFormatChanged, .otherFailure,
+        .usageProbeFailed, .usageReportRateLimited, .usageReportFormatChanged,
+        .usageReportPlanUsageUnavailable, .otherFailure,
     ]
 }
 

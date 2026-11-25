@@ -138,6 +138,7 @@ import Testing
     for origin in [
         "claudeCliNotFound", "usageReportNoUsage", "usageProbeTimedOut", "usageProbeOutputTooLarge",
         "usageProbeFailed", "usageReportRateLimited", "usageReportFormatChanged",
+        "usageReportPlanUsageUnavailable",
     ] {
         let frees = FreeRecorder()
         let returnedPointer = try CStringPointer(diagnosticsCString(origin: origin))

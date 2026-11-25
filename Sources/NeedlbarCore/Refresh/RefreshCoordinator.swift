@@ -598,19 +598,28 @@ public actor RefreshCoordinator {
     private func recordClaudeUsageOutcome(
         _ result: Result<QuotaRefreshResult, Error>, trigger: QuotaRefreshTrigger, at date: Date
     ) {
-        var retries = true
-        if case .success(let refresh) = result {
-            if refresh.errors[.claude] == nil, refresh.snapshots[.claude] != nil {
-                claudeUsageSchedule.recordSuccess()
-                return
-            }
-            // Not installed waits for the next trigger, which includes the periodic
-            // run (spec §8). Every other failure, including a null usage report,
-            // retries under backoff.
-            let code = refresh.errors[.claude]?.code
-            retries = code != "notInstalled"
+        if case .success(let refresh) = result, refresh.errors[.claude] == nil, refresh.snapshots[.claude] != nil {
+            claudeUsageSchedule.recordSuccess()
+            return
         }
+        // Not installed and plan usage unavailable wait for the next trigger, which
+        // includes the periodic run (spec §8; 2026-11-20 spec §4): waiting neither
+        // installs Claude Code nor signs it in. Every other failure, including a
+        // null usage report, retries under backoff. Both still record the backoff.
+        let code = Self.claudeErrorCode(in: result)
+        let retries = code != "notInstalled" && code != "requiresAuthentication"
         claudeUsageSchedule.recordFailure(trigger: trigger, at: date, retriesWhenBackoffEnds: retries)
+    }
+
+    /// The Claude error code a run returned or threw, if it carried one.
+    private static func claudeErrorCode(in result: Result<QuotaRefreshResult, Error>) -> String? {
+        switch result {
+        case .success(let refresh):
+            return refresh.errors[.claude]?.code
+        case .failure(let error):
+            guard case .bridgeFailed(let errors)? = error as? BridgeFailure else { return nil }
+            return errors.first { $0.providerID == .claude }?.code
+        }
     }
 
     private func requestStatusLineRead() {

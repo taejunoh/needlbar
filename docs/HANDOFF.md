@@ -219,11 +219,29 @@ widget process by its process ID and check its executable, or the missing text l
 missing value (STATUS, 2026-11-13). Fable is found in the usage report by its display name, so a
 rename removes the text without notice.
 
+**Plan usage unavailable (2026-11-20, prepared, not released).** Design:
+`docs/superpowers/specs/2026-11-20-claude-plan-usage-unavailable-design.md`. Plan:
+`docs/superpowers/plans/2026-11-20-claude-plan-usage-unavailable.md`. This answers the open check of
+how a signed-out `claude` reports itself (STATUS, 2026-11-20): `/usage` exits 0 with
+`local_command_run` naming `usage` and no `usage_report` key. The parser returns
+`PlanUsageUnavailable` for exactly that shape; the provider sends `requiresAuthentication` with the
+origin `usageReportPlanUsageUnavailable`; Swift maps the code to
+`ClaudeQuotaFailureReason.planUsageUnavailable` (`authenticationExpired` stays
+`quotaAccessUnavailable`). The app shows "Claude Code didn't report plan usage" and its detail, on
+the Fable line while status-line windows are recent. `RefreshCoordinator` does not retry it under
+backoff, as for `notInstalled`; a thrown bridge failure with either code now also waits (no
+production path throws one). The widget row carries
+`staleReason` only after an earlier reading and only while not fresh, and the column says "Sign in to
+Claude Code · <time>" with a shorter fallback. Not yet seen on an installed widget: the caption in
+light and dark and its fallback when narrow; after installing, restart the old widget process, which
+ignores the new key.
+
 A local ad-hoc build ran for about 38 hours on the maintainer's Mac (STATUS, 2026-11-05): every
 logged run succeeded, no Keychain prompt appeared, and runs took about 5 s (maximum about 19.3 s).
 Logs from Developer ID builds were read on 2026-11-09 and 2026-11-12 for run counts, triggers and
 durations (STATUS, 2026-11-12): the median rose to about 8.1 s and two runs were stopped at 30 seconds.
-Still open: how a signed-out `claude` reports itself in this mode, the same observation on a
+*Superseded 2026-11-20:* how a signed-out `claude` reports itself in this mode is no longer open;
+see "Plan usage unavailable" above. Still open: the same observation on a
 Developer ID build including the widget's Claude row, whether `/usage` has its own rate limit, and
 an observed login renewal. Also open: when Codex is failing, each dashboard open retries Codex; the
 menu bar and Overview show last-known values unlabelled; and only the three fixed install paths are
@@ -235,7 +253,7 @@ Code and Anthropic's terms". The inquiry is drafted and the user sends it. If An
 §11 fallback applies. The inquiry draft is not in this repository; before it is sent it must say
 that automatic runs are off until the user turns them on (spec 2026-11-16 §7). A public release
 still needs a weekday log check, the signed-out `claude`
-check, the inquiry sent, a new release plan and the user's separate request. No tag or release is authorized, and the
+check (*done 2026-11-20:* observed and handled by the plan usage unavailable state), the inquiry sent, a new release plan and the user's separate request. No tag or release is authorized, and the
 v0.3.15 release plan of 2026-11-02 is superseded.
 
 ## CI runners

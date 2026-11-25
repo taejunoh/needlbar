@@ -18,6 +18,8 @@ use tempfile::TempDir;
 const ALL_ROWS: &str = include_str!("../../../Fixtures/quota/claude/usage-report-all-rows.jsonl");
 const WEEKLY_ONLY: &str =
     include_str!("../../../Fixtures/quota/claude/usage-report-weekly-only.jsonl");
+const SIGNED_OUT: &str =
+    include_str!("../../../Fixtures/quota/claude/usage-report-signed-out.jsonl");
 const PREWARM: &str = "--needlbar-prewarm";
 
 fn fake(directory: &Path, body: &str) -> PathBuf {
@@ -150,6 +152,25 @@ async fn no_report_is_format_changed() {
         QuotaErrorCode::SchemaChanged,
         ClaudeQuotaFailureOrigin::UsageReportFormatChanged,
     );
+}
+
+#[tokio::test]
+async fn a_run_without_plan_usage_requires_authentication_with_its_own_origin() {
+    let run = run_output(SIGNED_OUT).await;
+    assert_failure(
+        &run,
+        QuotaErrorCode::RequiresAuthentication,
+        ClaudeQuotaFailureOrigin::UsageReportPlanUsageUnavailable,
+    );
+    let summary = run.summary.expect("summary");
+    assert!(summary.row_kinds.is_empty());
+    assert_eq!(summary.unknown_row_count, 0);
+    assert_eq!(summary.skipped_row_count, 0);
+    let error = run.result.expect_err("plan usage unavailable");
+    let surfaces = format!("{error:?}{}", serde_json::to_string(&error).unwrap());
+    for text in ["Estimated cost", "local_command", "0.0000"] {
+        assert!(!surfaces.contains(text), "{text}");
+    }
 }
 
 #[tokio::test]

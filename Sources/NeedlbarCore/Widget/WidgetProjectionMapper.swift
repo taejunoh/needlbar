@@ -48,8 +48,25 @@ public struct WidgetProjectionMapper: Sendable {
             stream: stream,
             lastSuccessfulAt: capture.quotaLastSuccessfulAt,
             headline: candidates.first,
-            fable: fableReading(capture, provider: provider)
+            fable: fableReading(capture, provider: provider),
+            staleReason: staleReason(capture, provider: provider, stream: stream, headline: candidates.first)
         )
+    }
+
+    /// Like Fable, the reason is secondary: when the row cannot carry it, it is left out and
+    /// nothing throws. It is set even while a status-line reading is newer, because the
+    /// widget shows only `/usage` values and its figure is the one that stopped.
+    private func staleReason(
+        _ capture: WidgetProviderCapture,
+        provider: WidgetProvider,
+        stream: WidgetStreamState,
+        headline: WidgetQuotaHeadline?
+    ) -> WidgetQuotaStaleReason? {
+        guard capture.claudeQuotaFailureReason == .planUsageUnavailable else { return nil }
+        let reason = WidgetQuotaStaleReason.planUsageUnavailable
+        let carried = reason.isValid(
+            for: provider, stream: stream, lastSuccessfulAt: capture.quotaLastSuccessfulAt, headline: headline)
+        return carried ? reason : nil
     }
 
     /// Fable is secondary text, so anything wrong with it drops it and never throws: the

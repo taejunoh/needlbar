@@ -157,6 +157,29 @@ private struct QuotaColumnView: View {
         }
     }
 
+    private func captionText(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
+    // The full caption at full size when it fits, otherwise the shorter one, which may
+    // scale down like any other caption. The spoken label always keeps the full form.
+    @ViewBuilder
+    private var caption: some View {
+        if let compact = column.compactDetail {
+            ViewThatFits(in: .horizontal) {
+                captionText(column.detail)
+                captionText(compact)
+                    .minimumScaleFactor(0.8)
+            }
+        } else {
+            captionText(column.detail)
+                .minimumScaleFactor(0.8)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(column.title)
@@ -164,11 +187,7 @@ private struct QuotaColumnView: View {
             figureRow
             QuotaBar(fraction: column.fraction, fill: warning ?? accent)
                 .opacity(column.isDimmed ? 0.45 : 1)
-            Text(column.detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            caption
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
