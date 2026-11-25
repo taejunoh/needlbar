@@ -527,12 +527,12 @@ services", with hosted sandboxes and agent infrastructure as examples. As of 202
 not say whether a local app starting a user's own installed CLI is covered. Our reading is that
 it is not covered. If it is covered, that section requires the Commercial Terms as well as its
 conditions. Needlbar meets the conditions (the binary runs unmodified, and each user signs in with
-their own account); whether the Commercial Terms are needed is part of what we are asking.
+their own account); whether the Commercial Terms are needed is part of what we have asked.
 
 With automatic checks on, runs are scheduled: about 96 a day while Needlbar is running, which for
 a menu-bar app is usually all day. Anthropic's [Consumer Terms](https://www.anthropic.com/legal/consumer-terms)
 restrict access "through automated or non-human means" unless Anthropic explicitly permits it,
-and its plan limits assume ordinary, individual usage. We are asking Anthropic whether a scheduled
+and its plan limits assume ordinary, individual usage. We have asked Anthropic whether a scheduled
 `/usage` check of the user's own CLI that the user turned on is within that. Until Anthropic answers, this is our reading,
 not Anthropic's confirmation. If Anthropic objects, a later release will stop running `claude` and
 keep the status-line source, last-known values and the usage link.
