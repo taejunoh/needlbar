@@ -254,11 +254,14 @@ found.
 
 **Release gate (spec §11):** on 2026-11-15 the user decided the terms question in spec §3: ship on
 a stated reading and ask Anthropic at the same time. The reading is in the README section "Claude
-Code and Anthropic's terms". The inquiry is drafted and the user sends it. If Anthropic objects, the
-§11 fallback applies. The inquiry draft is not in this repository; before it is sent it must say
-that automatic runs are off until the user turns them on (spec 2026-11-16 §7). A public release
+Code and Anthropic's terms". *Sent 2026-11-25:* the inquiry went through the Claude support messenger (Anthropic's
+contact-sales chat pointed there) and was escalated to a human agent; the reply comes to the
+maintainer's Claude account email. It says automatic runs are off until the user turns them on and
+that `/usage` reported zero tokens. The support AI's first answer, not authoritative, was that the
+approach aligns with the credentials rule, that logo use needs written permission, and that the
+legal team must answer the rest. If Anthropic objects, the §11 fallback applies. A public release
 still needs a weekday log check, the signed-out `claude`
-check (*done 2026-11-20:* observed and handled by the plan usage unavailable state), the inquiry sent, a new release plan and the user's separate request. No tag or release is authorized, and the
+check (*done 2026-11-20:* observed and handled by the plan usage unavailable state), the inquiry sent (*done 2026-11-25*), a new release plan and the user's separate request. No tag or release is authorized, and the
 v0.3.15 release plan of 2026-11-02 is superseded.
 
 ## CI runners
