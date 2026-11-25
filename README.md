@@ -2,6 +2,8 @@
 
 Needlbar is a native macOS menu-bar monitor for Claude Code, Codex, and Cursor. It shows locally aggregated token usage, estimated cost, quota windows, and reset times.
 
+It puts system status (CPU, memory, disk, network, battery) and AI quota in one menu bar. Prepared for the next release: Needlbar reads no Claude credentials, tokens, or browser cookies. Claude quota comes from the usage report of the Claude Code you installed, which Needlbar runs only when you choose Check now, unless you turn on automatic checks.
+
 Needlbar is local-first: it has no Needlbar account, backend, hosted sync, cloud analytics service, or telemetry.
 
 ## Availability and download
