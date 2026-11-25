@@ -17,7 +17,8 @@ struct AppDelegateLifecycleTests {
     await lifecycle.stop()
 
     #expect(await services.events == [
-        "menu.start", "system.start", "notifications.start", "publisher.start", "refresh.start", "recovery.start",
+        "menu.start", "onboarding.present", "system.start", "notifications.start", "publisher.start",
+        "refresh.start", "recovery.start",
         "recovery.stop", "refresh.stop", "publisher.stop", "notifications.stop", "system.stop", "menu.stop",
     ])
 }
@@ -274,6 +275,7 @@ private final class RecordingProductionLifecycleServices: ProductionLifecycleSer
     }
 
     func startProductionMenu() async { events.append("menu.start") }
+    func presentProductionOnboarding() async { events.append("onboarding.present") }
     func startProductionSystem() async { events.append("system.start") }
     func startProductionNotifications() async { events.append("notifications.start") }
     func startProductionPublisher() async { events.append("publisher.start") }
