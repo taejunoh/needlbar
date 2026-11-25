@@ -16,6 +16,11 @@ match and background no-UI fix that v0.3.14 shipped).
 This is a documentation handoff, not a new product approval or a claim of
 fresh installation/runtime verification.
 
+**Current roadmap (2026-11-25):** [v0.3.15 roadmap](superpowers/plans/2026-11-25-v0.3.15-roadmap.md),
+approved by the user, lists the steps to a public v0.3.15 and a backlog of work deliberately left
+for later. The competitor checkpoint behind it is
+[docs/research/2026-11-25-competitor-checkpoint.md](research/2026-11-25-competitor-checkpoint.md).
+
 ## Repository state
 
 - Work from `main`. The 2026-10-20 handoff branch merged in PR #21, the
