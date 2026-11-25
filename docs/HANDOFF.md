@@ -192,8 +192,12 @@ Turning on, or showing Claude again, requests one run with the new trigger `auto
 respects the 5-minute minimum; turning off never cancels a run in flight. Settings has the toggle
 **Check Claude quota automatically** in the Claude pane, and while off the dashboard's Claude row
 shows "Automatic checks are off." with **Turn on** beside **Check now**. The acceptance build shows
-neither. The first-run window that asks once is the plan's second part and is not built yet, so the
-README sentence "Needlbar asks once" is ahead of the code until then. With automatic checks off,
+neither. A first-run window asks once, "Check Claude quota automatically?", after the menu bar has
+started: it is non-modal, **Not now** is its default button, and closing it counts as **Not now**.
+The answer is stored as `needlbar.onboarding.claudeUsage.answeredVersion` when the user answers or
+closes the window, not when it appears. It is not shown with
+`NEEDLBAR_DISABLE_CLAUDE_USAGE_PROBE=1`, in the acceptance build, or while Claude is hidden. If the setting is already on it is not shown and the answer is recorded, and it
+closes when the setting is turned on elsewhere. Its layout has not been seen on a real machine. With automatic checks off,
 each launch starts with no Claude value until **Check now**, and Claude quota alerts fire only from
 manual readings. `docs/releases/v0.3.15.md` describes opt-in automatic runs
 (2026-11-16); the new release plan still reviews it. Not yet checked on a real machine: with the setting off the unified log shows no
@@ -366,6 +370,8 @@ Useful verified source locations:
 - `Sources/NeedlbarCore/Configuration/ClaudeVisibility.swift`
 - `Sources/Needlbar/App/ClaudeAutomaticChecksPreferences.swift`
 - `Sources/Needlbar/App/ClaudeAutomaticRunsRelay.swift`
+- `Sources/Needlbar/App/ClaudeUsageOnboarding.swift`
+- `Sources/Needlbar/App/ClaudeUsageOnboardingWindowController.swift`
 - `Sources/NeedlbarCore/Widget/WidgetProjectionMapper.swift`
 - `Sources/NeedlbarWidgetSupport/WidgetProjection.swift`
 - `WidgetExtension/NeedlbarOverviewWidget.swift`
